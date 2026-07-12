@@ -1,0 +1,163 @@
+{% extends "layouts/base.html" %}
+{% block title %}Edit User{% endblock %}
+{% block content %}
+<style>
+  .rep-hero {
+    background: radial-gradient(circle at 92% 8%, rgba(255, 255, 255, .22), transparent 16%), linear-gradient(135deg, #102542, #0d7f91);
+    color: #fff;
+    border-radius: 28px;
+    padding: 30px 34px;
+    box-shadow: 0 22px 48px rgba(16, 37, 66, .22);
+    margin-bottom: 16px
+  }
+
+  .rep-hero h1 {
+    font-size: 34px;
+    font-weight: 950;
+    margin: 0
+  }
+  .rep-hero p {
+    margin: 8px 0 0;
+    color: #e7fbff
+  }
+  .edit-grid {
+    display: grid;
+    grid-template-columns: 1fr 420px;
+    gap: 18px
+  }
+
+  .security-box {
+    background: #fff;
+    border: 1px solid #dbe7f3;
+    border-radius: 20px;
+    box-shadow: 0 14px 34px rgba(15, 30, 50, .06);
+    padding: 22px
+  }
+
+  .qr-panel {
+    border: 1px dashed #9fcfe0;
+    background: #f7fcff;
+    border-radius: 18px;
+    padding: 16px;
+    text-align: center
+  }
+
+  .qr-panel img {
+    width: 220px;
+    height: 220px
+  }
+
+  .status-badge {
+    border-radius: 999px;
+    padding: 7px 10px;
+    font-weight: 900
+  }
+
+  @media(max-width:1100px) {
+    .edit-grid {
+      grid-template-columns: 1fr
+    }
+  }
+</style>
+<div class="container-fluid py-4">
+  <div class="rep-hero mb-3">
+    <h1 class="mb-1">Edit User Profile</h1>
+    <p class="mb-0">Maintain user master, role, lock status and authenticator enrollment QR.</p>
+  </div>
+  <div class="edit-grid">
+    <div class="security-box">
+      <form method="post">
+        <div class="row g-3">
+          <div class="col-md-4"><label class="form-label fw-bold">Username</label><input name="username"
+              class="form-control" value="{{ target_user.username }}" required></div>
+          <div class="col-md-4"><label class="form-label fw-bold">Email</label><input name="email" type="email"
+              class="form-control" value="{{ target_user.email }}" required></div>
+          <div class="col-md-4"><label class="form-label fw-bold">Full Name</label><input name="full_name"
+              class="form-control" value="{{ target_user.full_name }}" required></div>
+          <div class="col-md-4"><label class="form-label fw-bold">Phone</label><input name="phone" class="form-control"
+              value="{{ target_user.phone or '' }}"></div>
+          <div class="col-md-4"><label class="form-label fw-bold">Company ID</label><input name="company_id"
+              type="number" class="form-control" value="{{ target_user.company_id or 1 }}"></div>
+          <div class="col-md-4"><label class="form-label fw-bold">Customer Link (Customer Portal)</label>
+            <select name="customer_code" class="form-select">
+              <option value="">— Not a customer account —</option>
+              {% for c in customers %}
+              <option value="{{ c.customer_code }}" {% if c.customer_code == linked_customer_code %}selected{% endif %}>
+                {{ c.customer_name }} ({{ c.customer_code }})</option>
+              {% endfor %}
+            </select>
+            <div class="form-text">Linking a customer lets this user open /my and see only their own orders.</div>
+          </div>
+          <div class="col-md-4"><label class="form-label fw-bold">Role</label><select name="role_id"
+              class="form-select">{% for r in roles %}<option value="{{ r.id }}" {% if r.id==target_user.role_id
+                %}selected{% endif %}>{{ r.name }}</option>{% endfor %}</select></div>
+          <div class="col-md-3"><label class="form-label fw-bold">Active</label><select name="is_active"
+              class="form-select">
+              <option value="1" {% if target_user.is_active %}selected{% endif %}>Yes</option>
+              <option value="0" {% if not target_user.is_active %}selected{% endif %}>No</option>
+            </select></div>
+          <div class="col-md-3"><label class="form-label fw-bold">Verified</label><select name="is_verified"
+              class="form-select">
+              <option value="1" {% if target_user.is_verified %}selected{% endif %}>Yes</option>
+              <option value="0" {% if not target_user.is_verified %}selected{% endif %}>No</option>
+            </select></div>
+          <div class="col-md-3"><label class="form-label fw-bold">2FA Active</label><select name="two_factor_enabled"
+              class="form-select">
+              <option value="1" {% if security.two_factor_enabled %}selected{% endif %}>Yes</option>
+              <option value="0" {% if not security.two_factor_enabled %}selected{% endif %}>No</option>
+            </select><small class="text-secondary">Normally activated by user verification.</small></div>
+          <div class="col-md-3"><label class="form-label fw-bold">Force Password Change</label><select
+              name="force_password_change" class="form-select">
+              <option value="1" {% if security.force_password_change %}selected{% endif %}>Yes</option>
+              <option value="0" {% if not security.force_password_change %}selected{% endif %}>No</option>
+            </select></div>
+        </div>
+        <div class="mt-4"><button class="btn btn-theme">Save User</button><a href="/admin/users"
+            class="btn btn-light ms-2">Back</a><a href="/admin/users/{{ target_user.id }}/access"
+            class="btn btn-primary ms-2">Access Matrix</a></div>
+      </form>
+    </div>
+    <div>
+      <div class="security-box mb-3">
+        <h4>Security Status</h4>
+        <p class="mb-1"><strong>Failed Attempts:</strong> {{ security.failed_login_attempts or 0 }}</p>
+        <p class="mb-1"><strong>Locked Until:</strong> {{ security.locked_until or 'Not locked' }}</p>
+        <p class="mb-1"><strong>2FA:</strong> {% if security.two_factor_enabled %}<span
+            class="status-badge bg-success-subtle text-success-emphasis">Enabled</span>{% elif
+          security.two_factor_setup_required %}<span class="status-badge bg-warning-subtle text-warning-emphasis">Setup
+            Pending</span>{% else %}<span
+            class="status-badge bg-secondary-subtle text-secondary-emphasis">Disabled</span>{% endif %}</p>
+        <p class="mb-0"><strong>Verified At:</strong> {{ security.two_factor_verified_at or '-' }}</p>
+      </div>
+      <div class="security-box">
+        <h4>Authenticator QR Setup</h4>
+        <p class="text-secondary small">Admin can reset/generate a 30-day enrollment QR. Login 2FA is not enforced until
+          the user scans and verifies the 6-digit code from profile. If not setup within 30 days, the enrollment expires
+          automatically.</p>
+        {% if security.two_factor_secret %}
+        <div class="qr-panel mb-3"><img
+            src="/admin/users/{{ target_user.id }}/2fa/qr.png?ts={{ security.two_factor_reset_at or security.two_factor_setup_expires_at or '' }}"
+            alt="Authenticator QR">
+          <div class="small text-secondary mt-2">Scan in Google/Microsoft Authenticator</div>
+        </div>
+        <label class="form-label fw-bold">Manual Secret</label><input class="form-control mb-2" readonly
+          value="{{ security.two_factor_secret }}">
+        <label class="form-label fw-bold">Enrollment URL / URI</label><textarea class="form-control mb-2" rows="4"
+          readonly>{{ otpauth_uri }}</textarea>
+        <p class="small text-secondary">Expires: <strong>{{ security.two_factor_setup_expires_at or 'Already verified /
+            no expiry' }}</strong></p>
+        <div class="d-flex gap-2 flex-wrap">
+          <form method="post" action="/admin/users/{{ target_user.id }}/2fa/generate"><button
+              class="btn btn-warning">Reset QR / New Secret</button></form>
+          <form method="post" action="/admin/users/{{ target_user.id }}/2fa/disable"><button
+              class="btn btn-outline-danger">Disable / Clear 2FA</button></form>
+        </div>
+        {% else %}
+        <form method="post" action="/admin/users/{{ target_user.id }}/2fa/generate"><button
+            class="btn btn-theme">Generate 2FA QR</button></form>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

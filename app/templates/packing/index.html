@@ -1,0 +1,248 @@
+{% extends "layouts/base.html" %} {% block title %}Trayline / Packing{% endblock
+%} {% block extra_css %}
+<style>
+  .rep-hero {
+    background: radial-gradient(
+        circle at 92% 8%,
+        rgba(255, 255, 255, 0.22),
+        transparent 16%
+      ),
+      linear-gradient(135deg, #102542, #0d7f91);
+    color: #fff;
+    border-radius: 28px;
+    padding: 30px 34px;
+    box-shadow: 0 22px 48px rgba(16, 37, 66, 0.22);
+    margin-bottom: 16px;
+  }
+
+  .rep-hero h1 {
+    font-size: 34px;
+    font-weight: 950;
+    margin: 0;
+  }
+
+  .rep-hero p {
+    margin: 8px 0 0;
+    color: #e7fbff;
+  }
+
+  .hero {
+    background: linear-gradient(135deg, #102542, #0d7f91);
+    color: white;
+    border-radius: 24px;
+    padding: 26px 30px;
+    margin-bottom: 18px;
+    box-shadow: 0 18px 35px rgba(16, 37, 66, 0.18);
+  }
+
+  .hero h1 {
+    font-size: 32px;
+    font-weight: 950;
+    margin: 0;
+  }
+
+  .hero p {
+    margin: 8px 0 0;
+    color: #e5fbff;
+  }
+
+  .kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+    margin-bottom: 18px;
+  }
+
+  .kpi {
+    background: #fff;
+    border: 1px solid #dce9f3;
+    border-radius: 18px;
+    padding: 15px;
+    box-shadow: 0 10px 24px rgba(15, 30, 50, 0.06);
+  }
+
+  .kpi span {
+    display: block;
+    color: #70869d;
+    font-size: 12px;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+
+  .kpi strong {
+    font-size: 30px;
+    color: #102542;
+  }
+
+  .panel {
+    background: #fff;
+    border: 1px solid #dce9f3;
+    border-radius: 22px;
+    padding: 18px;
+    box-shadow: 0 12px 28px rgba(15, 30, 50, 0.06);
+  }
+
+  .table-pro {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+
+  .table-pro th {
+    background: #eef5fa;
+    padding: 12px;
+    text-align: left;
+    font-weight: 950;
+  }
+
+  .table-pro td {
+    padding: 12px;
+    border-bottom: 1px solid #edf3f8;
+    vertical-align: middle;
+  }
+
+  .pill {
+    border-radius: 999px;
+    padding: 6px 10px;
+    font-weight: 900;
+    font-size: 12px;
+    background: #fff0c8;
+    color: #8a5b00;
+  }
+
+  .pill.ok {
+    background: #d7f7df;
+    color: #087b2e;
+  }
+
+  .btn-pro {
+    display: inline-flex;
+    gap: 6px;
+    align-items: center;
+    background: #0d7f91;
+    color: #fff !important;
+    border-radius: 12px;
+    padding: 9px 12px;
+    text-decoration: none;
+    font-weight: 950;
+  }
+
+  .steps {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin: 12px 0 18px;
+  }
+
+  .step {
+    padding: 8px 11px;
+    background: #eaf2f8;
+    border-radius: 999px;
+    font-weight: 900;
+    color: #173b55;
+  }
+
+  .step.active {
+    background: #0d7f91;
+    color: white;
+  }
+  .pis-process-row{
+    padding: 0 !important;
+  }
+
+  @media (max-width: 900px) {
+    .kpi-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+</style>
+{% endblock %} {% block content %}
+<div class="rep-page">
+  <div class="rep-hero mb-3">
+    <h1>Trayline / Packing Control</h1>
+    <p>
+      Receives QC-passed orders, packs final portions, records rejection, and
+      releases orders to Dispatch / Delivery.
+    </p>
+  </div>
+  {% set active_step = 'Packing' %}{% include 'partials/process_status_row.html'
+  %} {% set status_options = ['Packing Pending','Packing In Progress','Packed']
+  %} {% include 'partials/filter_bar.html' %} {% if error %}
+  <div class="alert alert-danger">{{ error }}</div>
+  {% endif %}
+  <div class="kpi-grid">
+    <div class="kpi">
+      <span>Pending Packing</span><strong>{{ summary.pending }}</strong>
+    </div>
+    <div class="kpi">
+      <span>Packed Orders</span><strong>{{ summary.packed }}</strong>
+    </div>
+    <div class="kpi">
+      <span>Packed Portions</span
+      ><strong>{{ '%.0f'|format(summary.portions or 0) }}</strong>
+    </div>
+    <div class="kpi">
+      <span>Rejected Portions</span
+      ><strong>{{ '%.0f'|format(summary.rejected or 0) }}</strong>
+    </div>
+  </div>
+  <div class="panel">
+    <h3 class="mb-2">Packing Queue</h3>
+    <p class="text-secondary">
+      Only orders passed by QC should arrive here. After packing, Dispatch /
+      Delivery can load the vehicle and close delivery.
+    </p>
+    <div class="table-responsive">
+      <table class="table-pro">
+        <thead>
+          <tr>
+            <th>Order</th>
+            <th>Customer</th>
+            <th>Brand</th>
+            <th>Delivery</th>
+            <th>Status</th>
+            <th>Planned</th>
+            <th>Packed</th>
+            <th>Rejected</th>
+            <th>Next Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in rows %}
+          <tr>
+            <td>
+              <strong>{{ r.order_no }}</strong><br /><small
+                >{{ r.dispatch_no }}</small
+              >
+            </td>
+            <td>{{ r.customer_name or '—' }}</td>
+            <td>{{ r.brand or '—' }}</td>
+            <td>{{ r.delivery_date or '—' }} {{ r.delivery_time or '' }}</td>
+            <td>
+              <span
+                class="pill {% if r.packing_status == 'Packed' %}ok{% endif %}"
+                >{{ r.packing_status }}</span
+              >
+            </td>
+            <td>{{ '%.1f'|format(r.planned_portions or 0) }}</td>
+            <td>{{ '%.1f'|format(r.packed_portions or 0) }}</td>
+            <td>{{ '%.1f'|format(r.rejected_portions or 0) }}</td>
+            <td>
+              <a class="btn-pro" href="/packing/{{ r.id }}"
+                ><i class="bi bi-box-seam"></i> Open Packing</a
+              >
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="9" class="text-center text-secondary py-4">
+              No QC-passed orders are waiting for packing.
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

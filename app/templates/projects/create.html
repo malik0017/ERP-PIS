@@ -1,0 +1,120 @@
+{% extends "layouts/base.html" %}
+{% block title %}New Project | ISFC ERP{% endblock %}
+{% block content %}
+<div class="container-fluid py-3 isfc-page">
+
+  {% include "projects/_flash.html" %}
+
+  <div class="isfc-hero mb-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <div>
+      <h1 class="mb-1">{{ t('New Project') }}</h1>
+      <p class="mb-0">{{ t('Define a project with schedule, manager, budget and priority.') }}</p>
+    </div>
+    <a href="/projects" class="btn btn-light btn-sm"><i class="bi bi-arrow-left me-1"></i>{{ t('Back to Projects') }}</a>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-lg-8">
+      <div class="card shadow-none border">
+        <div class="card-header p-4 border-bottom bg-body">
+          <h4 class="mb-0"><i class="bi bi-pencil-square me-2"></i>{{ t('Project Details') }}</h4>
+        </div>
+        <div class="card-body p-4">
+          <form method="post" action="/projects" id="projectForm">
+            <div class="row g-3">
+              <div class="col-12">
+                <label class="form-label">{{ t('Project Name') }} <span class="text-danger">*</span></label>
+                <input type="text" class="form-control" name="project_name" required maxlength="255"
+                       placeholder="{{ t('e.g. New Central Kitchen Setup') }}">
+              </div>
+
+              <div class="col-12">
+                <label class="form-label">{{ t('Description') }}</label>
+                <textarea class="form-control" name="description" rows="3"
+                          placeholder="{{ t('Short description of scope and objectives...') }}"></textarea>
+              </div>
+
+              <div class="col-md-6">
+                <label class="form-label">{{ t('Start Date') }}</label>
+                <input type="date" class="form-control" name="start_date" value="{{ today }}">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">{{ t('End Date') }}</label>
+                <input type="date" class="form-control" name="end_date">
+              </div>
+
+              <div class="col-md-6">
+                <label class="form-label">{{ t('Project Manager') }}</label>
+                <select class="form-select" name="project_manager_id">
+                  <option value="0">{{ t('— Select manager —') }}</option>
+                  {% for u in users %}
+                  <option value="{{ u.id }}">{{ u.full_name }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">{{ t('Budget') }}</label>
+                <div class="input-group">
+                  <span class="input-group-text"><i class="bi bi-cash-coin"></i></span>
+                  <input type="number" step="0.01" min="0" class="form-control" name="budget" value="0">
+                </div>
+              </div>
+
+              <div class="col-md-6">
+                <label class="form-label">{{ t('Priority') }}</label>
+                <select class="form-select" name="priority">
+                  <option value="Low">{{ t('Low') }}</option>
+                  <option value="Medium" selected>{{ t('Medium') }}</option>
+                  <option value="High">{{ t('High') }}</option>
+                  <option value="Critical">{{ t('Critical') }}</option>
+                </select>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">{{ t('Initial Status') }}</label>
+                <select class="form-select" name="status">
+                  <option value="Planning" selected>{{ t('Planning') }}</option>
+                  <option value="Active">{{ t('Active') }}</option>
+                  <option value="Paused">{{ t('Paused') }}</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="d-flex gap-2 mt-4">
+              <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg me-1"></i>{{ t('Create Project') }}</button>
+              <a href="/projects" class="btn btn-phoenix-secondary">{{ t('Cancel') }}</a>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-4">
+      <div class="card shadow-none border bg-body-highlight">
+        <div class="card-body p-4">
+          <h5 class="mb-3"><i class="bi bi-info-circle me-2 text-primary"></i>{{ t('Quick Tips') }}</h5>
+          <ul class="mb-0 ps-3 text-body-secondary fs-9 lh-lg">
+            <li>{{ t('A unique project code (PRJ-YYYYMMDD-####) is generated automatically.') }}</li>
+            <li>{{ t('Progress and spend roll up automatically from tasks once you add them.') }}</li>
+            <li>{{ t('You can assign a team, tasks and milestones after creating the project.') }}</li>
+            <li>{{ t('Use the Timeline view for a Gantt-style schedule.') }}</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var f = document.getElementById('projectForm');
+  if(!f) return;
+  f.addEventListener('submit', function(e){
+    var s = f.start_date.value, en = f.end_date.value;
+    if(s && en && en < s){
+      e.preventDefault();
+      alert("{{ t('End date cannot be before start date.') }}");
+    }
+  });
+})();
+</script>
+{% endblock %}

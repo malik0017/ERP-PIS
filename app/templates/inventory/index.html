@@ -1,0 +1,76 @@
+{% extends "layouts/base.html" %}
+{% block title %}Inventory Valuation · ISFC{% endblock %}
+{% block content %}
+<div class="container-fluid py-3">
+
+  <div class="pis-hero mb-4" style="background:linear-gradient(135deg,#132947,#0c91a3);border-radius:22px;color:#fff;padding:26px 30px;">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
+      <div>
+        <span class="pis-chip mb-3" style="background:rgba(255,255,255,.15);color:#fff;border-radius:999px;padding:6px 12px;font-weight:800;font-size:12px;display:inline-flex;">Inventory Management</span>
+        <h2 class="mb-1 text-white">Stock on Hand & Valuation</h2>
+        <p class="mb-0 opacity-75">Live from the stock ledger: GRN receipts in, store issues out, moving-average cost per item.</p>
+      </div>
+      <a class="btn btn-phoenix-secondary" href="/procurement">Procurement (PO / GRN)</a>
+    </div>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-md-3"><div class="card shadow-none border h-100"><div class="card-body p-3"><span class="d-block text-uppercase fs-10 fw-bold text-body-tertiary">Items with Movements</span><h3 class="mb-0">{{ kpis['items'] }}</h3></div></div></div>
+    <div class="col-6 col-md-3"><div class="card shadow-none border h-100"><div class="card-body p-3"><span class="d-block text-uppercase fs-10 fw-bold text-body-tertiary">Items in Stock</span><h3 class="mb-0 text-success">{{ kpis.on_hand_lines }}</h3></div></div></div>
+    <div class="col-6 col-md-3"><div class="card shadow-none border h-100"><div class="card-body p-3"><span class="d-block text-uppercase fs-10 fw-bold text-body-tertiary">Negative Stock ⚠</span><h3 class="mb-0 {% if kpis.negative %}text-danger{% endif %}">{{ kpis.negative }}</h3></div></div></div>
+    <div class="col-6 col-md-3"><div class="card shadow-none border h-100"><div class="card-body p-3"><span class="d-block text-uppercase fs-10 fw-bold text-body-tertiary">Total Stock Value</span><h3 class="mb-0">{{ kpis.value }}</h3></div></div></div>
+  </div>
+
+  {% if chart_labels %}
+  <div class="card shadow-none border mb-4" data-component-card>
+    <div class="card-header p-4 border-bottom bg-body">
+      <h4 class="text-body mb-1">Top Stock Value Items</h4>
+      <p class="text-body-tertiary mb-0 fs-9">Switch the chart type to explore the same data differently.</p>
+    </div>
+    <div class="card-body">
+      <div style="min-height:300px"
+           data-isfc-chart="bar" data-types="bar,hbar,pie,donut,line,area,radar"
+           data-labels='{{ chart_labels | tojson }}'
+           data-values='{{ chart_values | tojson }}'></div>
+    </div>
+  </div>
+  {% endif %}
+
+  {% include 'partials/filter_bar.html' %}
+
+  <div class="card shadow-none border" data-component-card>
+    <div class="card-header p-4 border-bottom bg-body">
+      <h4 class="text-body mb-0">Stock on Hand <span class="badge badge-phoenix badge-phoenix-primary ms-2">{{ rows|length }}</span></h4>
+    </div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table fs-9 mb-0">
+          <thead class="bg-body-highlight"><tr>
+            <th class="ps-4">Item</th><th>UOM</th><th>Total In</th><th>Total Out</th>
+            <th>On Hand</th><th>Avg Cost</th><th>Stock Value</th><th>Last Movement</th><th class="pe-4 text-end">Ledger</th>
+          </tr></thead>
+          <tbody>
+            {% for r in rows %}
+            <tr>
+              <td class="ps-4"><b>{{ r.inventory_code }}</b><br><span class="text-body-tertiary">{{ r.item_name }}</span></td>
+              <td>{{ r.uom }}</td>
+              <td class="text-success">{{ r.total_in }}</td>
+              <td class="text-warning">{{ r.total_out }}</td>
+              <td class="fw-bold {% if (r.on_hand or 0) < 0 %}text-danger{% endif %}">{{ r.on_hand }}</td>
+              <td>{{ r.avg_cost }}</td>
+              <td class="fw-bold">{{ r.stock_value }}</td>
+              <td class="text-body-tertiary">{{ r.last_movement or '-' }}</td>
+              <td class="pe-4 text-end"><a class="btn btn-sm btn-phoenix-primary" href="/inventory/ledger/{{ r.inventory_code }}">Open</a></td>
+            </tr>
+            {% else %}
+            <tr><td colspan="9" class="text-center text-body-tertiary py-5">
+              No stock movements yet. Post a GRN in <a href="/procurement">Procurement</a> — receipts appear here instantly.
+            </td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

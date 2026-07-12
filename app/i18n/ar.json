@@ -1,0 +1,34 @@
+{
+  "common": {
+    "search": "بحث...", "filter": "تصفية", "reset": "إعادة تعيين", "actions": "إجراءات",
+    "status": "الحالة", "save": "حفظ", "cancel": "إلغاء", "delete": "حذف",
+    "edit": "تعديل", "view": "عرض", "open": "فتح", "print": "طباعة",
+    "from_date": "من تاريخ", "to_date": "إلى تاريخ", "all_status": "كل الحالات",
+    "welcome": "مرحباً", "logout": "تسجيل الخروج", "language": "اللغة"
+  },
+  "sidebar": {
+    "dashboard": "لوحة التحكم", "relationship_map": "خريطة العلاقات", "reports_center": "مركز التقارير",
+    "masters": "البيانات الرئيسية", "upload_master_data": "رفع البيانات الرئيسية", "master_data": "البيانات الرئيسية",
+    "recipes_costing": "الوصفات والتكاليف", "prepare_recipe": "إعداد وصفة",
+    "recipe_missing_data": "بيانات الوصفات الناقصة", "recipe_approvals": "اعتماد الوصفات",
+    "order_flow": "مسار الطلبات", "customer_internal_order": "طلب عميل / داخلي",
+    "production_orders": "أوامر الإنتاج", "head_chef_planning": "تخطيط رئيس الطهاة",
+    "store_issuance": "صرف المستودع", "kitchen_workflow": "سير عمل المطبخ",
+    "all_section_summary": "ملخص جميع الأقسام", "section_workstations": "محطات الأقسام",
+    "quality_logistics": "الجودة واللوجستيات", "quality_control": "مراقبة الجودة",
+    "trayline_packing": "خط التعبئة والتغليف", "dispatch_delivery": "الإرسال والتوصيل",
+    "procurement": "المشتريات", "purchase_orders": "أوامر الشراء", "grn": "استلام البضائع",
+    "customer_portal": "بوابة العملاء", "my_orders": "طلباتي",
+    "system": "النظام", "my_profile": "ملفي الشخصي", "users_access": "المستخدمون والصلاحيات",
+    "audit_logs": "سجلات التدقيق", "settings": "الإعدادات", "notifications": "الإشعارات"
+  },
+  "dashboard": {
+    "title": "مركز قيادة ذكاء الإنتاج ISFC",
+    "subtitle": "عرض تنفيذي لجاهزية الوصفات وطلبات العملاء وتكلفة المواد وصرف المستودع وحركة الإنتاج والجودة والإرسال.",
+    "active_recipes": "الوصفات النشطة", "inventory_items": "أصناف المخزون",
+    "open_orders": "الطلبات المفتوحة", "estimated_margin": "هامش الربح المتوقع",
+    "order_portions": "حصص الطلبات", "bom_lines": "بنود قائمة المواد",
+    "store_progress": "تقدم المستودع", "master_coverage": "تغطية البيانات الرئيسية",
+    "production_flow": "مسار الإنتاج", "recent_orders": "أحدث طلبات العملاء / الداخلية"
+  }
+}

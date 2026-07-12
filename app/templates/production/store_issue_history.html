@@ -1,0 +1,47 @@
+{% extends "layouts/base.html" %}
+{% block title %}Issuance History · {{ order_no }}{% endblock %}
+{% block content %}
+<div class="container-fluid py-3">
+  <div class="pis-hero mb-4" style="background:linear-gradient(135deg,#132947,#0c91a3);border-radius:22px;color:#fff;padding:26px 30px;">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
+      <div>
+        <span class="pis-chip mb-3" style="background:rgba(255,255,255,.15);color:#fff;border-radius:999px;padding:6px 12px;font-weight:800;font-size:12px;display:inline-flex;">Audit Trail</span>
+        <h2 class="mb-1 text-white">Store Issuance History · {{ order_no }}</h2>
+        <p class="mb-0 opacity-75">Every Re-Issue / Edit on this order: who changed what, when, and why.</p>
+      </div>
+      <a class="btn btn-phoenix-secondary" href="/production/orders/{{ order_no }}/store-issuance">Back to Issuance</a>
+    </div>
+  </div>
+
+  <div class="card shadow-none border" data-component-card>
+    <div class="card-header p-4 border-bottom bg-body">
+      <h4 class="text-body mb-0">Change Log <span class="badge badge-phoenix badge-phoenix-warning ms-2">{{ rows|length }}</span></h4>
+    </div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table fs-9 mb-0">
+          <thead class="bg-body-highlight"><tr>
+            <th class="ps-4">When</th><th>Item</th><th>Qty (old → new)</th><th>UOM</th>
+            <th>Section (old → new)</th><th>Reason</th><th class="pe-4">Changed By</th>
+          </tr></thead>
+          <tbody>
+            {% for r in rows %}
+            <tr>
+              <td class="ps-4 text-body-tertiary">{{ r.changed_at }}</td>
+              <td><b>{{ r.ingredient_code }}</b><br><span class="text-body-tertiary">{{ r.ingredient_name }}</span></td>
+              <td><span class="text-danger">{{ r.old_qty }}</span> → <span class="text-success fw-bold">{{ r.new_qty }}</span></td>
+              <td>{{ r.old_uom }}{% if r.old_uom != r.new_uom %} → {{ r.new_uom }}{% endif %}</td>
+              <td>{{ r.old_section }}{% if r.old_section != r.new_section %} → <b>{{ r.new_section }}</b>{% endif %}</td>
+              <td>{{ r.reason or '-' }}</td>
+              <td class="pe-4"><span class="badge badge-phoenix badge-phoenix-secondary">{{ r.changed_by }}</span></td>
+            </tr>
+            {% else %}
+            <tr><td colspan="7" class="text-center text-body-tertiary py-5">No re-issues or edits recorded for this order yet.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

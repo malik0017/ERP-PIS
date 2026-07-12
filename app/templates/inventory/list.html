@@ -1,0 +1,238 @@
+{% extends "layouts/base.html" %}
+
+{% block content %}
+<style>
+  .pis-page {
+    padding: 18px;
+  }
+
+  .pis-hero {
+    background: linear-gradient(135deg, #064b5a, #0f8195);
+    color: white;
+    border-radius: 22px;
+    padding: 26px 30px;
+    margin-bottom: 22px;
+    box-shadow: 0 18px 40px rgba(6, 75, 90, .18);
+  }
+
+  .pis-hero h1 {
+    margin: 0;
+    font-size: 38px;
+    font-weight: 800;
+  }
+
+  .pis-hero p {
+    margin: 8px 0 0;
+    opacity: .85;
+  }
+
+  .pis-card {
+    background: #fff;
+    border: 1px solid #dce8f2;
+    border-radius: 18px;
+    box-shadow: 0 14px 34px rgba(15, 30, 50, .06);
+    padding: 20px;
+  }
+
+  .pis-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+  }
+
+  .pis-btn {
+    border: 0;
+    border-radius: 12px;
+    padding: 10px 16px;
+    font-weight: 800;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .pis-btn-primary {
+    background: #0f8195;
+    color: #fff;
+  }
+
+  .pis-btn-soft {
+    background: #eaf2f8;
+    color: #142a46;
+  }
+
+  .pis-summary {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(150px, 1fr));
+    gap: 12px;
+    margin-bottom: 18px;
+  }
+
+  .pis-stat {
+    background: #f7fbff;
+    border: 1px solid #e3edf6;
+    border-radius: 16px;
+    padding: 14px;
+  }
+
+  .pis-stat span {
+    display: block;
+    color: #6f8196;
+    font-size: 13px;
+  }
+
+  .pis-stat strong {
+    font-size: 24px;
+    color: #142a46;
+  }
+
+  .pis-table-wrap {
+    overflow-x: auto;
+  }
+
+  .pis-table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  .pis-table th {
+    background: #eaf2f8;
+    color: #142a46;
+    text-align: left;
+    padding: 14px;
+    font-weight: 800;
+    white-space: nowrap;
+  }
+
+  .pis-table td {
+    border-bottom: 1px solid #edf3f8;
+    padding: 12px 14px;
+    vertical-align: top;
+  }
+
+  .pis-code {
+    font-weight: 800;
+    color: #0f8195;
+    white-space: nowrap;
+  }
+
+  .pis-muted {
+    color: #6f8196;
+    font-size: 13px;
+  }
+
+  .pis-badge {
+    display: inline-block;
+    border-radius: 999px;
+    padding: 5px 10px;
+    font-weight: 800;
+    font-size: 12px;
+  }
+
+  .pis-active {
+    background: #dff7e6;
+    color: #27723a;
+  }
+
+  .pis-inactive {
+    background: #ffe6e6;
+    color: #a33;
+  }
+
+  @media(max-width: 900px) {
+    .pis-summary {
+      grid-template-columns: 1fr 1fr;
+    }
+  }
+</style>
+
+<div class="pis-page">
+  <div class="pis-hero">
+    <h1>Inventory Master</h1>
+    <p>Uploaded inventory items from master data are displayed here.</p>
+  </div>
+
+  <div class="pis-card">
+    <div class="pis-actions">
+      <a class="pis-btn pis-btn-primary" href="/masters/upload?selected=inventory">
+        <i class="bi bi-cloud-upload"></i> Upload Inventory
+      </a>
+      <a class="pis-btn pis-btn-soft" href="/masters/template/inventory">
+        <i class="bi bi-download"></i> Download Template
+      </a>
+    </div>
+
+    <div class="pis-summary">
+      <div class="pis-stat">
+        <span>Total Items</span>
+        <strong>{{ items|length }}</strong>
+      </div>
+      <div class="pis-stat">
+        <span>Active Items</span>
+        <strong>{{ items | selectattr("status", "equalto", "ACTIVE") | list | length }}</strong>
+      </div>
+      <div class="pis-stat">
+        <span>Inactive Items</span>
+        <strong>{{ items | selectattr("status", "equalto", "INACTIVE") | list | length }}</strong>
+      </div>
+      <div class="pis-stat">
+        <span>With Cost</span>
+        <strong>{{ items | selectattr("unit_cost_standard") | list | length }}</strong>
+      </div>
+    </div>
+
+    <div class="pis-table-wrap">
+      <table class="pis-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Inventory Code</th>
+            <th>Item Name</th>
+            <th>Category</th>
+            <th>Purchase UOM</th>
+            <th>Recipe UOM</th>
+            <th>Cost / UOM</th>
+            <th>Default Supplier</th>
+            <th>Issue Section</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in items %}
+          <tr>
+            <td>{{ loop.index }}</td>
+            <td class="pis-code">{{ item.ingredient_code }}</td>
+            <td>
+              <strong>{{ item.name }}</strong>
+              {% if item.notes %}
+              <div class="pis-muted">{{ item.notes }}</div>
+              {% endif %}
+            </td>
+            <td>{{ item.category or "-" }}</td>
+            <td>{{ item.purchase_uom or "-" }}</td>
+            <td>{{ item.recipe_uom or item.standard_uom or "-" }}</td>
+            <td>{{ "%.4f"|format(item.unit_cost_standard or 0) }}</td>
+            <td>{{ item.default_supplier or "-" }}</td>
+            <td>{{ item.default_issue_section or "-" }}</td>
+            <td>
+              {% if item.status == "ACTIVE" %}
+              <span class="pis-badge pis-active">ACTIVE</span>
+              {% else %}
+              <span class="pis-badge pis-inactive">{{ item.status or "INACTIVE" }}</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="10" style="text-align:center; padding:28px; color:#6f8196;">
+              No inventory items found. Upload inventory master first.
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

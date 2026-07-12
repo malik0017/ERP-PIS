@@ -1,0 +1,150 @@
+{% extends "layouts/base.html" %}
+{% block title %}My Profile | ISFC ERP{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3 isfc-page">
+
+  <div class="isfc-hero mb-3 p-4">
+    <h1 class="mb-1">{{ t('My Profile') }}</h1>
+    <p class="mb-0">{{ t('Manage personal details, photo, password, authenticator QR setup and account security.') }}</p>
+  </div>
+
+  <div class="row g-3">
+    <!-- ============ LEFT: identity + security status ============ -->
+    <div class="col-xl-4">
+      <div class="card shadow-none border h-100">
+        <div class="card-body p-4 text-center">
+          <img src="{{ user.avatar or url_for('static', path='img/modern-ai-image/user-6.jpg') }}"
+               class="rounded-circle border mb-3" style="width:120px;height:120px;object-fit:cover" alt="avatar">
+          <h3 class="mb-1">{{ user.full_name }}</h3>
+          <p class="text-body-tertiary mb-2">{{ user.username }} &middot; {{ user.email }}</p>
+          <span class="badge badge-phoenix badge-phoenix-primary">{{ user_role }}</span>
+
+          <hr class="my-4">
+          <form method="post" action="/users/profile/avatar" enctype="multipart/form-data" class="text-start">
+            <label class="form-label fw-bold">{{ t('Profile Photo') }}</label>
+            <p class="text-body-tertiary fs-9 mb-2">PNG, JPG, WEBP &middot; max 2MB &middot; {{ t('shows in the header') }}.</p>
+            <div class="d-flex gap-2">
+              <input class="form-control form-control-sm" type="file" name="avatar" accept=".png,.jpg,.jpeg,.webp" required>
+              <button class="btn btn-primary btn-sm text-nowrap"><i class="bi bi-upload me-1"></i>{{ t('Upload') }}</button>
+            </div>
+          </form>
+
+          <hr class="my-4">
+          <div class="text-start">
+            <h5 class="mb-3">{{ t('Security Status') }}</h5>
+            <div class="d-flex justify-content-between border-bottom py-2 fs-9"><span class="text-body-tertiary">{{ t('Failed Attempts') }}</span><strong>{{ security.failed_login_attempts or 0 }}</strong></div>
+            <div class="d-flex justify-content-between border-bottom py-2 fs-9"><span class="text-body-tertiary">{{ t('Locked Until') }}</span><strong>{{ security.locked_until or t('Not locked') }}</strong></div>
+            <div class="d-flex justify-content-between border-bottom py-2 fs-9"><span class="text-body-tertiary">{{ t('Authenticator') }}</span>
+              <strong>{% if security.two_factor_enabled %}<span class="text-success">{{ t('Enabled') }}</span>{% elif security.two_factor_setup_required %}<span class="text-warning">{{ t('Setup Pending') }}</span>{% else %}{{ t('Disabled') }}{% endif %}</strong></div>
+            <div class="d-flex justify-content-between border-bottom py-2 fs-9"><span class="text-body-tertiary">{{ t('2FA Verified') }}</span><strong>{{ security.two_factor_verified_at or '-' }}</strong></div>
+            <div class="d-flex justify-content-between py-2 fs-9"><span class="text-body-tertiary">{{ t('Password Change Required') }}</span><strong>{{ t('Yes') if security.force_password_change else t('No') }}</strong></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ RIGHT: forms ============ -->
+    <div class="col-xl-8 d-flex flex-column gap-3">
+
+      <div class="card shadow-none border">
+        <div class="card-header p-4 border-bottom bg-body">
+          <h4 class="mb-0"><i class="bi bi-person-lines-fill text-primary me-2"></i>{{ t('Profile Details') }}</h4>
+        </div>
+        <div class="card-body p-4">
+          <form method="post" action="/users/profile" class="row g-3">
+            <div class="col-md-6"><label class="form-label fw-bold">{{ t('Username') }}</label><input class="form-control" value="{{ user.username }}" readonly></div>
+            <div class="col-md-6"><label class="form-label fw-bold">{{ t('Email') }}</label><input class="form-control" value="{{ user.email }}" readonly></div>
+            <div class="col-md-4"><label class="form-label fw-bold">{{ t('Full Name') }}</label><input name="full_name" class="form-control" value="{{ user.full_name }}"></div>
+            <div class="col-md-4"><label class="form-label fw-bold">{{ t('Phone') }}</label><input name="phone" class="form-control" value="{{ user.phone or '' }}"></div>
+            <div class="col-md-4"><label class="form-label fw-bold">{{ t('Language') }}</label>
+              <select name="preferred_language" class="form-select">
+                <option value="en" {% if user.preferred_language=='en' %}selected{% endif %}>English</option>
+                <option value="ar" {% if user.preferred_language=='ar' %}selected{% endif %}>العربية</option>
+              </select>
+            </div>
+            <div class="col-12 d-flex align-items-center gap-3 pt-1">
+              <button class="btn btn-primary"><i class="bi bi-save me-1"></i>{{ t('Save Profile') }}</button>
+              <span class="text-body-tertiary fs-9">{{ t('Only your personal details are updated here.') }}</span>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <div class="card shadow-none border">
+        <div class="card-header p-4 border-bottom bg-body d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <h4 class="mb-0"><i class="bi bi-shield-check text-success me-2"></i>{{ t('Authenticator / 2FA') }}</h4>
+          {% if security.two_factor_enabled %}<span class="badge badge-phoenix badge-phoenix-success">{{ t('Active') }}</span>
+          {% elif security.two_factor_setup_required %}<span class="badge badge-phoenix badge-phoenix-warning">{{ t('Setup Pending') }}</span>
+          {% else %}<span class="badge badge-phoenix badge-phoenix-secondary">{{ t('Disabled') }}</span>{% endif %}
+        </div>
+        <div class="card-body p-4">
+          <p class="text-body-tertiary fs-9 mb-3">{{ t('Scan the QR code with Google Authenticator or Microsoft Authenticator, then verify the current 6-digit code. Login 2FA starts only after verification.') }}</p>
+          <div class="row g-4 align-items-start">
+            <div class="col-lg-4 text-center">
+              {% if security.two_factor_secret %}
+              <div class="border border-dashed rounded-3 p-3 bg-body-highlight d-inline-block">
+                <img src="/users/profile/2fa/qr.png?ts={{ security.two_factor_reset_at or security.two_factor_setup_expires_at or '' }}"
+                     alt="Authenticator QR" style="width:200px;height:200px;image-rendering:pixelated">
+                <div class="fs-9 text-body-tertiary mt-2">{{ t('Scan this QR in your Authenticator app') }}</div>
+              </div>
+              {% else %}
+              <div class="border border-dashed rounded-3 p-4 bg-body-highlight d-inline-block">
+                <i class="bi bi-qr-code text-body-quaternary" style="font-size:72px"></i>
+                <p class="text-body-tertiary fs-9 mb-0">{{ t('No QR generated yet.') }}</p>
+              </div>
+              {% endif %}
+            </div>
+            <div class="col-lg-8">
+              {% if security.two_factor_secret %}
+              <label class="form-label fw-bold">{{ t('Manual Secret') }}</label>
+              <div class="input-group mb-2">
+                <input class="form-control" id="totpSecret" readonly value="{{ security.two_factor_secret }}" dir="ltr">
+                <button type="button" class="btn btn-phoenix-secondary" onclick="navigator.clipboard.writeText(document.getElementById('totpSecret').value)"><i class="bi bi-clipboard"></i></button>
+              </div>
+              <div class="fs-9 text-body-tertiary mb-3">{{ t('Enrollment expires') }}: <strong>{{ security.two_factor_setup_expires_at or t('Already verified') }}</strong>. {{ t('If it expires before verification, the pending secret is cleared automatically and login is not blocked.') }}</div>
+              {% if not security.two_factor_enabled %}
+              <form method="post" action="/users/profile/2fa/verify" class="d-flex gap-2 mb-3">
+                <input name="otp_code" class="form-control" inputmode="numeric" maxlength="6" placeholder="{{ t('Enter 6-digit code') }}" required style="max-width:220px" dir="ltr">
+                <button class="btn btn-success"><i class="bi bi-check2-circle me-1"></i>{{ t('Verify & Activate') }}</button>
+              </form>
+              {% endif %}
+              <form method="post" action="/users/profile/2fa/disable" class="border-top pt-3">
+                <label class="form-label fw-bold text-danger">{{ t('Disable 2FA') }}</label>
+                <div class="d-flex gap-2 flex-wrap">
+                  <input name="current_password" type="password" class="form-control" placeholder="{{ t('Current password required') }}" style="max-width:280px">
+                  <button class="btn btn-phoenix-danger">{{ t('Disable') }}</button>
+                </div>
+              </form>
+              {% else %}
+              <form method="post" action="/users/profile/2fa/start">
+                <button class="btn btn-primary"><i class="bi bi-qr-code-scan me-1"></i>{{ t('Generate My QR Code') }}</button>
+              </form>
+              <p class="fs-9 text-body-tertiary mt-2 mb-0">{{ t('The setup link is valid for 30 days. After that, it expires automatically.') }}</p>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card shadow-none border">
+        <div class="card-header p-4 border-bottom bg-body">
+          <h4 class="mb-0"><i class="bi bi-shield-lock-fill text-warning me-2"></i>{{ t('Change Password') }}</h4>
+        </div>
+        <div class="card-body p-4">
+          <form method="post" action="/users/profile/password" class="row g-3">
+            <div class="col-md-4"><label class="form-label fw-bold">{{ t('Current Password') }}</label><input name="old_password" type="password" class="form-control" required></div>
+            <div class="col-md-4"><label class="form-label fw-bold">{{ t('New Password') }}</label><input name="new_password" type="password" class="form-control" required minlength="8"></div>
+            <div class="col-md-4"><label class="form-label fw-bold">{{ t('Confirm New Password') }}</label><input name="confirm_password" type="password" class="form-control" required minlength="8"></div>
+            <div class="col-12 d-flex align-items-center gap-3 pt-1">
+              <button class="btn btn-warning"><i class="bi bi-key me-1"></i>{{ t('Change Password') }}</button>
+              <span class="text-body-tertiary fs-9">{{ t('Use at least 8 characters.') }}</span>
+            </div>
+          </form>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+{% endblock %}

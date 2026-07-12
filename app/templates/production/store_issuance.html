@@ -1,0 +1,273 @@
+{% extends "layouts/base.html" %}
+{% block content %}
+{% set active_step = 'Store' %}{% include 'partials/process_status_row.html' %}
+<style>
+  .si-hero {
+    background: linear-gradient(135deg, #132947, #0d8da0);
+    border-radius: 22px;
+    color: #fff;
+    padding: 24px 28px;
+    box-shadow: 0 18px 42px rgba(15, 30, 50, .16)
+  }
+
+  .si-card {
+    background: #fff;
+    border: 1px solid #dce8f2;
+    border-radius: 18px;
+    box-shadow: 0 12px 28px rgba(15, 30, 50, .06);
+    padding: 18px;
+    margin-bottom: 16px
+  }
+
+  .si-kpi span {
+    display: block;
+    color: #71849a;
+    font-size: 12px;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: .04em
+  }
+
+  .si-kpi b {
+    font-size: 30px;
+    color: #142a46
+  }
+
+  .si-label {
+    font-weight: 900;
+    color: #142a46
+  }
+
+  .si-input {
+    width: 100%;
+    border: 1px solid #cbdbea;
+    border-radius: 12px;
+    padding: 9px 11px;
+    background: #fff
+  }
+
+  .si-table th {
+    background: #edf5fb;
+    color: #142a46;
+    text-transform: uppercase;
+    font-size: 12px
+  }
+
+  .si-btn {
+    border: 0;
+    border-radius: 12px;
+    padding: 8px 12px;
+    font-weight: 900;
+    text-decoration: none;
+    display: inline-flex
+  }
+
+  .si-primary {
+    background: #315efb;
+    color: #fff
+  }
+
+  .si-success {
+    background: #16a34a;
+    color: #fff
+  }
+
+  .si-soft {
+    background: #edf5fb;
+    color: #142a46
+  }
+
+  .si-status {
+    border-radius: 999px;
+    padding: 5px 10px;
+    font-weight: 900;
+    font-size: 12px;
+    background: #e8f2fb;
+    color: #173b55
+  }
+
+  .si-pending {
+    background: #fff5d6;
+    color: #9a6700
+  }
+
+  .si-issued {
+    background: #ddf8e7;
+    color: #0b7c3b
+  }
+
+  .si-short {
+    background: #fff0f0;
+    color: #b42318
+  }
+
+  .mini {
+    font-size: 12px;
+    color: #71849a
+  }
+
+  .filter-chip {
+    border: 1px solid #dce8f2;
+    border-radius: 999px;
+    padding: 7px 11px;
+    background: #fff;
+    text-decoration: none;
+    color: #173b55;
+    font-weight: 800
+  }
+</style>
+<div class="container-fluid py-3">
+  <div class="si-hero mb-3">
+    <div class="d-flex justify-content-between flex-wrap gap-2">
+      <div>
+        <h2 class="mb-1">Store Issuance Control</h2>
+        <p class="mb-0 opacity-75">Order-wise issue screen for approved BOM materials. Store keeps issuance quantities,
+          UOM, section routing, lot, supplier and remarks.</p>
+      </div>
+    </div>
+  </div>
+  {% if error %}<div class="alert alert-warning">{{ error }}</div>{% endif %}
+  {% if orders is defined %}
+  <div class="row g-3 mb-3">
+    <div class="col-md-2">
+      <div class="si-card si-kpi"><span>Shown Orders</span><b>{{ stats.orders }}</b></div>
+    </div>
+    <div class="col-md-2">
+      <div class="si-card si-kpi"><span>Store Pending</span><b>{{ stats.store_pending }}</b></div>
+    </div>
+    <div class="col-md-2">
+      <div class="si-card si-kpi"><span>In Production</span><b>{{ stats.in_production }}</b></div>
+    </div>
+    <div class="col-md-2">
+      <div class="si-card si-kpi"><span>Total Lines</span><b>{{ stats.total_lines }}</b></div>
+    </div>
+    <div class="col-md-2">
+      <div class="si-card si-kpi"><span>Finalized</span><b>{{ stats.finalized_lines }}</b></div>
+    </div>
+    <div class="col-md-2">
+      <div class="si-card si-kpi"><span>Pending Lines</span><b>{{ stats.pending_lines }}</b></div>
+    </div>
+  </div>
+  <div class="si-card">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+      <div>
+        <h4 class="mb-1">Store Order Queue</h4>
+        <div class="text-muted">This list is operational only: order, delivery, BOM/store-line status, issued vs
+          required quantity.</div>
+      </div>
+    </div>
+    <div class="d-flex gap-2 flex-wrap mb-3"><a class="filter-chip" href="/production/store-issuance?view=today">Today
+        Cooking</a><a class="filter-chip" href="/production/store-issuance?view=previous">Previous Cooking</a><a
+        class="filter-chip" href="/production/store-issuance?status=Store Pending">Store Pending</a><a
+        class="filter-chip" href="/production/store-issuance?status=In Production">In Production</a><a
+        class="filter-chip" href="/production/store-issuance">All</a></div>
+    <form method="get" class="isfc-filter-line mb-3">
+      <div><label class="si-label">Cooking From</label><input type="date" class="si-input" name="date_from" value="{{ filters.date_from or '' }}"></div>
+      <div><label class="si-label">Cooking To</label><input type="date" class="si-input" name="date_to" value="{{ filters.date_to or '' }}"></div>
+      <div><label class="si-label">Order Status</label><select class="si-input" name="status">
+          <option value="">All</option>{% for st in ['BOM Generated','Store Pending','In Production','Packing Pending','Packed'] %}<option value="{{ st }}" {% if filters.status==st %}selected{% endif %}>{{ st }}</option>{% endfor %}
+        </select></div>
+      <div><label class="si-label">Quick Search</label><input class="si-input" id="storeSearch" placeholder="Search order, customer, brand, status..." onkeyup="filterStore()"></div>
+      <button class="si-btn si-primary w-100 filter-submit">Filter</button>
+    </form>
+    <div class="table-responsive">
+      <table class="table table-sm table-bordered align-middle si-table" id="storeTable" data-isfc-search="false">
+        <thead>
+          <tr>
+            <th>Order</th>
+            <th>Customer</th>
+            <th>Brand</th>
+            <th>Cooking / Delivery</th>
+            <th>Status</th>
+            <th>BOM Lines</th>
+            <th>Finalized</th>
+            <th>Required Qty</th>
+            <th>Issued Qty</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>{% for o in orders %}{% set lm = line_map.get(o.order_no) if line_map is defined else None %}<tr>
+            <td><strong>{{ o.order_no }}</strong></td>
+            <td>{{ o.customer_name }}</td>
+            <td>{{ o.brand or '-' }}</td>
+            <td>{{ o.cooking_date or o.required_delivery_date or '-' }} {{ o.cooking_time or o.required_delivery_time or
+              '' }}</td>
+            <td><span
+                class="si-status {% if o.status == 'Store Pending' %}si-pending{% elif o.status == 'In Production' %}si-issued{% endif %}">{{
+                o.status }}</span></td>
+            <td>{{ lm.total_lines if lm else 0 }}</td>
+            <td>{{ lm.finalized_lines if lm else 0 }}</td>
+            <td>{{ lm.required_qty if lm else 0 }}</td>
+            <td>{{ lm.issued_qty if lm else 0 }}</td>
+            <td><a class="btn btn-sm btn-primary" href="/production/orders/{{ o.order_no }}/store-issuance">Open
+                Issuance</a></td>
+          </tr>{% else %}<tr>
+            <td colspan="10" class="text-center text-muted py-4">No orders found.</td>
+          </tr>{% endfor %}</tbody>
+      </table>
+    </div>
+  </div>
+  {% else %}
+  <div class="si-card">
+    <div class="d-flex justify-content-between flex-wrap gap-2 mb-3">
+      <div>
+        <h4>Store Issuance Lines - {{ order.order_no if order else '' }}</h4>
+        <div class="text-muted">Select kitchen section per line. Early prep sections can forward to Hot/Cold/Bakery/QC
+          later from section workstations.</div>
+      </div><a href="/production/store-issuance" class="si-btn si-soft">Back to Store Queue</a>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-sm table-bordered align-middle si-table">
+        <thead>
+          <tr>
+            <th><input type="checkbox"
+                onclick="document.querySelectorAll('.issue-check').forEach(c=>c.checked=this.checked)"></th>
+            <th>Main Category</th>
+            <th>Sub Category</th>
+            <th>Ingredient</th>
+            <th>Required</th>
+            <th>Issue Qty</th>
+            <th>UOM</th>
+            <th>Issue To Section</th>
+            <th>Status</th>
+            <th>Save</th>
+          </tr>
+        </thead>
+        <tbody>{% for l in lines %}<tr class="{% if l.finalized %}table-success{% endif %}">
+            <td><input class="issue-check" type="checkbox" checked {% if l.finalized %}disabled{% endif %}></td>
+            <td>{{ l.ingredient_main_category or '-' }}</td>
+            <td>{{ l.ingredient_sub_category or '-' }}</td>
+            <td><strong>{{ l.ingredient_code }}</strong><br>{{ l.ingredient_name }}<br><span class="mini">Recipe: {{
+                l.recipe_no }} - {{ l.recipe_name }}</span></td>
+            <td>{{ '%.4f'|format(l.required_qty_with_waste_standard or 0) }} {{ l.standard_uom }}</td>
+            <td><input form="issue-form-{{ l.id }}" class="form-control form-control-sm" type="number" step="0.0001" name="input_material_issued"
+                value="{{ l.input_material_issued or l.required_qty_with_waste_standard or 0 }}" {% if l.finalized %}readonly{% endif %}></td>
+            <td><input form="issue-form-{{ l.id }}" class="form-control form-control-sm" name="issued_uom"
+                value="{{ l.issued_uom or l.standard_uom }}" {% if l.finalized %}readonly{% endif %}></td>
+            <td><select form="issue-form-{{ l.id }}" class="form-select form-select-sm" name="issue_to_section" {% if l.finalized %}disabled{% endif %}>{% for sec in
+                ['Thawing','Cutting','Butchery','Marination','Hot Kitchen','Cold Kitchen','Bakery/Pastry','QC','Packing'] %}<option {% if l.issue_to_section==sec %}selected{% endif %}>{{ sec }}</option>{% endfor %}</select></td>
+            <td><span class="si-status {% if l.finalized %}si-issued{% elif l.issuance_status == 'Issued' %}si-issued{% elif l.issuance_status == 'Short Issued' %}si-short{% else %}si-pending{% endif %}">{% if l.finalized %}Locked / Issued{% else %}{{ l.issuance_status }}{% endif %}</span></td>
+            <td>
+              {% if l.finalized %}
+                <form method="post" action="/production/store-issuance/{{ l.id }}/reissue" class="d-inline"><button class="btn btn-sm btn-warning">Re-Issue/Edit</button></form>
+              {% else %}
+                <form id="issue-form-{{ l.id }}" method="post" action="/production/store-issuance/{{ l.id }}/update">
+                  <input type="hidden" name="lot_no" value=""><input type="hidden" name="supplier_name" value=""><input type="hidden" name="store_remarks" value="">
+                  <button class="btn btn-sm btn-primary">Save</button>
+                </form>
+              {% endif %}
+            </td>
+          </tr>{% else %}<tr>
+            <td colspan="10" class="text-muted text-center py-4">No store issuance lines. Approve order, generate BOM,
+              then release BOM to Store.</td>
+          </tr>{% endfor %}</tbody>
+      </table>
+    </div>{% if lines %}<form method="post" action="/production/orders/{{ order.order_no }}/finalize-store"
+      class="mt-3"><button class="si-btn si-success">Finalize Selected / Store Issue</button> <span
+        class="text-muted small ms-2">After finalizing, materials appear in the selected Kitchen Section
+        workstation.</span></form>{% endif %}
+  </div>
+  {% endif %}
+</div>
+<script>function filterStore() { const q = (document.getElementById('storeSearch')?.value || '').toLowerCase(); document.querySelectorAll('#storeTable tbody tr').forEach(tr => tr.style.display = tr.innerText.toLowerCase().includes(q) ? '' : 'none') }</script>
+{% endblock %}

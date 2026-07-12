@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Not Found - ISFC PIMS</title>
+    <style>
+        :root {
+            --isfc-primary: #2E75B6;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: 'Nunito Sans', system-ui, Segoe UI, Arial, sans-serif;
+            background: #f5f7fa;
+            color: #344050;
+            display: flex;
+            min-height: 100vh;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+        }
+
+        .card {
+            background: #fff;
+            border-radius: 16px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, .08);
+            max-width: 560px;
+            width: 100%;
+            padding: 40px;
+            text-align: center;
+        }
+
+        .code {
+            font-size: 64px;
+            font-weight: 800;
+            color: var(--isfc-primary);
+            line-height: 1;
+            margin-bottom: 8px;
+        }
+
+        h1 {
+            font-size: 22px;
+            margin: 0 0 8px;
+            color: #202c3c;
+        }
+
+        p {
+            color: #6e7891;
+            margin: 0 0 24px;
+        }
+
+        .btn {
+            display: inline-block;
+            text-decoration: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .btn-primary {
+            background: var(--isfc-primary);
+            color: #fff;
+        }
+
+        .btn-light {
+            background: #eef1f6;
+            color: #344050;
+            margin-left: 8px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="card">
+        <div class="code">404</div>
+        <h1>Page not found</h1>
+        <p>The page you are looking for doesn’t exist or has been moved.</p>
+        <a class="btn btn-primary" href="/dashboard">Go to Dashboard</a>
+        <a class="btn btn-light" href="javascript:history.back()">Go Back</a>
+    </div>
+</body>
+
+</html>

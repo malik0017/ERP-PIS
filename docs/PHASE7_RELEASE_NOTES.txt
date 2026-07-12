@@ -1,0 +1,22 @@
+ISFC PIS - Phase 7 Approval Cycle, RBAC, Planning UI and Kitchen Summary Upgrade
+
+Included fixes:
+1. Role-based access helper added in app/core/rbac.py.
+2. Sidebar now hides modules by user role. ADMIN/SUPER_ADMIN see all modules.
+3. Template rendering now sends access and user_role to all pages.
+4. Removed the long mandatory-flow message from all screens. The clean status row remains.
+5. Head Chef Planning has Today, This Week, This Month, Pending, All filters and better order details.
+6. Production Order detail now shows clearer order information inside Head Chef schedule section.
+7. Order line calculation explanation added: Batch = Total Portions / Recipe Standard Portions; Sale/Portion comes from active Recipe Master.
+8. Store Issuance dashboard filters are now based on Head Chef cooking date/time instead of delivery date/time.
+9. Store Issuance remains order-wise. Storekeeper chooses Issue To Section; after finalize, section workstations receive lines.
+10. /production/bakery-pastry is changed into All Section Summary with section/date/search filters and CSV export.
+11. Section workstation pages have search/status filters and CSV export.
+12. Role seed SQL added: app/sql/phase7_role_based_access_seed.sql.
+13. Dockerfile and docker-compose.yml added for moving the project to another laptop using containers.
+14. DevOps/RBAC guide added: docs/PHASE7_APPROVAL_RBAC_DEVOPS_GUIDE.md.
+
+Important notes:
+- This phase does not remove database rows. It improves process control and access structure.
+- If a non-admin user cannot see a menu, check users.role_id and roles.name.
+- Use ADMIN or SUPER_ADMIN for full system visibility.

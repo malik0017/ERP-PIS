@@ -1,0 +1,70 @@
+{% extends "layouts/base.html" %}
+{% block title %}Audit Logs{% endblock %}
+{% block content %}
+<style>
+  .rep-hero {
+    background: radial-gradient(circle at 92% 8%, rgba(255, 255, 255, .22), transparent 16%), linear-gradient(135deg, #102542, #0d7f91);
+    color: #fff;
+    border-radius: 28px;
+    padding: 30px 34px;
+    box-shadow: 0 22px 48px rgba(16, 37, 66, .22);
+    margin-bottom: 16px
+  }
+
+  .rep-hero h1 {
+    font-size: 34px;
+    font-weight: 950;
+    margin: 0
+  }
+
+  .rep-hero p {
+    margin: 8px 0 0;
+    color: #e7fbff
+  }
+  </style>
+<div class="rep-page container-fluid py-4">
+  <div class="rep-hero mb-3">
+    <h1 class="mb-1">Audit Logs</h1>
+    <p class="mb-0">Detailed security and process audit trail: login, lock, unlock, 2FA, access change, profile and
+      settings events.</p>
+  </div>
+  <div class="pis-card p-4">
+    <form method="get" class="row g-2 mb-3" style="justify-content: space-between;">
+      <div class="col-md-6"><input name="q" value="{{ q }}" class="form-control"
+          placeholder="Search action, table, user, IP..."></div>
+      <div class="col-md-2"><button class="btn btn-theme w-100">Filter</button></div>
+    </form>
+    <div class="table-responsive">
+      <table class="table table-sm align-middle" data-isfc-search="false">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>User</th>
+            <th>Action</th>
+            <th>Description</th>
+            <th>Table</th>
+            <th>Record</th>
+            <th>IP</th>
+            <th>Browser</th>
+            <th>Date/Time</th>
+          </tr>
+        </thead>
+        <tbody>{% for l in logs %}<tr>
+            <td>{{ l.id }}</td>
+            <td>{{ l.username or l.user_id or '-' }}</td>
+            <td><span class="badge bg-info-subtle text-info-emphasis">{{ l.action }}</span></td>
+            <td>{{ l.description or '-' }}</td>
+            <td>{{ l.table_name or '-' }}</td>
+            <td>{{ l.record_id or '-' }}</td>
+            <td>{{ l.ip_address or '-' }}</td>
+            <td style="max-width:260px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"
+              title="{{ l.user_agent }}">{{ l.user_agent or '-' }}</td>
+            <td>{{ l.created_at }}</td>
+          </tr>{% else %}<tr>
+            <td colspan="9" class="text-center text-secondary py-4">No audit logs found.</td>
+          </tr>{% endfor %}</tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,61 @@
+**Correct upload order for beginner**
+
+
+Do the upload in this order.
+
+
+**Upload 1 — Master Data**
+
+Go to:
+
+http://localhost:8000/masters/upload
+
+
+**Select:**
+
+All Master Data Workbook
+
+**Upload:**
+
+Master Data.xlsx
+
+
+
+**Upload 2 — Inventory**
+
+**Select:**
+
+Inventory Master
+
+**Upload:**
+
+Inventory.xlsx
+
+
+
+**Upload 3 — Recipe master**
+
+**Select:**
+
+Recipes Data Upload / Recipes \& Costing
+
+Upload:
+
+Master recipes.xlsx
+
+
+
+**Upload 4 — Recipe ingredients**
+
+**Select:**
+
+Recipes Data Upload / Recipes \& Costing
+
+**Upload:**
+
+Recipes Ingredients.xlsx
+
+
+
+
+

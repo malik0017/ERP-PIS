@@ -1,0 +1,85 @@
+{% extends "layouts/base.html" %}
+{% block title %}{{ po.po_no }} · Procurement{% endblock %}
+{% block content %}
+<div class="container-fluid py-3">
+
+  <div class="pis-hero mb-4" style="background:linear-gradient(135deg,#132947,#0c91a3);border-radius:22px;color:#fff;padding:26px 30px;">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
+      <div>
+        <span class="pis-chip mb-3" style="background:rgba(255,255,255,.15);color:#fff;border-radius:999px;padding:6px 12px;font-weight:800;font-size:12px;display:inline-flex;">Purchase Order</span>
+        <h2 class="mb-1 text-white">{{ po.po_no }}</h2>
+        <p class="mb-0 opacity-75">{{ po.supplier_name }} · PO Date {{ po.po_date }} · Expected {{ po.expected_date or '-' }} · <b>{{ po.status }}</b></p>
+      </div>
+      <a class="btn btn-phoenix-secondary" href="/procurement">Back to Register</a>
+    </div>
+  </div>
+
+  <form method="post" action="/procurement/po/{{ po.po_no }}/receive"
+        data-confirm="Post this GRN? Stock will be received into the inventory ledger."
+        data-confirm-title="Post Goods Receipt" data-confirm-ok="Post GRN" data-confirm-variant="success">
+    <div class="card shadow-none border mb-4" data-component-card>
+      <div class="card-header p-4 border-bottom bg-body d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div><h4 class="text-body mb-1">PO Lines & Goods Receipt</h4>
+        <p class="text-body-tertiary mb-0 fs-9">Enter the quantity physically received per line, then post the GRN.</p></div>
+        {% if po.status in ['Open','Partially Received'] %}
+        <div class="d-flex gap-2 align-items-end">
+          <input class="form-control form-control-sm" name="lot_no" placeholder="Lot no (optional)" style="width:150px">
+          <button class="btn btn-success">Post GRN</button>
+        </div>
+        {% endif %}
+      </div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table fs-9 mb-0 align-middle">
+            <thead class="bg-body-highlight"><tr>
+              <th class="ps-4">#</th><th>Item</th><th>UOM</th><th>Ordered</th><th>Received</th>
+              <th>Outstanding</th><th>Unit Price</th><th>Value</th><th class="pe-4" style="width:140px">Receive Now</th>
+            </tr></thead>
+            <tbody>
+              {% for l in lines %}
+              {% set outstanding = (l.ordered_qty or 0) - (l.received_qty or 0) %}
+              <tr>
+                <td class="ps-4">{{ l.line_no }}</td>
+                <td><b>{{ l.inventory_code }}</b><br><span class="text-body-tertiary">{{ l.item_name }}</span></td>
+                <td>{{ l.uom }}</td>
+                <td>{{ l.ordered_qty }}</td>
+                <td class="{% if (l.received_qty or 0) > 0 %}text-success fw-bold{% endif %}">{{ l.received_qty or 0 }}</td>
+                <td class="{% if outstanding > 0 %}text-warning fw-bold{% endif %}">{{ outstanding }}</td>
+                <td>{{ l.unit_price }}</td>
+                <td>{{ '%.2f'|format(l.line_value or 0) }}</td>
+                <td class="pe-4">
+                  {% if po.status in ['Open','Partially Received'] and outstanding > 0 %}
+                  <input type="hidden" name="line_id" value="{{ l.id }}">
+                  <input class="form-control form-control-sm" type="number" name="receive_qty" step="0.0001" min="0" max="{{ outstanding }}" placeholder="0">
+                  {% else %}<span class="badge badge-phoenix badge-phoenix-success">Complete</span>{% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </form>
+
+  <div class="card shadow-none border" data-component-card>
+    <div class="card-header p-4 border-bottom bg-body">
+      <h4 class="text-body mb-0">GRN History <span class="badge badge-phoenix badge-phoenix-info ms-2">{{ grns|length }}</span></h4>
+    </div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table fs-9 mb-0">
+          <thead class="bg-body-highlight"><tr><th class="ps-4">GRN No</th><th>Date</th><th>Qty Received</th><th>Received By</th><th class="pe-4">Remarks</th></tr></thead>
+          <tbody>
+            {% for g in grns %}
+            <tr><td class="ps-4 fw-bold">{{ g.grn_no }}</td><td>{{ g.received_date }}</td><td>{{ g.qty }}</td><td>{{ g.received_by }}</td><td class="pe-4">{{ g.remarks or '-' }}</td></tr>
+            {% else %}
+            <tr><td colspan="5" class="text-center text-body-tertiary py-4">No goods received yet against this PO.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

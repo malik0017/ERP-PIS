@@ -1,0 +1,94 @@
+{% extends "layouts/base.html" %}
+{% block title %}Relationship Tree | ISFC{% endblock %}
+{% block content %}
+{# ============================================================================
+   Batch 12 — SAP B1-style Relationship TREE
+   Roots = core modules. Click any node to lazily expand its linked documents
+   from /reports/api/relationship-node. Uses only Phoenix + isfc-* classes so
+   dark mode and RTL work with no extra styling.
+   ============================================================================ #}
+<style>
+  .isfc-tree { list-style: none; padding-left: 0; margin: 0; }
+  .isfc-tree ul { list-style: none; padding-left: 1.6rem; margin: .15rem 0 0 0; border-inline-start: 1px dashed var(--isfc-border, #d3dce6); }
+  .isfc-tree li { margin: .15rem 0; }
+  .isfc-node { display: flex; align-items: center; gap: .5rem; padding: .4rem .6rem; border-radius: .5rem; cursor: pointer; }
+  .isfc-node:hover { background: rgba(56, 116, 255, 0.08); }
+  .isfc-node .caret { width: 1rem; text-align: center; transition: transform .15s; color: var(--isfc-text-tertiary, #6b8096); }
+  .isfc-node.open > .caret { transform: rotate(90deg); }
+  .isfc-node.leaf .caret { visibility: hidden; }
+  .isfc-node .lbl { flex: 1; }
+  html[dir="rtl"] .isfc-node .caret { transform: rotate(180deg); }
+  html[dir="rtl"] .isfc-node.open > .caret { transform: rotate(90deg); }
+</style>
+
+<div class="container-fluid py-3 isfc-page">
+  <div class="isfc-hero mb-4 p-4 d-flex align-items-center justify-content-between flex-wrap gap-3">
+    <div>
+      <h1 class="mb-1">{{ t('Relationship Tree') }}</h1>
+      <p class="mb-0">{{ t('SAP-style linked-document explorer: expand any module down to document and line level.') }}</p>
+    </div>
+    <div class="d-flex gap-2">
+      <a class="btn btn-phoenix-secondary" href="/relationship-map">{{ t('Classic Map') }}</a>
+      <a class="btn btn-phoenix-secondary" href="/reports">{{ t('Reports Center') }}</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-body">
+      <ul class="isfc-tree" id="relTree">
+        {% for r in roots %}
+        <li>
+          <div class="isfc-node fw-bold" data-type="{{ r.type }}" data-key="">
+            <span class="caret">&#9656;</span>
+            <span data-feather="{{ r.icon }}"></span>
+            <span class="lbl">{{ t(r.label) }}</span>
+            <span class="badge badge-phoenix badge-phoenix-primary">{{ r.badge }}</span>
+          </div>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  const tree = document.getElementById('relTree');
+
+  function nodeHtml(c) {
+    const leaf = c.leaf ? ' leaf' : '';
+    const badge = (c.badge !== undefined && c.badge !== '') ?
+      '<span class="badge badge-phoenix badge-phoenix-secondary">' + String(c.badge) + '</span>' : '';
+    const link = c.url ?
+      '<a class="btn btn-sm btn-phoenix-primary py-0 px-2 ms-1" href="' + c.url + '" onclick="event.stopPropagation()">open</a>' : '';
+    return '<li><div class="isfc-node' + leaf + '" data-type="' + c.type + '" data-key="' +
+      String(c.key || '').replace(/"/g, '&quot;') + '">' +
+      '<span class="caret">&#9656;</span><span class="lbl">' + c.label + '</span>' + badge + link + '</div></li>';
+  }
+
+  tree.addEventListener('click', async function (e) {
+    const node = e.target.closest('.isfc-node');
+    if (!node || node.classList.contains('leaf')) return;
+
+    // collapse if already open
+    const li = node.parentElement;
+    const existing = li.querySelector(':scope > ul');
+    if (existing) { existing.remove(); node.classList.remove('open'); return; }
+
+    node.classList.add('open');
+    const ul = document.createElement('ul');
+    ul.innerHTML = '<li><div class="isfc-node leaf"><span class="caret"></span><span class="lbl text-body-tertiary">Loading…</span></div></li>';
+    li.appendChild(ul);
+    try {
+      const q = new URLSearchParams({ type: node.dataset.type, key: node.dataset.key || '' });
+      const res = await fetch('/reports/api/relationship-node?' + q.toString());
+      const data = await res.json();
+      ul.innerHTML = (data.children || []).map(nodeHtml).join('') ||
+        '<li><div class="isfc-node leaf"><span class="caret"></span><span class="lbl text-body-tertiary">No linked documents</span></div></li>';
+    } catch (err) {
+      ul.innerHTML = '<li><div class="isfc-node leaf"><span class="caret"></span><span class="lbl text-danger">Failed to load</span></div></li>';
+    }
+  });
+})();
+</script>
+{% endblock %}

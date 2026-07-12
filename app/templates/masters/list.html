@@ -1,0 +1,233 @@
+{% extends "layouts/base.html" %}
+{% block content %}
+<style>
+  .isfc-page {
+    padding: 10px 18px 30px
+  }
+
+  .isfc-hero {
+    background: linear-gradient(135deg, #064b5a, #0f8195);
+    border-radius: 20px;
+    color: #fff;
+    padding: 24px 28px;
+    margin-bottom: 18px;
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    align-items: center
+  }
+
+  .isfc-hero h1 {
+    margin: 0;
+    font-size: 34px;
+    font-weight: 800
+  }
+
+  .isfc-hero p {
+    margin: 8px 0 0;
+    color: rgba(255, 255, 255, .82)
+  }
+
+  .isfc-card {
+    background: #fff;
+    border: 1px solid #dce8f2;
+    border-radius: 18px;
+    box-shadow: 0 14px 34px rgba(15, 30, 50, .06);
+    padding: 20px;
+    margin-bottom: 16px
+  }
+
+  .isfc-btn {
+    border: 0;
+    border-radius: 13px;
+    padding: 10px 15px;
+    font-weight: 800;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px
+  }
+
+  .isfc-btn-primary {
+    background: #0f8195;
+    color: #fff
+  }
+
+  .isfc-btn-soft {
+    background: #eaf2f8;
+    color: #142a46
+  }
+
+  .isfc-filter {
+    display: grid;
+    grid-template-columns: 1fr 220px 220px auto;
+    gap: 10px;
+    align-items: end
+  }
+
+  .isfc-input,
+  .isfc-select {
+    width: 100%;
+    border: 1px solid #cfdae5;
+    border-radius: 13px;
+    padding: 11px 12px;
+    background: #fff
+  }
+
+  .isfc-label {
+    font-weight: 800;
+    color: #123452;
+    margin-bottom: 6px;
+    display: block
+  }
+
+  .isfc-table-wrap {
+    overflow-x: auto
+  }
+
+  .isfc-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0
+  }
+
+  .isfc-table th {
+    background: #edf5fb;
+    color: #142a46;
+    padding: 12px;
+    text-align: left;
+    white-space: nowrap
+  }
+
+  .isfc-table td {
+    border-bottom: 1px solid #edf3f8;
+    padding: 12px;
+    vertical-align: middle
+  }
+
+  .isfc-table tr:hover td {
+    background: #f9fcff
+  }
+
+  .isfc-code {
+    font-weight: 900;
+    color: #0f8195
+  }
+
+  .isfc-badge {
+    border-radius: 999px;
+    padding: 5px 10px;
+    font-weight: 800;
+    font-size: 12px;
+    display: inline-block
+  }
+
+  .active {
+    background: #dcfce7;
+    color: #166534
+  }
+
+  .inactive {
+    background: #f1f5f9;
+    color: #475569
+  }
+
+  .pending {
+    background: #fef3c7;
+    color: #92400e
+  }
+
+  .isfc-actions {
+    display: flex;
+    gap: 6px
+  }
+
+  .isfc-mini {
+    padding: 7px 10px;
+    border-radius: 10px;
+    background: #eaf2f8;
+    color: #142a46;
+    text-decoration: none;
+    font-weight: 800
+  }
+
+  @media(max-width:900px) {
+    .isfc-filter {
+      grid-template-columns: 1fr
+    }
+
+    .isfc-hero {
+      display: block
+    }
+  }
+</style>
+<div class="isfc-page">
+  <div class="isfc-hero">
+    <div>
+      <h1>{{ page_title }}</h1>
+      <p>Search, view, edit and control uploaded master data.</p>
+    </div>
+    <div class="isfc-master-actions">{% if can_upload_this_master %}<a class="isfc-btn isfc-btn-soft"
+        href="/masters/upload/{{ master_type }}"><i class="bi bi-upload"></i> Upload</a>{% endif %}<a
+        class="isfc-btn isfc-btn-soft" href="/masters/template/{{ master_type }}"><i class="bi bi-download"></i>
+        Template</a>
+        {% if is_admin_master_upload %}
+        <a class="isfc-btn isfc-btn-soft" href="/masters/archive{% if master_type != 'archive' %}?archive_type={{ master_type }}{% endif %}">
+          <i class="bi bi-archive"></i> Archive</a>
+        {% endif %}
+    </div>
+  </div>
+  <div class="isfc-card">
+    <form class="isfc-filter" method="get">
+      <div><label class="isfc-label">Search</label><input class="isfc-input" name="search" value="{{ search }}"
+          placeholder="Search code, name or details"></div>{% if master_type == 'archive' %}<div><label
+          class="isfc-label">Master Type</label><select class="isfc-select" name="archive_type">
+          <option value="ALL">All Types</option>{% for k,cfg in master_types.items() %}<option value="{{ k }}" {% if
+            archive_type==k %}selected{% endif %}>{{ cfg.label }}</option>{% endfor %}
+        </select></div>{% endif %}<div><label class="isfc-label">Status</label><select class="isfc-select"
+          name="status">
+          <option value="ALL" {% if status=='ALL' %}selected{% endif %}>All</option>
+          <option value="ACTIVE" {% if status=='ACTIVE' %}selected{% endif %}>Active</option>
+          <option value="PENDING" {% if status=='PENDING' %}selected{% endif %}>Pending</option>
+          <option value="INACTIVE" {% if status=='INACTIVE' %}selected{% endif %}>Inactive</option>
+        </select></div><button class="isfc-btn isfc-btn-primary" type="submit"><i class="bi bi-search"></i>
+        Apply</button>
+    </form>
+  </div>
+  <div class="isfc-card">
+    <div class="isfc-table-wrap">
+      <table class="isfc-table" data-isfc-export-actions="false">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Code</th>
+            <th>Name EN</th>
+            <th>Name AR</th>{% for title, attr in config.extra_cols %}<th>{{ title }}</th>{% endfor %}{% if
+            config.show_version %}<th>Version</th>{% endif %}<th>Status</th>
+            <th>Active</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>{% for row in rows %}<tr>
+            <td>{{ row.id }}</td>
+            <td class="isfc-code">{{ row|attr(config.code_attr) }}</td>
+            <td>{{ row|attr(config.name_attr) }}</td>
+            <td>{{ row|attr(config.name_ar_attr) if config.name_ar_attr else '—' }}</td>{% for title, attr in
+            config.extra_cols %}<td>{{ row|attr(attr) if row|attr(attr) is not none else '—' }}</td>{% endfor %}{% if
+            config.show_version %}<td>V{{ row.version if row.version is defined else 1 }}</td>{% endif %}<td><span
+                class="isfc-badge {{ 'active' if row.status in ['ACTIVE','Active'] else 'pending' if row.status=='PENDING' else 'inactive' }}">{{
+                row.status }}</span></td>
+            <td>{{ 'Yes' if row.is_active else 'No' }}</td>
+            <td>
+              <div class="isfc-actions"><a class="isfc-mini" href="/masters/{{ master_type }}/{{ row.id }}">View</a>{%
+                if master_type!='archive' %}<a class="isfc-mini"
+                  href="/masters/{{ master_type }}/{{ row.id }}/edit">Edit</a>{% endif %}</div>
+            </td>
+          </tr>{% else %}<tr>
+            <td colspan="20" style="text-align:center;color:#6f8196;padding:28px">No records found.</td>
+          </tr>{% endfor %}</tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

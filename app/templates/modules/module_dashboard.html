@@ -1,0 +1,98 @@
+{% extends "layouts/base.html" %}
+{% block title %}{{ page_title }} | ISFC{% endblock %}
+{% block content %}
+{# ============================================================================
+   Batch 13 — Rich Module Cockpit (one template serves every module)
+   KPI tiles + time-range slicer + multi-chart grid (each chart has the
+   H-Bar/Bar/Line/Area/Pie/Donut switcher from isfc-charts.js) + quick links.
+   Phoenix + isfc-* classes only => dark mode & RTL safe.
+   ============================================================================ #}
+<div class="container-fluid py-3 isfc-page">
+
+  <div class="isfc-hero mb-4 p-4 d-flex align-items-center justify-content-between flex-wrap gap-3">
+    <div>
+      <h1 class="mb-1 d-flex align-items-center gap-2">
+        <span data-feather="{{ dash.icon }}"></span>{{ t(dash.title) }}
+      </h1>
+      <p class="mb-0">{{ t(dash.subtitle) }}</p>
+    </div>
+    <a class="btn btn-phoenix-secondary" href="/modules">
+      <span data-feather="grid" class="me-1"></span>{{ t('Module Launcher') }}
+    </a>
+  </div>
+
+  {# ---- KPI tiles ---- #}
+  <div class="row g-3 mb-3">
+    {% for k in kpis %}
+    <div class="col-sm-6 col-xl-3">
+      <div class="card h-100 isfc-kpi-card">
+        <div class="card-body">
+          <p class="text-body-tertiary text-uppercase fs-10 mb-1">{{ t(k.label) }}</p>
+          <h2 class="mb-1 text-body-emphasis">{{ k.value }}</h2>
+          <p class="fs-9 text-body-tertiary mb-0">{{ t(k.hint) }}</p>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  {# ---- Time-range slicer (only when a chart supports it) ---- #}
+  {% if has_range %}
+  <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+    <span class="text-body-tertiary fs-9 text-uppercase fw-bold">{{ t('Period') }}</span>
+    <div class="btn-group btn-group-sm" role="group">
+      {% for rk, rlabel in ranges %}
+      <a class="btn {{ 'btn-primary' if rk == range_key else 'btn-phoenix-secondary' }}"
+         href="?range={{ rk }}">{{ t(rlabel) }}</a>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  {# ---- Multi-chart grid ---- #}
+  {% if charts %}
+  <div class="row g-3 mb-3">
+    {% for c in charts %}
+    <div class="col-lg-6">
+      <div class="card h-100">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h5 class="mb-0 text-body-emphasis">{{ t(c.title) }}</h5>
+          {% if c.has_range %}<span class="badge badge-phoenix badge-phoenix-info">{{ t('Period filtered') }}</span>{% endif %}
+        </div>
+        <div class="card-body">
+          <div data-isfc-chart="{{ c.default }}"
+               data-types="hbar,bar,line,area,pie,donut"
+               data-labels='{{ c['labels'] | tojson }}'
+               data-values='{{ c['values'] | tojson }}'
+               style="min-height:320px;"></div>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {# ---- Quick links (RBAC-filtered server-side) ---- #}
+  <div class="card">
+    <div class="card-header">
+      <h5 class="mb-0 text-body-emphasis">{{ t('Quick Actions') }}</h5>
+    </div>
+    <div class="card-body">
+      <div class="row g-2">
+        {% for l in links %}
+        <div class="col-md-6 col-xl-3">
+          <a class="btn btn-phoenix-primary w-100 d-flex align-items-center justify-content-between"
+             href="{{ l.url }}">
+            <span><span data-feather="{{ l.icon }}" class="me-2"></span>{{ t(l.title) }}</span>
+            <span data-feather="{{ 'arrow-left' if is_rtl else 'arrow-right' }}"></span>
+          </a>
+        </div>
+        {% else %}
+        <p class="text-body-tertiary mb-0">{{ t('No pages available for your access level.') }}</p>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

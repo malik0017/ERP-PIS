@@ -1,0 +1,49 @@
+{% extends "print/layout.html" %}
+{% block sheet %}
+<div class="meta">
+  <div><b>Customer</b>{{ order.customer_name }}</div>
+  <div><b>Brand / Channel</b>{{ order.brand or '-' }} · {{ order.channel or '-' }}</div>
+  <div><b>Delivery</b>{{ order.required_delivery_date or '-' }} {{ order.required_delivery_time or '' }}</div>
+  <div><b>Status</b><span class="badge">{{ order.status }}</span></div>
+  <div><b>Cooking</b>{{ order.cooking_date or '-' }} {{ order.cooking_time or '' }}</div>
+  <div><b>Material Receiving</b>{{ order.material_receiving_date or '-' }} {{ order.material_receiving_time or '' }}
+  </div>
+  <div><b>Total Portions</b>{{ order.total_planned_portions or 0 }}</div>
+  <div><b>Order Value</b>{{ '%.2f'|format(order.total_sales_value or 0) }}</div>
+</div>
+<table>
+  <thead>
+    <tr>
+      <th>#</th>
+      <th>Recipe</th>
+      <th>Portions</th>
+      <th>Std Portions</th>
+      <th>Batches</th>
+      <th>Sale/Portion</th>
+      <th>Line Value</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for l in lines %}
+    <tr>
+      <td>{{ loop.index }}</td>
+      <td><strong>{{ l.recipe_no }}</strong> — {{ l.recipe_name }}</td>
+      <td>{{ l.required_portions }}</td>
+      <td>{{ l.standard_portions }}</td>
+      <td>{{ l.batches }}</td>
+      <td>{{ '%.2f'|format(l.selling_price_per_portion or 0) }}</td>
+      <td>{{ '%.2f'|format(l.line_sales_value or 0) }}</td>
+    </tr>
+    {% endfor %}
+    <tr class="totals">
+      <td colspan="6">TOTAL ORDER VALUE</td>
+      <td>{{ '%.2f'|format(order.total_sales_value or 0) }}</td>
+    </tr>
+  </tbody>
+</table>
+<div class="sig">
+  <div>Prepared By</div>
+  <div>Head Chef</div>
+  <div>Production Manager</div>
+</div>
+{% endblock %}

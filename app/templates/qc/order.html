@@ -1,0 +1,233 @@
+{% extends "layouts/base.html" %}
+{% block title %}QC - {{ order_no }}{% endblock %}
+{% block extra_css %}
+<style>
+  .qc-page {
+    padding: 24px 34px 42px;
+    color: #14233b
+  }
+
+  .hero {
+    background: linear-gradient(135deg, #102542, #0b7f8e);
+    color: #fff;
+    border-radius: 24px;
+    padding: 22px 26px;
+    margin-bottom: 16px
+  }
+
+  .hero h1 {
+    font-weight: 950;
+    margin: 0
+  }
+
+  .cardx {
+    background: #fff;
+    border: 1px solid #dfeaf4;
+    border-radius: 22px;
+    padding: 18px;
+    box-shadow: 0 10px 24px rgba(15, 30, 50, .06);
+    margin-bottom: 16px
+  }
+
+  .metric-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px
+  }
+
+  .metric {
+    background: #f7fbfd;
+    border: 1px solid #e0ecf4;
+    border-radius: 16px;
+    padding: 13px
+  }
+
+  .metric span {
+    display: block;
+    color: #71869e;
+    font-size: 12px;
+    font-weight: 900
+  }
+
+  .metric strong {
+    font-size: 24px
+  }
+
+  .table-pro {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 13px
+  }
+
+  .table-pro th {
+    background: #eef6fb;
+    color: #14233b;
+    padding: 11px;
+    text-align: left
+  }
+
+  .table-pro td {
+    padding: 10px;
+    border-bottom: 1px solid #edf3f8
+  }
+
+  .form-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 13px
+  }
+
+  .form-grid label {
+    font-weight: 900;
+    color: #14233b;
+    font-size: 13px
+  }
+
+  .form-grid input,
+  .form-grid select,
+  .form-grid textarea {
+    width: 100%;
+    border: 1px solid #d5e3ee;
+    border-radius: 13px;
+    padding: 10px
+  }
+
+  .span-3 {
+    grid-column: span 3
+  }
+
+  .btn-pro {
+    border: 0;
+    border-radius: 13px;
+    padding: 11px 15px;
+    background: #16a34a;
+    color: white;
+    font-weight: 950
+  }
+
+  .btn-soft {
+    border: 0;
+    border-radius: 13px;
+    padding: 11px 15px;
+    background: #edf4f9;
+    color: #102542;
+    font-weight: 950;
+    text-decoration: none;
+    display: inline-block
+  }
+
+  .btn-blue {
+    background: #4057ff
+  }
+
+  .note {
+    background: #eefaff;
+    border: 1px solid #ccecf5;
+    border-radius: 16px;
+    padding: 12px;
+    margin-bottom: 12px;
+    color: #24546b
+  }
+
+  @media(max-width:900px) {
+
+    .metric-grid,
+    .form-grid {
+      grid-template-columns: 1fr
+    }
+
+    .span-3 {
+      grid-column: span 1
+    }
+  }
+</style>
+{% endblock %}
+{% block content %}
+<div class="qc-page container-fluid">
+  <div class="hero">
+    <h1>QC Checklist · {{ order.order_no }}</h1>
+    <p>{{ order.customer_name }} · {{ order.brand }} · Delivery {{ order.required_delivery_date or '—' }} {{
+      order.required_delivery_time or '' }}</p>
+  </div>
+  {% set active_step = 'QC' %}{% include 'partials/process_status_row.html' %}
+  {% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+  <div class="metric-grid mb-3">
+    <div class="metric"><span>QC Lines</span><strong>{{ totals.lines }}</strong></div>
+    <div class="metric"><span>Input Qty</span><strong>{{ '%.2f'|format(totals.input_qty or 0) }}</strong></div>
+    <div class="metric"><span>Received Qty</span><strong>{{ '%.2f'|format(totals.received_qty or 0) }}</strong></div>
+    <div class="metric"><span>Balance Qty</span><strong>{{ '%.2f'|format(totals.balance_qty or 0) }}</strong></div>
+  </div>
+  <div class="cardx">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+      <div>
+        <h3 class="mb-1">QC Receiving Lines</h3>
+        <div class="text-muted">Receive all items before passing/rejecting QC.</div>
+      </div>
+      <form method="post" action="/qc/orders/{{ order.order_no }}/receive-all"><button class="btn-pro btn-blue"
+          type="submit"><i class="bi bi-box-arrow-in-down"></i> Receive All QC Lines</button></form>
+    </div>
+    <hr>
+    <div class="table-responsive">
+      <table class="table-pro">
+        <thead>
+          <tr>
+            <th>Recipe</th>
+            <th>Item / Output</th>
+            <th>From Section</th>
+            <th>Qty</th>
+            <th>Received</th>
+            <th>Status</th>
+            <th>Remarks</th>
+          </tr>
+        </thead>
+        <tbody>{% for t in txs %}<tr>
+            <td>{{ t.recipe_no }}<br><strong>{{ t.recipe_name }}</strong></td>
+            <td>{{ t.ingredient_code }}<br>{{ t.ingredient_name }}</td>
+            <td>{{ t.from_section or '—' }}</td>
+            <td>{{ '%.2f'|format(t.issued_qty_standard or 0) }} {{ t.standard_uom }}</td>
+            <td>{{ '%.2f'|format(t.received_qty_standard or 0) }}</td>
+            <td>{{ t.transaction_status }}</td>
+            <td>{{ t.section_remarks or '—' }}</td>
+          </tr>{% endfor %}</tbody>
+      </table>
+    </div>
+  </div>
+  <div class="cardx">
+    <h3>Final QC Decision</h3>
+    <p class="note">Recommended rule: Passed orders move to Packing/Dispatch automatically. Hold/Rejected orders remain
+      blocked until correction.</p>
+    <form method="post" action="/qc/orders/{{ order.order_no }}/submit">
+      <div class="form-grid">
+        <div><label>Check Type</label><select name="check_type">
+            <option>Final QC</option>
+            <option>In Process</option>
+            <option>Packaging QC</option>
+            <option>Dispatch QC</option>
+          </select></div>
+        <div><label>Temperature °C</label><input type="number" step="0.01" name="temperature_c" value="0"></div>
+        <div><label>QC Decision</label><select name="qc_status">
+            <option value="Passed">Passed</option>
+            <option value="Hold">Hold</option>
+            <option value="Rejected">Rejected</option>
+          </select></div>
+        <div><label>Appearance Score / 10</label><input type="number" step="0.01" name="appearance_score" value="10">
+        </div>
+        <div><label>Taste Score / 10</label><input type="number" step="0.01" name="taste_score" value="10"></div>
+        <div><label>Portion Weight Score / 10</label><input type="number" step="0.01" name="portion_weight_score"
+            value="10"></div>
+        <div><label>Packaging Score / 10</label><input type="number" step="0.01" name="packaging_score" value="10">
+        </div>
+        <div><label>Hygiene Score / 10</label><input type="number" step="0.01" name="hygiene_score" value="10"></div>
+        <div></div>
+        <div class="span-3"><label>Issue Found</label><textarea name="issue_found" rows="2"
+            placeholder="Mention issue if hold/reject"></textarea></div>
+        <div class="span-3"><label>Corrective Action</label><textarea name="corrective_action" rows="2"
+            placeholder="Correction / rework instruction"></textarea></div>
+      </div>
+      <div class="mt-3 d-flex gap-2"><button class="btn-pro" type="submit"><i class="bi bi-check2-circle"></i> Submit QC
+          Decision</button><a class="btn-soft" href="/qc">Back</a></div>
+    </form>
+  </div>
+</div>
+{% endblock %}

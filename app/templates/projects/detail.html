@@ -1,0 +1,305 @@
+{% extends "layouts/base.html" %}
+{% block title %}{{ project.project_name }} | ISFC ERP{% endblock %}
+{% block content %}
+<div class="container-fluid py-3 isfc-page">
+
+  {% include "projects/_flash.html" %}
+
+  <!-- Hero / header -->
+  <div class="isfc-hero mb-3">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
+      <div>
+        <span class="badge bg-light text-dark mb-2">{{ project.project_code }}</span>
+        <h1 class="mb-1">{{ project.project_name }}</h1>
+        <p class="mb-0">
+          {% if project.pm_name %}<i class="bi bi-person-badge me-1"></i>{{ project.pm_name }} · {% endif %}
+          <i class="bi bi-flag me-1"></i>{{ t(project.priority) }} ·
+          <i class="bi bi-calendar-event me-1"></i>{{ project.start_date or '—' }} → {{ project.end_date or '—' }}
+        </p>
+      </div>
+      <div class="d-flex gap-2 flex-wrap">
+        <a href="/projects/{{ project.id }}/timeline" class="btn btn-light btn-sm"><i class="bi bi-bar-chart-steps me-1"></i>{{ t('Timeline') }}</a>
+        <a href="/projects" class="btn btn-light btn-sm"><i class="bi bi-arrow-left me-1"></i>{{ t('All Projects') }}</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- KPI strip -->
+  <div class="row g-3 mb-3">
+    <div class="col-6 col-xl-3">
+      <div class="card shadow-none border h-100"><div class="card-body p-4">
+        <p class="text-body-tertiary text-uppercase fw-bold fs-10 mb-1">{{ t('Status') }}</p>
+        <span class="badge badge-phoenix badge-phoenix-{{ 'success' if project.status=='Active' else ('info' if project.status=='Planning' else ('warning' if project.status=='Paused' else ('primary' if project.status=='Completed' else 'secondary'))) }} fs-9">{{ t(project.status) }}</span>
+      </div></div>
+    </div>
+    <div class="col-6 col-xl-3">
+      <div class="card shadow-none border h-100"><div class="card-body p-4">
+        <p class="text-body-tertiary text-uppercase fw-bold fs-10 mb-1">{{ t('Progress') }}</p>
+        <h3 class="mb-2">{{ project.progress_pct or 0 }}%</h3>
+        <div class="progress" style="height:6px"><div class="progress-bar bg-primary" style="width:{{ project.progress_pct or 0 }}%"></div></div>
+      </div></div>
+    </div>
+    <div class="col-6 col-xl-3">
+      <div class="card shadow-none border h-100"><div class="card-body p-4">
+        <p class="text-body-tertiary text-uppercase fw-bold fs-10 mb-1">{{ t('Budget') }}</p>
+        <h3 class="mb-0 isfc-num">{{ '%.2f'|format(project.budget or 0) }}</h3>
+      </div></div>
+    </div>
+    <div class="col-6 col-xl-3">
+      <div class="card shadow-none border h-100"><div class="card-body p-4">
+        <p class="text-body-tertiary text-uppercase fw-bold fs-10 mb-1">{{ t('Spent') }}</p>
+        <h3 class="mb-0 isfc-num {{ 'text-danger' if (project.spent or 0) > (project.budget or 0) else '' }}">{{ '%.2f'|format(project.spent or 0) }}</h3>
+      </div></div>
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <ul class="nav nav-underline mb-3" role="tablist">
+    <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-tasks" type="button"><i class="bi bi-list-check me-1"></i>{{ t('Tasks') }} <span class="badge bg-secondary ms-1">{{ task_stats.total }}</span></button></li>
+    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-team" type="button"><i class="bi bi-people me-1"></i>{{ t('Team') }} <span class="badge bg-secondary ms-1">{{ team|length }}</span></button></li>
+    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-milestones" type="button"><i class="bi bi-flag me-1"></i>{{ t('Milestones') }} <span class="badge bg-secondary ms-1">{{ milestones|length }}</span></button></li>
+    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-activity" type="button"><i class="bi bi-clock-history me-1"></i>{{ t('Activity') }}</button></li>
+    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-settings" type="button"><i class="bi bi-gear me-1"></i>{{ t('Settings') }}</button></li>
+  </ul>
+
+  <div class="tab-content">
+    <!-- ===================== TASKS ===================== -->
+    <div class="tab-pane fade show active" id="tab-tasks">
+      <div class="card shadow-none border mb-3">
+        <div class="card-body p-4">
+          <div class="row g-3 mb-3">
+            <div class="col-4 col-md-3"><div class="border rounded-3 p-3 text-center"><div class="fs-4 fw-bold text-primary">{{ task_stats.total }}</div><div class="fs-10 text-body-tertiary text-uppercase">{{ t('Total') }}</div></div></div>
+            <div class="col-4 col-md-3"><div class="border rounded-3 p-3 text-center"><div class="fs-4 fw-bold text-warning">{{ task_stats.in_progress }}</div><div class="fs-10 text-body-tertiary text-uppercase">{{ t('In Progress') }}</div></div></div>
+            <div class="col-4 col-md-3"><div class="border rounded-3 p-3 text-center"><div class="fs-4 fw-bold text-success">{{ task_stats.done }}</div><div class="fs-10 text-body-tertiary text-uppercase">{{ t('Completed') }}</div></div></div>
+            <div class="col-4 col-md-3"><div class="border rounded-3 p-3 text-center"><div class="fs-4 fw-bold text-secondary">{{ task_stats.not_started }}</div><div class="fs-10 text-body-tertiary text-uppercase">{{ t('Not Started') }}</div></div></div>
+          </div>
+
+          <div class="table-responsive scrollbar">
+            <table class="table table-sm table-hover fs-9 mb-0" data-isfc-table data-isfc-title="Tasks - {{ project.project_code }}">
+              <thead><tr class="text-uppercase text-body-tertiary fs-10">
+                <th>{{ t('Task') }}</th>
+                <th>{{ t('Assignee') }}</th>
+                <th>{{ t('Start') }}</th>
+                <th>{{ t('End') }}</th>
+                <th class="text-center">{{ t('Priority') }}</th>
+                <th class="text-center">{{ t('Status') }}</th>
+                <th class="text-center">{{ t('Progress') }}</th>
+                {% if can_action('project_management','edit') %}<th class="text-center">{{ t('Actions') }}</th>{% endif %}
+              </tr></thead>
+              <tbody>
+              {% for tk in tasks %}
+              <tr>
+                <td class="fw-semibold">{{ tk.task_name }}</td>
+                <td>{{ tk.assignee_name or '—' }}</td>
+                <td>{{ tk.start_date or '—' }}</td>
+                <td>{{ tk.end_date or '—' }}</td>
+                <td class="text-center"><span class="badge badge-phoenix badge-phoenix-{{ 'danger' if tk.priority=='Critical' else ('warning' if tk.priority=='High' else 'secondary') }}">{{ t(tk.priority) }}</span></td>
+                <td class="text-center"><span class="badge badge-phoenix badge-phoenix-{{ 'success' if tk.status=='Completed' else ('warning' if tk.status=='In Progress' else ('info' if tk.status=='On Hold' else 'secondary')) }}">{{ t(tk.status) }}</span></td>
+                <td class="text-center" style="min-width:80px"><div class="progress" style="height:14px"><div class="progress-bar bg-primary" style="width:{{ tk.progress_pct or 0 }}%">{{ tk.progress_pct or 0 }}%</div></div></td>
+                {% if can_action('project_management','edit') %}
+                <td class="text-center text-nowrap">
+                  <div class="dropdown d-inline-block">
+                    <button class="btn btn-sm btn-phoenix-secondary dropdown-toggle" data-bs-toggle="dropdown"><i class="bi bi-arrow-repeat"></i></button>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                      {% for st in ['Not Started','In Progress','On Hold','Completed'] %}
+                      <li><form method="post" action="/projects/{{ project.id }}/tasks/{{ tk.id }}/status"><input type="hidden" name="status" value="{{ st }}"><button class="dropdown-item" type="submit">{{ t(st) }}</button></form></li>
+                      {% endfor %}
+                    </ul>
+                  </div>
+                  <button class="btn btn-sm btn-phoenix-danger" onclick="isfcTaskDelete('{{ project.id }}','{{ tk.id }}','{{ tk.task_name|e }}')"><i class="bi bi-trash"></i></button>
+                </td>
+                {% endif %}
+              </tr>
+              {% else %}
+              <tr><td colspan="8" class="text-center text-body-tertiary py-4"><i class="bi bi-list-check fs-4 d-block mb-2"></i>{{ t('No tasks yet.') }}</td></tr>
+              {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      {% if can_action('project_management','edit') %}
+      <div class="card shadow-none border">
+        <div class="card-header p-3 bg-body border-bottom"><h6 class="mb-0"><i class="bi bi-plus-circle me-2"></i>{{ t('Add Task') }}</h6></div>
+        <div class="card-body p-4">
+          <form method="post" action="/projects/{{ project.id }}/tasks" class="row g-3">
+            <div class="col-md-4"><label class="form-label">{{ t('Task Name') }} *</label><input class="form-control form-control-sm" name="task_name" required></div>
+            <div class="col-md-3"><label class="form-label">{{ t('Assignee') }}</label>
+              <select class="form-select form-select-sm" name="assigned_to"><option value="0">—</option>{% for u in users %}<option value="{{ u.id }}">{{ u.full_name }}</option>{% endfor %}</select>
+            </div>
+            <div class="col-md-2"><label class="form-label">{{ t('Start') }}</label><input type="date" class="form-control form-control-sm" name="start_date"></div>
+            <div class="col-md-2"><label class="form-label">{{ t('End') }}</label><input type="date" class="form-control form-control-sm" name="end_date"></div>
+            <div class="col-md-1"><label class="form-label">{{ t('Priority') }}</label>
+              <select class="form-select form-select-sm" name="priority"><option>Low</option><option selected>Medium</option><option>High</option><option>Critical</option></select>
+            </div>
+            <div class="col-12"><button class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>{{ t('Add Task') }}</button></div>
+          </form>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- ===================== TEAM ===================== -->
+    <div class="tab-pane fade" id="tab-team">
+      <div class="card shadow-none border mb-3">
+        <div class="card-body p-4">
+          <div class="table-responsive scrollbar">
+            <table class="table table-sm table-hover fs-9 mb-0" data-isfc-table data-isfc-title="Team - {{ project.project_code }}">
+              <thead><tr class="text-uppercase text-body-tertiary fs-10">
+                <th>{{ t('Member') }}</th><th>{{ t('Role') }}</th>
+                <th class="text-end">{{ t('Hours') }}</th><th class="text-end">{{ t('Rate') }}</th>
+                {% if can_action('project_management','edit') %}<th class="text-center">{{ t('Actions') }}</th>{% endif %}
+              </tr></thead>
+              <tbody>
+              {% for m in team %}
+              <tr>
+                <td class="fw-semibold"><i class="bi bi-person-circle me-1 text-body-tertiary"></i>{{ m.full_name }}</td>
+                <td><span class="badge badge-phoenix badge-phoenix-info">{{ m.role }}</span></td>
+                <td class="text-end isfc-num">{{ m.allocated_hours or 0 }}</td>
+                <td class="text-end isfc-num">{{ '%.2f'|format(m.hourly_rate or 0) }}</td>
+                {% if can_action('project_management','edit') %}
+                <td class="text-center"><form method="post" action="/projects/{{ project.id }}/team/{{ m.id }}/delete" onsubmit="return confirm('{{ t('Remove member?') }}')"><button class="btn btn-sm btn-phoenix-danger"><i class="bi bi-person-dash"></i></button></form></td>
+                {% endif %}
+              </tr>
+              {% else %}
+              <tr><td colspan="5" class="text-center text-body-tertiary py-4"><i class="bi bi-people fs-4 d-block mb-2"></i>{{ t('No team members assigned.') }}</td></tr>
+              {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      {% if can_action('project_management','edit') %}
+      <div class="card shadow-none border">
+        <div class="card-header p-3 bg-body border-bottom"><h6 class="mb-0"><i class="bi bi-person-plus me-2"></i>{{ t('Assign Team Member') }}</h6></div>
+        <div class="card-body p-4">
+          <form method="post" action="/projects/{{ project.id }}/team" class="row g-3">
+            <div class="col-md-4"><label class="form-label">{{ t('Member') }} *</label>
+              <select class="form-select form-select-sm" name="user_id" required><option value="">—</option>{% for u in users %}<option value="{{ u.id }}">{{ u.full_name }}</option>{% endfor %}</select>
+            </div>
+            <div class="col-md-3"><label class="form-label">{{ t('Role') }}</label>
+              <select class="form-select form-select-sm" name="role"><option>Team Member</option><option>Lead</option><option>Reviewer</option><option>Coordinator</option><option>Stakeholder</option></select>
+            </div>
+            <div class="col-md-2"><label class="form-label">{{ t('Hours') }}</label><input type="number" min="0" class="form-control form-control-sm" name="allocated_hours" value="0"></div>
+            <div class="col-md-2"><label class="form-label">{{ t('Rate') }}</label><input type="number" step="0.01" min="0" class="form-control form-control-sm" name="hourly_rate" value="0"></div>
+            <div class="col-md-1 d-flex align-items-end"><button class="btn btn-primary btn-sm w-100"><i class="bi bi-plus-lg"></i></button></div>
+          </form>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- ===================== MILESTONES ===================== -->
+    <div class="tab-pane fade" id="tab-milestones">
+      <div class="card shadow-none border mb-3">
+        <div class="card-body p-4">
+          {% if milestones %}
+          <div class="timeline-basic">
+            {% for ms in milestones %}
+            <div class="d-flex mb-3">
+              <div class="text-center me-3" style="width:40px">
+                <span class="d-inline-flex align-items-center justify-content-center rounded-circle bg-primary-subtle text-primary" style="width:40px;height:40px"><i class="bi bi-flag-fill"></i></span>
+              </div>
+              <div class="flex-1 border-bottom pb-3">
+                <div class="d-flex justify-content-between flex-wrap">
+                  <h6 class="mb-1">{{ ms.milestone_name }}</h6>
+                  <span class="badge badge-phoenix badge-phoenix-{{ 'success' if ms.status=='Achieved' else 'warning' }}">{{ t(ms.status) }}</span>
+                </div>
+                <p class="fs-9 text-body-tertiary mb-1"><i class="bi bi-calendar-event me-1"></i>{{ ms.milestone_date }}</p>
+                {% if ms.description %}<p class="fs-9 mb-0">{{ ms.description }}</p>{% endif %}
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+          {% else %}
+          <div class="text-center text-body-tertiary py-4"><i class="bi bi-flag fs-4 d-block mb-2"></i>{{ t('No milestones yet.') }}</div>
+          {% endif %}
+        </div>
+      </div>
+
+      {% if can_action('project_management','edit') %}
+      <div class="card shadow-none border">
+        <div class="card-header p-3 bg-body border-bottom"><h6 class="mb-0"><i class="bi bi-flag me-2"></i>{{ t('Add Milestone') }}</h6></div>
+        <div class="card-body p-4">
+          <form method="post" action="/projects/{{ project.id }}/milestones" class="row g-3">
+            <div class="col-md-5"><label class="form-label">{{ t('Milestone Name') }} *</label><input class="form-control form-control-sm" name="milestone_name" required></div>
+            <div class="col-md-3"><label class="form-label">{{ t('Date') }} *</label><input type="date" class="form-control form-control-sm" name="milestone_date" required></div>
+            <div class="col-md-4"><label class="form-label">{{ t('Description') }}</label><input class="form-control form-control-sm" name="description"></div>
+            <div class="col-12"><button class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>{{ t('Add Milestone') }}</button></div>
+          </form>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- ===================== ACTIVITY LOG ===================== -->
+    <div class="tab-pane fade" id="tab-activity">
+      <div class="card shadow-none border">
+        <div class="card-body p-4">
+          {% if activities %}
+          <div class="ps-2">
+            {% for a in activities %}
+            <div class="d-flex mb-3">
+              <div class="me-3"><span class="d-inline-flex align-items-center justify-content-center rounded-circle bg-body-highlight" style="width:32px;height:32px"><i class="bi bi-{{ 'plus-circle' if a.activity_type=='created' else ('pencil' if 'updated' in a.activity_type else ('person-plus' if 'team' in a.activity_type else ('flag' if 'milestone' in a.activity_type else 'dot'))) }} text-primary"></i></span></div>
+              <div class="flex-1 border-bottom pb-2">
+                <p class="mb-0 fs-9">{{ a.description }}</p>
+                <small class="text-body-tertiary">{{ a.actor or 'system' }} · {{ a.created_at }}</small>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+          {% else %}
+          <div class="text-center text-body-tertiary py-4"><i class="bi bi-clock-history fs-4 d-block mb-2"></i>{{ t('No activity recorded yet.') }}</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================== SETTINGS ===================== -->
+    <div class="tab-pane fade" id="tab-settings">
+      <div class="card shadow-none border">
+        <div class="card-header p-3 bg-body border-bottom"><h6 class="mb-0"><i class="bi bi-gear me-2"></i>{{ t('Project Settings') }}</h6></div>
+        <div class="card-body p-4">
+          {% if can_action('project_management','edit') %}
+          <form method="post" action="/projects/{{ project.id }}" class="row g-3">
+            <div class="col-md-6"><label class="form-label">{{ t('Project Name') }}</label><input class="form-control" name="project_name" value="{{ project.project_name }}"></div>
+            <div class="col-md-3"><label class="form-label">{{ t('Status') }}</label>
+              <select class="form-select" name="status">
+                {% for s in ['Planning','Active','Paused','Completed','Cancelled'] %}<option value="{{ s }}" {{ 'selected' if project.status==s else '' }}>{{ t(s) }}</option>{% endfor %}
+              </select>
+            </div>
+            <div class="col-md-3"><label class="form-label">{{ t('Priority') }}</label>
+              <select class="form-select" name="priority">
+                {% for p in ['Low','Medium','High','Critical'] %}<option value="{{ p }}" {{ 'selected' if project.priority==p else '' }}>{{ t(p) }}</option>{% endfor %}
+              </select>
+            </div>
+            <div class="col-md-4"><label class="form-label">{{ t('Budget') }}</label><input type="number" step="0.01" class="form-control" name="budget" value="{{ project.budget or 0 }}"></div>
+            <div class="col-md-4"><label class="form-label">{{ t('Progress %') }}</label><input type="number" min="0" max="100" class="form-control" name="progress_pct" value="{{ project.progress_pct or 0 }}"></div>
+            <div class="col-12"><button class="btn btn-primary"><i class="bi bi-save me-1"></i>{{ t('Save Changes') }}</button></div>
+          </form>
+          <hr class="my-4">
+          {% endif %}
+          {% if can_action('project_management','delete') %}
+          <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div><h6 class="mb-0 text-danger">{{ t('Danger Zone') }}</h6><small class="text-body-tertiary">{{ t('Deleting a project removes all its tasks, team and history.') }}</small></div>
+            <form method="post" action="/projects/{{ project.id }}/delete" onsubmit="return confirm('{{ t('Delete this project permanently?') }}')"><button class="btn btn-danger"><i class="bi bi-trash me-1"></i>{{ t('Delete Project') }}</button></form>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<form id="taskDeleteForm" method="post" class="d-none"></form>
+<script>
+function isfcTaskDelete(pid, tid, name){
+  if(confirm("{{ t('Delete task') }}: " + name + "?")){
+    var f=document.getElementById('taskDeleteForm');
+    f.action='/projects/'+pid+'/tasks/'+tid+'/delete'; f.submit();
+  }
+}
+</script>
+{% endblock %}

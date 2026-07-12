@@ -1,0 +1,245 @@
+{% extends "layouts/base.html" %}
+{% block content %}
+{% set active_step = 'Kitchen' %}{% set active_kitchen = section %}{% include 'partials/process_status_row.html' %}
+
+<style>
+  .pis-hero {
+    background: linear-gradient(135deg, #0f5061, #0c91a3);
+    border-radius: 22px;
+    color: #fff;
+    padding: 28px 32px;
+    box-shadow: 0 18px 40px rgba(15, 80, 97, .18)
+  }
+
+  .pis-card {
+    background: #fff;
+    border: 1px solid #dce8f2;
+    border-radius: 18px;
+    box-shadow: 0 12px 28px rgba(15, 30, 50, .06)
+  }
+
+  .pis-kpi {
+    padding: 18px 20px
+  }
+
+  .pis-kpi span {
+    display: block;
+    color: #6b7f95;
+    font-size: 12px;
+    text-transform: uppercase;
+    font-weight: 800;
+    letter-spacing: .05em
+  }
+
+  .pis-kpi b {
+    font-size: 30px;
+    color: #132947
+  }
+
+  .pis-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border-radius: 999px;
+    background: #edf5fb;
+    color: #18314f;
+    padding: 6px 11px;
+    font-weight: 800;
+    font-size: 12px
+  }
+
+  .pis-btn {
+    border: 0;
+    border-radius: 12px;
+    padding: 10px 14px;
+    font-weight: 900;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px
+  }
+
+  .pis-primary {
+    background: #315cf6;
+    color: #fff
+  }
+
+  .pis-soft {
+    background: #eef5fb;
+    color: #152b49
+  }
+
+  .pis-table th {
+    background: #edf5fb;
+    color: #152b49;
+    text-transform: uppercase;
+    font-size: 12px;
+    letter-spacing: .04em
+  }
+
+  .progress {
+    height: 9px;
+    border-radius: 999px;
+    background: #eaf1f7
+  }
+
+  .progress-bar {
+    background: #168ca0
+  }
+
+  .empty-state {
+    padding: 42px;
+    text-align: center;
+    color: #71859a
+  }
+
+  .order-card:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 16px 34px rgba(15, 30, 50, .09)
+  }
+
+  .section-filter-pro {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 1.4fr auto;
+    gap: 12px;
+    align-items: end;
+    margin-bottom: 14px
+  }
+
+  .section-filter-pro .filter-submit {
+    height: 38px;
+    justify-content: center
+  }
+
+  .section-filter-pro label {
+    margin-bottom: 5px
+  }
+
+
+  @media(max-width:1100px) {
+    .section-filter-pro {
+      grid-template-columns: 1fr 1fr
+    }
+
+    .section-filter-pro .filter-submit {
+      width: 100%
+    }
+  }
+</style>
+<div class="container-fluid py-3">
+  <div class="pis-hero mb-4">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
+      <div>
+        <div class="pis-chip mb-3">Section Workstation</div>
+        <h2 class="mb-1">{{ section }} Receiving Dashboard</h2>
+        <p class="mb-0 opacity-75">One row per order. Open an order to receive ingredients, process quantities, record
+          waste and transfer to the next stage.</p>
+      </div>
+      <div class="d-flex gap-2 flex-wrap">
+        <a class="pis-btn pis-soft" href="/production/orders">Production Orders</a>
+        <a class="pis-btn pis-soft" href="/production/section/{{ section_slug }}?export=csv"><i
+            class="bi bi-download"></i> Download CSV</a>
+      </div>
+    </div>
+  </div>
+
+  {% if error %}<div class="alert alert-warning">{{ error }}</div>{% endif %}
+
+  <div class="row g-3 mb-4">
+    <div class="col-md-3">
+      <div class="pis-card pis-kpi"><span>Orders in Section</span><b>{{ total_orders }}</b></div>
+    </div>
+    <div class="col-md-3">
+      <div class="pis-card pis-kpi"><span>Ingredient Lines</span><b>{{ total_lines }}</b></div>
+    </div>
+    <div class="col-md-3">
+      <div class="pis-card pis-kpi"><span>Received Lines</span><b>{{ received_lines }}</b></div>
+    </div>
+    <div class="col-md-3">
+      <div class="pis-card pis-kpi"><span>Completed / Transferred</span><b>{{ completed_lines }}</b></div>
+    </div>
+  </div>
+
+  <div class="pis-card p-3">
+    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+      <div>
+        <h4 class="mb-1">Orders Waiting in {{ section }}</h4>
+        <div class="text-muted">Same filter style as Production Orders: date range, status and quick search before
+          opening receiving.</div>
+      </div>
+    </div>
+    <form method="get" class="section-filter-pro">
+      <div><label class="fw-bold small text-uppercase">From Date</label><input type="date" class="form-control"
+          name="date_from" value="{{ filters.date_from or '' }}"></div>
+      <div><label class="fw-bold small text-uppercase">To Date</label><input type="date" class="form-control"
+          name="date_to" value="{{ filters.date_to or '' }}"></div>
+      <div><label class="fw-bold small text-uppercase">Status</label><select class="form-select" name="status">
+          <option value="" {% if not filters.status %}selected{% endif %}>All Status</option>
+          <option value="pending_receive" {% if filters.status=='pending_receive' %}selected{% endif %}>Pending Receive
+          </option>
+          <option value="received" {% if filters.status=='received' %}selected{% endif %}>Received</option>
+          <option value="completed" {% if filters.status=='completed' %}selected{% endif %}>Completed / Transferred
+          </option>
+        </select></div>
+      <div><label class="fw-bold small text-uppercase">Quick Search</label><input class="form-control" name="search"
+          value="{{ filters.search or '' }}" placeholder="Search order, customer, brand, recipe..."></div>
+      <button class="pis-btn pis-primary filter-submit" type="submit">Filter</button>
+    </form>
+    <div class="table-responsive">
+      <table class="table align-middle pis-table" id="ordersTable" data-isfc-tools="false">
+        <thead>
+          <tr>
+            <th>Order</th>
+            <th>Customer</th>
+            <th>Brand</th>
+            <th>Delivery</th>
+            <th>Progress</th>
+            <th>Qty Summary</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for o in orders %}
+          {% set pct = ((o.completed_lines or 0) / (o.total_lines or 1) * 100) %}
+          <tr class="order-card">
+            <td><strong>{{ o.order_no }}</strong><br><span class="text-muted small">{{ o.total_lines }} lines</span>
+            </td>
+            <td>{{ o.customer_name or '-' }}</td>
+            <td>{{ o.brand or '-' }}</td>
+            <td>{{ o.delivery_date or '-' }}{% if o.delivery_time %} {{ o.delivery_time }}{% endif %}</td>
+            <td style="min-width:220px">
+              <div class="d-flex justify-content-between small mb-1"><span>Received {{ o.received_lines or 0 }}/{{
+                  o.total_lines or 0 }}</span><span>Done {{ '%.0f'|format(pct) }}%</span></div>
+              <div class="progress">
+                <div class="progress-bar" style="width:{{ pct }}%"></div>
+              </div>
+            </td>
+            <td><span class="pis-chip">Issued {{ o.issued_qty or 0 }}</span> <span class="pis-chip">Balance {{
+                o.balance_qty or 0 }}</span></td>
+            <td><a class="pis-btn pis-primary"
+                href="/production/section/{{ section_slug }}/orders/{{ o.order_no }}">Open Receiving</a></td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="7">
+              <div class="empty-state">No pending orders for {{ section }}. Finalize store issuance first, then orders
+                will appear here.</div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+<script>
+  function filterOrders() {
+    const searchEl = document.getElementById('orderSearch');
+    if (!searchEl) return;
+    const q = (searchEl.value || '').toLowerCase();
+    document.querySelectorAll('#ordersTable tbody tr').forEach(tr => {
+      tr.style.display = tr.innerText.toLowerCase().includes(q) ? '' : 'none';
+    });
+  }
+</script>
+{% endblock %}

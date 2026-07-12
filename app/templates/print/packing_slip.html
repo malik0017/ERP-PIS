@@ -1,0 +1,51 @@
+{% extends "print/layout.html" %} {% block sheet %}
+<div class="meta">
+  <div><b>Customer</b>{{ order.customer_name }}</div>
+  <div>
+    <b>Delivery</b>{{ order.required_delivery_date or '-' }} {{
+    order.required_delivery_time or '' }}
+  </div>
+  <div><b>Planned Portions</b>{{ order.total_planned_portions or 0 }}</div>
+  <div>
+    <b>Packed</b>{{ pack.packed_portions if pack else 0 }}
+    <small>(rejected: {{ pack.rejected_portions if pack else 0 }})</small>
+  </div>
+</div>
+<table>
+  <thead>
+    <tr>
+      <th>#</th>
+      <th>Recipe</th>
+      <th>Portions</th>
+      <th>Packed ✓</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for l in lines %}
+    <tr>
+      <td>{{ loop.index }}</td>
+      <td><strong>{{ l.recipe_no }}</strong> — {{ l.recipe_name }}</td>
+      <td>{{ l.required_portions }}</td>
+      <td style="width: 90px"></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+<div class="meta">
+  <div>
+    <b>Packing Status</b
+    ><span
+      class="badge {% if pack and pack.dispatch_status == 'Packed' %}ok{% endif %}"
+      >{{ pack.dispatch_status if pack else 'Pending' }}</span
+    >
+  </div>
+  <div><b>Packing Date</b>{{ pack.dispatch_date if pack else '-' }}</div>
+  <div><b>Dispatch No</b>{{ pack.dispatch_no if pack else '-' }}</div>
+  <div><b>Remarks</b>{{ pack.remarks if pack else '-' }}</div>
+</div>
+<div class="sig">
+  <div>Packed By</div>
+  <div>Packing Manager</div>
+  <div>QC Release</div>
+</div>
+{% endblock %}

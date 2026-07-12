@@ -1,0 +1,51 @@
+{% extends "layouts/base.html" %}
+{% block title %}Issue Audit · {{ order_no }}{% endblock %}
+{% block content %}
+<div class="container-fluid py-3">
+  <div class="pis-hero mb-4" style="background:linear-gradient(135deg,#132947,#0c91a3);border-radius:22px;color:#fff;padding:26px 30px;">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
+      <div>
+        <span class="pis-chip mb-3" style="background:rgba(255,255,255,.15);color:#fff;border-radius:999px;padding:6px 12px;font-weight:800;font-size:12px;display:inline-flex;">Audit Trail</span>
+        <h2 class="mb-1 text-white">Store Issuance — Re-Issue / Edit History</h2>
+        <p class="mb-0 opacity-75">{{ order_no }} · every quantity, UOM or routing change with who and when.</p>
+      </div>
+      <a class="btn btn-light" href="/production/orders/{{ order_no }}/store-issuance">{{ t('action.back') }}</a>
+    </div>
+  </div>
+
+  <div class="card shadow-none border" data-component-card>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table fs-9 mb-0 pis-table">
+          <thead class="bg-body-highlight">
+            <tr>
+              <th class="ps-4">When</th><th>By</th><th>Ingredient</th>
+              <th>Qty (old → new)</th><th>UOM (old → new)</th><th>Section (old → new)</th>
+              <th class="pe-4">Remarks</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in rows %}
+            <tr>
+              <td class="ps-4 text-body-tertiary">{{ r.changed_at }}</td>
+              <td class="fw-bold">{{ r.changed_by or '-' }}</td>
+              <td><strong>{{ r.ingredient_code }}</strong><br><span class="text-body-tertiary">{{ r.ingredient_name }}</span></td>
+              <td>
+                <span class="text-body-tertiary">{{ r.old_qty }}</span>
+                <span class="uil uil-arrow-right mx-1"></span>
+                <strong class="{% if (r.new_qty or 0) != (r.old_qty or 0) %}text-warning{% endif %}">{{ r.new_qty }}</strong>
+              </td>
+              <td>{{ r.old_uom or '-' }} <span class="uil uil-arrow-right mx-1"></span> {{ r.new_uom or '-' }}</td>
+              <td>{{ r.old_section or '-' }} <span class="uil uil-arrow-right mx-1"></span> {{ r.new_section or '-' }}</td>
+              <td class="pe-4">{{ r.remarks or '-' }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="7" class="text-center text-body-tertiary py-5">No re-issue or edit has been recorded for this order yet.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

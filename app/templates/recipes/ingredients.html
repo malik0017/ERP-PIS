@@ -1,0 +1,106 @@
+{% extends "layouts/base.html" %}
+
+{% block content %}
+<style>
+.pis-page { padding: 4px 0 24px; }
+.pis-title h1 { margin:0; font-size:30px; font-weight:800; color:#062b49; }
+.pis-title p { color:#6b8192; margin-top:6px; }
+.pis-card { background:#fff; border:1px solid #d9e6f2; border-radius:16px; box-shadow:0 8px 22px rgba(6,43,73,.06); margin-bottom:16px; }
+.pis-card-body { padding:16px; }
+.pis-summary-grid { display:grid; grid-template-columns: repeat(3, 1fr); gap:14px; margin:16px 0; }
+.pis-summary-card { background:#fff; border:1px solid #d9e6f2; border-radius:14px; padding:16px; }
+.pis-summary-card span { display:block; color:#6b8192; font-size:13px; margin-bottom:8px; }
+.pis-summary-card strong { color:#062b49; font-size:28px; font-weight:800; }
+.pis-filter-form { display:grid; grid-template-columns:1.5fr .7fr auto; gap:10px; align-items:end; }
+.pis-field label { display:block; font-size:12px; color:#526a7c; font-weight:700; margin-bottom:5px; }
+.pis-input,.pis-select { width:100%; border:1px solid #cbdbea; border-radius:10px; padding:9px 11px; color:#062b49; background:#fff; }
+.pis-btn { border:0; border-radius:10px; padding:10px 14px; font-weight:800; text-decoration:none; display:inline-flex; align-items:center; gap:7px; cursor:pointer; }
+.pis-btn-primary { background:#0d7f91; color:white; }
+.pis-btn-secondary { background:#eaf2f8; color:#062b49; }
+.pis-table-wrap { overflow-x:auto; }
+.pis-table { width:100%; border-collapse:separate; border-spacing:0; font-size:13px; }
+.pis-table th { background:#eef5fa; color:#062b49; text-align:left; padding:12px 10px; font-weight:800; border-bottom:1px solid #dce8f2; white-space:nowrap; }
+.pis-table td { border-bottom:1px solid #edf3f8; padding:10px; color:#173b55; vertical-align:middle; }
+.pis-code { font-weight:800; color:#0d7f91; white-space:nowrap; }
+.pis-empty { text-align:center; padding:28px; color:#738899; }
+.pis-badge { border-radius:999px; padding:5px 9px; font-size:11px; font-weight:800; display:inline-block; white-space:nowrap; }
+.pis-badge-active { background:#dcf8e7; color:#007a3d; }
+.pis-badge-pending { background:#fff3d6; color:#a76d00; }
+.pis-badge-inactive { background:#f3f5f7; color:#697b88; }
+.pis-badge-danger { background:#ffe1df; color:#b42318; }
+@media(max-width:900px){.pis-summary-grid,.pis-filter-form{grid-template-columns:1fr;}}
+</style>
+
+<div class="pis-page">
+  <div class="pis-title">
+    <h1>Recipe Ingredients / BOM Master</h1>
+    <p>View uploaded recipe ingredient lines linked with recipe master and inventory codes.</p>
+  </div>
+
+  <div class="pis-summary-grid">
+    <div class="pis-summary-card"><span>Total BOM Lines</span><strong>{{ stats.total_lines }}</strong></div>
+    <div class="pis-summary-card"><span>Recipes With Lines</span><strong>{{ stats.total_recipes }}</strong></div>
+    <div class="pis-summary-card"><span>Missing Cost Lines</span><strong>{{ stats.missing_lines }}</strong></div>
+  </div>
+
+  <div class="pis-card"><div class="pis-card-body">
+    <form method="get" action="/recipes/ingredients" class="pis-filter-form">
+      <div class="pis-field">
+        <label>Search</label>
+        <input class="pis-input" type="text" name="search" placeholder="Recipe code, recipe name, item code or item name" value="{{ search }}">
+      </div>
+      <div class="pis-field">
+        <label>Recipe Status</label>
+        <select class="pis-select" name="status">
+          <option value="ACTIVE" {% if status == "ACTIVE" %}selected{% endif %}>ACTIVE only</option>
+          <option value="ALL" {% if status == "ALL" %}selected{% endif %}>ALL versions</option>
+          <option value="INACTIVE" {% if status == "INACTIVE" %}selected{% endif %}>INACTIVE</option>
+          <option value="PENDING" {% if status == "PENDING" %}selected{% endif %}>PENDING</option>
+        </select>
+      </div>
+      <div class="pis-field">
+        <label>&nbsp;</label>
+        <button type="submit" class="pis-btn pis-btn-primary">Filter</button>
+      </div>
+    </form>
+  </div></div>
+
+  <div class="pis-card"><div class="pis-card-body">
+    <div class="pis-table-wrap">
+      <table class="pis-table">
+        <thead>
+          <tr>
+            <th>Recipe Code</th><th>Recipe Name</th><th>Status</th><th>Version</th><th>Line</th><th>Type</th><th>Inventory Code</th><th>Item Name</th><th>UOM</th><th>Qty/Batch</th><th>Qty/Portion</th><th>Cost/UOM</th><th>Line Cost</th><th>Missing</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for l in lines %}
+          <tr>
+            <td class="pis-code"><a href="/recipes/{{ l.recipe_id }}">{{ l.recipe_code }}</a></td>
+            <td>{{ l.recipe_name }}</td>
+            <td>
+              {% if l.recipe_status == "ACTIVE" %}<span class="pis-badge pis-badge-active">ACTIVE</span>
+              {% elif l.recipe_status == "PENDING" %}<span class="pis-badge pis-badge-pending">PENDING</span>
+              {% else %}<span class="pis-badge pis-badge-inactive">{{ l.recipe_status }}</span>{% endif %}
+            </td>
+            <td>V{{ l.version }}</td>
+            <td>{{ l.line_no }}</td>
+            <td>{{ l.line_type }}</td>
+            <td class="pis-code">{{ l.inventory_code or "-" }}</td>
+            <td>{{ l.item_name }}</td>
+            <td>{{ l.uom or "-" }}</td>
+            <td>{{ "%.4f"|format(l.qty_batch or 0) }}</td>
+            <td>{{ "%.6f"|format(l.qty_per_portion or 0) }}</td>
+            <td>{{ "%.6f"|format(l.cost_uom or 0) }}</td>
+            <td>{{ "%.4f"|format(l.line_cost or 0) }}</td>
+            <td>{% if l.missing_cost %}<span class="pis-badge pis-badge-danger">YES</span>{% else %}<span class="pis-badge pis-badge-active">NO</span>{% endif %}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="14" class="pis-empty">No recipe ingredient/BOM lines found for this filter.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div></div>
+</div>
+{% endblock %}

@@ -1,0 +1,188 @@
+{# =========================================================================
+   ISFC PIMS - Global Toast + Confirm + Notification Bell system
+   Include ONCE in layouts/base.html just before {% block extra_js %}.
+   Provides:
+     1. window.showToast(message, type, title)  -> top-right Phoenix toast
+     2. data-confirm="..." on any <form> or <a>  -> beautiful confirm modal
+        (replaces the ugly browser confirm() popup)
+     3. ?success= / ?error= / ?warning= / ?msg= query params auto-show toasts
+     4. Notification bell badge fed by /notifications/summary
+   ========================================================================= #}
+
+<div id="isfcToastArea" class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 20000; margin-top: 64px;"></div>
+
+<div class="modal fade" id="isfcConfirmModal" tabindex="-1" aria-hidden="true" style="z-index: 20010;">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0 shadow-lg" style="border-radius:16px;">
+      <div class="modal-body p-4 text-center">
+        <div id="isfcConfirmIcon" class="d-inline-flex align-items-center justify-content-center rounded-circle mb-3"
+             style="width:64px;height:64px;background:var(--phoenix-warning-bg-subtle,#fff3cd);">
+          <span class="uil uil-exclamation-triangle fs-4 text-warning"></span>
+        </div>
+        <h4 class="mb-2" id="isfcConfirmTitle">Are you sure?</h4>
+        <p class="text-body-tertiary mb-4" id="isfcConfirmMessage">This action cannot be undone.</p>
+        <div class="d-flex gap-2 justify-content-center">
+          <button type="button" class="btn btn-phoenix-secondary px-4" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-danger px-4" id="isfcConfirmOk">Yes, continue</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ---------------------------------------------------------------
+     1. Toast system
+  ----------------------------------------------------------------*/
+  var TYPES = {
+    success: { icon: 'uil-check-circle',        cls: 'text-bg-success',  title: 'Success' },
+    error:   { icon: 'uil-times-circle',        cls: 'text-bg-danger',   title: 'Error' },
+    danger:  { icon: 'uil-times-circle',        cls: 'text-bg-danger',   title: 'Error' },
+    warning: { icon: 'uil-exclamation-triangle',cls: 'text-bg-warning',  title: 'Warning' },
+    info:    { icon: 'uil-info-circle',         cls: 'text-bg-info',     title: 'Notice' }
+  };
+
+  window.showToast = function (message, type, title) {
+    type = TYPES[type] ? type : 'info';
+    var cfg = TYPES[type];
+    var area = document.getElementById('isfcToastArea');
+    if (!area || !message) return;
+
+    var el = document.createElement('div');
+    el.className = 'toast align-items-center border-0 shadow ' + cfg.cls;
+    el.setAttribute('role', 'alert');
+    el.style.borderRadius = '12px';
+    el.style.minWidth = '320px';
+    el.innerHTML =
+      '<div class="d-flex">' +
+        '<div class="toast-body d-flex align-items-start gap-2 py-3">' +
+          '<span class="uil ' + cfg.icon + ' fs-8 mt-1"></span>' +
+          '<div>' +
+            '<div class="fw-bold">' + (title || cfg.title) + '</div>' +
+            '<div class="fs-9">' + String(message).replace(/</g, '&lt;') + '</div>' +
+          '</div>' +
+        '</div>' +
+        '<button type="button" class="btn-close btn-close-white me-3 m-auto" data-bs-dismiss="toast"></button>' +
+      '</div>';
+    area.appendChild(el);
+    var t = new bootstrap.Toast(el, { delay: type === 'error' ? 7000 : 4500 });
+    t.show();
+    el.addEventListener('hidden.bs.toast', function () { el.remove(); });
+  };
+
+  /* ---------------------------------------------------------------
+     2. Flash messages from URL query params (?success=, ?error=...)
+        After showing, clean the URL so refresh does not re-toast.
+  ----------------------------------------------------------------*/
+  function flashFromQuery() {
+    var params = new URLSearchParams(window.location.search);
+    var shown = false;
+    [['success','success'],['error','error'],['warning','warning'],['msg','info'],['message','info']].forEach(function (pair) {
+      var val = params.get(pair[0]);
+      if (val) { window.showToast(val, pair[1]); params.delete(pair[0]); shown = true; }
+    });
+    if (shown) {
+      var qs = params.toString();
+      var clean = window.location.pathname + (qs ? '?' + qs : '') + window.location.hash;
+      window.history.replaceState({}, document.title, clean);
+    }
+  }
+
+  /* ---------------------------------------------------------------
+     3. Beautiful confirm modal (replaces confirm())
+        Usage:
+          <form method="post" data-confirm="Delete this user?">...
+          <a href="..." data-confirm="Reset password to default?">
+        Optional: data-confirm-title, data-confirm-ok, data-confirm-variant
+  ----------------------------------------------------------------*/
+  var pendingAction = null;
+
+  function openConfirm(opts) {
+    var modalEl = document.getElementById('isfcConfirmModal');
+    document.getElementById('isfcConfirmTitle').textContent = opts.title || 'Are you sure?';
+    document.getElementById('isfcConfirmMessage').textContent = opts.message || 'This action cannot be undone.';
+    var ok = document.getElementById('isfcConfirmOk');
+    ok.textContent = opts.okText || 'Yes, continue';
+    ok.className = 'btn px-4 btn-' + (opts.variant || 'danger');
+    pendingAction = opts.onConfirm;
+    bootstrap.Modal.getOrCreateInstance(modalEl).show();
+  }
+
+  document.addEventListener('click', function (ev) {
+    var ok = ev.target.closest('#isfcConfirmOk');
+    if (ok && pendingAction) {
+      var run = pendingAction; pendingAction = null;
+      bootstrap.Modal.getInstance(document.getElementById('isfcConfirmModal')).hide();
+      run();
+    }
+  });
+
+  document.addEventListener('submit', function (ev) {
+    var form = ev.target.closest('form[data-confirm]');
+    if (!form || form.dataset.confirmed === '1') return;
+    ev.preventDefault();
+    openConfirm({
+      message: form.dataset.confirm,
+      title: form.dataset.confirmTitle,
+      okText: form.dataset.confirmOk,
+      variant: form.dataset.confirmVariant,
+      onConfirm: function () { form.dataset.confirmed = '1'; form.requestSubmit ? form.requestSubmit() : form.submit(); }
+    });
+  }, true);
+
+  document.addEventListener('click', function (ev) {
+    var link = ev.target.closest('a[data-confirm]');
+    if (!link) return;
+    ev.preventDefault();
+    openConfirm({
+      message: link.dataset.confirm,
+      title: link.dataset.confirmTitle,
+      okText: link.dataset.confirmOk,
+      variant: link.dataset.confirmVariant,
+      onConfirm: function () { window.location.href = link.href; }
+    });
+  });
+
+  /* ---------------------------------------------------------------
+     4. Notification bell - polls /notifications/summary
+        Attaches a red badge to the header bell if present, and keeps
+        working silently if the endpoint is not available.
+  ----------------------------------------------------------------*/
+  function refreshNotifications() {
+    fetch('/notifications/summary', { headers: { 'Accept': 'application/json' } })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (data) {
+        if (!data) return;
+        var total = data.total || 0;
+        var bell = document.querySelector('[data-notification-bell]') ||
+                   document.querySelector('.uil-bell') ||
+                   document.querySelector('[data-feather="bell"]');
+        if (!bell) return;
+        var host = bell.closest('a, button') || bell.parentElement;
+        if (!host) return;
+        host.style.position = 'relative';
+        if (!host.getAttribute('href') && host.tagName === 'A') host.setAttribute('href', '/notifications');
+        var badge = host.querySelector('.isfc-notif-badge');
+        if (total > 0) {
+          if (!badge) {
+            badge = document.createElement('span');
+            badge.className = 'isfc-notif-badge badge rounded-pill bg-danger position-absolute';
+            badge.style.cssText = 'top:2px;right:0;font-size:10px;';
+            host.appendChild(badge);
+          }
+          badge.textContent = total > 99 ? '99+' : total;
+        } else if (badge) { badge.remove(); }
+      })
+      .catch(function () { /* silent */ });
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    flashFromQuery();
+    refreshNotifications();
+    setInterval(refreshNotifications, 60000);
+  });
+})();
+</script>

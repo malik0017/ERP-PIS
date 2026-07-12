@@ -1,0 +1,23 @@
+{% extends "layouts/base.html" %}
+{% block title %}Access Denied{% endblock %}
+{% block content %}
+<div class="container-fluid py-4">
+  <div class="pis-hero mb-3">
+    <h1 class="mb-1">Access Denied</h1>
+    <p class="mb-0">You do not have permission for this page. Contact the administrator if this access is required.</p>
+  </div>
+  <div class="pis-card p-4">
+    <h4 class="mb-2">Permission Required</h4>
+    <p class="text-secondary mb-3">{{ detail }}</p>
+    <button class="btn btn-theme" onclick="history.back()">Go Back</button>
+    <a href="/dashboard" class="btn btn-light ms-2">Dashboard</a>
+  </div>
+</div>
+<script>
+document.addEventListener('DOMContentLoaded', function(){
+  if (window.showToast) {
+    window.showToast('error', 'Access denied', '{{ detail|e }}');
+  }
+});
+</script>
+{% endblock %}

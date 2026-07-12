@@ -1,0 +1,344 @@
+{% extends "layouts/base.html" %} {% block content %}
+<style>
+  .sap-card {
+    background: #fff;
+    border: 1px solid #dce8f2;
+    border-radius: 16px;
+    box-shadow: 0 10px 26px rgba(15, 30, 50, 0.06);
+    padding: 18px;
+    margin-bottom: 16px;
+  }
+  .sap-title {
+    font-weight: 800;
+    color: #142a46;
+    margin: 0;
+  }
+  .sap-muted {
+    color: #6f8196;
+  }
+  .sap-help {
+    background: #e7f8ff;
+    border: 1px solid #a7e7ff;
+    border-radius: 14px;
+    padding: 12px;
+    color: #226;
+  }
+  .sap-grid {
+    display: grid;
+    grid-template-columns: 1.35fr 1fr 1fr 150px 140px;
+    gap: 12px;
+    align-items: end;
+  }
+  .sap-line {
+    display: grid;
+    grid-template-columns: minmax(360px, 1fr) 150px 42px;
+    gap: 10px;
+    align-items: end;
+    margin-bottom: 10px;
+  }
+  .sap-line-pro {
+    display: grid;
+    grid-template-columns: minmax(360px, 1fr) 170px 44px;
+    gap: 12px;
+    align-items: start;
+    border: 1px solid #dce8f2;
+    border-radius: 16px;
+    background: #fbfdff;
+    padding: 12px;
+    margin-bottom: 10px;
+  }
+  .sap-line-pro .sap-label {
+    min-height: 20px;
+  }
+  .sap-line-pro .sap-danger {
+    height: 42px;
+    margin-top: 25px;
+  }
+  .sap-label {
+    font-weight: 800;
+    color: #142a46;
+    margin-bottom: 5px;
+  }
+  .sap-input {
+    width: 100%;
+    border: 1px solid #cbdbea;
+    border-radius: 12px;
+    padding: 9px 11px;
+    background: #fff;
+  }
+  .sap-btn {
+    border: 0;
+    border-radius: 10px;
+    padding: 9px 13px;
+    font-weight: 800;
+  }
+  .sap-primary {
+    background: #315efb;
+    color: #fff;
+  }
+  .sap-soft {
+    background: #eaf2f8;
+    color: #142a46;
+  }
+  .sap-danger {
+    background: #fff0f0;
+    color: #c11;
+    border: 1px solid #ffc7c7;
+  }
+  .recipe-info {
+    display: block;
+    margin-top: 4px;
+    white-space: normal;
+    color: #6f8196;
+    font-size: 12px;
+  }
+  .portal-note {
+    font-size: 13px;
+    color: #6f8196;
+  }
+  @media (max-width: 1200px) {
+    .sap-grid {
+      grid-template-columns: 1fr 1fr;
+    }
+    .sap-line {
+      grid-template-columns: 1fr 150px 42px;
+    }
+  }
+  @media (max-width: 760px) {
+    .sap-grid,
+    .sap-line {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
+<div class="container-fluid py-3">
+  <h3 class="sap-title">Customer / Internal Order Portal</h3>
+  <div class="sap-help my-3">
+    Customer, Brand Code & Name, Sales Channel and Recipe Code & Name are linked
+    with master data. Search works by code or name.
+  </div>
+
+  <div class="sap-card">
+    <form method="post" action="/production/orders/create" id="orderForm">
+      <div class="sap-grid">
+        <div>
+          <div class="sap-label">Customer Code & Name</div>
+          <input
+            class="sap-input"
+            list="customerList"
+            name="customer_display"
+            id="customer_display"
+            placeholder="Search customer code or name"
+            required
+          />
+          <input type="hidden" name="customer_no" id="customer_no" />
+          <input type="hidden" name="customer_name" id="customer_name" />
+        </div>
+        <div>
+          <div class="sap-label">Brand Code & Name</div>
+          <input
+            class="sap-input"
+            list="brandList"
+            name="brand_display"
+            id="brand_display"
+            placeholder="Search brand code or name"
+          />
+          <input type="hidden" name="brand" id="brand" />
+        </div>
+        <div>
+          <div class="sap-label">Sales Channel</div>
+          <input
+            class="sap-input"
+            list="channelList"
+            name="channel_display"
+            id="channel_display"
+            placeholder="Search sales channel"
+          />
+          <input type="hidden" name="channel" id="channel" />
+        </div>
+        <div>
+          <div class="sap-label">Delivery Date</div>
+          <input
+            class="sap-input"
+            type="date"
+            name="required_delivery_date"
+            required
+          />
+        </div>
+        <div>
+          <div class="sap-label">Delivery Time</div>
+          <input class="sap-input" type="time" name="required_delivery_time" />
+        </div>
+      </div>
+
+      <datalist id="customerList">
+        {% for c in customers %}
+        <option
+          value="{{ c.customer_code }} - {{ c.customer_name }}"
+          data-code="{{ c.customer_code }}"
+          data-name="{{ c.customer_name }}"
+          data-brand="{{ c.brand }}"
+        ></option>
+        {% endfor %}
+      </datalist>
+      <datalist id="brandList">
+        {% for b in brands %}
+        <option
+          value="{{ b.brand_code }} - {{ b.brand_name }}"
+          data-code="{{ b.brand_code }}"
+          data-name="{{ b.brand_name }}"
+        ></option>
+        {% endfor %}
+      </datalist>
+      <datalist id="channelList">
+        {% for ch in channels %}
+        <option
+          value="{{ ch.channel_code }} - {{ ch.channel_name }}"
+          data-code="{{ ch.channel_code }}"
+          data-name="{{ ch.channel_name }}"
+        ></option>
+        {% endfor %}
+      </datalist>
+      <datalist id="recipeList">
+        {% for r in recipes %}
+        <option
+          value="{{ r.recipe_code }} - {{ r.recipe_name }}"
+          data-code="{{ r.recipe_code }}"
+          data-name="{{ r.recipe_name }}"
+          data-food="{{ r.food_cost_per_portion or 0 }}"
+          data-sale="{{ r.sale_price_per_portion or 0 }}"
+          data-bom="{{ r.bom_lines or 0 }}"
+        ></option>
+        {% endfor %}
+      </datalist>
+
+      <hr />
+      <div
+        class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2"
+      >
+        <h5 class="m-0">Recipes Ordered</h5>
+        <span class="portal-note"
+          >Quantity Ordered is aligned with Recipe Code & Name and means total
+          portions ordered.</span
+        >
+      </div>
+
+      <div id="portal-lines" class="portal-lines-pro">
+        <div class="sap-line-pro order-line">
+          <div>
+            <div class="sap-label">Recipe Code & Name</div>
+            <input
+              class="sap-input recipe-display"
+              list="recipeList"
+              name="recipe_display"
+              placeholder="Type recipe code or recipe name"
+              required
+            />
+            <input type="hidden" name="recipe_no" class="recipe-no" />
+            <input type="hidden" name="recipe_name" class="recipe-name" />
+            <small class="recipe-info"></small>
+          </div>
+          <div>
+            <div class="sap-label">Quantity Ordered</div>
+            <input
+              class="sap-input"
+              type="number"
+              step="0.01"
+              min="0"
+              name="required_portions"
+              value="0"
+              required
+            />
+          </div>
+          <div>
+            <button
+              type="button"
+              class="sap-btn sap-danger"
+              onclick="removeLine(this)"
+            >
+              X
+            </button>
+          </div>
+        </div>
+      </div>
+      <button type="button" class="sap-btn sap-soft" onclick="addPortalLine()">
+        Add Recipe
+      </button>
+      <button class="sap-btn sap-primary">Submit Order</button>
+    </form>
+  </div>
+</div>
+<script>
+  function splitDisplay(v) {
+    const i = (v || "").indexOf(" - ");
+    return i >= 0 ? [v.slice(0, i), v.slice(i + 3)] : ["", v || ""];
+  }
+  function optionByValue(listId, value) {
+    return Array.from(document.getElementById(listId).options).find(
+      (o) => o.value === value
+    );
+  }
+  function bindHeaderFields() {
+    const c = document.getElementById("customer_display");
+    const opt = optionByValue("customerList", c.value);
+    const parts = splitDisplay(c.value);
+    document.getElementById("customer_no").value =
+      opt?.dataset.code || parts[0] || "";
+    document.getElementById("customer_name").value =
+      opt?.dataset.name || parts[1] || c.value;
+    const b = document.getElementById("brand_display");
+    const bopt = optionByValue("brandList", b.value);
+    document.getElementById("brand").value =
+      bopt?.dataset.name || splitDisplay(b.value)[1] || b.value;
+    const ch = document.getElementById("channel_display");
+    const chopt = optionByValue("channelList", ch.value);
+    document.getElementById("channel").value =
+      chopt?.dataset.name || splitDisplay(ch.value)[1] || ch.value;
+  }
+  function bindRecipeLine(line) {
+    const input = line.querySelector(".recipe-display");
+    const opt = optionByValue("recipeList", input.value);
+    const parts = splitDisplay(input.value);
+    line.querySelector(".recipe-no").value =
+      opt?.dataset.code || parts[0] || "";
+    line.querySelector(".recipe-name").value =
+      opt?.dataset.name || parts[1] || input.value;
+    const info = line.querySelector(".recipe-info");
+    info.textContent = opt
+      ? `Food/portion: ${opt.dataset.food || 0} | Sale/portion: ${
+          opt.dataset.sale || 0
+        } | BOM lines: ${opt.dataset.bom || 0}`
+      : "";
+  }
+  function removeLine(btn) {
+    const rows = document.querySelectorAll(".order-line");
+    if (rows.length > 1) {
+      btn.closest(".order-line").remove();
+    }
+  }
+  function addPortalLine() {
+    const first = document.querySelector(".order-line");
+    const clone = first.cloneNode(true);
+    clone.querySelectorAll("input").forEach((i) => {
+      if (i.type === "number") i.value = "0";
+      else i.value = "";
+    });
+    clone.querySelector(".recipe-info").textContent = "";
+    document.getElementById("portal-lines").appendChild(clone);
+  }
+  document.addEventListener("input", (e) => {
+    if (
+      ["customer_display", "brand_display", "channel_display"].includes(
+        e.target.id
+      )
+    )
+      bindHeaderFields();
+    if (e.target.classList.contains("recipe-display"))
+      bindRecipeLine(e.target.closest(".order-line"));
+  });
+  document.getElementById("orderForm").addEventListener("submit", (e) => {
+    bindHeaderFields();
+    document.querySelectorAll(".order-line").forEach(bindRecipeLine);
+  });
+</script>
+{% endblock %}

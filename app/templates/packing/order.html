@@ -1,0 +1,169 @@
+{% extends "layouts/base.html" %}
+{% block title %}Packing Order{% endblock %}
+{% block extra_css %}
+<style>
+  .pis-wrap {
+    padding: 22px 28px 40px;
+    color: #102542
+  }
+
+  .hero {
+    background: linear-gradient(135deg, #102542, #0d7f91);
+    color: white;
+    border-radius: 24px;
+    padding: 24px 28px;
+    margin-bottom: 18px
+  }
+
+  .hero h1 {
+    font-size: 30px;
+    font-weight: 950;
+    margin: 0
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: 1.1fr .9fr;
+    gap: 16px
+  }
+
+  .panel {
+    background: white;
+    border: 1px solid #dce9f3;
+    border-radius: 22px;
+    padding: 18px;
+    box-shadow: 0 12px 28px rgba(15, 30, 50, .06)
+  }
+
+  .form-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 14px
+  }
+
+  .form-control,
+  .form-select {
+    border-radius: 13px;
+    padding: 12px
+  }
+
+  .btn-main {
+    background: #0d7f91;
+    color: #fff;
+    border: 0;
+    border-radius: 13px;
+    padding: 12px 18px;
+    font-weight: 950
+  }
+
+  .info {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px
+  }
+
+  .tile {
+    background: #f6fafc;
+    border: 1px solid #dce9f3;
+    border-radius: 16px;
+    padding: 12px
+  }
+
+  .tile span {
+    display: block;
+    color: #70869d;
+    font-size: 12px;
+    font-weight: 900
+  }
+
+  .tile strong {
+    font-size: 22px
+  }
+
+  .table-pro {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0
+  }
+
+  .table-pro th {
+    background: #eef5fa;
+    padding: 10px
+  }
+
+  .table-pro td {
+    padding: 10px;
+    border-bottom: 1px solid #edf3f8
+  }
+
+  @media(max-width:900px) {
+
+    .grid,
+    .form-grid {
+      grid-template-columns: 1fr
+    }
+  }
+</style>
+{% endblock %}
+{% block content %}
+<div class="pis-wrap">
+  <div class="hero">
+    <h1>Trayline / Packing · {{ row.order_no }}</h1>
+    <p>Current status: {{ row.dispatch_status }} · Next process after packing: Dispatch / Delivery</p>
+  </div>
+  {% set active_step = 'Packing' %}{% include 'partials/process_status_row.html' %}
+  <div class="grid">
+    <div class="panel">
+      <h3>Pack Order</h3>
+      <form method="post" action="/packing/{{ row.id }}/update">
+        <div class="form-grid">
+          <div><label>Packed Portions</label><input class="form-control" name="packed_portions" type="number"
+              step="0.01" value="{{ row.packed_portions or (order.total_planned_portions if order else 0) }}"></div>
+          <div><label>Rejected Portions</label><input class="form-control" name="rejected_portions" type="number"
+              step="0.01" value="{{ row.rejected_portions or 0 }}"></div>
+          <div><label>Packing / Dispatch Date</label><input class="form-control" name="dispatch_date" type="date"
+              value="{{ row.dispatch_date or '' }}"></div>
+          <div><label>Packing Status</label><select class="form-select" name="packing_status">
+              <option>Packing Pending</option>
+              <option value="Packing In Progress">Packing In Progress</option>
+              <option value="Packed" selected>Packed</option>
+            </select></div>
+          <div style="grid-column:1/-1"><label>Packing Remarks</label><input class="form-control" name="remarks"
+              value="{{ row.remarks or '' }}" placeholder="Trayline / packing notes"></div>
+        </div>
+        <button class="btn-main mt-3" type="submit"><i class="bi bi-check2-circle"></i> Save Packing and Release to
+          Dispatch</button>
+      </form>
+    </div>
+    <div class="panel">
+      <h3>Order Summary</h3>
+      <div class="info mt-2">
+        <div class="tile"><span>Customer</span><strong>{{ row.customer_name or '—' }}</strong></div>
+        <div class="tile"><span>Delivery</span><strong>{{ order.required_delivery_date if order else '—' }} {{
+            order.required_delivery_time if order else '' }}</strong></div>
+        <div class="tile"><span>Planned Portions</span><strong>{{ order.total_planned_portions if order else
+            row.packed_portions }}</strong></div>
+        <div class="tile"><span>Order Status</span><strong>{{ order.status if order else row.dispatch_status }}</strong>
+        </div>
+      </div>
+      <h4 class="mt-4">QC History</h4>
+      <table class="table-pro">
+        <thead>
+          <tr>
+            <th>QC No</th>
+            <th>Status</th>
+            <th>Score</th>
+          </tr>
+        </thead>
+        <tbody>{% for q in qc_rows %}<tr>
+            <td>{{ q.qc_no }}</td>
+            <td>{{ q.qc_status }}</td>
+            <td>{{ q.overall_score }}</td>
+          </tr>{% else %}<tr>
+            <td colspan="3" class="text-secondary">No QC history found.</td>
+          </tr>{% endfor %}</tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

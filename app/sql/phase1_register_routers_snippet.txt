@@ -1,0 +1,11 @@
+In app/main.py add these imports:
+
+from app.modules.orders.routes import router as orders_router
+from app.modules.qc.routes import router as qc_router
+from app.modules.dispatch.routes import router as dispatch_router
+
+Then add these with the other include_router calls:
+
+app.include_router(orders_router)
+app.include_router(qc_router)
+app.include_router(dispatch_router)

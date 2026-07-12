@@ -1,0 +1,39 @@
+{% extends "layouts/base.html" %}
+{% block content %}
+<div class="container-fluid py-3">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h3>Recipe Missing Data</h3>
+            <p class="text-muted">Lines with missing inventory code or zero cost.</p>
+        </div><a href="/recipes" class="btn btn-outline-secondary btn-sm">Back</a>
+    </div>
+    <div class="card p-4">
+        <div class="card-body table-responsive">
+            <table class="table table-sm table-bordered">
+                <tr>
+                    <th>Recipe</th>
+                    <th>Line</th>
+                    <th>Item Code</th>
+                    <th>Item Name</th>
+                    <th>UOM</th>
+                    <th>Qty/Batch</th>
+                    <th>Cost/UOM</th>
+                    <th>Issue</th>
+                </tr>{% for line in lines %}<tr>
+                    <td>{{ line.recipe.recipe_code if line.recipe else line.recipe_id }}</td>
+                    <td>{{ line.line_no }}</td>
+                    <td>{{ line.inventory_code or 'Missing' }}</td>
+                    <td>{{ line.item_name }}</td>
+                    <td>{{ line.uom }}</td>
+                    <td>{{ line.qty_batch }}</td>
+                    <td>{{ line.cost_uom }}</td>
+                    <td>{% if not line.inventory_code %}Missing code{% elif not line.cost_uom %}Missing cost{% else
+                        %}Review{% endif %}</td>
+                </tr>{% else %}<tr>
+                    <td colspan="8" class="text-center text-success">No missing recipe costing lines found.</td>
+                </tr>{% endfor %}
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

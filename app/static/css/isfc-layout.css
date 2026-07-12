@@ -1,0 +1,434 @@
+/* ==========================================================================
+   ISFC PIMS — isfc-layout.css (Batch 6: COMPLETE REWRITE)
+   
+   NO ZOOM HACKS - uses proper fluid responsive design
+   Works perfectly with Phoenix Bootstrap theme at all viewport sizes
+   Dark mode and RTL support via complementary CSS files
+   ========================================================================== */
+
+/* ========== 1. NORMALIZE PHOENIX DEFAULTS ========== */
+html {
+  font-size: 16px;  /* Use Phoenix default */
+  scroll-behavior: smooth;
+}
+
+/* Responsive font scaling WITHOUT zoom */
+@media (max-width: 1200px) {
+  html { font-size: 15px; }
+}
+
+@media (max-width: 768px) {
+  html { font-size: 14px; }
+}
+
+@media (max-width: 480px) {
+  html { font-size: 13px; }
+}
+
+/* ========== 2. CONTENT LAYOUT ========== */
+.main {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.content > .container,
+.content > .container-fluid,
+.content > .isfc-page,
+.content > .pis-page {
+  flex: 0 0 auto;
+}
+
+.footer, footer {
+  flex: 1 0 auto;
+  margin-top: auto;
+}
+
+/* ---------- 2. COLLAPSED SIDEBAR -> CONTENT FULL WIDTH ---------- */
+/* When sidebar collapses, content takes all available width */
+.navbar-vertical-collapsed .content,
+.navbar-vertical-collapsed .footer {
+  display: flex;
+  flex-direction: column;
+  width: 100% !important;
+  max-width: 100% !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  padding-left: 4.2rem;
+  transition: padding 0.2s ease;
+  box-sizing: border-box;
+}
+
+/* In RTL, apply padding to the right instead of left. */
+[dir="rtl"] .navbar-vertical-collapsed .content,
+[dir="rtl"] .navbar-vertical-collapsed .footer {
+  padding-left: 0 !important;
+  padding-right: 4.2rem;
+  margin-left: auto;
+  margin-right: 0;
+}
+
+/* Ensure main always takes full width and doesn't overflow. */
+.main {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  overflow-x: hidden;
+  box-sizing: border-box;
+}
+
+/* ========== 4. CARDS & SPACING ========== */
+.card {
+  border-radius: 0.75rem;
+  border: 1px solid var(--phoenix-border-color, #d8e2ef);
+}
+
+.card-body {
+  padding: 1.25rem;
+}
+
+.card-body.p-4 {
+  padding: 1.25rem !important;
+}
+
+/* ========== 5. HERO SECTIONS ========== */
+.isfc-hero, .rep-hero, .pis-hero {
+  background: linear-gradient(135deg, rgba(6, 75, 90, 0.95), rgba(15, 129, 149, 0.95));
+  color: #fff;
+  border-radius: 1rem;
+  padding: 2rem;
+  margin-bottom: 1.5rem;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+}
+
+.isfc-hero h1, .rep-hero h1, .pis-hero h1 {
+  font-size: 2rem;
+  font-weight: 800;
+  margin: 0 0 0.5rem;
+}
+
+.isfc-hero p, .rep-hero p, .pis-hero p {
+  font-size: 0.95rem;
+  margin: 0;
+  opacity: 0.95;
+}
+
+/* ========== 6. TABLES ========== */
+.table {
+  font-size: 0.9rem;
+  margin-bottom: 0;
+}
+
+.table > thead > tr > th {
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.75rem;
+  border-bottom: 2px solid var(--phoenix-border-color, #d8e2ef);
+  padding: 0.75rem;
+}
+
+.table > tbody > tr > td {
+  padding: 0.75rem;
+  vertical-align: middle;
+}
+
+.table-responsive {
+  scrollbar-width: thin;
+}
+
+/* ========== 7. FORMS ========== */
+.form-label {
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  font-size: 0.95rem;
+}
+
+.form-control, .form-select {
+  border-radius: 0.5rem;
+  border: 1px solid var(--phoenix-border-color, #d8e2ef);
+  padding: 0.625rem 0.875rem;
+  font-size: 0.95rem;
+}
+
+.form-control:focus, .form-select:focus {
+  border-color: var(--phoenix-primary, #2563eb);
+  box-shadow: 0 0 0 0.2rem rgba(37, 99, 235, 0.1);
+}
+
+/* ========== 8. BUTTONS ========== */
+.btn {
+  border-radius: 0.5rem;
+  font-weight: 600;
+  padding: 0.625rem 1rem;
+  font-size: 0.95rem;
+}
+
+.btn-sm {
+  padding: 0.4rem 0.75rem;
+  font-size: 0.85rem;
+}
+
+/* ========== 9. BADGES & PILLS ========== */
+.badge {
+  border-radius: 0.375rem;
+  padding: 0.35rem 0.65rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+/* ========== 10. NAVIGATION ========== */
+.navbar-vertical {
+  background: var(--phoenix-body-bg, #fff);
+}
+
+.navbar-top {
+  background: var(--phoenix-body-bg, #fff);
+  border-bottom: 1px solid var(--phoenix-border-color, #d8e2ef);
+}
+
+.nav-link {
+  color: var(--phoenix-secondary-color, #6c757d);
+  font-weight: 500;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  transition: all 0.2s ease;
+}
+
+.nav-link:hover, .nav-link.active {
+  color: var(--phoenix-primary, #2563eb);
+  background: var(--phoenix-body-highlight-bg, #f5f5f5);
+}
+
+/* ========== 11. CHARTS & GRAPHS ========== */
+.echart-chart, [class*="echart"] {
+  width: 100% !important;
+  height: 350px !important;
+}
+
+/* ========== 12. SCROLLBAR STYLING ========== */
+.scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: var(--phoenix-border-color, #d8e2ef) transparent;
+}
+
+.scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar::-webkit-scrollbar-thumb {
+  background: var(--phoenix-border-color, #d8e2ef);
+  border-radius: 3px;
+}
+
+.scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--phoenix-secondary-color, #6c757d);
+}
+
+/* ========== 13. UTILITY CLASSES ========== */
+.isfc-num {
+  direction: ltr;
+  unicode-bidi: embed;
+  font-variant-numeric: tabular-nums;
+  font-family: 'Courier New', monospace;
+}
+
+.text-body-tertiary {
+  color: var(--phoenix-secondary-color, #6c757d) !important;
+}
+
+.text-body-quaternary {
+  color: #9ca3af !important;
+}
+
+.bg-body-highlight {
+  background-color: var(--phoenix-body-highlight-bg, #f5f5f5) !important;
+}
+
+.opacity-75 {
+  opacity: 0.75;
+}
+
+/* ========== 14. RESPONSIVE HELPERS ========== */
+@media (max-width: 768px) {
+  .d-md-none {
+    display: none !important;
+  }
+  
+  .flex-md-column {
+    flex-direction: column !important;
+  }
+  
+  .card {
+    margin-bottom: 1rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .isfc-hero, .rep-hero, .pis-hero {
+    padding: 1.25rem;
+  }
+  
+  .isfc-hero h1 {
+    font-size: 1.5rem;
+  }
+  
+  .table {
+    font-size: 0.8rem;
+  }
+  
+  .table > thead > tr > th,
+  .table > tbody > tr > td {
+    padding: 0.5rem;
+  }
+}
+
+/* ========== 15. PRINT STYLES ========== */
+@media print {
+  .navbar-vertical, .navbar-top, .sidebar, .sidebar-toggler {
+    display: none !important;
+  }
+  
+  .content {
+    margin-left: 0 !important;
+  }
+  
+  .card {
+    page-break-inside: avoid;
+  }
+}
+
+/* ==========================================================================
+   BATCH 10 — LAYOUT CONSISTENCY FIXES
+   1. Vertical navbar collapse: content/footer previously kept the full
+      sidebar offset, leaving a dead gap on the left (right in RTL) and
+      pushing content sideways + footer upward. Phoenix moves the page with
+      margin on .content, so we normalise BOTH margin and padding for the
+      collapsed state, in LTR and RTL.
+   2. Footer always pinned to the bottom (no floating footer on short pages
+      like Order Portal).
+   3. Horizontal / combo / dual navbar: consistent top offset so page content
+      (e.g. Kitchen step chips) is not hidden or misaligned under the navbar.
+   4. Table filter toolbar breathing room (Recent Orders filter row).
+   ========================================================================== */
+
+/* ---- 1. Collapse: kill the leftover offset ---- */
+html.navbar-vertical-collapsed .content,
+html.navbar-vertical-collapsed .footer {
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  padding-left: 4.4rem !important;   /* room for the icon-only rail */
+  padding-right: 1rem !important;
+}
+html[dir="rtl"].navbar-vertical-collapsed .content,
+html[dir="rtl"].navbar-vertical-collapsed .footer {
+  padding-left: 1rem !important;
+  padding-right: 4.4rem !important;  /* mirrored rail in Arabic/RTL */
+}
+
+/* The collapsed rail itself must not reserve layout width */
+html.navbar-vertical-collapsed .navbar-vertical {
+  width: 4.2rem;
+}
+
+/* ---- 2. Sticky footer: content column always fills the viewport ---- */
+.main {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+.main > .content {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - var(--phoenix-navbar-top-height, 4rem));
+}
+.main > .content > .footer,
+.main > .content > footer {
+  margin-top: auto !important;
+  flex: 0 0 auto !important;
+}
+/* Footer content must not slide under the collapsed rail or off-screen */
+.footer .row, .footer .container-fluid { max-width: 100%; }
+
+/* ---- 3. Horizontal / combo / dual: uniform top offset for page content ---- */
+html[data-navigation-type="horizontal"] .content,
+html[data-navigation-type="combo"] .content {
+  padding-top: 3rem;
+}
+
+@media (min-width: 992px) {
+    [data-navigation-type=dual] .navbar-top.navbar-expand-lg ~ .content {
+        --phoenix-navbar-top-height: 4.3rem;
+    }
+}
+
+/* Step chips row (Order/Head Chef/BOM/... on Kitchen pages) alignment */
+html[data-navigation-type="horizontal"] .isfc-steps,
+html[data-navigation-type="horizontal"] .content > .container-fluid:first-child,
+html[data-navigation-type="dual"] .content > .container-fluid:first-child {
+  margin-top: 0.25rem;
+}
+
+
+ html[data-navigation-type="horizontal"] .pis-subflow,
+ html[data-navigation-type="dual"] .pis-subflow {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin: 8px 0 0 0;
+    padding: 0 125px;
+  }
+
+html[data-navigation-type="horizontal"] .pis-process-row,
+html[data-navigation-type="dual"] .pis-process-row  {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin: 8px 0 0 0;
+    padding: 0 125px;
+  }
+
+html[data-navigation-type="default"] .pis-process-row, 
+html[data-navigation-type="combo"] .pis-process-row {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin:20px 0!important;
+  } 
+ 
+
+  /* html[data-navigation-type="dual"] .pis-process-row {
+    display: flex;
+    gap: 8px;
+    margin: 8px 0 20px 0;
+    flex-wrap: wrap;
+    padding: 0px 125px;
+  } */
+ 
+
+/* ---- 4. Table tools / filter row padding (Recent Customer Orders etc.) ---- */
+.isfc-table-toolbar,
+.card .isfc-filter-row,
+[data-isfc-table-tools] .d-flex.justify-content-between {
+  padding-left: 1rem !important;
+  padding-right: 1rem !important;
+}
+.card > .isfc-table-toolbar:first-child { padding-top: .75rem; }
+
+/* ---- 5. RTL: never allow content to be clipped on the far edge ---- */
+html[dir="rtl"] .content { overflow-x: clip; }
+html[dir="rtl"] .footer .text-end { text-align: left !important; }

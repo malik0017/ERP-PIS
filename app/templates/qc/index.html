@@ -1,0 +1,260 @@
+{% extends "layouts/base.html" %}
+{% block title %}Quality Control{% endblock %}
+{% block extra_css %}
+<style>
+  .rep-hero {
+    background: radial-gradient(circle at 92% 8%, rgba(255, 255, 255, .22), transparent 16%), linear-gradient(135deg, #102542, #0d7f91);
+    color: #fff;
+    border-radius: 28px;
+    padding: 30px 34px;
+    box-shadow: 0 22px 48px rgba(16, 37, 66, .22);
+    margin-bottom: 16px
+  }
+
+  .rep-hero h1 {
+    font-size: 34px;
+    font-weight: 950;
+    margin: 0
+  }
+
+  .rep-hero p {
+    margin: 8px 0 0;
+    color: #e7fbff
+  }
+
+  .qc-hero h1 {
+    font-size: 31px;
+    font-weight: 950;
+    margin: 0
+  }
+
+  .qc-hero p {
+    margin: 8px 0 0;
+    color: #e5fbff
+  }
+
+  .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 12px;
+    margin-bottom: 16px
+  }
+
+  .stat {
+    background: #fff;
+    border: 1px solid #dfeaf4;
+    border-radius: 18px;
+    padding: 15px 17px;
+    box-shadow: 0 10px 24px rgba(15, 30, 50, .06)
+  }
+
+  .stat span {
+    display: block;
+    color: #71869e;
+    font-size: 12px;
+    font-weight: 900;
+    text-transform: uppercase
+  }
+
+  .stat strong {
+    font-size: 28px;
+    color: #102542;
+    font-weight: 950
+  }
+
+  .panel {
+    background: #fff;
+    border: 1px solid #dfeaf4;
+    border-radius: 22px;
+    padding: 18px;
+    box-shadow: 0 10px 24px rgba(15, 30, 50, .06);
+    margin-bottom: 18px
+  }
+
+  .panel h3 {
+    font-size: 21px;
+    font-weight: 950;
+    margin: 0 0 4px
+  }
+
+  .panel p {
+    color: #6e7f95;
+    margin-bottom: 14px
+  }
+
+  .table-pro {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 13px
+  }
+
+  .table-pro th {
+    background: #eef6fb;
+    color: #14233b;
+    text-align: left;
+    padding: 12px;
+    font-weight: 950
+  }
+
+  .table-pro td {
+    padding: 12px;
+    border-bottom: 1px solid #edf3f8;
+    vertical-align: middle
+  }
+
+  .pill {
+    border-radius: 999px;
+    padding: 5px 9px;
+    font-size: 12px;
+    font-weight: 900;
+    background: #eaf2f8;
+    color: #102542
+  }
+
+  .pill.ok {
+    background: #d9f8e3;
+    color: #087638
+  }
+
+  .pill.warn {
+    background: #fff1c9;
+    color: #9a6500
+  }
+
+  .pill.danger {
+    background: #ffe0e0;
+    color: #9b2424
+  }
+
+  .btn-pro {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    border: 0;
+    border-radius: 12px;
+    padding: 9px 12px;
+    background: #4057ff;
+    color: #fff;
+    text-decoration: none;
+    font-weight: 900
+  }
+
+  .btn-soft {
+    background: #edf4f9;
+    color: #102542
+  }
+
+  .empty {
+    padding: 25px;
+    text-align: center;
+    color: #789
+  }
+  .pis-process-row{
+    padding: 0 !important;
+  }
+
+  @media(max-width:1100px) {
+    .stat-grid {
+      grid-template-columns: repeat(2, 1fr)
+    }
+  }
+</style>
+{% endblock %}
+{% block content %}
+<div class="rep-page container-fluid">
+  <div class="rep-hero mb-3">
+    <h1>Quality Control</h1>
+    <p>Receive finished/semi-finished production from sections, perform QC checklist, then release passed orders to
+      packing/dispatch.</p>
+  </div>
+  {% set active_step = 'QC' %}
+
+  {% include 'partials/process_status_row.html' %}
+
+  {% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+  <div class="stat-grid">
+    <div class="stat"><span>Orders Waiting QC</span><strong>{{ summary.pending_orders }}</strong></div>
+    <div class="stat"><span>QC Lines</span><strong>{{ summary.pending_lines }}</strong></div>
+    <div class="stat"><span>Passed</span><strong>{{ summary.passed }}</strong></div>
+    <div class="stat"><span>On Hold</span><strong>{{ summary.hold }}</strong></div>
+    <div class="stat"><span>Rejected</span><strong>{{ summary.rejected }}</strong></div>
+  </div>
+  {% set status_options = ['Passed','Hold','Rejected'] %}
+  {% include 'partials/filter_bar.html' %}
+
+  <div class="panel">
+    <h3>QC Receiving Queue</h3>
+    <p>These orders have been transferred from kitchen/packing sections to QC.</p>
+    <div class="table-responsive">
+      <table class="table-pro">
+        <thead>
+          <tr>
+            <th>Order</th>
+            <th>Customer</th>
+            <th>Brand</th>
+            <th>Delivery</th>
+            <th>Lines</th>
+            <th>Received</th>
+            <th>Input Qty</th>
+            <th>Balance</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for o in pending_orders %}<tr>
+            <td><strong>{{ o.order_no }}</strong></td>
+            <td>{{ o.customer_name }}</td>
+            <td>{{ o.brand }}</td>
+            <td>{{ o.delivery_date }} {{ o.delivery_time or '' }}</td>
+            <td>{{ o.total_lines }}</td>
+            <td>{{ o.received_lines }}</td>
+            <td>{{ '%.2f'|format(o.input_qty or 0) }}</td>
+            <td>{{ '%.2f'|format(o.balance_qty or 0) }}</td>
+            <td><a class="btn-pro" href="/qc/orders/{{ o.order_no }}"><i class="bi bi-clipboard-check"></i> Open QC</a>
+            </td>
+          </tr>{% else %}<tr>
+            <td colspan="9" class="empty">No orders waiting for QC. Transfer completed section output to QC first.</td>
+          </tr>{% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div class="panel">
+    <h3>QC History</h3>
+    <p>Latest checks, status and score.</p>
+    <div class="table-responsive">
+      <table class="table-pro">
+        <thead>
+          <tr>
+            <th>QC No</th>
+            <th>Order</th>
+            <th>Type</th>
+            <th>Status</th>
+            <th>Score</th>
+            <th>Checked By</th>
+            <th>Checked At</th>
+            <th>Issue</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in rows %}<tr>
+            <td>{{ r.qc_no }}</td>
+            <td><a href="/production/orders/{{ r.order_no }}">{{ r.order_no }}</a></td>
+            <td>{{ r.check_type }}</td>
+            <td><span
+                class="pill {% if r.qc_status=='Passed' %}ok{% elif r.qc_status=='Rejected' %}danger{% else %}warn{% endif %}">{{
+                r.qc_status }}</span></td>
+            <td>{{ '%.2f'|format(r.overall_score or 0) }}</td>
+            <td>{{ r.checked_by }}</td>
+            <td>{{ r.checked_at or '' }}</td>
+            <td>{{ r.issue_found or '—' }}</td>
+          </tr>{% else %}<tr>
+            <td colspan="8" class="empty">No QC checks recorded yet.</td>
+          </tr>{% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

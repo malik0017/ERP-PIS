@@ -1,0 +1,436 @@
+{% extends "layouts/base.html" %}
+{% block title %}Reports Center{% endblock %}
+{% block extra_css %}
+<style>
+  .rep-page {
+    padding: 24px 32px 50px;
+    color: #102542
+  }
+
+  .rep-hero {
+    background: radial-gradient(circle at 92% 8%, rgba(255, 255, 255, .22), transparent 16%), linear-gradient(135deg, #102542, #0d7f91);
+    color: #fff;
+    border-radius: 28px;
+    padding: 30px 34px;
+    box-shadow: 0 22px 48px rgba(16, 37, 66, .22);
+    margin-bottom: 16px
+  }
+
+  .rep-hero h1 {
+    font-size: 34px;
+    font-weight: 950;
+    margin: 0
+  }
+
+  .rep-hero p {
+    margin: 8px 0 0;
+    color: #e7fbff
+  }
+
+  .quick-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin: 14px 0 18px
+  }
+
+  .quick-actions a {
+    border-radius: 999px;
+    background: #eaf3f8;
+    color: #102542;
+    text-decoration: none;
+    padding: 10px 14px;
+    font-weight: 950
+  }
+
+  .quick-actions a.active {
+    background: #0d7f91;
+    color: #fff
+  }
+
+  .kpi-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+    margin-bottom: 16px
+  }
+
+  .rep-kpi {
+    background: #fff;
+    border: 1px solid #dce9f3;
+    border-radius: 20px;
+    padding: 16px;
+    box-shadow: 0 12px 28px rgba(15, 30, 50, .06)
+  }
+
+  .rep-kpi span {
+    display: block;
+    font-size: 12px;
+    color: #6b8096;
+    text-transform: uppercase;
+    font-weight: 950
+  }
+
+  .rep-kpi strong {
+    font-size: 28px;
+    color: #102542
+  }
+
+  .panel {
+    background: #fff;
+    border: 1px solid #dce9f3;
+    border-radius: 24px;
+    padding: 18px;
+    box-shadow: 0 12px 28px rgba(15, 30, 50, .065);
+    margin-bottom: 16px;
+    display: flex;
+    flex-direction: column;
+    flex-wrap: wrap;
+    justify-content: space-evenly;
+  }
+
+  .panel h3 {
+    font-weight: 950;
+    margin: 0 0 6px
+  }
+
+  .panel p {
+    color: #6b8096;
+    margin: 0 0 12px
+  }
+
+  .report-catalog {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px
+  }
+
+  .report-card {
+    border: 1px solid #dce9f3;
+    border-radius: 20px;
+    padding: 16px;
+    background: linear-gradient(180deg, #fff, #f8fcfe);
+    display: grid;
+    gap: 10px
+  }
+
+  .report-card .top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px
+  }
+
+  .report-card i {
+    font-size: 24px;
+    color: #0d7f91
+  }
+
+  .report-card .group {
+    font-size: 11px;
+    text-transform: uppercase;
+    font-weight: 950;
+    color: #6b8096
+  }
+
+  .report-card h4 {
+    font-weight: 950;
+    font-size: 17px;
+    margin: 0;
+    color: #102542
+  }
+
+  .report-card p {
+    font-size: 13px;
+    line-height: 1.4;
+    margin: 0;
+    min-height: 54px
+  }
+
+  .report-card .metric {
+    font-weight: 950;
+    color: #0d7f91;
+    font-size: 22px
+  }
+
+  .report-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap
+  }
+
+  .report-actions a {
+    border-radius: 12px;
+    padding: 8px 10px;
+    text-decoration: none;
+    font-weight: 900;
+    background: #eef5fa;
+    color: #102542
+  }
+
+  .report-actions a.primary {
+    background: #0d7f91;
+    color: #fff
+  }
+
+  .analytics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px
+  }
+
+  .bar-row {
+    display: grid;
+    grid-template-columns: 150px 1fr 75px;
+    gap: 10px;
+    align-items: center;
+    margin: 9px 0
+  }
+
+  .bar-label {
+    font-weight: 900;
+    color: #173b55;
+    font-size: 13px
+  }
+
+  .bar-track {
+    height: 12px;
+    border-radius: 999px;
+    background: #eaf3f8;
+    overflow: hidden
+  }
+
+  .bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #0d7f91, #20bdd5);
+    border-radius: 999px
+  }
+
+  .bar-fill.dark {
+    background: linear-gradient(90deg, #102542, #0d7f91)
+  }
+
+  .bar-value {
+    text-align: right;
+    font-weight: 950
+  }
+
+  .table-pro {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 13px
+  }
+
+  .table-pro th {
+    background: #eef5fa;
+    text-align: left;
+    padding: 11px;
+    color: #18334f
+  }
+
+  .table-pro td {
+    padding: 10px;
+    border-bottom: 1px solid #edf3f8;
+    color: #27445e
+  }
+
+  .empty {
+    padding: 18px;
+    text-align: center;
+    color: #6b8096
+  }
+
+  .roadmap {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px
+  }
+
+  .roadmap .step {
+    border: 1px solid #dce9f3;
+    border-radius: 18px;
+    padding: 14px;
+    background: #f8fcfe
+  }
+
+  .roadmap .step b {
+    display: block;
+    font-size: 16px
+  }
+
+  .roadmap .step span {
+    display: block;
+    color: #6b8096;
+    font-size: 12px;
+    margin-top: 5px
+  }
+
+  @media(max-width:1180px) {
+
+    .kpi-row,
+    .report-catalog {
+      grid-template-columns: repeat(2, 1fr)
+    }
+
+    .analytics-grid {
+      grid-template-columns: 1fr
+    }
+
+    .roadmap {
+      grid-template-columns: repeat(2, 1fr)
+    }
+  }
+
+  @media(max-width:650px) {
+    .rep-page {
+      padding: 16px
+    }
+
+    .kpi-row,
+    .report-catalog,
+    .roadmap {
+      grid-template-columns: 1fr
+    }
+
+    .bar-row {
+      grid-template-columns: 110px 1fr 58px
+    }
+  }
+</style>
+{% endblock %}
+{% block content %}
+<div class="rep-page container-fluid">
+  <div class="rep-hero">
+    <h1>ISFC PIS Reports Center</h1>
+  </div>
+  <div class="quick-actions"><a href="/reports" class="active"><i class="bi bi-bar-chart-line"></i> Reports Center</a><a
+      href="/relationship-map"><i class="bi bi-diagram-3-fill"></i> Relationship Map</a><a
+      href="/reports/yield-wastage"><i class="bi bi-graph-down-arrow"></i> Yield & Wastage</a><a href="/dashboard"><i
+        class="bi bi-speedometer2"></i> Dashboard</a></div>
+
+  <div class="kpi-row">
+    <div class="rep-kpi"><span>Available Reports</span><strong>{{ kpis.reports }}</strong></div>
+    <div class="rep-kpi"><span>Active Recipes</span><strong>{{ kpis.active_recipes }}</strong></div>
+    <div class="rep-kpi"><span>Open Documents</span><strong>{{ kpis.orders }}</strong></div>
+    <div class="rep-kpi"><span>Production BOM Lines</span><strong>{{ kpis.bom_lines }}</strong></div>
+  </div>
+
+  <div class="panel">
+    <h3>Professional Report Catalog</h3>
+    <div class="report-catalog">
+      {% for r in cards %}
+      <div class="report-card">
+        <div class="top"><i class="bi {{ r.icon }}"></i><span class="group">{{ r.group }}</span></div>
+        <h4>{{ r.title }}</h4>
+        <p>{{ r.desc }}</p>
+        <div class="metric">{{ r.metric }}</div>
+        <div class="report-actions">
+          <a class="primary" href="{{ r.url }}">Open</a>
+          <a href="{{ r.export }}">CSV</a><a href="{{ r.export }}?format=xlsx">Excel</a>
+          </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="analytics-grid">
+    <div class="panel">
+      <h3>ERP Operations Trend</h3>
+      <p>Visual Phoenix ECharts view for the same report center.</p>
+      <div class="erp-chart" data-chart="bar" data-labels="BOM,Store,QC,Dispatch"
+        data-values="{{ kpis.bom_lines }},{{ kpis.orders }},{{ kpis.active_recipes }},{{ kpis.reports }}"></div>
+    </div>
+    <div class="panel">
+      <h3>Module Readiness</h3>
+      <p>Production is live; Inventory, Finance and HR continue in future phases.</p>
+      <div class="erp-chart" data-chart="donut" data-labels="Production,Inventory,Finance,HR" data-values="70,15,10,5">
+      </div>
+    </div>
+  </div>
+
+  <div class="analytics-grid">
+    <div class="panel">
+      <h3>BOM Cost by Issue Section</h3>
+      <p>Material cost concentration by kitchen/section.</p>
+      {% set max_section = (bom_section | map(attribute='cost') | max) if bom_section else 1 %}
+      {% for row in bom_section %}
+      <div class="bar-row">
+        <div class="bar-label">{{ row.label }}</div>
+        <div class="bar-track">
+          <div class="bar-fill" style="width:{{ (row.cost / max_section * 100) if max_section else 0 }}%"></div>
+        </div>
+        <div class="bar-value">{{ '%.2f'|format(row.cost or 0) }}</div>
+      </div>
+      {% else %}<div class="empty">No BOM section cost yet.</div>{% endfor %}
+    </div>
+    <div class="panel">
+      <h3>BOM Cost by Main Category</h3>
+      <p>Material cost split by Inventory Master main category.</p>
+      {% set max_cat = (bom_category | map(attribute='cost') | max) if bom_category else 1 %}
+      {% for row in bom_category %}
+      <div class="bar-row">
+        <div class="bar-label">{{ row.label }}</div>
+        <div class="bar-track">
+          <div class="bar-fill dark" style="width:{{ (row.cost / max_cat * 100) if max_cat else 0 }}%"></div>
+        </div>
+        <div class="bar-value">{{ '%.2f'|format(row.cost or 0) }}</div>
+      </div>
+      {% else %}<div class="empty">No BOM category cost yet.</div>{% endfor %}
+    </div>
+  </div>
+
+  <div class="analytics-grid">
+    <div class="panel">
+      <h3>Section Yield / Wastage Summary</h3>
+      <p>Shows whether sections are losing material during processing.</p>
+      <table class="table-pro">
+        <thead>
+          <tr>
+            <th>Section</th>
+            <th>Input</th>
+            <th>Output</th>
+            <th>Waste</th>
+            <th>Waste %</th>
+          </tr>
+        </thead>
+        <tbody>{% for y in yield_rows %}<tr>
+            <td>{{ y.section_name }}</td>
+            <td>{{ y.input_qty }}</td>
+            <td>{{ y.output_qty }}</td>
+            <td>{{ y.waste_qty }}</td>
+            <td>{{ y.waste_pct }}%</td>
+          </tr>{% else %}<tr>
+            <td colspan="5" class="empty">No section yield transactions yet.</td>
+          </tr>{% endfor %}</tbody>
+      </table>
+    </div>
+    <div class="panel">
+      <h3>Order Pipeline Status</h3>
+      <p>Live order distribution.</p>
+      {# Batch 10: theme-based multi-chart with type switcher. #}
+      {% if order_status %}
+      <div data-isfc-chart="hbar"
+           data-types="hbar,bar,line,area,pie,donut"
+           data-labels='{{ order_status | map(attribute="label") | list | tojson }}'
+           data-values='{{ order_status | map(attribute="total") | list | tojson }}'
+           style="min-height:280px;"></div>
+      {% else %}<div class="empty">No orders found.</div>{% endif %}
+    </div>
+  </div>
+
+  <div class="panel">
+    <h3>Next Reporting Phase</h3>
+    <div class="roadmap">
+      <div class="step"><b>1. Printable Forms</b><span>Order sheet, BOM sheet, Store issue slip, QC certificate, packing
+          slip, delivery note.</span></div>
+      <div class="step"><b>2. Management Pack</b><span>Daily production dashboard, order margin, recipe profitability,
+          yield/wastage.</span></div>
+      <div class="step"><b>3. Drill-down Reports</b><span>Click any chart/category/status and open the underlying
+          documents.</span></div>
+      <div class="step"><b>4. Excel/PDF Export</b><span>Convert current CSV exports into formatted Excel and PDF
+          reports.</span></div>
+    </div>
+  </div>
+</div>
+{% endblock %}

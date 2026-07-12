@@ -1,0 +1,95 @@
+{% extends "layouts/base.html" %}
+{% block title %}Account Statement · ISFC{% endblock %}
+{% block content %}
+<div class="container-fluid py-3 isfc-page">
+
+  <div class="isfc-hero mb-4 p-4 d-flex align-items-center justify-content-between flex-wrap gap-3">
+    <div>
+      <span class="badge bg-light text-dark mb-2">{{ t('Customer Portal') }}</span>
+      <h2 class="mb-1 text-white">{{ t('Account Statement') }} · {{ customer.customer_name }}</h2>
+      <p class="mb-0">{{ t('Orders, invoiced value and outstanding balance.') }}</p>
+    </div>
+    <div class="d-flex gap-2">
+      <a class="btn btn-light" href="/my">{{ t('Dashboard') }}</a>
+      <a class="btn btn-phoenix-secondary" href="/my/orders">{{ t('My Orders') }}</a>
+    </div>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-sm-6 col-xl-3"><div class="card h-100 isfc-kpi-card"><div class="card-body">
+      <p class="text-body-tertiary text-uppercase fs-10 mb-1">{{ t('Orders') }}</p>
+      <h2 class="mb-0 text-body-emphasis">{{ totals.orders }}</h2></div></div></div>
+    <div class="col-sm-6 col-xl-3"><div class="card h-100 isfc-kpi-card"><div class="card-body">
+      <p class="text-body-tertiary text-uppercase fs-10 mb-1">{{ t('Order Value') }}</p>
+      <h2 class="mb-0 text-body-emphasis">{{ '%.2f'|format(totals.order_value|float) }}</h2></div></div></div>
+    <div class="col-sm-6 col-xl-3"><div class="card h-100 isfc-kpi-card"><div class="card-body">
+      <p class="text-body-tertiary text-uppercase fs-10 mb-1">{{ t('Invoiced') }}</p>
+      <h2 class="mb-0 text-body-emphasis">{{ '%.2f'|format(totals.invoiced|float) }}</h2></div></div></div>
+    <div class="col-sm-6 col-xl-3"><div class="card h-100 isfc-kpi-card"><div class="card-body">
+      <p class="text-body-tertiary text-uppercase fs-10 mb-1">{{ t('Outstanding') }}</p>
+      <h2 class="mb-0 text-body-emphasis">{{ '%.2f'|format(totals.outstanding|float) }}</h2></div></div></div>
+  </div>
+
+  <div class="card mb-4">
+    <div class="card-body">
+      <form method="get" class="row g-2 align-items-end">
+        <div class="col-md-3"><label class="form-label">{{ t('From Date') }}</label>
+          <input type="date" class="form-control" name="from_date" value="{{ filters.from_date }}"></div>
+        <div class="col-md-3"><label class="form-label">{{ t('To Date') }}</label>
+          <input type="date" class="form-control" name="to_date" value="{{ filters.to_date }}"></div>
+        <div class="col-md-3 d-flex gap-2">
+          <button class="btn btn-primary" type="submit">{{ t('Filter') }}</button>
+          <a class="btn btn-phoenix-secondary" href="/my/statement">{{ t('Reset') }}</a>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="card mb-4">
+    <div class="card-header"><h5 class="mb-0 text-body-emphasis">{{ t('Orders') }}</h5></div>
+    <div class="card-body p-0"><div class="table-responsive">
+      <table class="table table-sm mb-0">
+        <thead><tr>
+          <th class="ps-4">{{ t('Order') }}</th><th>{{ t('Date') }}</th><th>{{ t('Brand') }}</th>
+          <th>{{ t('Status') }}</th><th class="text-end pe-4">{{ t('Value') }}</th>
+        </tr></thead>
+        <tbody>
+          {% for o in orders %}
+          <tr>
+            <td class="ps-4"><a href="/my/orders/{{ o.order_no }}">{{ o.order_no }}</a></td>
+            <td>{{ o.order_date }}</td><td>{{ o.brand }}</td>
+            <td><span class="badge bg-{{ accents.get(o.status, 'secondary') }}-subtle text-{{ accents.get(o.status, 'secondary') }}-emphasis">{{ o.status }}</span></td>
+            <td class="text-end pe-4">{{ '%.2f'|format(o.sale_value|float) }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="5" class="text-center text-body-tertiary py-4">{{ t('No orders in this period.') }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><h5 class="mb-0 text-body-emphasis">{{ t('Invoices (AR)') }}</h5></div>
+    <div class="card-body p-0"><div class="table-responsive">
+      <table class="table table-sm mb-0">
+        <thead><tr>
+          <th class="ps-4">{{ t('Invoice') }}</th><th>{{ t('Order') }}</th><th>{{ t('Date') }}</th>
+          <th>{{ t('Status') }}</th><th class="text-end pe-4">{{ t('Amount') }}</th>
+        </tr></thead>
+        <tbody>
+          {% for i in invoices %}
+          <tr>
+            <td class="ps-4">{{ i.invoice_no }}</td><td>{{ i.order_no }}</td><td>{{ i.invoice_date }}</td>
+            <td><span class="badge {{ 'bg-success-subtle text-success-emphasis' if i.status == 'Paid' else 'bg-warning-subtle text-warning-emphasis' }}">{{ i.status }}</span></td>
+            <td class="text-end pe-4">{{ '%.2f'|format(i.total_amount|float) }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="5" class="text-center text-body-tertiary py-4">{{ t('No invoices issued yet — invoices appear here once the Finance module bills your orders.') }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div></div>
+  </div>
+</div>
+{% endblock %}

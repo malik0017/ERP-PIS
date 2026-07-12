@@ -1,0 +1,316 @@
+{% extends "layouts/base.html" %}
+{% block content %}
+{% set active_step = 'Order' %}{% include 'partials/process_status_row.html' %}
+<style>
+  .po-hero {
+    background: linear-gradient(135deg, #142a46, #0f91a3);
+    color: #fff;
+    border-radius: 22px;
+    padding: 24px 28px;
+    box-shadow: 0 18px 42px rgba(15, 30, 50, .16)
+  }
+
+  .po-card {
+    background: #fff;
+    border: 1px solid #dce8f2;
+    border-radius: 18px;
+    box-shadow: 0 12px 28px rgba(15, 30, 50, .06);
+    padding: 18px;
+    margin-bottom: 16px
+  }
+
+  .po-kpi span {
+    display: block;
+    color: #71849a;
+    font-size: 12px;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: .04em
+  }
+
+  .po-kpi b {
+    font-size: 30px;
+    color: #142a46
+  }
+
+  .po-label {
+    font-weight: 900;
+    color: #142a46;
+    margin-bottom: 5px
+  }
+
+  .po-input {
+    width: 100%;
+    border: 1px solid #cbdbea;
+    border-radius: 12px;
+    padding: 9px 11px;
+    background: #fff
+  }
+
+  .po-grid {
+    display: grid;
+    grid-template-columns: 1.35fr 1fr 1fr 150px 140px;
+    gap: 12px;
+    align-items: end
+  }
+
+  .po-line {
+    display: grid;
+    grid-template-columns: minmax(360px, 1fr) 150px 42px;
+    gap: 10px;
+    align-items: end;
+    margin-bottom: 10px
+  }
+
+  .po-btn {
+    border: 0;
+    border-radius: 12px;
+    padding: 9px 14px;
+    font-weight: 900;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px
+  }
+
+  .po-primary {
+    background: #315efb;
+    color: #fff
+  }
+
+  .po-soft {
+    background: #edf5fb;
+    color: #142a46
+  }
+
+  .po-danger {
+    background: #fff0f0;
+    color: #c11;
+    border: 1px solid #ffc7c7
+  }
+
+  .po-table th {
+    background: #edf5fb;
+    color: #142a46;
+    text-transform: uppercase;
+    font-size: 12px;
+    letter-spacing: .04em
+  }
+
+  .po-status {
+    border-radius: 999px;
+    padding: 5px 10px;
+    font-weight: 900;
+    font-size: 12px;
+    background: #e8f2fb;
+    color: #173b55
+  }
+
+  .po-status.prod {
+    background: #ddf8e7;
+    color: #0b7c3b
+  }
+
+  .po-status.pending {
+    background: #fff5d6;
+    color: #9a6700
+  }
+
+  .po-status.done {
+    background: #e8f8ff;
+    color: #087e92
+  }
+
+  .recipe-info {
+    display: block;
+    margin-top: 4px;
+    color: #6f8196;
+    font-size: 12px
+  }
+
+  .filter-chip {
+    border: 1px solid #dce8f2;
+    border-radius: 999px;
+    padding: 7px 11px;
+    background: #fff;
+    text-decoration: none;
+    color: #173b55;
+    font-weight: 800
+  }
+
+  @media(max-width:1200px) {
+    .po-grid {
+      grid-template-columns: 1fr 1fr
+    }
+
+    .po-line {
+      grid-template-columns: 1fr 140px 42px
+    }
+  }
+
+  @media(max-width:760px) {
+
+    .po-grid,
+    .po-line {
+      grid-template-columns: 1fr
+    }
+  }
+</style>
+<div class="container-fluid py-3">
+  <div class="po-hero mb-3">
+    <h2 class="mb-1">Production Orders Command Screen</h2>
+  </div>
+  {% if created %}<div class="alert alert-success">Order {{ created }} has been submitted successfully. It is now
+    visible in Production Orders and Head Chef Planning.</div>{% endif %}
+  {% if error %}<div class="alert alert-warning">{{ error }}</div>{% endif %}
+
+  <div class="row g-3 mb-3">
+    <div class="col-md-3">
+      <div class="po-card po-kpi"><span>Total Orders</span><b>{{ stats.total_orders }}</b></div>
+    </div>
+    <div class="col-md-3">
+      <div class="po-card po-kpi"><span>Today Orders</span><b>{{ stats.today_orders }}</b></div>
+    </div>
+    <div class="col-md-3">
+      <div class="po-card po-kpi"><span>Pending Orders</span><b>{{ stats.pending_orders }}</b></div>
+    </div>
+    <div class="col-md-3">
+      <div class="po-card po-kpi"><span>In Process</span><b>{{ stats.process_orders }}</b></div>
+    </div>
+  </div>
+
+  <div class="po-card">
+    <form method="post" action="/production/orders/create" id="orderForm">
+      <div class="po-grid">
+        <div>
+          <div class="po-label">Customer Code & Name</div><input class="form-control po-input" list="customerList"
+            name="customer_display" id="customer_display" placeholder="Search customer code or name" required><input
+            type="hidden" name="customer_no" id="customer_no"><input type="hidden" name="customer_name"
+            id="customer_name">
+        </div>
+        <div>
+          <div class="po-label">Brand Code & Name</div><input class="form-control po-input" list="brandList" name="brand_display"
+            id="brand_display" placeholder="Search brand code or name"><input type="hidden" name="brand" id="brand">
+        </div>
+        <div>
+          <div class="po-label">Sales Channel</div><input class="form-control po-input" list="channelList" name="channel_display"
+            id="channel_display" placeholder="Search sales channel"><input type="hidden" name="channel" id="channel">
+        </div>
+        <div>
+          <div class="po-label">Delivery Date</div><input class="form-control po-input" type="date" name="required_delivery_date"
+            required>
+        </div>
+        <div>
+          <div class="po-label">Delivery Time</div><input class="form-control po-input" type="time" name="required_delivery_time">
+        </div>
+      </div>
+      <datalist id="customerList">{% for c in customers %}<option value="{{ c.customer_code }} - {{ c.customer_name }}"
+          data-code="{{ c.customer_code }}" data-name="{{ c.customer_name }}" data-brand="{{ c.brand }}"></option>{%
+        endfor %}</datalist>
+      <datalist id="brandList">{% for b in brands %}<option value="{{ b.brand_code }} - {{ b.brand_name }}"
+          data-code="{{ b.brand_code }}" data-name="{{ b.brand_name }}"></option>{% endfor %}</datalist>
+      <datalist id="channelList">{% for ch in channels %}<option value="{{ ch.channel_code }} - {{ ch.channel_name }}"
+          data-code="{{ ch.channel_code }}" data-name="{{ ch.channel_name }}"></option>{% endfor %}</datalist>
+      <datalist id="recipeList">{% for r in recipes %}<option value="{{ r.recipe_code }} - {{ r.recipe_name }}"
+          data-code="{{ r.recipe_code }}" data-name="{{ r.recipe_name }}" data-food="{{ r.food_cost_per_portion or 0 }}"
+          data-sale="{{ r.sale_price_per_portion or 0 }}" data-bom="{{ r.bom_lines or 0 }}"></option>{% endfor
+        %}</datalist>
+      <hr>
+      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+        <h5 class="m-0">Recipes Ordered</h5><span class="text-muted small">Recipe Code & Name is master-linked. Quantity
+          means total portions ordered.</span>
+      </div>
+      <div id="portal-lines">
+        <div class="po-line order-line">
+          <div>
+            <div class="po-label">Recipe Code & Name</div><input class="po-input recipe-display" list="recipeList"
+              name="recipe_display" placeholder="Type recipe code or recipe name" required><input type="hidden"
+              name="recipe_no" class="recipe-no"><input type="hidden" name="recipe_name" class="recipe-name"><small
+              class="recipe-info"></small>
+          </div>
+          <div>
+            <div class="po-label">Quantity Ordered</div><input class="form-control po-input" type="number" step="0.01" min="0"
+              name="required_portions" value="0" required>
+          </div>
+          <div><button type="button" class="po-btn po-danger" onclick="removeLine(this)">X</button></div>
+        </div>
+      </div>
+      <button type="button" class="btn btn-light po-btn po-soft" onclick="addPortalLine()">Add Recipe</button><button
+        class="btn btn-theme po-btn po-primary">Submit Order</button>
+    </form>
+  </div>
+
+  <div class="po-card">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+      <div>
+        <h4 class="mb-1">Production Order Register</h4>
+        <div class="text-muted">Use filters for today, previous orders, pending/process status or custom order-date
+          range.</div>
+      </div><a class="btn btn-light po-btn po-soft" href="/orders/portal">Customer Portal</a>
+    </div>
+    <div class="d-flex gap-2 flex-wrap mb-3"><a class="filter-chip" href="/production/orders?view=today">Today</a><a
+        class="filter-chip" href="/production/orders?view=previous">Previous</a><a class="filter-chip"
+        href="/production/orders?view=pending">Pending</a><a class="filter-chip"
+        href="/production/orders?status=process">In Process</a><a class="filter-chip" href="/production/orders">All</a>
+    </div>
+    <form method="get" class="isfc-filter-line mb-3">
+      <div><label class="po-label">From Order Date</label><input type="date" class="form-control po-input" name="date_from" value="{{ filters.date_from or '' }}"></div>
+      <div><label class="po-label">To Order Date</label><input type="date" class="form-control po-input" name="date_to" value="{{ filters.date_to or '' }}"></div>
+      <div><label class="po-label">Status</label><select class="form-control po-input" name="status">
+          <option value="">All Status</option>{% for st in ['Submitted','Head Chef Approved','BOM Generated','Store Pending','In Production','QC In Progress','Packing Pending','Packed','Out for Delivery','Dispatched'] %}<option value="{{ st }}" {% if filters.status==st %}selected{% endif %}>{{ st }}</option>{% endfor %}<option value="pending" {% if filters.status=='pending' %}selected{% endif %}>Pending Group</option><option value="process" {% if filters.status=='process' %}selected{% endif %}>Process Group</option>
+        </select></div>
+      <div><label class="po-label">Quick Search</label><input class="po-input" id="orderSearch" placeholder="Search order, customer, brand, status..." onkeyup="filterTable()"></div>
+      <button class="po-btn po-primary w-100 filter-submit">Filter</button>
+    </form>
+    <div class="table-responsive">
+      <table class="table table-sm table-bordered align-middle po-table" id="ordersTable" data-isfc-search="false">
+        <thead>
+          <tr>
+            <th>Order</th>
+            <th>Order Date</th>
+            <th>Customer</th>
+            <th>Brand</th>
+            <th>Sales Channel</th>
+            <th>Delivery Request</th>
+            <th>Portions</th>
+            <th>Food</th>
+            <th>Sale</th>
+            <th>Margin</th>
+            <th>Status</th>
+            <th>Next</th>
+          </tr>
+        </thead>
+        <tbody>{% for o in orders %}{% set cls = 'pending' if o.status in ['Submitted','Head Chef Approved','BOM
+          Generated','Store Pending'] else ('prod' if o.status in ['In Production','QC In Progress','Packing Pending']
+          else 'done') %}<tr>
+            <td><a href="/production/orders/{{ o.order_no }}"><strong>{{ o.order_no }}</strong></a></td>
+            <td>{{ o.order_date or '-' }}</td>
+            <td>{{ o.customer_name }}</td>
+            <td>{{ o.brand or '-' }}</td>
+            <td>{{ o.channel or '-' }}</td>
+            <td>{{ o.required_delivery_date or '-' }} {{ o.required_delivery_time or '' }}</td>
+            <td>{{ '%.2f'|format(o.total_planned_portions or 0) }}</td>
+            <td>{{ '%.2f'|format(o.total_estimated_food_cost or 0) }}</td>
+            <td>{{ '%.2f'|format(o.total_estimated_selling_value or 0) }}</td>
+            <td>{{ '%.2f'|format(o.total_estimated_margin or 0) }}</td>
+            <td><span class="po-status {{ cls }}">{{ o.status }}</span></td>
+            <td><a class="btn btn-sm btn-primary" href="/production/orders/{{ o.order_no }}">Open</a></td>
+          </tr>{% else %}<tr>
+            <td colspan="12" class="text-center text-muted py-4">No orders found for selected filter.</td>
+          </tr>{% endfor %}</tbody>
+      </table>
+    </div>
+  </div>
+</div>
+<script>
+  function splitDisplay(v) { const i = (v || '').indexOf(' - '); return i >= 0 ? [v.slice(0, i), v.slice(i + 3)] : ['', v || '']; }
+  function optionByValue(listId, value) { return Array.from(document.getElementById(listId).options).find(o => o.value === value); }
+  function bindHeaderFields() { const c = document.getElementById('customer_display'); const opt = optionByValue('customerList', c.value); const parts = splitDisplay(c.value); document.getElementById('customer_no').value = opt?.dataset.code || parts[0] || ''; document.getElementById('customer_name').value = opt?.dataset.name || parts[1] || c.value; const b = document.getElementById('brand_display'); const bopt = optionByValue('brandList', b.value); document.getElementById('brand').value = bopt?.dataset.name || splitDisplay(b.value)[1] || b.value; const ch = document.getElementById('channel_display'); const chopt = optionByValue('channelList', ch.value); document.getElementById('channel').value = chopt?.dataset.name || splitDisplay(ch.value)[1] || ch.value; }
+  function bindRecipeLine(line) { const input = line.querySelector('.recipe-display'); const opt = optionByValue('recipeList', input.value); const parts = splitDisplay(input.value); line.querySelector('.recipe-no').value = opt?.dataset.code || parts[0] || ''; line.querySelector('.recipe-name').value = opt?.dataset.name || parts[1] || input.value; line.querySelector('.recipe-info').textContent = opt ? `Food/portion: ${opt.dataset.food || 0} | Sale/portion: ${opt.dataset.sale || 0} | BOM lines: ${opt.dataset.bom || 0}` : ''; }
+  function removeLine(btn) { if (document.querySelectorAll('.order-line').length > 1) btn.closest('.order-line').remove(); }
+  function addPortalLine() { const first = document.querySelector('.order-line'); const clone = first.cloneNode(true); clone.querySelectorAll('input').forEach(i => { if (i.type === 'number') i.value = '0'; else i.value = ''; }); clone.querySelector('.recipe-info').textContent = ''; document.getElementById('portal-lines').appendChild(clone); }
+  function filterTable() { const q = (document.getElementById('orderSearch').value || '').toLowerCase(); document.querySelectorAll('#ordersTable tbody tr').forEach(tr => tr.style.display = tr.innerText.toLowerCase().includes(q) ? '' : 'none'); }
+  document.addEventListener('input', e => { if (['customer_display', 'brand_display', 'channel_display'].includes(e.target.id)) bindHeaderFields(); if (e.target.classList.contains('recipe-display')) bindRecipeLine(e.target.closest('.order-line')); });
+  document.getElementById('orderForm').addEventListener('submit', e => { bindHeaderFields(); document.querySelectorAll('.order-line').forEach(bindRecipeLine); });
+</script>
+{% endblock %}

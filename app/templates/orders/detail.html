@@ -1,0 +1,21 @@
+{% extends "layouts/base.html" %} {% block title %}Order Detail | ISFC ERP{%
+endblock %} {% block content %}
+<div class="container-fluid py-3">
+  <div class="isfc-hero mb-3">
+    <h1>Order Detail</h1>
+    <p>
+      This route is reserved for sales-side order detail. Use Production Order
+      Detail for the live production document.
+    </p>
+  </div>
+  <div class="card">
+    <div class="card-body">
+      <a class="btn btn-primary" href="/production/orders"
+        >Open Production Orders</a
+      ><a class="btn btn-phoenix-secondary ms-2" href="/orders"
+        >Back to Orders</a
+      >
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,87 @@
+{% extends "layouts/base.html" %}
+{% block content %}
+<style>
+.bom-page{padding:12px 0 28px}.bom-hero{background:radial-gradient(circle at 92% 8%,rgba(255,255,255,.24),transparent 16%),linear-gradient(135deg,#102542,#315efb 55%,#0fb6cf);color:#fff;border-radius:22px;padding:22px 26px;margin-bottom:18px;box-shadow:0 14px 30px rgba(6,63,82,.18)}.bom-hero h2{margin:0;font-weight:900}.bom-hero p{margin:6px 0 0;color:#dcf8ff}.bom-card{background:#fff;border:1px solid #dce8f2;border-radius:18px;box-shadow:0 10px 26px rgba(15,30,50,.06);padding:16px;margin-bottom:16px}.bom-actions{display:flex;gap:8px;flex-wrap:wrap}.bom-actions a{border-radius:10px;padding:9px 12px;background:#eaf2f8;color:#142a46;text-decoration:none;font-weight:800}.bom-actions a.active{background:#0d7f91;color:#fff}.bom-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.bom-kpi{background:#f8fbfd;border:1px solid #dce8f2;border-radius:16px;padding:14px}.bom-kpi span{display:block;color:#6f8196;font-size:12px;font-weight:700}.bom-kpi strong{font-size:24px;color:#142a46}.bom-table-wrap{overflow-x:auto}.bom-table{width:100%;border-collapse:separate;border-spacing:0;font-size:13px}.bom-table th{background:#eef5fa;color:#142a46;text-align:left;padding:11px;border-bottom:1px solid #dce8f2;white-space:nowrap}.bom-table td{padding:10px 11px;border-bottom:1px solid #edf3f8;vertical-align:top;color:#173b55}.bom-table tr:hover td{background:#f9fcff}.bom-group{font-weight:900;color:#0d7f91}.bom-code{font-weight:800;color:#142a46}.bom-muted{color:#6f8196}.bom-pill{display:inline-block;border-radius:999px;background:#edf7fa;color:#0d6978;padding:4px 8px;font-size:12px;font-weight:800}.bom-right{text-align:right}.bom-toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.bom-search{border:1px solid #cbdbea;border-radius:10px;padding:9px 11px;min-width:260px}@media(max-width:900px){.bom-kpis{grid-template-columns:1fr 1fr}}@media(max-width:600px){.bom-kpis{grid-template-columns:1fr}}
+</style>
+<div class="bom-page">
+  <div class="bom-hero">
+    <h2>{{ group_label }}</h2>
+    <p>Order {{ order_no }} · {{ order.customer_name }} · {{ order.brand or '-' }} · SAP-style BOM view for production and store verification.</p>
+  </div>
+
+  <div class="bom-card bom-toolbar">
+    <div class="bom-actions">
+      <a class="{% if group_by == 'customer' %}active{% endif %}" href="/production/orders/{{ order_no }}/bom-report?group_by=customer">Customer-wise</a>
+      <a class="{% if group_by == 'brand' %}active{% endif %}" href="/production/orders/{{ order_no }}/bom-report?group_by=brand">Brand-wise</a>
+      <a class="{% if group_by == 'category' %}active{% endif %}" href="/production/orders/{{ order_no }}/bom-report?group_by=category">Main Category-wise</a>
+      <a class="{% if group_by == 'sub_category' %}active{% endif %}" href="/production/orders/{{ order_no }}/bom-report?group_by=sub_category">Sub Category-wise</a>
+      <a class="{% if group_by == 'section' %}active{% endif %}" href="/production/orders/{{ order_no }}/bom-report?group_by=section">Section-wise</a>
+      <a class="{% if group_by == 'item' %}active{% endif %}" href="/production/orders/{{ order_no }}/bom-report?group_by=item">Item-wise</a>
+    </div>
+    <div class="bom-actions">
+      <a href="/production/orders/{{ order_no }}">Back to Order</a>
+      <a href="/production/orders/{{ order_no }}/bom-report?group_by={{ group_by }}&export=csv">Download CSV</a>
+      <a href="/production/orders/{{ order_no }}/bom-report?group_by={{ group_by }}&export=json" target="_blank">JSON Export</a>
+    </div>
+  </div>
+
+  <div class="bom-kpis mb-3">
+    <div class="bom-kpi"><span>Order Number</span><strong>{{ order_no }}</strong></div>
+    <div class="bom-kpi"><span>Groups</span><strong>{{ group_count }}</strong></div>
+    <div class="bom-kpi"><span>BOM Lines</span><strong>{{ rows|length }}</strong></div>
+    <div class="bom-kpi"><span>Estimated Cost</span><strong>{{ '%.2f'|format(total_cost) }}</strong></div>
+  </div>
+
+  <div class="bom-card">
+    <div class="bom-toolbar mb-3">
+      <div>
+        <h5 class="mb-1">{{ group_label }} Details</h5>
+        <div class="bom-muted">Sub category is taken from Inventory Master. Blank values mean the inventory item has no sub-category assigned yet.</div>
+      </div>
+      <input class="bom-search" id="bomSearch" placeholder="Search item, code, group, category...">
+    </div>
+    <div class="bom-table-wrap">
+      <table class="bom-table" id="bomTable" data-isfc-search="false">
+        <thead>
+          <tr>
+            <th>Group</th>
+            <th>Item Code</th>
+            <th>Item Name</th>
+            <th>Main Category</th>
+            <th>Sub Category</th>
+            <th>Issue Section</th>
+            <th class="bom-right">Required Qty</th>
+            <th>UOM</th>
+            <th class="bom-right">Estimated Cost</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in rows %}
+          <tr>
+            <td class="bom-group">{{ r.group_value or '-' }}</td>
+            <td class="bom-code">{{ r.ingredient_code or '-' }}</td>
+            <td>{{ r.ingredient_name or '-' }}</td>
+            <td><span class="bom-pill">{{ r.main_category or '-' }}</span></td>
+            <td>{{ r.sub_category or '-' }}</td>
+            <td>{{ r.issue_section or '-' }}</td>
+            <td class="bom-right">{{ '%.4f'|format(r.required_qty or 0) }}</td>
+            <td>{{ r.standard_uom or '-' }}</td>
+            <td class="bom-right">{{ '%.2f'|format(r.estimated_cost or 0) }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="9" class="text-center text-muted py-4">No BOM lines found. Generate BOM first.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+<script>
+document.getElementById('bomSearch')?.addEventListener('input', function(){
+  const q=this.value.toLowerCase();
+  document.querySelectorAll('#bomTable tbody tr').forEach(tr=>{
+    tr.style.display = tr.innerText.toLowerCase().includes(q) ? '' : 'none';
+  });
+});
+</script>
+{% endblock %}

@@ -1,0 +1,139 @@
+{% extends "layouts/base.html" %}
+{% block title %}{{ t('Timeline') }}: {{ project.project_name }} | ISFC ERP{% endblock %}
+{% block content %}
+<div class="container-fluid py-3 isfc-page">
+
+  {% include "projects/_flash.html" %}
+
+  <div class="isfc-hero mb-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <div>
+      <span class="badge bg-light text-dark mb-2">{{ project.project_code }}</span>
+      <h1 class="mb-1">{{ t('Project Timeline') }}</h1>
+      <p class="mb-0">{{ project.project_name }}</p>
+    </div>
+    <a href="/projects/{{ project.id }}" class="btn btn-light btn-sm"><i class="bi bi-arrow-left me-1"></i>{{ t('Back to Project') }}</a>
+  </div>
+
+  <div class="card shadow-none border">
+    <div class="card-header p-4 border-bottom bg-body d-flex justify-content-between align-items-center flex-wrap gap-2">
+      <h4 class="mb-0"><i class="bi bi-bar-chart-steps me-2"></i>{{ t('Gantt Schedule') }}</h4>
+      <div class="d-flex gap-2 fs-10 align-items-center">
+        <span class="d-inline-flex align-items-center gap-1"><span class="isfc-gantt-swatch bg-primary"></span>{{ t('In Progress') }}</span>
+        <span class="d-inline-flex align-items-center gap-1"><span class="isfc-gantt-swatch bg-success"></span>{{ t('Completed') }}</span>
+        <span class="d-inline-flex align-items-center gap-1"><span class="isfc-gantt-swatch bg-secondary"></span>{{ t('Not Started') }}</span>
+      </div>
+    </div>
+    <div class="card-body p-4">
+      {% if tasks %}
+      <div id="ganttMount" class="isfc-gantt-wrap"></div>
+      {% else %}
+      <div class="text-center text-body-tertiary py-5"><i class="bi bi-bar-chart-steps fs-4 d-block mb-2"></i>{{ t('No tasks to display on the timeline.') }}<br><a href="/projects/{{ project.id }}" class="btn btn-sm btn-primary mt-3">{{ t('Add tasks') }}</a></div>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if milestones %}
+  <div class="card shadow-none border mt-3">
+    <div class="card-header p-3 bg-body border-bottom"><h6 class="mb-0"><i class="bi bi-flag me-2"></i>{{ t('Milestones') }}</h6></div>
+    <div class="card-body p-4">
+      <div class="d-flex flex-wrap gap-3">
+        {% for ms in milestones %}
+        <div class="border rounded-3 p-3" style="min-width:180px">
+          <div class="fw-semibold"><i class="bi bi-flag-fill text-primary me-1"></i>{{ ms.milestone_name }}</div>
+          <div class="fs-10 text-body-tertiary">{{ ms.milestone_date }}</div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+<style>
+  .isfc-gantt-swatch{width:12px;height:12px;border-radius:3px;display:inline-block}
+  .isfc-gantt-wrap{overflow-x:auto}
+  .isfc-gantt{width:100%;border-collapse:collapse;min-width:640px}
+  .isfc-gantt th,.isfc-gantt td{border:1px solid var(--phoenix-border-color,#e3e6ed);padding:0;font-size:.8rem}
+  .isfc-gantt thead th{background:var(--phoenix-body-highlight-bg,#f5f8fc);text-align:center;padding:6px 4px;font-weight:700;font-size:.7rem;text-transform:uppercase;color:var(--phoenix-secondary-color,#6e7891)}
+  .isfc-gantt .gantt-label{padding:8px 12px;white-space:nowrap;font-weight:600;background:var(--phoenix-body-bg,#fff)}
+  .isfc-gantt .gantt-cell{position:relative;height:38px}
+  .isfc-gantt .gantt-bar{position:absolute;top:9px;height:20px;border-radius:5px;box-shadow:0 1px 3px rgba(0,0,0,.15);display:flex;align-items:center;padding:0 6px;color:#fff;font-size:.68rem;font-weight:700;overflow:hidden;white-space:nowrap}
+  html[data-bs-theme="dark"] .isfc-gantt th,html[data-bs-theme="dark"] .isfc-gantt td{border-color:#2a3a55}
+  html[data-bs-theme="dark"] .isfc-gantt thead th{background:#1a2847;color:#cbd5e1}
+  html[data-bs-theme="dark"] .isfc-gantt .gantt-label{background:#111c2e;color:#f1f5f9}
+</style>
+
+<script id="ganttData" type="application/json">
+{
+  "tasks": [
+    {% for tk in tasks %}
+    {"name": {{ tk.task_name|tojson }},
+     "start": {{ (tk.start_date|string)|tojson }},
+     "end": {{ (tk.end_date|string)|tojson }},
+     "status": {{ tk.status|tojson }},
+     "progress": {{ tk.progress_pct or 0 }},
+     "assignee": {{ (tk.assignee_name or '')|tojson }}}{{ "," if not loop.last else "" }}
+    {% endfor %}
+  ]
+}
+</script>
+
+<script>
+(function(){
+  var mount = document.getElementById('ganttMount');
+  if(!mount) return;
+  var raw = document.getElementById('ganttData').textContent;
+  var data; try { data = JSON.parse(raw); } catch(e){ return; }
+  var tasks = (data.tasks||[]).filter(function(t){ return t.name; });
+  if(!tasks.length){ return; }
+
+  // Determine the date window.
+  function pd(s){ if(!s || s==='None' || s==='') return null; var d=new Date(s); return isNaN(d)?null:d; }
+  var dates = [];
+  tasks.forEach(function(t){ var a=pd(t.start), b=pd(t.end); if(a)dates.push(a); if(b)dates.push(b); });
+  var today = new Date();
+  if(!dates.length){ dates=[today]; }
+  var min = new Date(Math.min.apply(null, dates));
+  var max = new Date(Math.max.apply(null, dates));
+  if(min.getTime()===max.getTime()){ max = new Date(min.getTime()+ 6*864e5); }
+  // pad a little
+  min = new Date(min.getTime()-2*864e5);
+  max = new Date(max.getTime()+2*864e5);
+  var totalMs = max - min;
+
+  // Build month columns.
+  var months=[]; var cur=new Date(min.getFullYear(), min.getMonth(), 1);
+  while(cur <= max){ months.push(new Date(cur)); cur.setMonth(cur.getMonth()+1); }
+  var MN=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+  function statusColor(s){
+    if(s==='Completed') return 'var(--phoenix-success,#25b003)';
+    if(s==='In Progress') return 'var(--phoenix-primary,#3874ff)';
+    if(s==='On Hold') return 'var(--phoenix-warning,#e5780b)';
+    return 'var(--phoenix-secondary,#8a94ad)';
+  }
+
+  var isRtl = document.documentElement.getAttribute('dir')==='rtl';
+
+  var html='<table class="isfc-gantt"><thead><tr><th style="width:220px">'+({{ t('Task')|tojson }})+'</th>';
+  months.forEach(function(m){ html+='<th>'+MN[m.getMonth()]+' '+String(m.getFullYear()).slice(2)+'</th>'; });
+  html+='</tr></thead><tbody>';
+
+  tasks.forEach(function(t){
+    var a=pd(t.start)||min, b=pd(t.end)||new Date(a.getTime()+3*864e5);
+    if(b<a){ b=new Date(a.getTime()+864e5); }
+    var left=Math.max(0,(a-min)/totalMs*100);
+    var width=Math.max(2,(b-a)/totalMs*100);
+    if(left+width>100) width=100-left;
+    var side = isRtl ? 'right' : 'left';
+    html+='<tr><td class="gantt-label" title="'+t.name+'">'+t.name+
+      (t.assignee?'<br><span style="font-weight:400;font-size:.68rem;opacity:.7">'+t.assignee+'</span>':'')+
+      '</td><td class="gantt-cell" colspan="'+months.length+'">'+
+      '<div class="gantt-bar" style="'+side+':'+left+'%;width:'+width+'%;background:'+statusColor(t.status)+'" title="'+t.name+' · '+(t.progress||0)+'%">'+
+      (width>8?(t.progress||0)+'%':'')+'</div></td></tr>';
+  });
+  html+='</tbody></table>';
+  mount.innerHTML=html;
+})();
+</script>
+{% endblock %}

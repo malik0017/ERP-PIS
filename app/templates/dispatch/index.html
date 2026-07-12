@@ -1,0 +1,238 @@
+{% extends "layouts/base.html" %}
+{% block title %}Dispatch / Delivery{% endblock %}
+{% block extra_css %}
+<style>
+  .rep-hero {
+    background: radial-gradient(circle at 92% 8%, rgba(255, 255, 255, .22), transparent 16%), linear-gradient(135deg, #102542, #0d7f91);
+    color: #fff;
+    border-radius: 28px;
+    padding: 30px 34px;
+    box-shadow: 0 22px 48px rgba(16, 37, 66, .22);
+    margin-bottom: 16px
+  }
+
+  .rep-hero h1 {
+    font-size: 34px;
+    font-weight: 950;
+    margin: 0
+  }
+
+  .rep-hero p {
+    margin: 8px 0 0;
+    color: #e7fbff
+  }
+
+  .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 16px
+  }
+
+  .stat {
+    background: #fff;
+    border: 1px solid #dfeaf4;
+    border-radius: 18px;
+    padding: 15px 17px;
+    box-shadow: 0 10px 24px rgba(15, 30, 50, .06)
+  }
+
+  .stat span {
+    display: block;
+    color: #71869e;
+    font-size: 12px;
+    font-weight: 900;
+    text-transform: uppercase
+  }
+
+  .stat strong {
+    font-size: 28px;
+    color: #102542;
+    font-weight: 950
+  }
+
+  .panel {
+    background: #fff;
+    border: 1px solid #dfeaf4;
+    border-radius: 22px;
+    padding: 18px;
+    box-shadow: 0 10px 24px rgba(15, 30, 50, .06);
+    margin-bottom: 18px
+  }
+
+  .panel h3 {
+    font-size: 21px;
+    font-weight: 950;
+    margin: 0 0 4px
+  }
+
+  .panel p {
+    color: #6e7f95;
+    margin-bottom: 14px
+  }
+
+  .dispatch-card {
+    border: 1px solid #e1edf5;
+    border-radius: 18px;
+    padding: 15px;
+    margin-bottom: 12px;
+    background: #fbfdff
+  }
+
+  .dispatch-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap
+  }
+
+  .pill {
+    border-radius: 999px;
+    padding: 5px 9px;
+    font-size: 12px;
+    font-weight: 900;
+    background: #eaf2f8;
+    color: #102542
+  }
+
+  .pill.ok {
+    background: #d9f8e3;
+    color: #087638
+  }
+
+  .pill.warn {
+    background: #fff1c9;
+    color: #9a6500
+  }
+
+  .pill.danger {
+    background: #ffe0e0;
+    color: #9b2424
+  }
+
+  .form-grid {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 10px;
+    align-items: end;
+    margin-top: 12px
+  }
+
+  .form-grid label {
+    font-weight: 900;
+    color: #14233b;
+    font-size: 12px
+  }
+
+  .form-grid input,
+  .form-grid select {
+    width: 100%;
+    border: 1px solid #d5e3ee;
+    border-radius: 12px;
+    padding: 9px
+  }
+
+  .btn-pro {
+    border: 0;
+    border-radius: 12px;
+    padding: 10px 12px;
+    background: #4057ff;
+    color: white;
+    font-weight: 950
+  }
+
+  .btn-green {
+    background: #16a34a
+  }
+
+  .empty {
+    padding: 25px;
+    text-align: center;
+    color: #789
+  }
+  .pis-process-row{
+    padding: 0 !important;
+  }
+
+  @media(max-width:1200px) {
+    .form-grid {
+      grid-template-columns: repeat(2, 1fr)
+    }
+
+    .stat-grid {
+      grid-template-columns: repeat(2, 1fr)
+    }
+  }
+
+  @media(max-width:700px) {
+
+    .form-grid,
+    .stat-grid {
+      grid-template-columns: 1fr
+    }
+  }
+</style>
+{% endblock %}
+{% block content %}
+<div class="rep-page container-fluid">
+  <div class="rep-hero mb-3">
+    <h1>Packing & Dispatch / Delivery</h1>
+    <p>Pack QC-passed orders, assign driver/vehicle, monitor delivery temperature, and close the order as dispatched.
+    </p>
+  </div>
+  {% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+  {% set active_step = 'Dispatch' %}{% include 'partials/process_status_row.html' %}
+
+  <div class="stat-grid">
+    <div class="stat"><span>Pending Dispatch</span><strong>{{ summary.pending }}</strong></div>
+    <div class="stat"><span>Delivered</span><strong>{{ summary.delivered }}</strong></div>
+    <div class="stat"><span>Rejected Records</span><strong>{{ summary.rejected }}</strong></div>
+    <div class="stat"><span>Packed Portions</span><strong>{{ '%.0f'|format(summary.portions or 0) }}</strong></div>
+  </div>
+  {% set status_options = ['Packed','Out for Delivery','Delivered'] %}
+  {% include 'partials/filter_bar.html' %}
+
+  <div class="panel">
+    <h3>Dispatch Worklist</h3>
+    <p>QC-passed orders appear here automatically. Update packing, driver and delivery status.</p>
+    {% for r in rows %}
+    <div class="dispatch-card">
+      <div class="dispatch-head">
+        <div>
+          <h4 class="mb-1"><a href="/production/orders/{{ r.order_no }}">{{ r.order_no }}</a> · {{ r.customer_name or
+            'Customer' }}</h4>
+          <div class="text-muted">Dispatch No: {{ r.dispatch_no }} · Created {{ r.created_at }}</div>
+        </div>
+        <div><span
+            class="pill {% if r.dispatch_status=='Delivered' %}ok{% elif r.dispatch_status in ['Rejected','Cancelled'] %}danger{% else %}warn{% endif %}">{{
+            r.dispatch_status }}</span></div>
+      </div>
+      <form method="post" action="/dispatch/{{ r.id }}/update">
+        <div class="form-grid">
+          <div><label>Packed Portions</label><input type="number" step="0.01" name="packed_portions"
+              value="{{ r.packed_portions or 0 }}"></div>
+          <div><label>Rejected Portions</label><input type="number" step="0.01" name="rejected_portions"
+              value="{{ r.rejected_portions or 0 }}"></div>
+          <div><label>Dispatch Date</label><input type="date" name="dispatch_date" value="{{ r.dispatch_date or '' }}">
+          </div>
+          <div><label>Vehicle No</label><input name="vehicle_no" value="{{ r.vehicle_no or '' }}"></div>
+          <div><label>Driver Name</label><input name="driver_name" value="{{ r.driver_name or '' }}"></div>
+          <div><label>Temp °C</label><input type="number" step="0.01" name="delivery_temperature_c"
+              value="{{ r.delivery_temperature_c or 0 }}"></div>
+          <div><label>Status</label><select name="dispatch_status">
+              <option {% if r.dispatch_status=='Packing Pending' %}selected{% endif %}>Packing Pending</option>
+              <option {% if r.dispatch_status=='Packed' %}selected{% endif %}>Packed</option>
+              <option {% if r.dispatch_status=='Out for Delivery' %}selected{% endif %}>Out for Delivery</option>
+              <option {% if r.dispatch_status=='Delivered' %}selected{% endif %}>Delivered</option>
+            </select></div>
+          <div style="grid-column:span 4"><label>Remarks</label><input name="remarks" value="{{ r.remarks or '' }}">
+          </div>
+          <div><button class="btn-pro btn-green" type="submit"><i class="bi bi-truck"></i> Save</button></div>
+        </div>
+      </form>
+    </div>
+    {% else %}<div class="empty">No dispatch records yet. Pass an order from QC to create packing/dispatch
+      automatically.</div>{% endfor %}
+  </div>
+</div>
+{% endblock %}

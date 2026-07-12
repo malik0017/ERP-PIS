@@ -1,0 +1,140 @@
+{% extends "layouts/base.html" %}
+{% block title %}Projects | ISFC ERP{% endblock %}
+{% block content %}
+<div class="container-fluid py-3 isfc-page">
+
+  {% include "projects/_flash.html" %}
+
+  <div class="isfc-hero mb-3">
+    <h1 class="mb-1">{{ t('Project Management') }}</h1>
+    <p class="mb-0">{{ t('Create, plan, track and manage projects with team assignments, timelines and budgets.') }}</p>
+  </div>
+
+  <!-- KPI Cards -->
+  <div class="row g-3 mb-3">
+    <div class="col-sm-6 col-xl-3">
+      <div class="card shadow-none border h-100">
+        <div class="card-body p-4 d-flex align-items-center gap-3">
+          <span class="d-inline-flex align-items-center justify-content-center rounded-3 bg-primary-subtle text-primary" style="width:48px;height:48px;flex:0 0 48px"><i class="bi bi-briefcase fs-6"></i></span>
+          <div class="min-w-0">
+            <p class="text-body-tertiary text-uppercase fw-bold fs-10 mb-1">{{ t('Total Projects') }}</p>
+            <h3 class="mb-0">{{ kpis.total }}</h3>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-sm-6 col-xl-3">
+      <div class="card shadow-none border h-100">
+        <div class="card-body p-4 d-flex align-items-center gap-3">
+          <span class="d-inline-flex align-items-center justify-content-center rounded-3 bg-success-subtle text-success" style="width:48px;height:48px;flex:0 0 48px"><i class="bi bi-play-circle fs-6"></i></span>
+          <div class="min-w-0">
+            <p class="text-body-tertiary text-uppercase fw-bold fs-10 mb-1">{{ t('Active') }}</p>
+            <h3 class="mb-0">{{ kpis.active }}</h3>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-sm-6 col-xl-3">
+      <div class="card shadow-none border h-100">
+        <div class="card-body p-4 d-flex align-items-center gap-3">
+          <span class="d-inline-flex align-items-center justify-content-center rounded-3 bg-info-subtle text-info" style="width:48px;height:48px;flex:0 0 48px"><i class="bi bi-check-circle fs-6"></i></span>
+          <div class="min-w-0">
+            <p class="text-body-tertiary text-uppercase fw-bold fs-10 mb-1">{{ t('Completed') }}</p>
+            <h3 class="mb-0">{{ kpis.completed }}</h3>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-sm-6 col-xl-3">
+      <div class="card shadow-none border h-100">
+        <div class="card-body p-4 d-flex align-items-center gap-3">
+          <span class="d-inline-flex align-items-center justify-content-center rounded-3 bg-warning-subtle text-warning" style="width:48px;height:48px;flex:0 0 48px"><i class="bi bi-graph-up fs-6"></i></span>
+          <div class="min-w-0">
+            <p class="text-body-tertiary text-uppercase fw-bold fs-10 mb-1">{{ t('On Budget') }}</p>
+            <h3 class="mb-0">{{ kpis.on_budget }}</h3>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Project List Table -->
+  <div class="card shadow-none border">
+    <div class="card-header p-4 border-bottom bg-body d-flex justify-content-between align-items-center flex-wrap gap-2">
+      <h4 class="mb-0"><i class="bi bi-list-task me-2"></i>{{ t('Projects') }}</h4>
+      <a href="/projects/create" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>{{ t('New Project') }}</a>
+    </div>
+    <div class="card-body p-4">
+      <form class="d-flex gap-2 mb-3 flex-wrap" method="get" action="/projects">
+        <input class="form-control form-control-sm" type="search" name="search" value="{{ filters.search }}" placeholder="{{ t('Search by name or code...') }}" style="max-width:300px">
+        <select class="form-select form-select-sm" name="status" style="max-width:200px">
+          <option value="">{{ t('All Status') }}</option>
+          {% for s in ['Planning','Active','Paused','Completed','Cancelled'] %}
+          <option value="{{ s }}" {{ 'selected' if filters.status==s else '' }}>{{ t(s) }}</option>
+          {% endfor %}
+        </select>
+        <button class="btn btn-sm btn-phoenix-secondary" type="submit"><i class="bi bi-funnel me-1"></i>{{ t('Filter') }}</button>
+      </form>
+
+      <div class="table-responsive scrollbar">
+        <table class="table table-sm table-hover fs-9 mb-0" data-isfc-table data-isfc-title="Projects">
+          <thead><tr class="text-uppercase text-body-tertiary fs-10">
+            <th>{{ t('Code') }}</th>
+            <th>{{ t('Project Name') }}</th>
+            <th class="text-center">{{ t('Status') }}</th>
+            <th>{{ t('Start') }}</th>
+            <th>{{ t('End') }}</th>
+            <th class="text-end">{{ t('Budget') }}</th>
+            <th class="text-end">{{ t('Spent') }}</th>
+            <th class="text-center">{{ t('Progress') }}</th>
+            <th class="text-center">{{ t('Actions') }}</th>
+          </tr></thead>
+          <tbody>
+          {% for proj in projects %}
+          <tr>
+            <td class="fw-bold text-primary">{{ proj.project_code }}</td>
+            <td><a href="/projects/{{ proj.id }}" class="text-body-emphasis fw-semibold text-decoration-none">{{ proj.project_name }}</a></td>
+            <td class="text-center">
+              <span class="badge badge-phoenix badge-phoenix-{{ 'success' if proj.status=='Active' else ('info' if proj.status=='Planning' else ('warning' if proj.status=='Paused' else ('primary' if proj.status=='Completed' else 'secondary'))) }}">
+                {{ t(proj.status) }}
+              </span>
+            </td>
+            <td>{{ proj.start_date or '-' }}</td>
+            <td>{{ proj.end_date or '-' }}</td>
+            <td class="text-end isfc-num">{{ '%.2f'|format(proj.budget or 0) }}</td>
+            <td class="text-end isfc-num">{{ '%.2f'|format(proj.spent or 0) }}</td>
+            <td class="text-center" style="min-width:90px">
+              <div class="progress" style="height:16px">
+                <div class="progress-bar {{ 'bg-success' if (proj.progress_pct or 0)>=100 else 'bg-primary' }}" role="progressbar" style="width:{{ proj.progress_pct or 0 }}%" aria-valuenow="{{ proj.progress_pct or 0 }}" aria-valuemin="0" aria-valuemax="100">{{ proj.progress_pct or 0 }}%</div>
+              </div>
+            </td>
+            <td class="text-center text-nowrap">
+              <a href="/projects/{{ proj.id }}" class="btn btn-sm btn-phoenix-secondary" title="{{ t('View') }}"><i class="bi bi-eye"></i></a>
+              <a href="/projects/{{ proj.id }}/timeline" class="btn btn-sm btn-phoenix-secondary" title="{{ t('Timeline') }}"><i class="bi bi-bar-chart-steps"></i></a>
+              {% if can_action('project_management','delete') %}
+              <button type="button" class="btn btn-sm btn-phoenix-danger" title="{{ t('Delete') }}"
+                      onclick="isfcConfirmDelete('/projects/{{ proj.id }}/delete', '{{ proj.project_name|e }}')"><i class="bi bi-trash"></i></button>
+              {% endif %}
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="9" class="text-center text-body-tertiary py-5"><i class="bi bi-briefcase fs-4 d-block mb-2"></i>{{ t('No projects yet. Create your first project to get started.') }}</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- shared delete form -->
+<form id="isfcDeleteForm" method="post" class="d-none"></form>
+<script>
+function isfcConfirmDelete(action, name){
+  if(confirm(("{{ t('Delete project') }}: " + name + "?\n" + "{{ t('This cannot be undone.') }}"))){
+    var f=document.getElementById('isfcDeleteForm');
+    f.action=action; f.submit();
+  }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,1 @@
+Phoenix UI consistency upgrade applied. Base layout and partials were intentionally not edited. CSS is appended to app/static/css/user.min.css and JS is appended to app/static/js/phoenix.js.

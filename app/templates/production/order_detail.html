@@ -1,0 +1,302 @@
+{% extends "layouts/base.html" %}
+{% block content %}
+{% set active_step = 'BOM' %}{% include 'partials/process_status_row.html' %}
+<style>
+  .od-hero {
+    background: linear-gradient(135deg, #132947, #0d8da0);
+    border-radius: 22px;
+    color: #fff;
+    padding: 22px 26px;
+    box-shadow: 0 18px 42px rgba(15, 30, 50, .16)
+  }
+
+  .od-card {
+    background: #fff;
+    border: 1px solid #dce8f2;
+    border-radius: 18px;
+    box-shadow: 0 12px 28px rgba(15, 30, 50, .06);
+    padding: 18px;
+    margin-bottom: 16px
+  }
+
+  .od-kpi span {
+    display: block;
+    color: #71849a;
+    font-size: 12px;
+    text-transform: uppercase;
+    font-weight: 900;
+    letter-spacing: .04em
+  }
+
+  .od-kpi b {
+    font-size: 28px;
+    color: #142a46
+  }
+
+  .od-btn {
+    border: 0;
+    border-radius: 12px;
+    padding: 9px 14px;
+    font-weight: 900;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px
+  }
+
+  .od-primary {
+    background: #315efb;
+    color: #fff
+  }
+
+  .od-warning {
+    background: #f59e0b;
+    color: #fff
+  }
+
+  .od-success {
+    background: #16a34a;
+    color: #fff
+  }
+
+  .od-soft {
+    background: #edf5fb;
+    color: #142a46
+  }
+
+  .od-disabled {
+    opacity: .5;
+    pointer-events: none
+  }
+
+  .od-table th {
+    background: #edf5fb;
+    color: #142a46;
+    text-transform: uppercase;
+    font-size: 12px
+  }
+
+  .od-label {
+    font-weight: 900;
+    color: #142a46
+  }
+
+  .od-input {
+    width: 100%;
+    border: 1px solid #cbdbea;
+    border-radius: 12px;
+    padding: 9px 11px;
+    background: #fff
+  }
+
+  .doc-step {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap
+  }
+
+  .doc-step span {
+    border-radius: 999px;
+    padding: 7px 12px;
+    font-weight: 900;
+    background: #edf5fb;
+    color: #173b55
+  }
+
+  .doc-step .done {
+    background: #dff8e9;
+    color: #087b2e
+  }
+
+  .doc-step .now {
+    background: #fff3cd;
+    color: #8b6500
+  }
+
+  .export-grid {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap
+  }
+
+  .export-grid a {
+    border-radius: 10px;
+    background: #edf5fb;
+    color: #142a46;
+    padding: 9px 12px;
+    text-decoration: none;
+    font-weight: 900
+  }
+
+  .flow-msg {
+    background: #f5fbfd;
+    border: 1px dashed #b9deea;
+    border-radius: 14px;
+    padding: 12px;
+    color: #173b55;
+    font-weight: 800
+  }
+</style>
+<div class="container-fluid py-3">
+  <div class="od-hero mb-3">
+    <div class="d-flex justify-content-between flex-wrap gap-2">
+      <div>
+        <h2 class="mb-1">Production Order Document: {{ order.order_no }}</h2>
+        <p class="mb-0 opacity-75">{{ order.customer_name }} · {{ order.brand or '-' }} · {{ order.channel or '-' }} ·
+          Delivery: {{ order.required_delivery_date or '-' }} {{ order.required_delivery_time or '' }}</p>
+      </div><a href="/production/orders" class="od-btn od-soft">Back to Orders</a>
+    </div>
+  </div>
+  {% if error %}<div class="alert alert-warning">{{ error }}</div>{% endif %}
+  <div class="od-card">
+    <div class="doc-step"><span class="done">1 Order Submitted</span><span
+        class="{% if order.status in ['Head Chef Approved','BOM Generated','Store Pending','In Production','Packing Pending','Packed','Out for Delivery','Dispatched'] %}done{% elif order.status == 'Submitted' %}now{% endif %}">2
+        Head Chef Approval</span><span
+        class="{% if bom %}done{% elif order.status == 'Head Chef Approved' %}now{% endif %}">3 BOM</span><span
+        class="{% if issuance %}done{% elif order.status == 'BOM Generated' %}now{% endif %}">4 Store</span><span
+        class="{% if txs %}done{% elif order.status == 'Store Pending' %}now{% endif %}">5 Kitchen</span><span
+        class="{% if flow_status.qc_count %}done{% endif %}">6 QC</span><span
+        class="{% if flow_status.packing_count %}done{% endif %}">7 Packing</span><span
+        class="{% if order.status in ['Out for Delivery','Dispatched','Delivered'] %}done{% endif %}">8 Dispatch</span>
+    </div>
+  </div>
+  <div class="row g-3 mb-3">
+    <div class="col-md-3">
+      <div class="od-card od-kpi"><span>Total Portions Ordered</span><b>{{ '%.2f'|format(order.total_planned_portions or
+          0) }}</b></div>
+    </div>
+    <div class="col-md-3">
+      <div class="od-card od-kpi"><span>Estimated Food Cost</span><b>{{ '%.2f'|format(order.total_estimated_food_cost or
+          0) }}</b></div>
+    </div>
+    <div class="col-md-3">
+      <div class="od-card od-kpi"><span>Selling Value</span><b>{{ '%.2f'|format(order.total_estimated_selling_value or
+          0) }}</b></div>
+    </div>
+    <div class="col-md-3">
+      <div class="od-card od-kpi"><span>Estimated Margin</span><b>{{ '%.2f'|format(order.total_estimated_margin or 0)
+          }}</b></div>
+    </div>
+  </div>
+  {# ==================================================================
+     STAGE 1 - HEAD CHEF SCHEDULE APPROVAL
+     Shown ONLY while the order is still 'Submitted'. The BOM / Store
+     actions live on Stage 2 and appear after approval, so the Head Chef
+     screen and the BOM screen are now two separate stages.
+     ================================================================== #}
+  {% set is_approved = order.status != 'Submitted' %}
+
+  <div class="od-card">
+    <div class="flow-msg mb-3"><strong>Current status:</strong> {{ order.status }} </div>
+
+    {% if not is_approved %}
+    <h5>Head Chef Cooking & Material Schedule Approval</h5>
+    <div class="flow-msg mb-3"><strong>Order details:</strong> {{ order.customer_name }} · {{ order.brand or '-' }} · {{ order.channel or '-' }} · Customer Delivery: {{ order.required_delivery_date or '-' }} {{ order.required_delivery_time or '' }}</div>
+    <p class="text-muted">Customer requested delivery date/time remains fixed. Head Chef only confirms cooking and material receiving schedule before BOM generation. <strong>BOM and Store actions unlock after approval.</strong></p>
+    <form method="post" action="/production/orders/{{ order.order_no }}/approve-plan" class="row g-2 align-items-end"
+          data-confirm="Approve the cooking schedule and move this order to BOM stage?"
+          data-confirm-title="Approve Cooking Schedule" data-confirm-ok="Approve" data-confirm-variant="success">
+      <div class="col-md-3"><label class="od-label">Cooking Date</label><input class="od-input" type="date"
+          name="cooking_date" value="{{ order.cooking_date or '' }}" required></div>
+      <div class="col-md-3"><label class="od-label">Cooking Time</label><input class="od-input" type="time"
+          name="cooking_time" value="{{ order.cooking_time or '' }}"></div>
+      <div class="col-md-3"><label class="od-label">Material Receiving Date</label><input class="od-input" type="date"
+          name="material_receiving_date" value="{{ order.material_receiving_date or '' }}" required></div>
+      <div class="col-md-3"><label class="od-label">Material Receiving Time</label><input class="od-input" type="time"
+          name="material_receiving_time" value="{{ order.material_receiving_time or '' }}"></div>
+      <div class="col-12"><button class="od-btn od-success">Approve Cooking Schedule & Order</button></div>
+    </form>
+    {% else %}
+    {# ================================================================
+       STAGE 2 - BOM GENERATION & STORE RELEASE (after approval)
+       Head Chef generates the BOM here; once released, the store keeper
+       continues on the Store Issuance screen.
+       ================================================================ #}
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+      <h5 class="mb-0">BOM Generation & Store Release</h5>
+      <span class="pis-chip" style="background:#dff8e9;color:#087b2e;border-radius:999px;padding:6px 12px;font-weight:800;font-size:12px">
+        Schedule approved · Cooking: {{ order.cooking_date or '-' }} {{ order.cooking_time or '' }} · Material: {{ order.material_receiving_date or '-' }} {{ order.material_receiving_time or '' }}
+      </span>
+    </div>
+    <div class="d-flex gap-2 flex-wrap align-items-center mb-2"><strong>Document Actions:</strong>
+      <form method="post" action="/production/orders/{{ order.order_no }}/generate-bom" style="display:inline"><button
+          class="od-btn od-warning" {% if order.status not in ['Head Chef Approved','BOM Generated','Store Pending','In
+          Production'] %}disabled{% endif %}>2. Generate BOM</button></form>
+      <form method="post" action="/production/orders/{{ order.order_no }}/release-store" style="display:inline"
+            data-confirm="Release this BOM to the store? The store keeper will see it on the Store Issuance screen."
+            data-confirm-title="Release BOM to Store" data-confirm-ok="Release" data-confirm-variant="primary"><button
+          class="od-btn od-primary" {% if not bom or issuance %}disabled{% endif %}>3. Release BOM to Store</button>
+      </form><a class="od-btn od-soft" href="/production/orders/{{ order.order_no }}/store-issuance">4. Open Store
+        Issuance</a>
+    </div>
+    <p class="text-muted mb-0">Store Issuance is the store keeper's screen - the Head Chef's work ends at Release BOM.</p>
+    {% endif %}
+  </div>
+
+  {% if is_approved %}
+  <div class="od-card">
+    <h5>BOM Export / View Options</h5>
+    <p class="text-muted mb-2">These are professional BOM views for production planning, store picking, section
+      preparation and reporting. They can be converted later to Excel/PDF.</p>
+    <div class="export-grid"><a href="/production/orders/{{ order.order_no }}/bom-report?group_by=customer"
+        target="_blank">Customer-wise BOM</a><a href="/production/orders/{{ order.order_no }}/bom-report?group_by=brand"
+        target="_blank">Brand-wise BOM</a><a href="/production/orders/{{ order.order_no }}/bom-report?group_by=category"
+        target="_blank">Main Category-wise BOM</a><a
+        href="/production/orders/{{ order.order_no }}/bom-report?group_by=sub_category" target="_blank">Sub
+        Category-wise BOM</a><a href="/production/orders/{{ order.order_no }}/bom-report?group_by=section"
+        target="_blank">Section-wise BOM</a><a href="/production/orders/{{ order.order_no }}/bom-report?group_by=item"
+        target="_blank">Item-wise BOM</a></div>
+  </div>
+  {% endif %}
+  <div class="row g-3">
+    <div class="col-lg-12">
+      <div class="od-card table-responsive">
+        <div class="d-flex justify-content-between flex-wrap gap-2 align-items-start"><h5>Order Lines</h5><div class="text-muted small"><strong>Batch calculation:</strong> Batches = Total Portions Ordered ÷ Recipe Standard Portions. <strong>Sale/Portion</strong> comes from the active Recipe Master sale price per portion.</div></div>
+        <table class="table table-sm table-bordered od-table">
+          <tr>
+            <th>#</th>
+            <th>Recipe Code & Name</th>
+            <th>Total Portions</th>
+            <th>Recipe Std Portions</th>
+            <th>Batches</th>
+            <th>Sale/Portion</th>
+          </tr>{% for l in lines %}<tr>
+            <td>{{ l.line_no }}</td>
+            <td>{{ l.recipe_no }} - {{ l.recipe_name }}</td>
+            <td>{{ l.required_portions }}</td>
+            {% set rm = recipe_meta.get(l.recipe_no) if recipe_meta is defined else None %}<td>{{ rm.standard_portions if rm else '1' }}</td>
+            <td>{{ '%.2f'|format(l.planned_batches or 0) }}</td>
+            <td>{{ '%.2f'|format(l.selling_price_per_portion or 0) }}</td>
+          </tr>{% endfor %}
+        </table>
+      </div>
+    </div>
+    {% if is_approved %}
+    <div class="col-lg-12">
+      <div class="od-card table-responsive">
+        <h5>Consolidated BOM</h5>
+        <table class="table table-sm table-bordered od-table">
+          <tr>
+            <th>Main Category</th>
+            <th>Sub Category</th>
+            <th>Item</th>
+            <th>Qty</th>
+            <th>UOM</th>
+            <th>Cost</th>
+          </tr>{% for b in consolidated %}<tr>
+            <td>{{ b.ingredient_main_category or b.ingredient_category or '-' }}</td>
+            <td>{{ b.ingredient_sub_category or '-' }}</td>
+            <td>{{ b.ingredient_code }} - {{ b.ingredient_name }}</td>
+            <td>{{ '%.4f'|format(b.total_required_with_waste_standard or 0) }}</td>
+            <td>{{ b.standard_uom }}</td>
+            <td>{{ '%.2f'|format(b.total_estimated_cost or 0) }}</td>
+          </tr>{% else %}<tr>
+            <td colspan="6" class="text-muted">No BOM yet. Head Chef approves schedule first, then generate BOM.</td>
+          </tr>{% endfor %}
+        </table>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

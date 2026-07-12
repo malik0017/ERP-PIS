@@ -1,0 +1,533 @@
+{% extends "layouts/base.html" %}
+
+{% block content %}
+
+<style>
+.pis-page {
+    padding: 4px 0 24px;
+}
+
+.pis-page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    margin-bottom: 18px;
+}
+.isfc-hero {
+        background: linear-gradient(135deg, #064b5a, #0f8195);
+        border-radius: 22px;
+        color: #fff;
+        padding: 26px 30px;
+        margin-bottom: 22px
+    }
+
+.pis-title-wrap h1 {
+    margin: 0;
+    font-size: 28px;
+    font-weight: 800;
+    color: #062b49;
+    letter-spacing: -0.4px;
+}
+
+.pis-title-wrap p {
+    margin: 6px 0 0;
+    color: #6b8192;
+    font-size: 14px;
+}
+
+.pis-user-pill {
+    border: 1px solid #d8e4ef;
+    border-radius: 999px;
+    background: #fff;
+    padding: 10px 16px;
+    color: #5f7484;
+    font-size: 13px;
+    white-space: nowrap;
+}
+
+.pis-card {
+    background: #fff;
+    border: 1px solid #d9e6f2;
+    border-radius: 14px;
+    box-shadow: 0 8px 22px rgba(6, 43, 73, 0.06);
+    margin-bottom: 16px;
+}
+
+.pis-card-body {
+    padding: 16px;
+}
+
+.pis-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.pis-toolbar-left,
+.pis-toolbar-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.pis-btn {
+    border: 0;
+    border-radius: 10px;
+    padding: 9px 14px;
+    font-weight: 700;
+    font-size: 13px;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    cursor: pointer;
+    line-height: 1.2;
+}
+
+.pis-btn-primary {
+    background: #0d7f91;
+    color: #fff;
+}
+
+.pis-btn-secondary {
+    background: #eaf2f8;
+    color: #062b49;
+}
+
+.pis-btn-warning {
+    background: #fff4d8;
+    color: #926000;
+}
+
+.pis-file {
+    border: 1px dashed #b7ccdc;
+    background: #f8fbfd;
+    border-radius: 10px;
+    padding: 8px 10px;
+    font-size: 13px;
+}
+
+.pis-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+    margin-bottom: 16px;
+}
+
+.pis-summary-card {
+    background: #fff;
+    border: 1px solid #d9e6f2;
+    border-radius: 14px;
+    padding: 16px;
+    box-shadow: 0 8px 22px rgba(6, 43, 73, 0.05);
+}
+
+.pis-summary-card span {
+    display: block;
+    color: #6b8192;
+    font-size: 13px;
+    margin-bottom: 8px;
+}
+
+.pis-summary-card strong {
+    display: block;
+    color: #062b49;
+    font-size: 28px;
+    font-weight: 800;
+}
+
+.pis-filter-form {
+    display: grid;
+    grid-template-columns: 1.6fr 0.8fr 1fr 1fr auto;
+    gap: 10px;
+    align-items: end;
+}
+
+.pis-field label {
+    display: block;
+    font-size: 12px;
+    color: #526a7c;
+    font-weight: 700;
+    margin-bottom: 5px;
+}
+
+.pis-input,
+.pis-select {
+    width: 100%;
+    border: 1px solid #cbdbea;
+    border-radius: 10px;
+    padding: 9px 11px;
+    color: #062b49;
+    background: #fff;
+    outline: none;
+}
+
+.pis-input:focus,
+.pis-select:focus {
+    border-color: #0d7f91;
+    box-shadow: 0 0 0 3px rgba(13, 127, 145, 0.12);
+}
+
+.pis-table-wrap {
+    overflow-x: auto;
+}
+
+.pis-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 13px;
+}
+
+.pis-table th {
+    background: #eef5fa;
+    color: #062b49;
+    text-align: left;
+    padding: 12px 10px;
+    font-weight: 800;
+    border-bottom: 1px solid #dce8f2;
+    white-space: nowrap;
+}
+
+.pis-table td {
+    border-bottom: 1px solid #edf3f8;
+    padding: 11px 10px;
+    color: #173b55;
+    vertical-align: middle;
+}
+
+.pis-table tbody tr:hover {
+    background: #f8fbfd;
+}
+
+.pis-code {
+    font-weight: 800;
+    color: #0d7f91;
+    white-space: nowrap;
+}
+
+.pis-muted {
+    color: #738899;
+}
+
+.pis-badge {
+    border-radius: 999px;
+    padding: 5px 9px;
+    font-size: 11px;
+    font-weight: 800;
+    display: inline-block;
+    white-space: nowrap;
+}
+
+.pis-badge-active {
+    background: #dcf8e7;
+    color: #007a3d;
+}
+
+.pis-badge-inactive {
+    background: #f3f5f7;
+    color: #697b88;
+}
+
+.pis-badge-pending {
+    background: #fff3d6;
+    color: #a76d00;
+}
+
+.pis-badge-danger {
+    background: #ffe1df;
+    color: #b42318;
+}
+
+.pis-actions {
+    display: flex;
+    gap: 6px;
+    flex-wrap: nowrap;
+}
+
+.pis-mini-btn {
+    border-radius: 8px;
+    padding: 6px 9px;
+    background: #eaf2f8;
+    color: #062b49;
+    font-weight: 700;
+    font-size: 12px;
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.pis-empty {
+    text-align: center;
+    padding: 36px 12px;
+    color: #738899;
+}
+
+.pis-upload-note {
+    color: #6b8192;
+    font-size: 12px;
+    margin-top: 8px;
+}
+
+@media (max-width: 1200px) {
+    .pis-summary-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .pis-filter-form {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+@media (max-width: 700px) {
+    .pis-page-header {
+        flex-direction: column;
+    }
+
+    .pis-summary-grid,
+    .pis-filter-form {
+        grid-template-columns: 1fr;
+    }
+
+    .pis-toolbar {
+        align-items: stretch;
+    }
+
+    .pis-toolbar-left,
+    .pis-toolbar-right {
+        width: 100%;
+    }
+}
+</style>
+
+<div class="pis-page">
+
+    <div class="pis-page-header">
+        <div class="pis-title-wrap">
+            <h1>Recipes & Costing</h1>
+            <p>International Specialized Food Company · Recipe master, costing, versions and missing data control</p>
+        </div>
+
+        <div class="pis-user-pill">
+            PIS Administrator · ADMIN
+        </div>
+    </div>
+
+    {% if request.query_params.get("upload") == "success" %}
+    <div class="pis-card">
+        <div class="pis-card-body" style="border-left: 5px solid #0d7f91;">
+            Excel upload completed.
+            Created: <b>{{ request.query_params.get("created", "0") }}</b>,
+            Updated: <b>{{ request.query_params.get("updated", "0") }}</b>,
+            Lines: <b>{{ request.query_params.get("lines", "0") }}</b>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="pis-toolbar pis-card ">
+        <div class="pis-card-body pis-toolbar" style="width:100%;">
+            <div class="pis-toolbar-left">
+                <a href="/recipes/prepare" class="pis-btn pis-btn-primary">
+                    <i class="bi bi-plus-square"></i>
+                    Prepare Manual Recipe
+                </a>
+
+                <a href="/recipes/missing-data" class="pis-btn pis-btn-warning">
+                    <i class="bi bi-exclamation-triangle"></i>
+                    Missing Data Report
+                </a>
+            </div>
+
+            <div class="pis-toolbar-right">
+                <form action="/recipes/upload-excel" method="post" enctype="multipart/form-data" style="display:flex; gap:8px; flex-wrap:wrap;">
+                    <input class="pis-file" type="file" name="file" accept=".xlsx,.xlsm" required>
+                    <button type="submit" class="pis-btn pis-btn-secondary">
+                        <i class="bi bi-upload"></i>
+                        Upload Excel
+                    </button>
+                </form>
+            </div>
+
+            <div class="pis-upload-note" style="width:100%;">
+                Duplicate recipe code upload is now handled as pending version approval. Latest approved version remains live; pending versions appear under Recipe Approvals.
+            </div>
+        </div>
+    </div>
+
+    {% if stats is defined and stats.active == 0 and stats.pending > 0 and status == "ACTIVE" %}
+    <div class="pis-card">
+        <div class="pis-card-body" style="border-left:5px solid #f59e0b; display:flex; justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
+            <div>
+                <b>No ACTIVE recipes are available yet.</b><br>
+                You have <b>{{ stats.pending }}</b> pending recipe versions. Approve them first, then they will appear here and can be used in production orders.
+            </div>
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                <a href="/recipes/pending" class="pis-btn pis-btn-warning">Open Recipe Approvals</a>
+                <form method="post" action="/recipes/approve-all-pending" style="display:inline;">
+                    <button type="submit" class="pis-btn pis-btn-primary">Approve All Pending</button>
+                </form>
+                <a href="/recipes?status=ALL" class="pis-btn pis-btn-secondary">Show All Recipes</a>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="pis-summary-grid">
+        <div class="pis-summary-card">
+            <span>Total Recipes</span>
+            <strong>{{ stats.total if stats is defined else recipes|length }}</strong>
+        </div>
+
+        <div class="pis-summary-card">
+            <span>Active Recipes</span>
+            <strong>{{ stats.active if stats is defined else (recipes | selectattr("status", "equalto", "ACTIVE") | list | length) }}</strong>
+        </div>
+
+        <div class="pis-summary-card">
+            <span>Pending Versions</span>
+            <strong>{{ stats.pending if stats is defined else (recipes | selectattr("status", "equalto", "PENDING") | list | length) }}</strong>
+        </div>
+
+        <div class="pis-summary-card">
+            <span>Inactive Recipes</span>
+            <strong>{{ stats.inactive if stats is defined else (recipes | selectattr("status", "equalto", "INACTIVE") | list | length) }}</strong>
+        </div>
+    </div>
+
+    <div class="pis-card">
+        <div class="pis-card-body">
+            <form method="get" action="/recipes" class="pis-filter-form">
+                <div class="pis-field">
+                    <label>Search</label>
+                    <input class="pis-input" type="text" name="search" placeholder="Search recipe code, name, category, or customer" value="{{ search }}">
+                </div>
+
+                <div class="pis-field">
+                    <label>Status</label>
+                    <select class="pis-select" name="status">
+                        <option value="ACTIVE" {% if status == "ACTIVE" %}selected{% endif %}>ACTIVE</option>
+                        <option value="PENDING" {% if status == "PENDING" %}selected{% endif %}>PENDING</option>
+                        <option value="INACTIVE" {% if status == "INACTIVE" %}selected{% endif %}>INACTIVE</option>
+                        <option value="ALL" {% if status == "ALL" %}selected{% endif %}>ALL</option>
+                    </select>
+                </div>
+
+                <div class="pis-field">
+                    <label>Category</label>
+                    <select class="pis-select" name="category">
+                        <option>All Categories</option>
+                        {% for c in categories %}
+                            <option value="{{ c }}" {% if selected_category == c %}selected{% endif %}>{{ c }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="pis-field">
+                    <label>Customer</label>
+                    <select class="pis-select" name="customer">
+                        <option>All Customers</option>
+                        {% for c in customers %}
+                            <option value="{{ c }}" {% if selected_customer == c %}selected{% endif %}>{{ c }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="pis-field">
+                    <label>&nbsp;</label>
+                    <button type="submit" class="pis-btn pis-btn-primary" style="width:100%; justify-content:center;">
+                        <i class="bi bi-funnel"></i>
+                        Filter
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="pis-card">
+        <div class="pis-card-body">
+            <div class="pis-table-wrap">
+                <table class="pis-table">
+                    <thead>
+                        <tr>
+                            <th>CODE</th>
+                            <th>RECIPE NAME</th>
+                            <th>CATEGORY</th>
+                            <th>CUSTOMER</th>
+                            <th>VERSION</th>
+                            <th>STATUS</th>
+                            <th>PORTIONS</th>
+                            <th>FOOD COST</th>
+                            <th>TOTAL COST</th>
+                            <th>SALE PRICE</th>
+                            <th>MISSING</th>
+                            <th>ACTIONS</th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+                        {% for r in recipes %}
+                        <tr>
+                            <td class="pis-code">{{ r.recipe_code }}</td>
+
+                            <td>
+                                <strong>{{ r.recipe_name }}</strong>
+                                {% if r.is_sub_recipe %}
+                                    <div class="pis-muted">Sub recipe</div>
+                                {% endif %}
+                            </td>
+
+                            <td>{{ r.category or "—" }}</td>
+                            <td>{{ r.customer_name or "—" }}</td>
+                            <td>V{{ r.version }}</td>
+
+                            <td>
+                                {% if r.status == "ACTIVE" %}
+                                    <span class="pis-badge pis-badge-active">ACTIVE</span>
+                                {% elif r.status == "PENDING" %}
+                                    <span class="pis-badge pis-badge-pending">PENDING</span>
+                                {% elif r.status == "INACTIVE" %}
+                                    <span class="pis-badge pis-badge-inactive">INACTIVE</span>
+                                {% else %}
+                                    <span class="pis-badge pis-badge-inactive">{{ r.status }}</span>
+                                {% endif %}
+                            </td>
+
+                            <td>{{ "%.1f"|format(r.standard_portions or 0) }}</td>
+                            <td>{{ "%.2f"|format(r.food_cost or 0) }}</td>
+                            <td>{{ "%.2f"|format(r.total_cost or 0) }}</td>
+                            <td>{{ "%.2f"|format(r.sale_price or 0) }}</td>
+
+                            <td>
+                                {% if (r.missing_cost_lines or 0) > 0 %}
+                                    <span class="pis-badge pis-badge-danger">{{ r.missing_cost_lines }}</span>
+                                {% else %}
+                                    <span class="pis-badge pis-badge-active">0</span>
+                                {% endif %}
+                            </td>
+
+                            <td>
+                                <div class="pis-actions">
+                                    <a class="pis-mini-btn" href="/recipes/{{ r.id }}">View</a>
+                                    <a class="pis-mini-btn" href="/recipes/{{ r.id }}/edit">Edit</a>
+                                </div>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="12" class="pis-empty">
+                                No recipes found. Upload recipe Excel or prepare a manual recipe.
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+{% endblock %}

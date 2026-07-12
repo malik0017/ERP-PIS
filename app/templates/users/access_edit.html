@@ -1,0 +1,118 @@
+{% extends "layouts/base.html" %}
+{% block title %}Edit User Access{% endblock %}
+{% block content %}
+<style>
+  .rep-hero {
+    background: radial-gradient(circle at 92% 8%, rgba(255, 255, 255, .22), transparent 16%), linear-gradient(135deg, #102542, #0d7f91);
+    color: #fff;
+    border-radius: 28px;
+    padding: 30px 34px;
+    box-shadow: 0 22px 48px rgba(16, 37, 66, .22);
+    margin-bottom: 16px
+  }
+
+  .rep-hero h1 {
+    font-size: 34px;
+    font-weight: 950;
+    margin: 0
+  }
+
+  .rep-hero p {
+    margin: 8px 0 0;
+    color: #e7fbff
+  }
+  .access-matrix th,.access-matrix td{padding:14px!important}.access-matrix input{transform:scale(1.18)}
+</style>
+<div class="rep-page container-fluid py-4">
+  <div class="rep-hero mb-3 p-4">
+    <h1 class="mb-1">Edit User Access</h1>
+    <p class="mb-0">Screen-wise and action-wise access control. View opens the page; Add/Edit/Delete/Export controls what the user can do inside it.</p>
+  </div>
+  <form method="post" action="/admin/users/{{ target_user.id }}/access">
+    <div class="pis-card p-4 mb-3">
+      <div class="row g-3 align-items-end">
+        <div class="col-md-3"><label class="form-label">User</label><input class="form-control"
+            value="{{ target_user.username }} - {{ target_user.full_name }}" disabled></div>
+        <div class="col-md-3"><label class="form-label">Role</label><select name="role_id" class="form-select">{% for r
+            in roles %}<option value="{{ r.id }}" {% if r.id==target_user.role_id %}selected{% endif %}>{{ r.name }}
+            </option>{% endfor %}</select></div>
+        <div class="col-md-2"><label class="form-label">Active</label><select name="is_active" class="form-select">
+            <option value="1" {% if target_user.is_active %}selected{% endif %}>Yes</option>
+            <option value="0" {% if not target_user.is_active %}selected{% endif %}>No</option>
+          </select></div>
+        <div class="col-md-2"><label class="form-label">Verified</label><select name="is_verified" class="form-select">
+            <option value="1" {% if target_user.is_verified %}selected{% endif %}>Yes</option>
+            <option value="0" {% if not target_user.is_verified %}selected{% endif %}>No</option>
+          </select></div>
+        <div class="col-md-2"><label class="form-label">Authenticator</label><select name="two_factor_enabled"
+            class="form-select">
+            <option value="0">Disabled</option>
+            <option value="1">Enabled</option>
+          </select></div>
+        <div class="col-12"><label class="form-check"><input class="form-check-input" type="checkbox"
+              name="force_password_change" value="1"> <span class="form-check-label">Force password change on next
+              login</span></label></div>
+      </div>
+    </div>
+    <div class="pis-card p-4">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <div><h4 class="mb-0">Module / Page Access Matrix</h4><small class="text-secondary">Use this as the master authority matrix for every user.</small></div>
+        <div><button type="button" class="btn btn-light" onclick="toggleAll(true)">Tick All View</button><button type="button" class="btn btn-light" onclick="toggleAll(false)">Clear View</button><button class="btn btn-theme">Save Access</button></div>
+      </div>
+      <div class="table-responsive no-isfc-table-tools">
+        <table class="table table-sm align-middle access-matrix">
+          <thead><tr><th>Module / Page</th><th class="text-center">View</th><th class="text-center">Add</th><th class="text-center">Edit</th><th class="text-center">Delete</th><th class="text-center">Export</th></tr></thead>
+          <tbody>
+          {% for key, label, desc in modules %}
+            {% set row = access_map.get(key) or {} %}
+            <tr>
+              <td><strong>{{ label }}</strong><br><small class="text-secondary">{{ desc }}</small></td>
+              <td class="text-center"><input class="form-check-input view-check" type="checkbox" name="pages" value="{{ key }}" {% if row.get('allowed') or row is sameas true %}checked{% endif %}></td>
+              <td class="text-center"><input class="form-check-input" type="checkbox" name="add_pages" value="{{ key }}" {% if row.get('can_add') %}checked{% endif %}></td>
+              <td class="text-center"><input class="form-check-input" type="checkbox" name="edit_pages" value="{{ key }}" {% if row.get('can_edit') %}checked{% endif %}></td>
+              <td class="text-center"><input class="form-check-input" type="checkbox" name="delete_pages" value="{{ key }}" {% if row.get('can_delete') %}checked{% endif %}></td>
+              <td class="text-center"><input class="form-check-input" type="checkbox" name="export_pages" value="{{ key }}" {% if row.get('can_export') %}checked{% endif %}></td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </form>
+</div>
+<style>
+  .pis-access-card {
+    display: flex;
+    gap: 12px;
+    height: 100%;
+    border: 1px solid #dbe7f3;
+    border-radius: 16px;
+    padding: 16px;
+    background: #fff;
+    cursor: pointer;
+    box-shadow: 0 10px 22px rgba(15, 23, 42, .04)
+  }
+
+  .pis-access-card input {
+    margin-top: 4px;
+    transform: scale(1.2)
+  }
+
+  .pis-access-card strong {
+    color: #13284b
+  }
+
+  .pis-access-card small {
+    color: #64748b
+  }
+.access-matrix th,.access-matrix td{padding:14px!important}.access-matrix input{transform:scale(1.18)}
+</style>
+<script>function toggleAll(v) { document.querySelectorAll('input.view-check').forEach(cb => cb.checked = v) }
+  document.querySelectorAll('.access-matrix tbody tr').forEach(function(row){
+    const view = row.querySelector('input.view-check');
+    row.querySelectorAll('input:not(.view-check)').forEach(function(cb){
+      cb.addEventListener('change', function(){ if(cb.checked && view) view.checked = true; });
+    });
+  });
+</script>
+{% endblock %}

@@ -1,0 +1,899 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}Executive Dashboard{% endblock %}
+
+{% block extra_css %}
+<style>
+  .exec-page {
+    padding: 10px 0 36px;
+    color: #102542
+  }
+
+  .exec-hero {
+    background: radial-gradient(circle at 88% 0%, rgba(255, 255, 255, .18), transparent 21%), linear-gradient(135deg, #08243d 0%, #08798b 58%, #12a39f 100%);
+    color: #fff;
+    border-radius: 28px;
+    padding: 30px 34px;
+    margin-bottom: 18px;
+    box-shadow: 0 18px 38px rgba(6, 43, 73, .22);
+    position: relative;
+    overflow: hidden
+  }
+
+  .exec-hero h1 {
+    font-size: 34px;
+    font-weight: 950;
+    margin: 0;
+    letter-spacing: .01em;
+    color: #ffffff;
+  }
+
+  .exec-hero p {
+    margin: 10px 0 0;
+    color: #e1fbff;
+    font-size: 15px
+  }
+
+  .exec-hero .stamp {
+    display: inline-flex;
+    gap: 8px;
+    align-items: center;
+    background: rgba(255, 255, 255, .14);
+    border: 1px solid rgba(255, 255, 255, .24);
+    border-radius: 999px;
+    padding: 7px 13px;
+    margin-top: 16px;
+    font-weight: 900
+  }
+
+  .quick-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 16px
+  }
+
+  .quick-actions a {
+    border-radius: 15px;
+    padding: 11px 14px;
+    text-decoration: none;
+    background: #eaf2f8;
+    color: #102542;
+    font-weight: 950;
+    box-shadow: 0 8px 18px rgba(15, 30, 50, .05)
+  }
+
+  .quick-actions a.primary {
+    background: #0d7f91;
+    color: #fff
+  }
+
+  .kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+    margin-bottom: 16px
+  }
+
+  .kpi-card {
+    background: #fff;
+    border: 1px solid #dce9f3;
+    border-radius: 20px;
+    padding: 17px 18px;
+    box-shadow: 0 12px 28px rgba(15, 30, 50, .065);
+    position: relative;
+    overflow: hidden
+  }
+
+  .kpi-card:before {
+    content: "";
+    position: absolute;
+    right: -20px;
+    top: -30px;
+    width: 90px;
+    height: 90px;
+    border-radius: 999px;
+    background: #eef8fb
+  }
+
+  .kpi-card .label {
+    display: block;
+    color: #6b8096;
+    font-size: 12px;
+    font-weight: 950;
+    text-transform: uppercase;
+    letter-spacing: .05em
+  }
+
+  .kpi-card .value {
+    display: block;
+    color: #102542;
+    font-size: 31px;
+    font-weight: 950;
+    margin-top: 5px;
+    line-height: 1
+  }
+
+  .kpi-card .hint {
+    display: block;
+    color: #7d8fa4;
+    margin-top: 7px;
+    font-size: 12px
+  }
+
+  .kpi-card.good .value {
+    color: #0d7f91
+  }
+
+  .kpi-card.warn .value {
+    color: #b77800
+  }
+
+  .kpi-card.dark {
+    background: linear-gradient(135deg, #102542, #173b55);
+    border-color: #102542;
+    color: #fff
+  }
+
+  .kpi-card.dark .label,
+  .kpi-card.dark .hint {
+    color: #d7e8f3
+  }
+
+  .kpi-card.dark .value {
+    color: #fff
+  }
+
+  .panel-grid {
+    display: grid;
+    grid-template-columns: 1.15fr .85fr;
+    gap: 16px;
+    margin-bottom: 16px
+  }
+
+  .panel {
+    background: #fff;
+    border: 1px solid #dce9f3;
+    border-radius: 22px;
+    padding: 18px;
+    box-shadow: 0 12px 28px rgba(15, 30, 50, .065);
+    overflow: hidden
+  }
+
+  .panel h3 {
+    font-size: 19px;
+    margin: 0;
+    color: #102542;
+    font-weight: 950
+  }
+
+  .panel p {
+    color: #6b8096;
+    margin: 5px 0 14px
+  }
+
+  .flow {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    overflow-x: auto;
+    padding: 3px 0
+  }
+
+  .flow a {
+    text-decoration: none
+  }
+
+  .flow-step {
+    min-width: 128px;
+    border: 1px solid #dce9f3;
+    border-radius: 16px;
+    padding: 13px;
+    background: linear-gradient(180deg, #fbfdff, #f4f9fc)
+  }
+
+  .flow-step span {
+    display: block;
+    color: #6b8096;
+    font-size: 12px;
+    font-weight: 950
+  }
+
+  .flow-step strong {
+    font-size: 25px;
+    color: #0d7f91;
+    font-weight: 950
+  }
+
+  .flow-arrow {
+    color: #8092a7;
+    font-weight: 950
+  }
+
+  .bar-row {
+    display: grid;
+    grid-template-columns: 150px 1fr 58px;
+    align-items: center;
+    gap: 10px;
+    margin: 11px 0
+  }
+
+  .bar-label {
+    font-size: 13px;
+    font-weight: 900;
+    color: #173b55;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis
+  }
+
+  .bar-track {
+    height: 13px;
+    background: #eaf2f8;
+    border-radius: 999px;
+    overflow: hidden
+  }
+
+  .bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #0d7f91, #20bdd5);
+    border-radius: 999px
+  }
+
+  .bar-fill.warning {
+    background: linear-gradient(90deg, #f0a500, #f8ca5d)
+  }
+
+  .bar-fill.dark {
+    background: linear-gradient(90deg, #102542, #0d7f91)
+  }
+
+  .bar-value {
+    text-align: right;
+    font-weight: 950;
+    color: #102542
+  }
+
+  .table-pro {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 13px
+  }
+
+  .table-pro th {
+    background: #eef5fa;
+    color: #102542;
+    text-align: left;
+    padding: 11px;
+    font-weight: 950
+  }
+
+  .table-pro td {
+    padding: 10px 11px;
+    border-bottom: 1px solid #edf3f8;
+    color: #173b55;
+    vertical-align: middle
+  }
+
+  .table-pro a {
+    font-weight: 900;
+    text-decoration: none;
+    color: #0d5fbb
+  }
+
+  .pill {
+    border-radius: 999px;
+    padding: 5px 9px;
+    background: #eaf2f8;
+    color: #102542;
+    font-weight: 900;
+    font-size: 12px;
+    display: inline-flex
+  }
+
+  .pill.ok {
+    background: #d7f7df;
+    color: #087b2e
+  }
+
+  .pill.warn {
+    background: #fff0c8;
+    color: #996100
+  }
+
+  .pill.danger {
+    background: #ffe1e1;
+    color: #a12727
+  }
+
+  .action-list {
+    display: grid;
+    gap: 10px
+  }
+
+  .action-item {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: center;
+    border: 1px solid #dce9f3;
+    border-radius: 16px;
+    padding: 13px;
+    text-decoration: none;
+    background: #fbfdff
+  }
+
+  .action-item strong {
+    color: #102542
+  }
+
+  .action-item span {
+    font-weight: 950
+  }
+
+  .action-item.info span,
+  .action-item.success span {
+    color: #0d7f91
+  }
+
+  .action-item.warning span {
+    color: #b77800
+  }
+
+  .mini-metrics {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px
+  }
+
+  .mini {
+    background: #f7fbfd;
+    border: 1px solid #dce9f3;
+    border-radius: 16px;
+    padding: 12px
+  }
+
+  .mini span {
+    display: block;
+    color: #6b8096;
+    font-size: 12px;
+    font-weight: 900
+  }
+
+  .mini strong {
+    font-size: 22px;
+    color: #102542
+  }
+
+  .muted-empty {
+    color: #7d8fa4;
+    text-align: center;
+    padding: 26px 0
+  }
+
+  .pipeline-chart {
+    display: grid;
+    gap: 12px;
+    margin-top: 8px
+  }
+
+  .pipeline-row {
+    display: grid;
+    grid-template-columns: 170px 1fr 56px;
+    align-items: center;
+    gap: 12px
+  }
+
+  .pipeline-name {
+    font-weight: 950;
+    color: #173b55
+  }
+
+  .pipeline-number {
+    font-weight: 950;
+    text-align: right;
+    color: #102542
+  }
+
+  .donut-grid {
+    display: grid;
+    grid-template-columns: 180px 1fr;
+    gap: 18px;
+    align-items: center
+  }
+
+  .donut {
+    --p1: 50;
+    --p2: 80;
+    width: 155px;
+    height: 155px;
+    border-radius: 50%;
+    background: conic-gradient(#0d7f91 0 calc(var(--p1)*1%), #20bdd5 calc(var(--p1)*1%) calc(var(--p2)*1%), #eaf2f8 calc(var(--p2)*1%) 100%);
+    display: grid;
+    place-items: center;
+    margin: auto
+  }
+
+  .donut:after {
+    content: "";
+    width: 94px;
+    height: 94px;
+    background: #fff;
+    border-radius: 50%;
+    box-shadow: inset 0 0 0 1px #e6eef6
+  }
+
+  .legend {
+    display: grid;
+    gap: 8px
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    font-weight: 900;
+    color: #173b55
+  }
+
+  .dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #0d7f91;
+    display: inline-block;
+    margin-right: 8px
+  }
+
+  .dot.alt {
+    background: #20bdd5
+  }
+
+  .dot.light {
+    background: #eaf2f8;
+    border: 1px solid #ccdce8
+  }
+
+  .section-cost-card {
+    display: grid;
+    gap: 10px
+  }
+
+  .section-cost-row {
+    display: grid;
+    grid-template-columns: 140px 1fr 72px;
+    gap: 10px;
+    align-items: center
+  }
+
+  .subtle-note {
+    background: #f3fbfd;
+    border: 1px solid #cbeaf1;
+    color: #26556b;
+    border-radius: 16px;
+    padding: 12px 14px;
+    font-weight: 800;
+    margin-bottom: 16px
+  }
+
+  .status-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px
+  }
+
+  .status-tile {
+    border: 1px solid #dce9f3;
+    border-radius: 16px;
+    background: #fbfdff;
+    padding: 12px
+  }
+
+  .status-tile span {
+    display: block;
+    color: #6b8096;
+    font-size: 12px;
+    font-weight: 900
+  }
+
+  .status-tile strong {
+    font-size: 22px;
+    color: #102542
+  }
+
+  @media(max-width:1180px) {
+    .kpi-grid {
+      grid-template-columns: repeat(2, 1fr)
+    }
+
+    .panel-grid {
+      grid-template-columns: 1fr
+    }
+
+    .status-grid {
+      grid-template-columns: repeat(2, 1fr)
+    }
+  }
+
+  @media(max-width:720px) {
+
+    .kpi-grid,
+    .status-grid {
+      grid-template-columns: 1fr
+    }
+
+    .exec-hero h1 {
+      font-size: 26px
+    }
+
+    .bar-row,
+    .pipeline-row,
+    .section-cost-row {
+      grid-template-columns: 110px 1fr 42px
+    }
+
+    .mini-metrics {
+      grid-template-columns: 1fr
+    }
+
+    .donut-grid {
+      grid-template-columns: 1fr
+    }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+{% set max_status = (order_status | map(attribute='total') | max) if order_status else 1 %}
+{% set max_section_cost = (top_bom_sections | map(attribute='cost') | max) if top_bom_sections else 1 %}
+{% set max_category_cost = (bom_category_cost | map(attribute='cost') | max) if bom_category_cost else 1 %}
+{% set max_store = (store_status | map(attribute='total') | max) if store_status else 1 %}
+<div class="exec-page container-fluid px-4">
+  <div class="exec-hero">
+    <h1>ISFC Production Intelligence Command Center</h1>
+    <p>Executive view for recipe readiness, customer orders, BOM cost, store issuance, production movement, QC and
+      dispatch readiness.</p>
+  </div>
+
+  <div class="quick-actions">
+    <a class="primary" href="/orders/portal"><i class="bi bi-cart-plus"></i> Create Customer / Internal Order</a>
+    <a href="/recipes?status=ACTIVE"><i class="bi bi-journal-check"></i> Active Recipes</a>
+    <a href="/recipes/ingredients?status=ACTIVE"><i class="bi bi-diagram-3"></i> Recipe BOM Master</a>
+    <a href="/production/orders"><i class="bi bi-clipboard-data"></i> Production Orders</a>
+    <a href="/production/store-issuance"><i class="bi bi-box-arrow-up"></i> Store Issuance</a>
+    <a href="/qc"><i class="bi bi-patch-check"></i> Quality Control</a>
+    <a href="/packing"><i class="bi bi-box-seam"></i> Trayline / Packing</a>
+    <a href="/dispatch"><i class="bi bi-truck"></i> Dispatch</a>
+    <a href="/relationship-map"><i class="bi bi-diagram-3-fill"></i> Relationship Map</a>
+    <a href="/reports"><i class="bi bi-bar-chart-line"></i> Reports Center</a>
+  </div>
+
+
+  <div class="kpi-grid">
+    <div class="kpi-card good"><span class="label">Active Recipes</span><strong class="value">{{ kpis.active_recipes
+        }}</strong><span class="hint">{{ kpis.recipe_live_pct }}% live vs total versions</span></div>
+    <div class="kpi-card"><span class="label">Inventory Items</span><strong class="value">{{ kpis.inventory_items
+        }}</strong><span class="hint">materials in inventory master</span></div>
+    <div class="kpi-card"><span class="label">Open Orders</span><strong class="value">{{ kpis.open_orders
+        }}</strong><span class="hint">not closed / dispatched</span></div>
+    <div class="kpi-card dark"><span class="label">Estimated Margin</span><strong class="value">{{
+        '%.2f'|format(kpis.margin or 0) }}</strong><span class="hint">{{ '%.2f'|format(kpis.margin_pct or 0) }}% margin
+        on active order book</span></div>
+    <div class="kpi-card"><span class="label">Order Portions</span><strong class="value">{{ '%.0f'|format(kpis.portions
+        or 0) }}</strong><span class="hint">planned portions from orders</span></div>
+    <div class="kpi-card"><span class="label">BOM Lines</span><strong class="value">{{ kpis.bom_lines }}</strong><span
+        class="hint">{{ kpis.bom_per_order }} lines per order avg.</span></div>
+    <div class="kpi-card warn"><span class="label">Store Progress</span><strong class="value">{{
+        '%.0f'|format(kpis.store_progress_pct or 0) }}%</strong><span class="hint">{{ kpis.store_finalized }} of {{
+        kpis.store_lines }} lines finalized</span></div>
+    <div class="kpi-card"><span class="label">Master Coverage</span><strong class="value">{{ kpis.customers
+        }}</strong><span class="hint">customers · {{ kpis.suppliers }} suppliers</span></div>
+  </div>
+
+
+  <div class="card shadow-none border mb-3" data-component-card="data-component-card">
+    <div class="card-header p-3 border-bottom bg-body">
+      <h4 class="text-body mb-0">Production Flow</h4>
+    </div>
+    <div class="card-body p-3">
+      <div class="swiper-theme-container w-100">
+        <div class="swiper theme-slider"
+          data-swiper='{"spaceBetween":16,"loop":true,"slidesPerView":"auto","autoplay":{"delay":0,"disableOnInteraction":false},"freeMode":true,"speed":4000,"grabCursor":true}'>
+          <div class="swiper-wrapper swiper-continuous-autoplay">
+            {% for step in production_flow %}
+            <div class="swiper-slide" style="width:210px;">
+              <a href="{{ step.url }}" class="text-decoration-none">
+                <div class="card h-100 bg-body-emphasis">
+                  <div class="card-body">
+                    <div class="d-flex flex-between-center gap-2">
+                      <div class="flex-1">
+                        <h6 class="mb-2 text-body-tertiary text-nowrap">{{ step.label }}</h6>
+                        <h3 class="mb-0 text-body">{{ step.total }}</h3>
+                      </div>
+                      <span class="fas fa-arrow-right text-primary"></span>
+                    </div>
+                  </div>
+                </div>
+              </a>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <div class="panel mb-3">
+    <h3>Quality & Logistics Readiness</h3>
+    <p>Shows mandatory final steps after section workstations: QC pass, trayline/packing, dispatch and delivery closure.
+    </p>
+    <div class="status-grid">
+      <div class="status-tile"><span>Orders Waiting QC</span><strong>{{ kpis.qc_waiting_orders }}</strong></div>
+      <div class="status-tile"><span>QC Checks Done</span><strong>{{ kpis.qc_checks }}</strong></div>
+      <div class="status-tile"><span>Pending Packing</span><strong>{{ kpis.packing_pending }}</strong></div>
+      <div class="status-tile"><span>Pending Dispatch</span><strong>{{ kpis.dispatch_pending }}</strong></div>
+      <div class="status-tile"><span>Delivered</span><strong>{{ kpis.delivered_orders }}</strong></div>
+    </div>
+  </div>
+
+  <div class="panel-grid">
+    <div class="card shadow-none border h-100" data-component-card="data-component-card">
+      <div class="card-header p-4 border-bottom bg-body">
+        <h4 class="text-body mb-0">Order Pipeline Status</h4>
+        <p class="text-body-tertiary mb-0 fs-9">Live status mix of production orders.</p>
+      </div>
+      <div class="card-body">
+        {% if order_status %}
+        <div id="orderPipelineChart" style="min-height:320px;"
+          data-isfc-chart="hbar" data-types="hbar,bar,line,area,pie,donut,radar"
+          data-labels='{{ order_status | map(attribute="label") | list | tojson }}'
+          data-values='{{ order_status | map(attribute="total") | list | tojson }}'></div>
+        {% else %}
+        <div class="text-center text-body-tertiary py-5">No orders found.</div>
+        {% endif %}
+      </div>
+    </div>
+    <div class="panel">
+      <h3>Management Exceptions</h3>
+      <p>Items needing operational follow-up.</p>
+      <div class="action-list">
+        {% for item in action_items %}
+        <a class="action-item {{ item.level }}" href="{{ item.url }}"><strong>{{ item.title }}</strong><span>{{
+            item.value }}</span></a>
+        {% endfor %}
+      </div>
+      <div class="mini-metrics mt-3">
+        <div class="mini"><span>Food Cost</span><strong>{{ '%.2f'|format(kpis.food_cost or 0) }}</strong></div>
+        <div class="mini"><span>Selling Value</span><strong>{{ '%.2f'|format(kpis.selling_value or 0) }}</strong></div>
+        <div class="mini"><span>Recipe BOM</span><strong>{{ kpis.recipe_bom_lines }}</strong></div>
+      </div>
+    </div>
+  </div>
+
+
+  {# Phoenix search + sortable table for Recent Customer Orders #}
+  <div class="card shadow-none border mb-3" data-component-card="data-component-card">
+    <div class="card-header p-4 border-bottom bg-body">
+      <h4 class="text-body mb-0">Recent Customer / Internal Orders</h4>
+      <p class="mb-0 mt-2 text-body-secondary">Latest orders, delivery request, cost and margin. Click column headers to
+        sort.</p>
+    </div>
+    <div class="card-body p-0 py-2 ">
+      <div id="ordersTableContainer"
+        data-list='{"valueNames":["orderNo","customerName","brand","status","deliveryDate","portions","foodCost","saleValue","margin"],"page":10,"pagination":true}'>
+
+        {# Search box #}
+        <!-- <div class="search-box mb-3 px-4 mt-3">
+          <form class="position-relative">
+            <input class="form-control search-input search form-control-sm" type="search"
+              placeholder="Search orders by number, customer, brand..." aria-label="Search" />
+            <span class="fas fa-search search-box-icon"></span>
+          </form>
+        </div> -->
+
+        {# Table #}
+        <div class="table-responsive scrollbar mx-4">
+          <table class="isfc-table" data-isfc-table data-isfc-title="Recent Customer Orders">
+            <thead class="text-body">
+              <tr>
+                <th class="sort ps-3 pe-1 align-middle white-space-nowrap" data-sort="orderNo" style="min-width: 5rem;">
+                  Order</th>
+                <th class="sort pe-1 align-middle white-space-nowrap" data-sort="customerName"
+                  style="min-width: 10rem;">Customer</th>
+                <th class="sort pe-1 align-middle white-space-nowrap" data-sort="brand" style="min-width: 6rem;">Brand
+                </th>
+                <th class="sort pe-1 align-middle white-space-nowrap text-center" data-sort="status">Status</th>
+                <th class="sort pe-1 align-middle white-space-nowrap" data-sort="deliveryDate" style="min-width: 9rem;">
+                  Delivery</th>
+                <th class="sort pe-1 align-middle white-space-nowrap text-end" data-sort="portions"
+                  style="min-width: 5rem;">Portions</th>
+                <th class="sort pe-1 align-middle white-space-nowrap text-end" data-sort="foodCost"
+                  style="min-width: 5rem;">Food</th>
+                <th class="sort pe-1 align-middle white-space-nowrap text-end" data-sort="saleValue"
+                  style="min-width: 5rem;">Sale</th>
+                <th class="sort pe-1 align-middle white-space-nowrap text-end" data-sort="margin"
+                  style="min-width: 5rem;">Margin</th>
+                <th class="no-sort pe-1 align-middle text-end"></th>
+              </tr>
+            </thead>
+            <tbody class="list">
+              {% for o in recent_orders %}
+              <tr>
+                <td class="align-middle ps-3 orderNo">
+                  <a href="/production/orders/{{ o.order_no }}" class="fw-bold text-phoenix-primary">{{ o.order_no
+                    }}</a>
+                </td>
+                <td class="align-middle customerName">{{ o.customer_name or '—' }}</td>
+                <td class="align-middle brand">{{ o.brand or '—' }}</td>
+                <td class="align-middle status text-center">
+                  {%- if o.status in ['Head Chef Approved','BOM Generated','Store Pending','In Production'] -%}
+                  <span class="badge badge-phoenix badge-phoenix-success">{{ o.status or 'Submitted' }}</span>
+                  {%- elif o.status in ['Cancelled','Rejected'] -%}
+                  <span class="badge badge-phoenix badge-phoenix-danger">{{ o.status }}</span>
+                  {%- else -%}
+                  <span class="badge badge-phoenix badge-phoenix-warning">{{ o.status or 'Submitted' }}</span>
+                  {%- endif -%}
+                </td>
+                <td class="align-middle deliveryDate">
+                  <span class="text-body-tertiary fs-10">{{ o.delivery_date or '—' }}</span>
+                  {% if o.delivery_time %}<span class="d-block text-body-tertiary fs-10">{{ o.delivery_time }}</span>{%
+                  endif %}
+                </td>
+                <td class="align-middle text-end portions">{{ '%.1f'|format(o.portions or 0) }}</td>
+                <td class="align-middle text-end foodCost">{{ '%.2f'|format(o.food_cost or 0) }}</td>
+                <td class="align-middle text-end saleValue">{{ '%.2f'|format(o.selling_value or 0) }}</td>
+                <td class="align-middle text-end margin">
+                  <span class="{% if (o.margin or 0) > 0 %}text-success{% else %}text-danger{% endif %} fw-bold">
+                    {{ '%.2f'|format(o.margin or 0) }}
+                  </span>
+                </td>
+                <td class="align-middle white-space-nowrap text-end pe-0">
+                  <div class="btn-reveal-trigger position-static">
+                    <button class="btn btn-sm dropdown-toggle dropdown-caret-none transition-none btn-reveal fs-10"
+                      type="button" data-bs-toggle="dropdown" data-boundary="window" aria-haspopup="true"
+                      aria-expanded="false" data-bs-reference="parent">
+                      <span class="fas fa-ellipsis-h fs-10"></span>
+                    </button>
+                    <div class="dropdown-menu dropdown-menu-end py-2">
+                      <a class="dropdown-item" href="/production/orders/{{ o.order_no }}">View Details</a>
+                      <a class="dropdown-item" href="/production/orders/{{ o.order_no }}#bom">View BOM</a>
+                      {% if o.status not in ['Dispatched','Cancelled'] %}
+                      <div class="dropdown-divider"></div>
+                      <a class="dropdown-item" href="/production/orders/{{ o.order_no }}#edit">Edit</a>
+                      {% endif %}
+                    </div>
+                  </div>
+                </td>
+              </tr>
+              {% else %}
+              <tr>
+                <td colspan="10" class="text-center text-body-tertiary py-4 fs-9">No orders yet.</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+
+        {# Pagination #}
+        <div class="d-flex justify-content-between align-items-center mt-3 px-4 pb-3">
+          <span class="d-none d-sm-inline-block text-body-tertiary fs-9" data-list-info="data-list-info"></span>
+          <div class="d-flex">
+            <button class="page-link" data-list-pagination="prev"><span class="fas fa-chevron-left"></span></button>
+            <ul class="mb-0 pagination"></ul>
+            <button class="page-link pe-0" data-list-pagination="next"><span
+                class="fas fa-chevron-right"></span></button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <div class="panel-grid">
+    <div class="panel dashboard-report-card">
+      <h3>Production Control Reports</h3>
+      <p>Direct operational reports replacing empty BOM cost placeholders.</p>
+      <a class="dashboard-report-link" href="/production/orders"><strong>Open Production Orders</strong><span>{{ kpis.open_orders }}</span></a>
+      <a class="dashboard-report-link" href="/production/store-issuance"><strong>Store Lines Not Finalized</strong><span>{{ kpis.store_lines - kpis.store_finalized }}</span></a>
+      <a class="dashboard-report-link" href="/qc"><strong>Orders Waiting QC</strong><span>{{ kpis.qc_waiting_orders }}</span></a>
+      <a class="dashboard-report-link" href="/dispatch"><strong>Pending Dispatch</strong><span>{{ kpis.dispatch_pending }}</span></a>
+    </div>
+    <div class="panel dashboard-report-card">
+      <h3>Recipe Profitability Mix</h3>
+      <p>Active recipe allocation by category for menu and costing review.</p>
+      {% if recipe_categories %}
+      <div class="isfc-chart-panel" data-isfc-chart="hbar" data-types="hbar,bar,line,pie,donut"
+           data-labels='{{ recipe_categories | map(attribute="label") | list | tojson }}'
+           data-values='{{ recipe_categories | map(attribute="total") | list | tojson }}'></div>
+      {% else %}<div class="muted-empty">No active recipe categories found.</div>{% endif %}
+    </div>
+  </div>
+
+<div class="panel-grid">
+  <div class="panel">
+    <h3>Store Issuance Status</h3>
+    <p>Store release and issue status by line.</p>
+    <div class="status-grid">
+      {% for row in store_status %}
+      <div class="status-tile"><span>{{ row.label }}</span><strong>{{ row.total }}</strong></div>
+      {% else %}<div class="muted-empty">No store issuance lines yet.</div>{% endfor %}
+    </div>
+    {% if store_status %}
+    <div class="isfc-chart-panel mt-3" data-isfc-chart="hbar" data-types="hbar,bar,line,pie,donut"
+         data-labels='{{ store_status | map(attribute="label") | list | tojson }}'
+         data-values='{{ store_status | map(attribute="total") | list | tojson }}'></div>
+    {% endif %}
+  </div>
+  <div class="panel">
+    <h3>Recipe Customer Mix</h3>
+    <p>Active recipe allocation by customer.</p>
+    {% if recipe_customer_mix %}
+    <div class="isfc-chart-panel" data-isfc-chart="hbar" data-types="hbar,bar,line,pie,donut"
+         data-labels='{{ recipe_customer_mix | map(attribute="label") | list | tojson }}'
+         data-values='{{ recipe_customer_mix | map(attribute="total") | list | tojson }}'></div>
+    {% else %}<div class="muted-empty">No recipe customer mix found.</div>{% endif %}
+  </div>
+</div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  (function () {
+    function readVar(css, name, fallback) {
+      var val = (css.getPropertyValue(name) || '').trim();
+      return val || fallback;
+    }
+    function initPipeline() {
+      var el = null; /* orderPipelineChart now rendered by isfc-charts.js multi-type engine */
+      if (!el || !window.echarts) return;
+
+      var labels = JSON.parse(el.dataset.labels || '[]');
+      var values = JSON.parse(el.dataset.values || '[]');
+      var css = getComputedStyle(document.documentElement);
+      var primary = readVar(css, '--phoenix-primary', '#2E75B6');
+      var axisText = readVar(css, '--phoenix-secondary-color', '#6e7891');
+      var gridColor = readVar(css, '--phoenix-border-color', '#e3e6ed');
+
+      var chart = echarts.init(el);
+      chart.setOption({
+        grid: { left: 8, right: 28, top: 12, bottom: 8, containLabel: true },
+        tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+        xAxis: {
+          type: 'value', axisLabel: { color: axisText },
+          splitLine: { lineStyle: { color: gridColor } }
+        },
+        yAxis: {
+          type: 'category', data: labels, inverse: true,
+          axisLabel: { color: axisText, fontWeight: 600 },
+          axisLine: { show: false }, axisTick: { show: false }
+        },
+        series: [{
+          type: 'bar', data: values, barWidth: '58%',
+          itemStyle: { color: primary, borderRadius: [0, 6, 6, 0] },
+          label: { show: true, position: 'right', color: axisText, fontWeight: 700 }
+        }]
+      });
+
+      window.addEventListener('resize', function () { chart.resize(); });
+
+      // Re-colour when Phoenix light/dark is toggled.
+      new MutationObserver(function () {
+        var c = getComputedStyle(document.documentElement);
+        var t = readVar(c, '--phoenix-secondary-color', axisText);
+        var g = readVar(c, '--phoenix-border-color', gridColor);
+        chart.setOption({
+          xAxis: { axisLabel: { color: t }, splitLine: { lineStyle: { color: g } } },
+          yAxis: { axisLabel: { color: t } }
+        });
+      }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-bs-theme'] });
+    }
+
+    if (document.readyState !== 'loading') initPipeline();
+    else document.addEventListener('DOMContentLoaded', initPipeline);
+  })();
+</script>
+{% endblock %}

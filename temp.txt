@@ -1,0 +1,179 @@
+ISFC
+│
+├── app
+│
+├── core                                 # Security, permissions, template helper
+│   ├── config.py
+│   ├── security.py
+│   ├── auth.py
+│   ├── permissions.py
+│   ├── localization.py
+│   ├── production_constants.py
+│
+├── database                             # # DB connection and session
+│   ├── base.py
+│   ├── base.py
+│   └── init_db.py
+│
+├── models                                # Database tables. (Every file = one table.)
+│   ├── user.py
+│   ├── role.py
+│   ├── permission.py
+│   ├── company.py
+│   ├── setting.py
+│   ├── audit_log.py
+│   ├── master_data.py
+│   ├── customer.py
+│   ├── supplier.py
+│   ├── chef.py
+│   ├── inventory.py
+│   ├── recipe.py
+│   ├── order.py
+│   ├── production.py
+│   ├── qc.py
+│   ├── dispatch.py
+│   ├── finance.py
+│   ├── notification.py
+│   ├── ingredient.py
+│   └── warehouse.py
+│
+├── schemas                             # Pydantic validation. (Used for APIs.)
+│   ├── auth.py
+│   ├── user.py
+│   ├── company.py
+│   ├── production.py
+│
+├── repositories                       # Only database queries.(No business logic.)
+│   ├── user_repository.py
+│   ├── role_repository.py
+│   ├── production_repository.py
+│
+├── services                           # Business logic. 
+│   ├── auth_service.py
+│   ├── dashboard_service.py
+│   ├── production_service.py
+│   ├── master_data_service.py
+│   ├── inventory_service.py
+│   ├── recipe_service.py
+│   ├── order_service.py
+│   ├── bom_service.py
+│   ├── production_service.py
+│   ├── qc_service.py
+│   ├── dispatch_service.py
+│   ├── finance_service.py
+│   ├── notification_service.py
+│
+├── modules                            # Actual application screens.
+│
+│   ├── auth
+│   │   └── routes.py
+│
+│   ├── dashboard
+│   │   └── routes.py
+│
+│   ├── production
+│   │   └── routes.py
+│
+│   ├── masters
+│   │   └── routes.py
+│
+│   ├── inventory
+│   │   └── routes.py
+│
+│   ├── recipes
+│   │   └── routes.py
+│
+│   ├── warehouse
+│   │   └── routes.py
+│
+│   ├── hr
+│   │   └── routes.py
+│
+│   ├── finance
+│   │   └── routes.py
+│
+│   ├── orders
+│   │   └── routes.py
+│
+│   ├── qc
+│   │   └── routes.py
+│
+│   ├── dispatch
+│   │   └── routes.py
+│
+│   ├── notification
+│   │   └── routes.py
+│
+│   └── reports
+│       └── routes.py
+│
+├── static
+│   ├── css
+│   ├── js
+│   ├── img
+│   ├── fonts
+│
+├── templates                     # HTML Pages
+│
+│   ├── layouts
+│   │   └── base.html
+│
+│   ├── partials                  # Reusable components.   
+│   │   ├── header.html
+│   │   ├── sidebar.html
+│   │   ├── theme_selector.html
+│   │   └── footer.html
+│
+│   ├── dashboard
+│   │   └── dashboard.html
+│
+│   ├── masters
+│   │   ├── form.html
+│   │   └── list.html
+│
+│   ├── inventory
+│   │   └── list.html
+│
+│   ├── recipes                     
+│   │   ├── index.html
+│   │   ├── form.html
+│   │   └── view.html
+│
+│   ├── orders                     
+│   │   ├── portal.html
+│   │   ├── list.html
+│   │   └── detail.html
+│
+│   ├── production                     
+│   │   ├── head_chef.html
+│   │   ├── store_issuance.html
+│   │   └── section_workstation.html
+│
+│   ├── qc
+│   │   └── index.html
+│
+│   ├── dispatch
+│   │   └── index.html
+│
+│   ├── finance
+│   │   └── index.html
+│
+│   ├── notifications
+│   │   └── index.html
+│
+│   ├── auth
+│   │   ├── login.html
+│   │   └── register.html
+│
+├── static
+│   ├── css
+│   ├── js
+│   ├── images
+│
+├── seeds                         # Demo data creation
+│   ├── seed_roles.py
+│   ├── seed_permissions.py
+│
+├── main.py
+├── init_db.py
+└── requirements.txt

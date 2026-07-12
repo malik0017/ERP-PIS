@@ -1,0 +1,233 @@
+{% extends "layouts/base.html" %}
+{% block content %}
+<style>
+  .isfc-page {
+    padding: 10px 18px 30px
+  }
+
+  .isfc-hero {
+    background: linear-gradient(135deg, #064b5a, #0f8195);
+    border-radius: 22px;
+    color: #fff;
+    padding: 26px 30px;
+    margin-bottom: 22px;
+    box-shadow: 0 18px 40px rgba(6, 75, 90, .18)
+  }
+
+  .isfc-hero h1 {
+    font-size: 38px;
+    font-weight: 800;
+    margin: 0
+  }
+
+  .isfc-hero p {
+    margin: 10px 0 0;
+    color: rgba(255, 255, 255, .82);
+    font-size: 16px
+  }
+
+  .isfc-grid {
+    display: grid;
+    grid-template-columns: 1fr 360px;
+    gap: 18px
+  }
+
+  .isfc-card {
+    background: #fff;
+    border: 1px solid #dce8f2;
+    border-radius: 18px;
+    box-shadow: 0 14px 34px rgba(15, 30, 50, .06);
+    padding: 22px
+  }
+
+  .isfc-card h2 {
+    font-size: 24px;
+    margin: 0 0 6px;
+    color: #142a46
+  }
+
+  .isfc-card p {
+    color: #6f8196
+  }
+
+  .isfc-form-label {
+    font-weight: 800;
+    color: #123452;
+    margin-bottom: 8px;
+    display: block
+  }
+
+  .isfc-select,
+  .isfc-input {
+    width: 100%;
+    border: 1px solid #cfdae5;
+    border-radius: 14px;
+    padding: 13px 14px;
+    background: #fff;
+    color: #142a46
+  }
+
+  .isfc-select:focus,
+  .isfc-input:focus {
+    outline: 0;
+    border-color: #0f8195;
+    box-shadow: 0 0 0 4px rgba(15, 129, 149, .12)
+  }
+
+  .isfc-drop {
+    border: 2px dashed #bcd1e4;
+    border-radius: 18px;
+    background: #f7fbff;
+    padding: 26px;
+    text-align: center;
+    transition: .2s
+  }
+
+  .isfc-drop:hover,
+  .isfc-drop.dragover {
+    border-color: #0f8195;
+    background: #eefaff
+  }
+
+  .isfc-drop i {
+    font-size: 42px;
+    color: #0f8195
+  }
+
+  .isfc-btn {
+    border: 0;
+    border-radius: 14px;
+    padding: 12px 18px;
+    font-weight: 800;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    justify-content: center
+  }
+
+  .isfc-btn-primary {
+    background: #0f8195;
+    color: #fff
+  }
+
+  .isfc-btn-soft {
+    background: #eaf2f8;
+    color: #142a46
+  }
+
+  .isfc-btn-outline {
+    background: #fff;
+    color: #0f8195;
+    border: 1px solid #0f8195
+  }
+
+  .isfc-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 18px
+  }
+
+  .isfc-hint {
+    background: #f8fbfd;
+    border-left: 5px solid #0f8195;
+    border-radius: 12px;
+    padding: 12px 14px;
+    margin-top: 14px;
+    color: #526a7c
+  }
+
+  .isfc-list {
+    list-style: none;
+    padding: 0;
+    margin: 12px 0 0
+  }
+
+  .isfc-list li {
+    padding: 10px 0;
+    border-bottom: 1px solid #edf3f8;
+    color: #526a7c
+  }
+
+  .isfc-list li b {
+    color: #142a46
+  }
+
+  @media(max-width:1100px) {
+    .isfc-grid {
+      grid-template-columns: 1fr
+    }
+  }
+</style>
+<div class="isfc-page">
+  <div class="isfc-hero">
+    <h1>{{ page_title or "Upload Master Data" }}</h1>
+    {% if scoped_master_upload %}
+    <p>Secure scoped upload for <b>{{ selected_master_label }}</b> only. This page has no master-type dropdown and cannot upload other master data.</p>
+    {% else %}
+    <p>Select the master type, download the exact Excel template, fill it, and upload using the same fields. Recipes can also be uploaded here or from Recipes & Costing.</p>
+    {% endif %}
+  </div>
+  <div class="isfc-grid">
+    <div class="isfc-card">
+      <h2>Master Upload</h2>
+      <p>{% if scoped_master_upload %}Upload Excel rows for <b>{{ selected_master_label }}</b> only. Use the template below to avoid field mismatch.{% else %}Choose one master type at a time. For the original workbook containing many sheets, select <b>All Master Data Workbook</b>.{% endif %}</p>
+      <form method="post" action="/masters/upload-master-excel" enctype="multipart/form-data" id="masterUploadForm">
+        {% if scoped_master_upload %}
+        <label class="isfc-form-label">Master Type</label>
+        <input type="hidden" name="master_type" id="masterType" value="{{ selected_master_type }}">
+        <div class="isfc-input" style="background:#f8fbfd;font-weight:900">{{ selected_master_label }}</div>
+        {% else %}
+        <label class="isfc-form-label">Master Type</label>
+        <select class="isfc-select" name="master_type" id="masterType">
+          {% for key, cfg in master_types.items() %}
+          <option value="{{ key }}" {% if selected_master_type==key %}selected{% endif %}>{{ cfg.label }}</option>
+          {% endfor %}
+        </select>
+        {% endif %}
+        <div class="isfc-actions">
+          <a class="isfc-btn isfc-btn-soft" id="templateLink"
+            href="/masters/template/{{ selected_master_type or 'customers' }}"><i class="bi bi-download"></i> Download
+            Selected Template</a>
+          {% if not scoped_master_upload %}<a class="isfc-btn isfc-btn-outline" href="/masters/archive"><i class="bi bi-archive"></i> Master Archive</a>{% endif %}
+        </div>
+        <div class="isfc-drop mt-3" id="dropZone">
+          <i class="bi bi-file-earmark-excel"></i>
+          <h3 class="mt-2">Drag Excel file here</h3>
+          <p>or click below to choose .xlsx / .xlsm file</p>
+          <input class="isfc-input" type="file" name="file" id="excelFile" accept=".xlsx,.xlsm" required>
+          <div class="isfc-hint" id="fileName">No file selected</div>
+        </div>
+        <button class="isfc-btn isfc-btn-primary mt-3" type="submit" style="width:100%;font-size:17px"><i
+            class="bi bi-cloud-upload"></i> Upload Master Data</button>
+      </form>
+    </div>
+    <div class="isfc-card">
+      <h2>Correct Upload Order</h2>
+      <ul class="isfc-list">
+        <li><b>1.</b> Inventory Master</li>
+        <li><b>2.</b> Customers, Suppliers, Chefs</li>
+        <li><b>3.</b> Brands, Revenue Streams, Kitchen Locations, Kitchen Sections</li>
+        <li><b>4.</b> Recipes & Costing</li>
+        <li><b>5.</b> Create test production order</li>
+      </ul>
+      <div class="isfc-hint"><b>Archive meaning:</b> Master Archive stores every uploaded Excel row as JSON for
+        audit/history. It is not the operational table.</div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+  (function () {
+    const masterType = document.getElementById('masterType'), templateLink = document.getElementById('templateLink'), input = document.getElementById('excelFile'), fileName = document.getElementById('fileName'), drop = document.getElementById('dropZone');
+    function syncTemplate() { templateLink.href = '/masters/template/' + masterType.value; }
+    if(masterType && masterType.tagName === 'SELECT'){ masterType.addEventListener('change', syncTemplate); } syncTemplate();
+    input.addEventListener('change', () => { fileName.textContent = input.files.length ? input.files[0].name : 'No file selected'; });
+    ['dragenter', 'dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('dragover'); }));
+    ['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('dragover'); }));
+    drop.addEventListener('drop', e => { if (e.dataTransfer.files.length) { input.files = e.dataTransfer.files; fileName.textContent = input.files[0].name; } });
+  })();
+</script>
+{% endblock %}

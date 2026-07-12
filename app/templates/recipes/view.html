@@ -1,0 +1,84 @@
+<!-- app/templates/recipes/view.html -->
+{% extends "layouts/base.html" %}
+{% block title %}Recipe {{ recipe.recipe_code }}{% endblock %}
+{% block content %}
+<div class="rep-page container-fluid py-4">
+  <div class="recipe-hero">
+    <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+      <div>
+        <h1>Recipe {{ recipe.recipe_code }}</h1>
+        <p>{{ recipe.recipe_name }} · {{ recipe.customer_name or 'All customers' }} · {{ recipe.category or 'Uncategorized' }}</p>
+      </div>
+      <span class="badge bg-success-subtle text-success-emphasis fs-8 px-3 py-2">{{ recipe.status }}</span>
+    </div>
+  </div>
+
+  <div class="recipe-action-bar">
+    <a href="/recipes" class="btn btn-isfc-soft"><i class="bi bi-arrow-left"></i> Back</a>
+    <a href="/recipes/{{ recipe.id }}/edit" class="btn btn-isfc-primary"><i class="bi bi-pencil-square"></i> Edit / New Version</a>
+    <a href="/recipes/{{ recipe.id }}/download-excel" class="btn btn-isfc-success"><i class="bi bi-file-earmark-excel"></i> Download Excel</a>
+    <a href="/recipes/{{ recipe.id }}/download-pdf" class="btn btn-isfc-warning"><i class="bi bi-file-earmark-pdf"></i> Download PDF</a>
+    <form action="/recipes/{{ recipe.id }}/deactivate" method="post" class="ms-auto">
+      <button type="submit" class="btn btn-isfc-danger"><i class="bi bi-slash-circle"></i> Deactivate</button>
+    </form>
+  </div>
+
+  <div class="recipe-summary-grid">
+    <div class="recipe-summary-card"><span>Food Cost</span><strong>{{ "%.2f"|format(recipe.food_cost or 0) }}</strong></div>
+    <div class="recipe-summary-card"><span>Total Cost</span><strong>{{ "%.2f"|format(recipe.total_cost or 0) }}</strong></div>
+    <div class="recipe-summary-card"><span>Sale Price</span><strong>{{ "%.2f"|format(recipe.sale_price or 0) }}</strong></div>
+    <div class="recipe-summary-card"><span>Missing Cost Lines</span><strong>{{ recipe.missing_cost_lines }}</strong></div>
+  </div>
+
+  <div class="card shadow-none border mb-3">
+    <div class="card-body p-4">
+      <div class="row g-3">
+        <div class="col-md-3"><div class="text-body-tertiary fw-bold text-uppercase fs-10">Version</div><div class="fw-black fs-7">{{ recipe.version }}</div></div>
+        <div class="col-md-3"><div class="text-body-tertiary fw-bold text-uppercase fs-10">Customer</div><div class="fw-black fs-7">{{ recipe.customer_name or '-' }}</div></div>
+        <div class="col-md-3"><div class="text-body-tertiary fw-bold text-uppercase fs-10">Category</div><div class="fw-black fs-7">{{ recipe.category or '-' }}</div></div>
+        <div class="col-md-3"><div class="text-body-tertiary fw-bold text-uppercase fs-10">Lines</div><div class="fw-black fs-7">{{ recipe.lines|length }}</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card shadow-none border">
+    <div class="card-header p-4 border-bottom bg-body d-flex justify-content-between align-items-start gap-2 flex-wrap">
+      <div>
+        <h4 class="mb-1 text-body">Recipe Lines</h4>
+        <p class="mb-0 text-body-tertiary">Ingredient, UOM, quantity and cost calculation for the selected recipe version.</p>
+      </div>
+    </div>
+    <div class="card-body p-0 py-2">
+      <div class="table-responsive scrollbar mx-4">
+        <table class="table table-sm fs-9 mb-0 overflow-hidden" data-isfc-search="false">
+          <thead class="text-body">
+            <tr>
+              <th>#</th><th>Type</th><th>Sub Recipe</th><th>Item Code</th><th>Item Name</th><th>UOM</th><th class="text-end">Qty/Batch</th><th class="text-end">Portions</th><th class="text-end">Qty/Portion</th><th class="text-end">Cost/UOM</th><th class="text-end">Line Cost</th><th>Remark</th>
+            </tr>
+          </thead>
+          <tbody>
+          {% for line in recipe.lines %}
+            <tr>
+              <td>{{ line.line_no }}</td>
+              <td>{{ line.line_type }}</td>
+              <td>{{ line.sub_recipe_code or "—" }}</td>
+              <td class="fw-bold text-primary">{{ line.inventory_code or "None" }}</td>
+              <td>{{ line.item_name }}</td>
+              <td>{{ line.uom or "" }}</td>
+              <td class="text-end">{{ "%.4f"|format(line.qty_batch or 0) }}</td>
+              <td class="text-end">{{ "%.4f"|format(line.portions or 0) }}</td>
+              <td class="text-end">{{ "%.6f"|format(line.qty_per_portion or 0) }}</td>
+              <td class="text-end">{{ "%.6f"|format(line.cost_uom or 0) }}</td>
+              <td class="text-end fw-bold text-success">{{ "%.4f"|format(line.line_cost or 0) }}</td>
+              <td>{{ line.remark or "" }}</td>
+            </tr>
+          {% else %}
+            <tr><td colspan="12" class="text-center text-body-tertiary py-4">No recipe lines found.</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

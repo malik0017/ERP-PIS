@@ -1,0 +1,95 @@
+{% extends "layouts/base.html" %}
+{% block content %}
+<style>
+    .isfc-page {
+        padding: 10px 18px 30px
+    }
+
+    .isfc-hero {
+        background: linear-gradient(135deg, #064b5a, #0f8195);
+        border-radius: 22px;
+        color: #fff;
+        padding: 26px 30px;
+        margin-bottom: 22px
+    }
+
+    .isfc-card {
+        background: #fff;
+        border: 1px solid #dce8f2;
+        border-radius: 18px;
+        box-shadow: 0 14px 34px rgba(15, 30, 50, .06);
+        padding: 22px
+    }
+
+    .tbl {
+        width: 100%;
+        border-collapse: separate;
+        border-spacing: 0
+    }
+
+    .tbl th {
+        background: #edf5fb;
+        color: #142a46;
+        padding: 12px;
+        text-align: left
+    }
+
+    .tbl td {
+        border-bottom: 1px solid #edf3f8;
+        padding: 12px
+    }
+
+    .btn {
+        border: 0;
+        border-radius: 11px;
+        padding: 8px 12px;
+        font-weight: 800;
+        text-decoration: none
+    }
+
+    .ok {
+        background: #16a34a;
+        color: #fff
+    }
+
+    .bad {
+        background: #dc2626;
+        color: #fff
+    }
+</style>
+<div class="isfc-page">
+    <div class="isfc-hero">
+        <h1>Pending Master Approvals</h1>
+        <p>Review pending uploaded master records before activation.</p>
+    </div>
+    <div class="isfc-card">
+        <table class="tbl">
+            <thead>
+                <tr>
+                    <th>Type</th>
+                    <th>Code</th>
+                    <th>Name</th>
+                    <th>Version</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>{% for r in rows %}<tr>
+                    <td>{{ r.master_type }}</td>
+                    <td>{{ r.code }}</td>
+                    <td>{{ r.name_en }}</td>
+                    <td>V{{ r.version }}</td>
+                    <td>{{ r.approval_status }}</td>
+                    <td>
+                        <form method="post" action="/masters/archive/{{ r.id }}/approve" style="display:inline"><button
+                                class="btn ok">Approve</button></form>
+                        <form method="post" action="/masters/archive/{{ r.id }}/reject" style="display:inline"><button
+                                class="btn bad">Reject</button></form>
+                    </td>
+                </tr>{% else %}<tr>
+                    <td colspan="6" style="text-align:center;color:#6f8196;padding:28px">No pending master records.</td>
+                </tr>{% endfor %}</tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

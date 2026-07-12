@@ -1,0 +1,183 @@
+{% extends "layouts/base.html" %} {% block title %}{{ t('portal.my_orders') }} ·
+ISFC{% endblock %} {% block content %}
+<div class="container-fluid py-3">
+  <div
+    class="pis-hero mb-4"
+    style="
+      background: linear-gradient(135deg, #132947, #0c91a3);
+      border-radius: 22px;
+      color: #fff;
+      padding: 26px 30px;
+    "
+  >
+    <div
+      class="d-flex justify-content-between align-items-start flex-wrap gap-3"
+    >
+      <div>
+        <span
+          class="pis-chip mb-3"
+          style="
+            background: rgba(255, 255, 255, 0.15);
+            color: #fff;
+            border-radius: 999px;
+            padding: 6px 12px;
+            font-weight: 800;
+            font-size: 12px;
+            display: inline-flex;
+          "
+          >Customer Portal{% if customer_code %} · {{ customer_code }}{% endif
+          %}</span
+        >
+        <h2 class="mb-1 text-white">
+          {{ t('portal.welcome') }}, {{ request.session.get('username','') }}
+        </h2>
+        <p class="mb-0 opacity-75">
+          {{ t('portal.order_history') }} — live status of every order from
+          submission to delivery.
+        </p>
+      </div>
+      <a class="btn btn-light" href="/orders/portal"
+        >+ {{ t('nav.customer_order') }}</a
+      >
+    </div>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+      <div
+        class="pis-card pis-kpi p-3"
+        style="
+          border-radius: 16px;
+          border: 1px solid var(--phoenix-border-color);
+        "
+      >
+        <span class="d-block text-uppercase fs-10 fw-bold text-body-tertiary"
+          >{{ t('portal.total_orders') }}</span
+        ><b class="fs-4">{{ summary.total }}</b>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div
+        class="pis-card pis-kpi p-3"
+        style="
+          border-radius: 16px;
+          border: 1px solid var(--phoenix-border-color);
+        "
+      >
+        <span class="d-block text-uppercase fs-10 fw-bold text-body-tertiary"
+          >{{ t('portal.open_orders') }}</span
+        ><b class="fs-4 text-warning">{{ summary.open }}</b>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div
+        class="pis-card pis-kpi p-3"
+        style="
+          border-radius: 16px;
+          border: 1px solid var(--phoenix-border-color);
+        "
+      >
+        <span class="d-block text-uppercase fs-10 fw-bold text-body-tertiary"
+          >{{ t('portal.delivered_orders') }}</span
+        ><b class="fs-4 text-success">{{ summary.delivered }}</b>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div
+        class="pis-card pis-kpi p-3"
+        style="
+          border-radius: 16px;
+          border: 1px solid var(--phoenix-border-color);
+        "
+      >
+        <span class="d-block text-uppercase fs-10 fw-bold text-body-tertiary"
+          >{{ t('portal.total_value') }}</span
+        ><b class="fs-4">{{ summary.value }}</b>
+      </div>
+    </div>
+  </div>
+
+  <div
+    class="card shadow-none border"
+    data-component-card
+    data-list='{"valueNames":["orderNo","orderDate","brand","channel","delivery","portions","value","status"],"page":10,"pagination":true}'
+  >
+    <div
+      class="card-header p-4 border-bottom bg-body d-flex justify-content-between align-items-center flex-wrap gap-2"
+    >
+      <div>
+        <h4 class="text-body mb-1">{{ t('portal.order_history') }}</h4>
+        <p class="text-body-tertiary mb-0 fs-9">
+          Track every stage: Submitted → In Production → Packed → Delivered.
+        </p>
+      </div>
+      <input
+        class="form-control form-control-sm search w-auto"
+        type="search"
+        placeholder="{{ t('action.search') }}..."
+      />
+    </div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table fs-9 mb-0">
+          <thead class="bg-body-highlight">
+            <tr>
+              <th class="ps-4" data-sort="orderNo" style="cursor: pointer">
+                Order
+              </th>
+              <th data-sort="orderDate" style="cursor: pointer">Date</th>
+              <th data-sort="brand" style="cursor: pointer">Brand</th>
+              <th data-sort="channel" style="cursor: pointer">Channel</th>
+              <th data-sort="delivery" style="cursor: pointer">Delivery</th>
+              <th data-sort="portions" style="cursor: pointer">Portions</th>
+              <th data-sort="value" style="cursor: pointer">Value</th>
+              <th data-sort="status" class="pe-4" style="cursor: pointer">
+                Status
+              </th>
+            </tr>
+          </thead>
+          <tbody class="list">
+            {% for r in rows %}
+            <tr>
+              <td class="ps-4 orderNo fw-bold">{{ r.order_no }}</td>
+              <td class="orderDate">{{ r.order_date or '-' }}</td>
+              <td class="brand">{{ r.brand or '-' }}</td>
+              <td class="channel">{{ r.channel or '-' }}</td>
+              <td class="delivery">
+                {{ r.delivery_date }} {{ r.delivery_time }}
+              </td>
+              <td class="portions">{{ r.portions }}</td>
+              <td class="value">{{ '%.2f'|format(r.sale_value or 0) }}</td>
+              <td class="pe-4 status">
+                {% set s = r.status %}
+                <span
+                  class="badge badge-phoenix badge-phoenix-{% if s == 'Delivered' %}success{% elif s == 'Packed' %}info{% elif s == 'In Production' %}primary{% elif s == 'Submitted' %}warning{% else %}secondary{% endif %}"
+                  >{{ s }}</span
+                >
+              </td>
+            </tr>
+            {% else %}
+            <tr>
+              <td colspan="8" class="text-center text-body-tertiary py-5">
+                No orders yet.{% if not customer_code %} (Admin: link this login
+                to a customer with
+                <code
+                  >UPDATE users SET customer_code='CUST-XXX' WHERE
+                  username='...'</code
+                >){% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div
+        class="d-flex justify-content-between align-items-center p-3 border-top"
+      >
+        <span class="fs-10 text-body-tertiary">{{ rows|length }} orders</span>
+        <ul class="pagination pagination-sm mb-0"></ul>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

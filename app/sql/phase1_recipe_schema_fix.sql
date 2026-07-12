@@ -1,0 +1,83 @@
+-- ISFC PIS Phase 1 recipe schema reset
+-- Run after backup. This keeps users, companies, roles, permissions untouched.
+
+SET FOREIGN_KEY_CHECKS = 0;
+DROP TABLE IF EXISTS recipe_ingredients;
+DROP TABLE IF EXISTS recipes;
+SET FOREIGN_KEY_CHECKS = 1;
+
+CREATE TABLE recipes (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    company_id INT NOT NULL DEFAULT 1,
+    recipe_code VARCHAR(50) NOT NULL,
+    recipe_name VARCHAR(255) NOT NULL,
+    brand_name VARCHAR(150) NULL,
+    customer_name VARCHAR(150) NULL,
+    category VARCHAR(150) NULL,
+    version INT NOT NULL DEFAULT 1,
+    status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
+    is_active TINYINT(1) NOT NULL DEFAULT 1,
+    approval_status VARCHAR(20) NOT NULL DEFAULT 'APPROVED',
+    approved_by INT NULL,
+    approved_at DATETIME NULL,
+    parent_recipe_id INT NULL,
+    is_sub_recipe TINYINT(1) NOT NULL DEFAULT 0,
+    has_sub_recipe TINYINT(1) NOT NULL DEFAULT 0,
+    linked_sub_recipe_code VARCHAR(50) NULL,
+    linked_sub_recipe_name VARCHAR(255) NULL,
+    linked_sub_recipe_portions DECIMAL(18,4) NOT NULL DEFAULT 0,
+    standard_portions DECIMAL(18,4) NOT NULL DEFAULT 1,
+    weight_per_portion_g DECIMAL(18,4) NOT NULL DEFAULT 0,
+    size_of_portion DECIMAL(18,4) NOT NULL DEFAULT 0,
+    std_yield_pct DECIMAL(10,4) NOT NULL DEFAULT 0.9500,
+    target_wastage_pct DECIMAL(10,4) NOT NULL DEFAULT 0.0500,
+    packaging_cost DECIMAL(18,4) NOT NULL DEFAULT 0,
+    labor_cost DECIMAL(18,4) NOT NULL DEFAULT 0,
+    delivery_cost DECIMAL(18,4) NOT NULL DEFAULT 0,
+    overheads DECIMAL(18,4) NOT NULL DEFAULT 0,
+    other_costs DECIMAL(18,4) NOT NULL DEFAULT 0,
+    margin_pct DECIMAL(10,4) NOT NULL DEFAULT 0.3000,
+    food_cost DECIMAL(18,4) NOT NULL DEFAULT 0,
+    food_cost_per_portion DECIMAL(18,6) NOT NULL DEFAULT 0,
+    total_cost DECIMAL(18,4) NOT NULL DEFAULT 0,
+    total_cost_per_portion DECIMAL(18,6) NOT NULL DEFAULT 0,
+    sale_price DECIMAL(18,4) NOT NULL DEFAULT 0,
+    sale_price_per_portion DECIMAL(18,6) NOT NULL DEFAULT 0,
+    missing_cost_lines INT NOT NULL DEFAULT 0,
+    notes TEXT NULL,
+    remark TEXT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_recipe_company_code_version (company_id, recipe_code, version),
+    KEY ix_recipe_code (recipe_code),
+    KEY ix_recipe_status (status),
+    KEY ix_recipe_active (is_active),
+    KEY ix_recipe_approval_status (approval_status),
+    KEY ix_recipe_category (category),
+    KEY ix_recipe_customer (customer_name)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE recipe_ingredients (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    recipe_id INT NOT NULL,
+    line_no INT NOT NULL,
+    line_type VARCHAR(30) NOT NULL DEFAULT 'Main Recipe',
+    sub_recipe_code VARCHAR(50) NULL,
+    inventory_code VARCHAR(80) NULL,
+    item_name VARCHAR(255) NOT NULL,
+    uom VARCHAR(50) NULL,
+    qty_batch DECIMAL(18,4) NOT NULL DEFAULT 0,
+    portions DECIMAL(18,4) NOT NULL DEFAULT 1,
+    qty_per_portion DECIMAL(18,6) NOT NULL DEFAULT 0,
+    cost_uom DECIMAL(18,6) NOT NULL DEFAULT 0,
+    line_cost DECIMAL(18,4) NOT NULL DEFAULT 0,
+    line_cost_per_portion DECIMAL(18,6) NOT NULL DEFAULT 0,
+    remark TEXT NULL,
+    missing_cost TINYINT(1) NOT NULL DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    CONSTRAINT fk_recipe_ingredients_recipe FOREIGN KEY (recipe_id) REFERENCES recipes(id) ON DELETE CASCADE,
+    UNIQUE KEY uq_recipe_line_no (recipe_id, line_no),
+    KEY ix_recipe_line_inventory_code (inventory_code),
+    KEY ix_recipe_line_sub_recipe_code (sub_recipe_code)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

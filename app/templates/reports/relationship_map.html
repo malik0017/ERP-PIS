@@ -1,0 +1,627 @@
+{% extends "layouts/base.html" %}
+{% block title %}SAP B1 Relationship Map{% endblock %}
+{% block extra_css %}
+<style>
+  :root {
+    --pis-navy: #102542;
+    --pis-teal: #0d7f91;
+    --pis-sky: #20bdd5;
+    --pis-ink: #173b55;
+    --pis-muted: #6d8197;
+    --pis-soft: #eef7fb;
+    --pis-line: #cfe1eb;
+    --pis-good: #21a365;
+    --pis-warn: #e4a11b;
+    --pis-pend: #9aa8b7
+  }
+
+  .rm-page {
+    padding: 24px 32px 50px;
+    color: var(--pis-navy)
+  }
+
+  .rm-hero {
+    background: radial-gradient(circle at 92% 10%, rgba(255, 255, 255, .22), transparent 16%), linear-gradient(135deg, #102542 0%, #0d7f91 100%);
+    border-radius: 28px;
+    padding: 30px 34px;
+    color: #fff;
+    box-shadow: 0 22px 48px rgba(16, 37, 66, .22);
+    margin-bottom: 16px
+  }
+
+  .rm-hero h1 {
+    margin: 0;
+    font-size: 34px;
+    font-weight: 950;
+    letter-spacing: .2px
+  }
+
+  .rm-hero p {
+    margin: 8px 0 0;
+    color: #e5fbff;
+    font-size: 15px
+  }
+
+  .rm-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    gap: 10px;
+    margin: 16px 0
+  }
+
+  .report-actions button {
+    border-radius: 12px;
+    padding: 8px 10px;
+    text-decoration: none;
+    font-weight: 700;
+    background: #eef5fa;
+    color: #102542
+  } 
+
+ 
+  .rm-toolbar a,
+  .rm-toolbar button {
+    border: 0;
+    border-radius: 999px;
+    padding: 10px 15px;
+    background: #eaf3f8;
+    color: var(--pis-navy);
+    font-weight: 900;
+    text-decoration: none
+  }
+
+  .rm-toolbar a.active {
+    background: var(--pis-teal);
+    color: #fff
+  }
+
+  .selector-card {
+    background: #fff;
+    border: 1px solid var(--pis-line);
+    border-radius: 18px;
+    padding: 12px 14px;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    box-shadow: 0 12px 28px rgba(15, 30, 50, .055);
+    margin: 12px 0 18px
+  }
+
+  .selector-card .label-style {
+    font-weight: 950;
+    color: var(--pis-ink);
+    white-space: nowrap
+  }
+
+  .selector-card select {
+    min-width: 360px;
+    border: 1px solid var(--pis-line);
+    border-radius: 13px;
+    padding: 10px 12px;
+    color: var(--pis-ink);
+    background: #fff
+  }
+
+  .rm-panel {
+    background: #fff;
+    border: 1px solid var(--pis-line);
+    border-radius: 24px;
+    padding: 18px;
+    box-shadow: 0 12px 30px rgba(15, 30, 50, .065);
+    margin-bottom: 16px
+  }
+
+  .rm-panel h2,
+  .rm-panel h3 {
+    margin: 0 0 6px;
+    font-weight: 950;
+    color: var(--pis-navy)
+  }
+
+  .rm-panel p {
+    color: var(--pis-muted);
+    margin: 0 0 12px
+  }
+
+  .doc-summary {
+    display: grid;
+    grid-template-columns: 1.3fr repeat(4, .7fr);
+    gap: 12px;
+    margin-bottom: 18px
+  }
+
+  .sum-box {
+    border: 1px solid var(--pis-line);
+    border-radius: 18px;
+    background: linear-gradient(180deg, #fff, #f7fbfd);
+    padding: 14px
+  }
+
+  .sum-box span {
+    display: block;
+    color: var(--pis-muted);
+    font-size: 12px;
+    font-weight: 900;
+    text-transform: uppercase
+  }
+
+  .sum-box strong {
+    font-size: 22px;
+    color: var(--pis-navy)
+  }
+
+  .sum-box.primary {
+    background: linear-gradient(135deg, #102542, #173b55);
+    color: #fff
+  }
+
+  .sum-box.primary span,
+  .sum-box.primary strong {
+    color: #fff
+  }
+
+  .sap-map-shell {
+    border: 1px solid #dbeaf2;
+    border-radius: 26px;
+    background: linear-gradient(180deg, #f9fdff, #f1f8fb);
+    padding: 18px;
+    overflow-x: auto
+  }
+
+  .sap-flow {
+    min-width: 1160px;
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    gap: 18px;
+    align-items: center;
+    position: relative
+  }
+
+  .sap-flow:before {
+    content: "";
+    position: absolute;
+    left: 6%;
+    right: 6%;
+    top: 76px;
+    height: 4px;
+    background: linear-gradient(90deg, #d4e4ed, #0d7f91, #d4e4ed);
+    border-radius: 99px
+  }
+
+  .sap-node {
+    position: relative;
+    z-index: 2;
+    display: block;
+    text-decoration: none;
+    color: var(--pis-navy);
+    background: #fff;
+    border: 2px solid var(--pis-line);
+    border-radius: 22px;
+    min-height: 156px;
+    padding: 13px 13px 12px;
+    box-shadow: 0 14px 24px rgba(16, 37, 66, .07);
+    transition: .16s ease
+  }
+
+  .sap-node:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 20px 34px rgba(16, 37, 66, .12)
+  }
+
+  .sap-node .node-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px
+  }
+
+  .sap-node i {
+    font-size: 21px;
+    color: var(--pis-teal)
+  }
+
+  .sap-node .badge {
+    border-radius: 999px;
+    padding: 5px 9px;
+    font-size: 11px;
+    font-weight: 950
+  }
+
+  .sap-node.done {
+    border-color: #7bd1a8
+  }
+
+  .sap-node.done .badge {
+    background: #def8eb;
+    color: #147344
+  }
+
+  .sap-node.active {
+    border-color: var(--pis-teal);
+    box-shadow: 0 0 0 5px rgba(13, 127, 145, .11), 0 18px 34px rgba(16, 37, 66, .12)
+  }
+
+  .sap-node.active .badge {
+    background: #e4fbff;
+    color: #0d7f91
+  }
+
+  .sap-node.pending {
+    opacity: .9
+  }
+
+  .sap-node.pending .badge {
+    background: #eef2f6;
+    color: #6b7c8f
+  }
+
+  .sap-node h4 {
+    font-weight: 950;
+    font-size: 18px;
+    margin: 14px 0 3px;
+    color: #020303;
+  }
+
+  .sap-node .doc-type {
+    color: #637a91;
+    font-size: 12px;
+    font-weight: 800
+  }
+
+  .sap-node .doc-no {
+    display: block;
+    color: #020303;
+    font-weight: 900;
+    line-height: 1.25;
+    margin: 8px 0;
+    min-height: 32px
+  }
+
+  .sap-node .metric {
+    display: flex;
+    justify-content: space-between;
+    border-top: 1px dashed #d8e7ef;
+    padding-top: 9px;
+    margin-top: 9px
+  }
+
+  .sap-node .metric b {
+    color: var(--pis-teal)
+  }
+
+  .sap-node .amount {
+    font-weight: 950;
+    color: #102542
+  }
+
+  .arrow-head {
+    position: absolute;
+    right: -22px;
+    top: 69px;
+    z-index: 3;
+    background: #fff;
+    border: 2px solid var(--pis-line);
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 950;
+    color: var(--pis-teal)
+  }
+
+  .master-rail {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 10px;
+    margin-top: 18px
+  }
+
+  .master-card {
+    border: 1px solid var(--pis-line);
+    border-radius: 18px;
+    background: #fff;
+    padding: 13px;
+    text-decoration: none;
+    color: var(--pis-navy);
+    display: grid;
+    gap: 5px
+  }
+
+  .master-card i {
+    color: var(--pis-teal);
+    font-size: 19px
+  }
+
+  .master-card small {
+    font-weight: 950;
+    text-transform: uppercase;
+    color: #6c8095
+  }
+
+  .master-card strong {
+    font-size: 24px;
+    color: var(--pis-teal)
+  }
+
+  .master-card span {
+    font-size: 12px;
+    color: #61778f
+  }
+
+  .rm-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px
+  }
+
+  .status-list {
+    display: grid;
+    gap: 10px
+  }
+
+  .status-row {
+    display: grid;
+    grid-template-columns: 145px 1fr 45px;
+    gap: 9px;
+    align-items: center
+  }
+
+  .track {
+    height: 12px;
+    background: #e7f0f6;
+    border-radius: 999px;
+    overflow: hidden
+  }
+
+  .fill {
+    height: 100%;
+    background: linear-gradient(90deg, #102542, #0d7f91, #20bdd5);
+    border-radius: 999px
+  }
+
+  .report-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 10px
+  }
+
+  .report-grid-style{
+    display: grid;
+    grid-template-columns: repeat(1, 5fr);
+    gap: 10px
+  }
+
+  .report-chip {
+    display: block;
+    text-decoration: none;
+    border: 1px solid var(--pis-line);
+    border-radius: 17px;
+    padding: 13px;
+    background: #f8fcfe;
+    color: var(--pis-navy)
+  }
+
+  .report-chip strong {
+    display: block;
+    font-weight: 950
+  }
+
+  .report-chip span {
+    font-size: 12px;
+    color: var(--pis-muted)
+  }
+
+  .rules-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 13px
+  }
+
+  .rules-table th {
+    background: #eef5fa;
+    text-align: left;
+    padding: 11px;
+    color: #18334f
+  }
+
+  .rules-table td {
+    border-bottom: 1px solid #edf3f8;
+    padding: 10px;
+    color: #27445e
+  }
+
+  .rules-table tr:last-child td {
+    border-bottom: 0
+  }
+
+  .note {
+    border: 1px dashed #b9dfe9;
+    background: #f3fbfd;
+    border-radius: 16px;
+    padding: 12px;
+    color: #28536b;
+    font-weight: 850
+  }
+
+  .legend {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 10px
+  }
+
+  .legend span {
+    border-radius: 999px;
+    padding: 6px 10px;
+    background: #eef5fa;
+    font-size: 12px;
+    font-weight: 900
+  }
+
+  .legend .done {
+    background: #def8eb;
+    color: #147344
+  }
+
+  .legend .active {
+    background: #dff8fd;
+    color: #0d7f91
+  }
+
+  .legend .pending {
+    background: #eef2f6;
+    color: #607083
+  }
+
+  @media(max-width:1200px) {
+    .doc-summary {
+      grid-template-columns: 1fr 1fr
+    }
+
+    .master-rail {
+      grid-template-columns: repeat(3, 1fr)
+    }
+
+    .rm-grid {
+      grid-template-columns: 1fr
+    }
+
+    .report-grid {
+      grid-template-columns: repeat(2, 1fr)
+    }
+  }
+
+  @media(max-width:680px) {
+    .rm-page {
+      padding: 16px
+    }
+
+    .selector-card {
+      display: block
+    }
+
+    .selector-card select {
+      min-width: 0;
+      width: 100%;
+      margin-top: 8px
+    }
+
+    .doc-summary,
+    .master-rail,
+    .report-grid {
+      grid-template-columns: 1fr
+    }
+
+    .status-row {
+      grid-template-columns: 110px 1fr 35px
+    }
+  }
+</style>
+{% endblock %}
+{% block content %}
+<div class="exec-page px-4 container-fluid">
+  <div class="exec-hero p-4">
+    <h1> Relationship Map</h1>
+  </div>
+
+  <div class="rm-toolbar">
+    <a class="active" href="/relationship-map"><i class="bi bi-diagram-3-fill"></i> Relationship Map</a>
+    <a class="btn btn-phoenix-primary" href="/reports/relationship-tree">Relationship Tree</a> <a href="/reports"><i class="bi bi-bar-chart-line"></i> Reports Center</a>
+    <a href="/dashboard"><i class="bi bi-speedometer2"></i> Dashboard</a>
+    <a href="/production/orders"><i class="bi bi-clipboard2-check"></i> Production Orders</a>
+    <a href="/packing"><i class="bi bi-box-seam"></i> Trayline / Packing</a>
+    <a href="/dispatch"><i class="bi bi-truck"></i> Dispatch</a>
+  </div>
+
+  <form class="selector-card" method="get" action="/relationship-map">
+    <h5 class="label-style"><i class="bi bi-search"></i> Select Document</h5>
+    <select name="order_no" onchange="this.form.submit()">
+      {% for o in recent_orders %}
+      <option value="{{ o.order_no }}" {% if selected_order and selected_order.order_no==o.order_no %}selected{% endif
+        %}>{{ o.order_no }} · {{ o.customer_name }} · {{ o.status or 'Submitted' }}</option>
+      {% endfor %}
+    </select>
+    <div class="report-actions">
+       <button type="submit">Open Map</button>
+    </div>
+   
+  </form>
+
+  <div class="rm-panel">
+    <h2>Document Relationship Flow</h2>
+    <p>Each box is a business document, not only a
+      menu link. Green means completed, warning color means current/active, light red means pending.</p>
+    {% if selected_order %}
+    <div class="doc-summary">
+      <div class="sum-box primary"><span>Selected Order</span><strong>{{ selected_order.order_no }}</strong>
+        <div>{{ selected_order.customer_name }} · {{ selected_order.brand or 'No brand' }}</div>
+      </div>
+      <div class="sum-box"><span>Status</span><strong>{{ selected_order.status or 'Submitted' }}</strong></div>
+      <div class="sum-box"><span>Delivery</span><strong>{{ selected_order.delivery_date or '—' }}</strong>
+        <div>{{ selected_order.delivery_time or '' }}</div>
+      </div>
+      <div class="sum-box"><span>Portions</span><strong>{{ '%.1f'|format(selected_order.portions or 0) }}</strong></div>
+      <div class="sum-box"><span>Margin</span><strong>{{ '%.2f'|format(selected_order.margin or 0) }}</strong></div>
+    </div>
+    {% endif %}
+
+    <div class="sap-map-shell">
+      <div class="sap-flow">
+        {% for n in doc_flow %}
+        <a href="{{ n.url }}" class="sap-node {{ n.state }}">
+          <div class="node-top"><i class="bi {{ n.icon }}"></i><span class="badge">{{ n.state|upper }}</span></div>
+          <h4>{{ loop.index }}. {{ n.label }}</h4>
+          <div class="doc-type">{{ n.doc_type }}</div>
+          <span class="doc-no">{{ n.doc_no }}</span>
+          <div class="metric"><span>{{ n.metric_label }}</span><b>{{ n.metric }}</b></div>
+          {% if n.amount != '' %}<div class="amount">Value: {{ n.amount }}</div>{% endif %}
+          {% if not loop.last %}<span class="arrow-head">›</span>{% endif %}
+        </a>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="legend"><span class="done">Completed previous document</span><span class="active">Current active
+        stage</span><span class="pending">Waiting next action</span></div>
+  </div>
+
+  <div class="rm-panel">
+    <h3>Master Data Feeding the Flow</h3>
+    <div class="master-rail">
+      {% for m in master_nodes %}
+      <a class="master-card" href="{{ m.url }}"><i class="bi {{ m.icon }}"></i><small>{{ m.title }}</small><strong>{{
+          m.metric }}</strong><span>Feeds: {{ m.feeds }}</span></a>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="rm-grid">
+    <div class="rm-panel">
+      <h3>Live Order Status Mix</h3>
+      <p>Operational pipeline distribution from the order table.</p>
+      {# Batch 10: professional theme multi-chart (H-Bar/Bar/Line/Pie/Donut
+         switcher via isfc-charts.js) replacing the plain CSS bars. #}
+      {% if flows %}
+      <div data-isfc-chart="hbar"
+           data-types="hbar,bar,line,area,pie,donut"
+           data-labels='{{ flows | map(attribute="status") | list | tojson }}'
+           data-values='{{ flows | map(attribute="total") | list | tojson }}'
+           style="min-height:300px;"></div>
+      {% else %}<div class="note">No order status found yet.</div>{% endif %}
+    </div>
+    <div class="rm-panel">
+      <h3>Reports Connected to this Map</h3>
+      <p>Use these reports to verify each node in the document chain.</p>
+      <div class="report-grid-style">
+        {% for r in report_links %}<a class="report-chip" href="{{ r.url }}"><strong>{{ r.title }}</strong><span>{{
+            r.desc }}</span></a>{% endfor %}
+      </div>
+    </div>
+  </div>
+
+
+</div>
+{% endblock %}

@@ -1,0 +1,46 @@
+{% extends "print/layout.html" %} {% block sheet %}
+<div class="meta">
+  <div><b>Customer</b>{{ order.customer_name }}</div>
+  <div><b>Delivery</b>{{ order.required_delivery_date or '-' }}</div>
+  <div><b>Issue Lines</b>{{ lines|length }}</div>
+  <div><b>Status</b><span class="badge">{{ order.status }}</span></div>
+</div>
+<table>
+  <thead>
+    <tr>
+      <th>Section</th>
+      <th>Code</th>
+      <th>Item</th>
+      <th>Issued Qty</th>
+      <th>UOM</th>
+      <th>Lot</th>
+      <th>Supplier</th>
+      <th>Status</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for l in lines %}
+    <tr>
+      <td>{{ l.issue_to_section }}</td>
+      <td><strong>{{ l.ingredient_code }}</strong></td>
+      <td>{{ l.ingredient_name }}</td>
+      <td>{{ '%.4f'|format(l.issued_qty or 0) }}</td>
+      <td>{{ l.issued_uom }}</td>
+      <td>{{ l.lot_no }}</td>
+      <td>{{ l.supplier_name }}</td>
+      <td>
+        <span
+          class="badge {% if 'Issued' in (l.status or '') or 'Locked' in (l.status or '') %}ok{% endif %}"
+          >{{ l.status }}</span
+        >
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+<div class="sig">
+  <div>Store Keeper</div>
+  <div>Section Chef (Receiver)</div>
+  <div>Production Manager</div>
+</div>
+{% endblock %}

@@ -1,0 +1,81 @@
+{% extends "layouts/base.html" %}
+{% block content %}
+<style>
+.pis-card{background:#fff;border:1px solid #d9e6f2;border-radius:18px;padding:20px;margin-bottom:18px;box-shadow:0 10px 28px rgba(6,43,73,.06)}.pis-title h1{margin:0;color:#142a46;font-size:38px;font-weight:900}.pis-title p{color:#71839a;margin:6px 0 0}.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.grid2{display:grid;grid-template-columns:1.1fr .9fr;gap:18px}.field label{font-weight:800;color:#142a46;margin-bottom:6px;display:block}.field input,.field select{width:100%;border:1px solid #cbdbea;border-radius:12px;padding:10px 12px}.btn{border:0;border-radius:12px;padding:11px 16px;font-weight:900;text-decoration:none;cursor:pointer}.btn-primary{background:#0d7f91;color:#fff}.btn-secondary{background:#eaf2f8;color:#142a46}.btn-danger{background:#c9352b;color:#fff}.table-wrap{overflow-x:auto;border:1px solid #dce8f2;border-radius:16px;background:linear-gradient(180deg,#fbfdff,#fff)}.pis-table{width:100%;border-collapse:separate;border-spacing:0;font-size:13px}.pis-table th{background:#eef5fa;color:#142a46;text-align:left;padding:12px 10px;font-weight:900;white-space:nowrap;position:sticky;top:0;z-index:2}.pis-table td{border-bottom:1px solid #edf3f8;padding:8px;vertical-align:middle}.pis-table input,.pis-table select{min-width:120px;border:1px solid #cbdbea;border-radius:10px;padding:8px}.pis-table .line-no{font-weight:900;color:#0d7f91}.line-toolbar{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:12px}.line-help{display:flex;gap:10px;flex-wrap:wrap;color:#587089}.help-pill{background:#eef7fb;border:1px solid #d2e7f0;border-radius:999px;padding:7px 10px;font-weight:800;font-size:12px}.line-cost-display{font-weight:900;color:#0d7f91;background:#f0fbf4;border-radius:10px;text-align:right}.live{background:#eefbff;border-color:#bdeaf3;position:sticky;top:82px}.live p{font-size:16px;color:#142a46}.live strong{font-weight:900}.muted{color:#71839a}@media(max-width:1100px){.grid3,.grid2{grid-template-columns:1fr}}
+</style>
+
+<div class="pis-card pis-title">
+  <h1>{% if mode == 'edit' %}Edit Recipe{% else %}Prepare Manual Recipe{% endif %}</h1>
+  <p>Customer, brand and ingredients are linked with master data.</p>
+</div>
+
+<form method="post" action="{% if mode == 'edit' %}/recipes/{{ recipe.id }}/edit{% else %}/recipes/prepare{% endif %}">
+  <div class="pis-card">
+    <h2>Recipe Header</h2>
+    <div class="grid3">
+      <div class="field"><label>Recipe Code</label><input name="recipe_code" value="{{ recipe.recipe_code if recipe else '' }}" required></div>
+      <div class="field"><label>Recipe Name</label><input name="recipe_name" value="{{ recipe.recipe_name if recipe else '' }}" required></div>
+      <div class="field"><label>Customer</label><select name="customer_name" required><option value="">-- select customer --</option>{% for c in customers %}<option value="{{ c.customer_name }}" {% if recipe and recipe.customer_name == c.customer_name %}selected{% endif %}>{{ c.customer_code }} - {{ c.customer_name }}</option>{% endfor %}</select></div>
+      <div class="field"><label>Brand</label><select name="brand_name" required><option value="">-- select brand --</option>{% for b in brands %}<option value="{{ b.brand_name_en }}" {% if recipe and recipe.brand_name == b.brand_name_en %}selected{% endif %}>{{ b.brand_code }} - {{ b.brand_name_en }}</option>{% endfor %}</select></div>
+      <div class="field"><label>Category</label><input name="category" value="{{ recipe.category if recipe else 'Manual' }}"></div>
+      <div class="field"><label>Is Sub Recipe?</label><select name="is_sub_recipe"><option value="No" {% if not recipe or not recipe.is_sub_recipe %}selected{% endif %}>No</option><option value="Yes" {% if recipe and recipe.is_sub_recipe %}selected{% endif %}>Yes</option></select></div>
+      <div class="field"><label>No. of Portions</label><input name="standard_portions" type="number" step="0.0001" value="{{ recipe.standard_portions if recipe else 1 }}"></div>
+      <div class="field"><label>Wt per Portion (g)</label><input name="weight_per_portion_g" type="number" step="0.0001" value="{{ recipe.weight_per_portion_g if recipe else 0 }}"></div>
+      <div class="field"><label>Recipe Std Yield % 0.95 = 95%</label><input name="std_yield_pct" type="number" step="0.0001" value="{{ recipe.std_yield_pct if recipe else 0.95 }}"></div>
+    </div>
+  </div>
+
+  <div class="pis-card ">
+    <div class="line-toolbar">
+      <div>
+        <h2 class="mb-1">Ingredients / Packaging Lines</h2>
+        <p class="muted">Professional recipe BOM builder. Select inventory code or item name; UOM and cost are filled from Inventory Master.</p>
+      </div>
+      <div>
+        <button type="button" class="btn btn-primary" onclick="addLine()"><i class="bi bi-plus-circle"></i> Add Line</button>
+        <button type="button" class="btn btn-secondary" onclick="recalcRecipe()"><i class="bi bi-calculator"></i> Recalculate</button>
+      </div>
+    </div>
+    <div class="line-help mb-2">
+      <span class="help-pill">Inventory-linked costing</span>
+      <span class="help-pill">Ingredient / Packaging / Sub Recipe</span>
+      <span class="help-pill">Qty per portion auto-calculated</span>
+      <span class="help-pill">Missing cost counter</span>
+    </div>
+    <div class="table-wrap p-4"><table class="pis-table"><thead><tr><th>#</th><th>Type</th><th>Inventory Code</th><th>Item Name</th><th>Inventory UOM</th><th>Recipe UOM</th><th>Conversion</th><th>Qty/Batch</th><th>Portions</th><th>Qty/Portion</th><th>Cost/UOM</th><th>Line Cost</th><th>Remark</th><th></th></tr></thead><tbody id="recipe-lines-body">
+    {% if recipe and recipe.lines %}
+      {% for line in recipe.lines %}
+      <tr class="recipe-line-row">
+        <td class="line-no">{{ loop.index }}</td>
+        <td><select name="line_type[]"><option value="Main Recipe" {% if line.line_type == 'Main Recipe' %}selected{% endif %}>Ingredient</option><option value="Packaging" {% if line.line_type == 'Packaging' %}selected{% endif %}>Packaging</option><option value="Sub Recipe" {% if line.line_type == 'Sub Recipe' %}selected{% endif %}>Sub Recipe</option></select></td>
+        <td><select name="inventory_code[]" onchange="fillInventory(this,'code')"><option value="">-- select --</option>{% for i in inventory_items %}<option value="{{ i.code }}" {% if line.inventory_code == i.code %}selected{% endif %}>{{ i.code }}</option>{% endfor %}</select></td>
+        <td><select name="item_name[]" onchange="fillInventory(this,'name')"><option value="">-- select --</option>{% for i in inventory_items %}<option value="{{ i.name }}" {% if line.item_name == i.name %}selected{% endif %}>{{ i.name }}</option>{% endfor %}</select></td>
+        <td><input name="inventory_uom[]" readonly></td><td><input name="uom[]" value="{{ line.uom or '' }}"></td><td><input name="conversion_factor[]" type="number" step="0.000001" value="1"></td>
+        <td><input name="qty_batch[]" type="number" step="0.0001" value="{{ line.qty_batch or 0 }}"></td><td><input name="line_portions[]" type="number" step="0.0001" value="{{ line.portions or recipe.standard_portions }}"></td><td><input name="qty_per_portion[]" type="number" step="0.000001" value="{{ line.qty_per_portion or 0 }}"></td><td><input name="cost_uom[]" type="number" step="0.000001" value="{{ line.cost_uom or 0 }}"></td><td class="line-cost-display">{{ '%.4f'|format(line.line_cost or 0) }}</td><td><input name="remark[]" value="{{ line.remark or '' }}"></td><td><button type="button" class="btn btn-danger" onclick="removeLine(this)">X</button></td>
+      </tr>
+      {% endfor %}
+    {% else %}
+      <tr class="recipe-line-row"><td class="line-no">1</td><td><select name="line_type[]"><option value="Main Recipe">Ingredient</option><option value="Packaging">Packaging</option><option value="Sub Recipe">Sub Recipe</option></select></td><td><select name="inventory_code[]" onchange="fillInventory(this,'code')"><option value="">-- select --</option>{% for i in inventory_items %}<option value="{{ i.code }}">{{ i.code }}</option>{% endfor %}</select></td><td><select name="item_name[]" onchange="fillInventory(this,'name')"><option value="">-- select --</option>{% for i in inventory_items %}<option value="{{ i.name }}">{{ i.name }}</option>{% endfor %}</select></td><td><input name="inventory_uom[]" readonly></td><td><input name="uom[]"></td><td><input name="conversion_factor[]" type="number" step="0.000001" value="1"></td><td><input name="qty_batch[]" type="number" step="0.0001" value="0"></td><td><input name="line_portions[]" type="number" step="0.0001" value="1"></td><td><input name="qty_per_portion[]" type="number" step="0.000001" value="0"></td><td><input name="cost_uom[]" type="number" step="0.000001" value="0"></td><td class="line-cost-display">0.0000</td><td><input name="remark[]"></td><td><button type="button" class="btn btn-danger" onclick="removeLine(this)">X</button></td></tr>
+    {% endif %}
+    </tbody></table></div>
+  </div>
+
+  <div class="grid2">
+    <div class="pis-card"><h2>Other Costs & Margin</h2><div class="grid2"><div class="field"><label>Packaging Cost</label><input name="packaging_cost" type="number" step="0.0001" value="{{ recipe.packaging_cost if recipe else 0 }}"></div><div class="field"><label>Delivery Cost</label><input name="delivery_cost" type="number" step="0.0001" value="{{ recipe.delivery_cost if recipe else 0 }}"></div><div class="field"><label>Labor Cost</label><input name="labor_cost" type="number" step="0.0001" value="{{ recipe.labor_cost if recipe else 0 }}"></div><div class="field"><label>Overheads</label><input name="overheads" type="number" step="0.0001" value="{{ recipe.overheads if recipe else 0 }}"></div><div class="field"><label>Other Costs</label><input name="other_costs" type="number" step="0.0001" value="{{ recipe.other_costs if recipe else 0 }}"></div><div class="field"><label>Margin % 0.30 = 30%</label><input name="margin_pct" type="number" step="0.0001" value="{{ recipe.margin_pct if recipe else 0.3 }}"></div><div class="field" style="grid-column:1/-1"><label>Notes</label><input name="notes" value="{{ recipe.notes if recipe else '' }}"></div></div></div>
+    <div class="pis-card live"><h2>Live Costing</h2><p>Food Cost: <strong>SAR <span id="live-food-cost">0.00</span></strong></p><p>Packaging Lines: <strong>SAR <span id="live-packaging-lines">0.00</span></strong></p><p>Total Cost: <strong>SAR <span id="live-total-cost">0.00</span></strong></p><p>Sale Price: <strong>SAR <span id="live-sale-price">0.00</span></strong></p><p>Missing Cost Lines: <strong><span id="live-missing-lines">0</span></strong></p><button type="submit" class="btn btn-primary">Save Recipe</button> <a href="/recipes" class="btn btn-secondary">Cancel</a></div>
+  </div>
+</form>
+
+<script>
+const INVENTORY_ITEMS = {{ inventory_items|tojson }};
+const byCode = Object.fromEntries(INVENTORY_ITEMS.map(i => [i.code, i]));
+const byName = Object.fromEntries(INVENTORY_ITEMS.map(i => [i.name, i]));
+function n(v){ const x=parseFloat(v||'0'); return isNaN(x)?0:x; }
+function fillInventory(el, mode){ const row=el.closest('tr'); const item = mode==='code' ? byCode[el.value] : byName[el.value]; if(!item) return; row.querySelector('[name="inventory_code[]"]').value=item.code; row.querySelector('[name="item_name[]"]').value=item.name; row.querySelector('[name="inventory_uom[]"]').value=item.inventory_uom; row.querySelector('[name="uom[]"]').value=item.recipe_uom; row.querySelector('[name="cost_uom[]"]').value=item.cost; recalcRecipe(); }
+function recalcLineNumbers(){document.querySelectorAll('.recipe-line-row').forEach((r,i)=>r.querySelector('.line-no').innerText=i+1)}
+function recalcRecipe(){ let food=0, packagingLines=0, missing=0; document.querySelectorAll('.recipe-line-row').forEach(row=>{const type=row.querySelector('[name="line_type[]"]').value; const qty=n(row.querySelector('[name="qty_batch[]"]').value); const portions=n(row.querySelector('[name="line_portions[]"]').value)||1; const qpp=row.querySelector('[name="qty_per_portion[]"]'); let qtyPortion=n(qpp.value); if(!qtyPortion && qty){qtyPortion=qty/portions; qpp.value=qtyPortion.toFixed(6)} const conv=n(row.querySelector('[name="conversion_factor[]"]').value)||1; const cost=n(row.querySelector('[name="cost_uom[]"]').value); const lineCost=(qty*conv)*cost; row.querySelector('.line-cost-display').innerText=lineCost.toFixed(4); if(type==='Packaging') packagingLines += lineCost; else food += lineCost; if(!row.querySelector('[name="inventory_code[]"]').value || cost<=0) missing += 1; }); const manualPackaging=n(document.querySelector('[name="packaging_cost"]').value); const labor=n(document.querySelector('[name="labor_cost"]').value); const delivery=n(document.querySelector('[name="delivery_cost"]').value); const overheads=n(document.querySelector('[name="overheads"]').value); const other=n(document.querySelector('[name="other_costs"]').value); const margin=n(document.querySelector('[name="margin_pct"]').value); const total=food+packagingLines+manualPackaging+labor+delivery+overheads+other; const sale=(margin>=0 && margin<1)?total/(1-margin):total; document.getElementById('live-food-cost').innerText=food.toFixed(2); document.getElementById('live-packaging-lines').innerText=packagingLines.toFixed(2); document.getElementById('live-total-cost').innerText=total.toFixed(2); document.getElementById('live-sale-price').innerText=sale.toFixed(2); document.getElementById('live-missing-lines').innerText=missing; }
+function addLine(){ const tbody=document.getElementById('recipe-lines-body'); const template=tbody.querySelector('tr').cloneNode(true); template.querySelectorAll('input').forEach(i=>{i.value=i.name==='conversion_factor[]'?'1':'0'}); template.querySelectorAll('select').forEach(s=>s.selectedIndex=0); template.querySelector('.line-cost-display').innerText='0.0000'; tbody.appendChild(template); recalcLineNumbers(); recalcRecipe(); }
+function removeLine(btn){ if(document.querySelectorAll('.recipe-line-row').length<=1){alert('At least one line is required.');return;} btn.closest('tr').remove(); recalcLineNumbers(); recalcRecipe(); }
+document.addEventListener('input', e=>{if(e.target.closest('form')) recalcRecipe()}); document.addEventListener('DOMContentLoaded',()=>{document.querySelectorAll('[name="inventory_code[]"]').forEach(el=>{if(el.value) fillInventory(el,'code')}); recalcLineNumbers(); recalcRecipe();});
+</script>
+{% endblock %}

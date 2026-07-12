@@ -1,0 +1,17 @@
+{# Reusable success / error banner driven by ?success= / ?error= query params #}
+{% set _ok = request.query_params.get('success') %}
+{% set _err = request.query_params.get('error') %}
+{% if _ok %}
+<div class="alert alert-subtle-success border border-success-subtle d-flex align-items-center mb-3" role="alert">
+  <i class="bi bi-check-circle-fill me-2"></i>
+  <div>{{ _ok }}</div>
+  <button type="button" class="btn-close ms-auto" data-bs-dismiss="alert" aria-label="Close"></button>
+</div>
+{% endif %}
+{% if _err %}
+<div class="alert alert-subtle-danger border border-danger-subtle d-flex align-items-center mb-3" role="alert">
+  <i class="bi bi-exclamation-triangle-fill me-2"></i>
+  <div>{{ _err }}</div>
+  <button type="button" class="btn-close ms-auto" data-bs-dismiss="alert" aria-label="Close"></button>
+</div>
+{% endif %}

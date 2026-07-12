@@ -1,0 +1,49 @@
+{% extends "print/layout.html" %}
+{% block sheet %}
+<div class="meta">
+  <div><b>Customer</b>{{ order.customer_name }}</div>
+  <div><b>Brand</b>{{ order.brand or '-' }}</div>
+  <div><b>Delivery</b>{{ order.required_delivery_date or '-' }}</div>
+  <div><b>Order Status</b><span class="badge">{{ order.status }}</span></div>
+</div>
+<table>
+  <thead>
+    <tr>
+      <th>QC No</th>
+      <th>Type</th>
+      <th>Result</th>
+      <th>Score</th>
+      <th>Checked By</th>
+      <th>Date</th>
+      <th>Issue Found</th>
+      <th>Corrective Action</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for c in checks %}
+    <tr>
+      <td><strong>{{ c.qc_no }}</strong></td>
+      <td>{{ c.qc_type }}</td>
+      <td><span class="badge {% if c.qc_status == 'Passed' %}ok{% elif c.qc_status == 'Rejected' %}bad{% endif %}">{{
+          c.qc_status }}</span></td>
+      <td>{{ c.score }}</td>
+      <td>{{ c.checked_by }}</td>
+      <td>{{ c.created_at }}</td>
+      <td>{{ c.issue_found or '—' }}</td>
+      <td>{{ c.corrective_action or '—' }}</td>
+    </tr>
+    {% else %}
+    <tr>
+      <td colspan="8" style="text-align:center;color:#98a6ba">No QC checks recorded for this order yet.</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+<p style="margin:14px 0;color:#3a4a63">This certifies that the above production order has undergone the quality checks
+  listed, in line with ISFC food safety procedures.</p>
+<div class="sig">
+  <div>QC Inspector</div>
+  <div>QC Manager</div>
+  <div>Production Manager</div>
+</div>
+{% endblock %}

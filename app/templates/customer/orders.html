@@ -1,0 +1,49 @@
+{% extends "layouts/base.html" %}
+{% block title %}My Orders · ISFC{% endblock %}
+{% block content %}
+<div class="container-fluid py-3">
+  <div class="pis-hero mb-4" style="background:linear-gradient(135deg,#132947,#0c91a3);border-radius:22px;color:#fff;padding:26px 30px;">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
+      <div>
+        <h2 class="mb-1 text-white">My Orders · {{ customer.customer_name }}</h2>
+        <p class="mb-0 opacity-75">Full order history with live status. Use the filters to find any order.</p>
+      </div>
+      <div class="d-flex gap-2"><a class="btn btn-light" href="/orders/portal">+ New Order</a><a class="btn btn-phoenix-secondary" href="/my">Dashboard</a><a class="btn btn-phoenix-secondary" href="/my/statement">Statement</a></div>
+    </div>
+  </div>
+
+  {% include 'partials/filter_bar.html' %}
+
+  <div class="card shadow-none border" data-component-card>
+    <div class="card-header p-4 border-bottom bg-body">
+      <h4 class="text-body mb-0">Order History <span class="badge badge-phoenix badge-phoenix-primary ms-2">{{ orders|length }}</span></h4>
+    </div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table fs-9 mb-0">
+          <thead class="bg-body-highlight"><tr>
+            <th class="ps-4">Order</th><th>Order Date</th><th>Brand</th><th>Channel</th>
+            <th>Delivery</th><th>Portions</th><th>Value</th><th class="pe-4">Status</th>
+          </tr></thead>
+          <tbody>
+            {% for o in orders %}
+            <tr>
+              <td class="ps-4 fw-bold"><a href="/my/orders/{{ o.order_no }}">{{ o.order_no }}</a></td>
+              <td>{{ o.order_date }}</td>
+              <td>{{ o.brand or '-' }}</td>
+              <td>{{ o.channel or '-' }}</td>
+              <td>{{ o.delivery_date }} {{ o.delivery_time }}</td>
+              <td>{{ o.portions }}</td>
+              <td>{{ '%.2f'|format(o.sale_value or 0) }}</td>
+              <td class="pe-4"><span class="badge badge-phoenix badge-phoenix-{{ accents.get(o.status, 'secondary') }}">{{ o.status }}</span></td>
+            </tr>
+            {% else %}
+            <tr><td colspan="8" class="text-center text-body-tertiary py-5">No orders match your filters.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

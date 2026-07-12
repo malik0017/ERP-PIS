@@ -1,0 +1,72 @@
+{% extends "layouts/base.html" %}
+{% block title %}All Section Summary · ISFC{% endblock %}
+{% block content %}
+{% set active_step = 'Kitchen' %}{% include 'partials/process_status_row.html' %}
+
+
+<div class="container-fluid py-3">
+
+  <div class="pis-hero mb-4" style="background:linear-gradient(135deg,#132947,#0c91a3);border-radius:22px;color:#fff;padding:26px 30px;">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
+      <div>
+        <span class="pis-chip mb-3" style="background:rgba(255,255,255,.15);color:#fff;border-radius:999px;padding:6px 12px;font-weight:800;font-size:12px;display:inline-flex;">Kitchen Workflow</span>
+        <h2 class="mb-1 text-white">All Section Summary</h2>
+        <p class="mb-0 opacity-75">Live workload for every kitchen section. Open a section to receive, process and transfer.</p>
+      </div>
+      <a class="btn btn-phoenix-secondary" href="/production/orders">Production Orders</a>
+    </div>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-md-3"><div class="pis-card pis-kpi p-3" style="border-radius:16px;border:1px solid var(--phoenix-border-color);"><span class="d-block text-uppercase fs-10 fw-bold text-body-tertiary">Orders in Kitchen</span><b class="fs-4">{{ totals.orders }}</b></div></div>
+    <div class="col-md-3"><div class="pis-card pis-kpi p-3" style="border-radius:16px;border:1px solid var(--phoenix-border-color);"><span class="d-block text-uppercase fs-10 fw-bold text-body-tertiary">Ingredient Lines</span><b class="fs-4">{{ totals.lines }}</b></div></div>
+    <div class="col-md-3"><div class="pis-card pis-kpi p-3" style="border-radius:16px;border:1px solid var(--phoenix-border-color);"><span class="d-block text-uppercase fs-10 fw-bold text-body-tertiary">Received Lines</span><b class="fs-4">{{ totals.received }}</b></div></div>
+    <div class="col-md-3"><div class="pis-card pis-kpi p-3" style="border-radius:16px;border:1px solid var(--phoenix-border-color);"><span class="d-block text-uppercase fs-10 fw-bold text-body-tertiary">Completed / Transferred</span><b class="fs-4">{{ totals.completed }}</b></div></div>
+  </div>
+
+  <div class="card shadow-none border" data-component-card>
+    <div class="card-header p-4 border-bottom bg-body">
+      <h4 class="text-body mb-1">Section Workload</h4>
+      <p class="text-body-tertiary mb-0 fs-9">One row per section — issued vs received vs waste vs balance.</p>
+    </div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table fs-9 mb-0 pis-table">
+          <thead class="bg-body-highlight">
+            <tr>
+              <th class="ps-4">Section</th><th>Orders</th><th>Lines</th><th>Progress</th>
+              <th>Issued</th><th>Received</th><th>Waste</th><th>Balance</th>
+              <th>Last Activity</th><th class="pe-4 text-end">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in rows %}
+            {% set pct = ((r.completed_lines or 0) / (r.total_lines or 1) * 100) %}
+            <tr>
+              <td class="ps-4 fw-bold">{{ r.section }}</td>
+              <td>{{ r.orders }}</td>
+              <td>{{ r.total_lines }} <span class="text-body-tertiary">({{ r.received_lines }} recv)</span></td>
+              <td style="min-width:170px">
+                <div class="d-flex justify-content-between fs-10 mb-1"><span>{{ r.completed_lines }}/{{ r.total_lines }}</span><span>{{ '%.0f'|format(pct) }}%</span></div>
+                <div class="progress" style="height:8px"><div class="progress-bar bg-info" style="width:{{ pct }}%"></div></div>
+              </td>
+              <td>{{ r.issued_qty }}</td>
+              <td>{{ r.received_qty }}</td>
+              <td class="{% if (r.waste_qty or 0) > 0 %}text-warning fw-bold{% endif %}">{{ r.waste_qty }}</td>
+              <td>{{ r.balance_qty }}</td>
+              <td class="text-body-tertiary">{{ r.last_activity or '-' }}</td>
+              <td class="pe-4 text-end">
+                {% set slug = r.section|replace('/', '-')|replace(' ', '-')|replace('---','-') %}
+                <a class="btn btn-sm btn-primary" href="/production/section/{{ 'Bakery-Pastry' if r.section == 'Bakery/Pastry' else slug }}">Open</a>
+              </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="10" class="text-center text-body-tertiary py-5">No section transactions yet. Release a BOM to store and finalize issuance first.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,87 @@
+{% extends "layouts/base.html" %}
+{% block title %}Order {{ order.order_no }} · ISFC{% endblock %}
+{% block content %}
+<div class="container-fluid py-3 isfc-page">
+
+  <div class="isfc-hero mb-4 p-4 d-flex align-items-center justify-content-between flex-wrap gap-3">
+    <div>
+      <span class="badge bg-light text-dark mb-2">{{ t('Customer Portal') }}</span>
+      <h2 class="mb-1 text-white">{{ t('Order') }} {{ order.order_no }}</h2>
+      <p class="mb-0">{{ customer.customer_name }} · {{ order.brand }} · {{ order.channel }}</p>
+    </div>
+    <div class="d-flex gap-2">
+      <a class="btn btn-light" href="/my/orders">{{ t('My Orders') }}</a>
+      <a class="btn btn-phoenix-secondary" href="/my/statement">{{ t('Statement') }}</a>
+    </div>
+  </div>
+
+  {# ---- Status timeline ---- #}
+  <div class="card mb-4">
+    <div class="card-body">
+      <div class="d-flex flex-wrap gap-2 align-items-center">
+        {% for s in timeline %}
+        <span class="badge {{ 'bg-success' if s.state == 'done' else 'bg-primary' if s.state == 'active' else 'bg-secondary-subtle text-secondary-emphasis' }}">
+          {{ t(s.label) }}</span>
+        {% if not loop.last %}<span data-feather="{{ 'arrow-left' if is_rtl else 'arrow-right' }}" class="text-body-tertiary"></span>{% endif %}
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-lg-8">
+      <div class="card h-100">
+        <div class="card-header"><h5 class="mb-0 text-body-emphasis">{{ t('Order Lines') }}</h5></div>
+        <div class="card-body p-0">
+          <div class="table-responsive">
+            <table class="table table-sm mb-0">
+              <thead><tr>
+                <th class="ps-4">{{ t('Recipe') }}</th><th class="text-end">{{ t('Portions') }}</th>
+                <th class="text-end">{{ t('Unit Price') }}</th><th class="text-end pe-4">{{ t('Line Total') }}</th>
+              </tr></thead>
+              <tbody>
+                {% for l in lines %}
+                <tr>
+                  <td class="ps-4">{{ l.recipe }}</td>
+                  <td class="text-end">{{ l.portions }}</td>
+                  <td class="text-end">{{ '%.2f'|format(l.unit_price|float) }}</td>
+                  <td class="text-end pe-4">{{ '%.2f'|format(l.line_total|float) }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="4" class="text-center text-body-tertiary py-4">{{ t('No line detail available for this order.') }}</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-4">
+      <div class="card mb-3">
+        <div class="card-header"><h5 class="mb-0 text-body-emphasis">{{ t('Delivery') }}</h5></div>
+        <div class="card-body">
+          <p class="mb-1"><span class="text-body-tertiary">{{ t('Required Date') }}:</span> {{ order.delivery_date }} {{ order.delivery_time }}</p>
+          <p class="mb-1"><span class="text-body-tertiary">{{ t('Status') }}:</span>
+            <span class="badge bg-{{ accents.get(order.status, 'secondary') }}-subtle text-{{ accents.get(order.status, 'secondary') }}-emphasis">{{ order.status }}</span></p>
+          {% if delivery %}
+          <p class="mb-1"><span class="text-body-tertiary">{{ t('Vehicle') }}:</span> {{ delivery.vehicle_no or '—' }}</p>
+          <p class="mb-1"><span class="text-body-tertiary">{{ t('Driver') }}:</span> {{ delivery.driver_name or '—' }}</p>
+          <p class="mb-0"><span class="text-body-tertiary">{{ t('Temperature') }}:</span> {{ delivery.delivery_temperature or '—' }}</p>
+          {% else %}
+          <p class="mb-0 text-body-tertiary">{{ t('Not dispatched yet.') }}</p>
+          {% endif %}
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><h5 class="mb-0 text-body-emphasis">{{ t('Summary') }}</h5></div>
+        <div class="card-body">
+          <p class="mb-1"><span class="text-body-tertiary">{{ t('Order Date') }}:</span> {{ order.order_date }}</p>
+          <p class="mb-1"><span class="text-body-tertiary">{{ t('Total Portions') }}:</span> {{ order.portions }}</p>
+          <p class="mb-0"><span class="text-body-tertiary">{{ t('Order Value') }}:</span> <strong>{{ '%.2f'|format(order.sale_value|float) }}</strong></p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

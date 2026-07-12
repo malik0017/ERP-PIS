@@ -1,0 +1,134 @@
+{% extends "layouts/base.html" %}
+{% block content %}
+  {% set active_step = 'Kitchen' %}{% set active_kitchen = section %}{% include 'partials/process_status_row.html' %}
+
+<style>
+.pis-hero{background:linear-gradient(135deg,#132947,#0c91a3);border-radius:22px;color:#fff;padding:26px 30px;box-shadow:0 18px 40px rgba(15,80,97,.18)}
+.pis-card{background:#fff;border:1px solid #dce8f2;border-radius:18px;box-shadow:0 12px 28px rgba(15,30,50,.06)}
+.pis-kpi{padding:16px 18px}.pis-kpi span{display:block;color:#6b7f95;font-size:12px;text-transform:uppercase;font-weight:800;letter-spacing:.05em}.pis-kpi b{font-size:26px;color:#132947}.pis-chip{display:inline-flex;align-items:center;border-radius:999px;background:#edf5fb;color:#18314f;padding:6px 11px;font-weight:800;font-size:12px}.pis-status{background:#dff8e9;color:#11783f}.pis-btn{border:0;border-radius:12px;padding:9px 13px;font-weight:900;text-decoration:none;display:inline-flex;align-items:center;gap:8px}.pis-primary{background:#315cf6;color:#fff}.pis-success{background:#16a34a;color:#fff}.pis-soft{background:#eef5fb;color:#152b49}.pis-table th{background:#edf5fb;color:#152b49;text-transform:uppercase;font-size:12px;letter-spacing:.04em}.pis-input{border:1px solid #cbdbea;border-radius:10px;padding:8px 10px;width:100%}.recipe-box{border:1px solid #dce8f2;border-radius:16px;padding:16px;background:#fbfdff;margin-bottom:14px}.small-muted{color:#6f8196;font-size:13px}
+</style>
+<div class="container-fluid py-3">
+  <div class="pis-hero mb-4">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
+      <div>
+        <span class="pis-chip mb-3">{{ section }} Workstation</span>
+        <h2 class="mb-1">Receiving & Processing: {{ order_no }}</h2>
+        <p class="mb-0 opacity-75">Open order receiving screen. Receive all ingredients, process, record wastage and transfer to the next section.</p>
+      </div>
+      <div class="d-flex gap-2 flex-wrap">
+        <a class="pis-btn pis-soft" href="/production/section/{{ section_slug }}">Back to {{ section }} Orders</a>
+        <a class="pis-btn pis-soft" href="/production/section/{{ section_slug }}/orders/{{ order_no }}?export=csv"><i class="bi bi-download"></i> Download CSV</a>
+      </div>
+    </div>
+  </div>
+
+  {% if error %}<div class="alert alert-warning">{{ error }}</div>{% endif %}
+
+  <div class="pis-card p-3 mb-3">
+    <div class="row g-3">
+      <div class="col-md-3"><div class="pis-kpi"><span>Customer</span><b style="font-size:18px">{{ order.customer_name if order else '-' }}</b></div></div>
+      <div class="col-md-2"><div class="pis-kpi"><span>Lines</span><b>{{ totals.lines }}</b></div></div>
+      <div class="col-md-2"><div class="pis-kpi"><span>Issued</span><b>{{ '%.2f'|format(totals.issued or 0) }}</b></div></div>
+      <div class="col-md-2"><div class="pis-kpi"><span>Received</span><b>{{ '%.2f'|format(totals.received or 0) }}</b></div></div>
+      <div class="col-md-3"><div class="pis-kpi"><span>Balance</span><b>{{ '%.2f'|format(totals.balance or 0) }}</b></div></div>
+    </div>
+    <form method="post" action="/production/section/{{ section_slug }}/orders/{{ order_no }}/receive-all" class="mt-2"
+          data-confirm="Receive the full store-issued quantity for every pending line in this order?"
+          data-confirm-title="Receive All Pending Lines" data-confirm-ok="Receive All" data-confirm-variant="success">
+      <button class="pis-btn pis-success">Receive All Pending Lines</button>
+      <span class="small-muted ms-2">Use this when the section physically receives the full store-issued quantity.</span>
+    </form>
+  </div>
+
+  {% if section == 'Bakery/Pastry' %}
+  <div class="pis-card p-3 mb-4">
+    <h4 class="mb-1">Bakery/Pastry Bulk Recipe Processing</h4>
+    <div class="small-muted mb-3">Ingredients are received separately but mixed and processed as a complete recipe batch. Enter final baked/cooked output at recipe level.</div>
+    {% for r in recipe_groups %}
+      <div class="recipe-box">
+        <div class="d-flex justify-content-between flex-wrap gap-2 mb-2">
+          <div><strong>{{ r.recipe_no }} - {{ r.recipe_name }}</strong><br><span class="small-muted">{{ r.ingredients_count }} ingredients collected for this recipe</span></div>
+          <div><span class="pis-chip">Issued {{ '%.2f'|format(r.total_issued_qty_standard or 0) }}</span> <span class="pis-chip">Received {{ '%.2f'|format(r.total_received_qty_standard or 0) }}</span></div>
+        </div>
+        <details class="mb-3"><summary class="fw-bold">View ingredient collection</summary>
+          <div class="table-responsive mt-2"><table class="table table-sm"><thead><tr><th>Code</th><th>Ingredient</th><th>Issued</th><th>Received</th><th>UOM</th><th>Status</th></tr></thead><tbody>
+            {% for d in r.details %}<tr><td>{{ d.ingredient_code }}</td><td>{{ d.ingredient_name }}</td><td>{{ d.issued_qty_standard }}</td><td>{{ d.received_qty_standard }}</td><td>{{ d.standard_uom }}</td><td>{{ d.transaction_status }}</td></tr>{% endfor %}
+          </tbody></table></div>
+        </details>
+        <form method="post" action="/production/bakery-pastry/process" class="row g-2 align-items-end">
+          <input type="hidden" name="order_no" value="{{ r.order_no }}"><input type="hidden" name="recipe_no" value="{{ r.recipe_no }}">
+          <div class="col-md-2"><label class="fw-bold">Output Qty</label><input class="pis-input" type="number" step="0.0001" min="0" name="output_qty" required></div>
+          <div class="col-md-2"><label class="fw-bold">Output UOM</label><select class="pis-input" name="output_uom"><option>Portions</option><option>Pieces</option><option>Kg</option></select></div>
+          <div class="col-md-2"><label class="fw-bold">Recipe Waste</label><input class="pis-input" type="number" step="0.0001" min="0" name="waste_qty" value="0"></div>
+          <div class="col-md-3"><label class="fw-bold">Forward To</label><select class="pis-input" name="next_section">{% for s in next_sections %}<option>{{ s }}</option>{% endfor %}</select></div>
+          <div class="col-md-2"><label class="fw-bold">Remarks</label><input class="pis-input" name="remarks"></div>
+          <div class="col-md-1"><button class="pis-btn pis-success w-100">Process</button></div>
+        </form>
+      </div>
+    {% else %}<div class="text-muted">No Bakery/Pastry recipe groups for this order.</div>{% endfor %}
+  </div>
+  {% endif %}
+
+  <div class="pis-card p-3">
+    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+      <div><h4 class="mb-1">Ingredient Receiving Lines</h4><div class="small-muted">Line level controls are still available for audit and exception handling.</div></div>
+      <input class="form-control" style="max-width:340px" id="lineSearch" placeholder="Search ingredient, recipe, status..." onkeyup="filterLines()">
+    </div>
+    <div class="table-responsive">
+      <table class="table align-middle pis-table" id="linesTable">
+        <thead>
+          <tr>
+            <th style="min-width:130px">Recipe</th>
+            <th style="min-width:180px">Ingredient</th>
+            <th style="min-width:110px">Issued</th>
+            <th style="min-width:100px">Status</th>
+            <th style="min-width:230px">Receive</th>
+            <th style="width:96px">Processed</th>
+            <th style="width:84px">Waste</th>
+            <th style="width:84px">Return</th>
+            <th style="width:96px">Transfer</th>
+            <th style="min-width:120px">Next Section</th>
+            <th style="min-width:110px">Reason</th>
+            <th style="width:92px"></th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for tx in txs %}
+          <tr>
+            <td><strong>{{ tx.recipe_no }}</strong><br><span class="small-muted">{{ tx.recipe_name }}</span></td>
+            <td><strong>{{ tx.ingredient_code }}</strong><br>{{ tx.ingredient_name }}</td>
+            <td>{{ tx.issued_qty_standard }} {{ tx.standard_uom }}<br><span class="small-muted">Recv: {{ tx.received_qty_standard or 0 }}</span></td>
+            <td><span class="pis-chip {% if tx.transaction_status and tx.transaction_status.startswith('Completed') %}pis-status{% endif %}">{{ tx.transaction_status }}</span></td>
+            <td>
+              <form method="post" action="/production/tx/{{ tx.id }}/receive" class="d-flex gap-2">
+                <input class="pis-input" type="number" step="0.0001" name="received_qty_standard" value="{{ tx.received_qty_standard or tx.issued_qty_standard or 0 }}">
+                <button class="pis-btn pis-soft">Receive</button>
+              </form>
+            </td>
+            {# Every Process/Transfer field is its own aligned table column,
+               so the whole grid lines up row after row. One form spans the
+               cells via the HTML5 form attribute. #}
+            <td><input form="txf{{ tx.id }}" class="pis-input" type="number" step="0.0001" name="processed_qty_standard" value="{{ tx.received_qty_standard or tx.issued_qty_standard or 0 }}"></td>
+            <td><input form="txf{{ tx.id }}" class="pis-input" type="number" step="0.0001" name="waste_qty_standard" value="0"></td>
+            <td><input form="txf{{ tx.id }}" class="pis-input" type="number" step="0.0001" name="returned_qty_standard" value="0"></td>
+            <td><input form="txf{{ tx.id }}" class="pis-input" type="number" step="0.0001" name="transferred_qty_standard" value="{{ tx.balance_qty_standard or tx.received_qty_standard or tx.issued_qty_standard or 0 }}"></td>
+            <td><select form="txf{{ tx.id }}" class="pis-input" name="next_section"><option value="">Use route</option>{% for s in next_sections %}<option>{{ s }}</option>{% endfor %}</select></td>
+            <td><input form="txf{{ tx.id }}" class="pis-input" name="waste_reason" placeholder="Reason"></td>
+            <td>
+              <form method="post" id="txf{{ tx.id }}" action="/production/tx/{{ tx.id }}/transfer"></form>
+              <button form="txf{{ tx.id }}" class="pis-btn pis-primary">Transfer</button>
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+<script>
+function filterLines(){
+  const q=(document.getElementById('lineSearch').value||'').toLowerCase();
+  document.querySelectorAll('#linesTable tbody tr').forEach(tr=>{tr.style.display=tr.innerText.toLowerCase().includes(q)?'':'none'});
+}
+</script>
+{% endblock %}

@@ -1,0 +1,95 @@
+{% extends "layouts/base.html" %}
+{% block content %}
+<style>
+    .isfc-page {
+        padding: 10px 18px 30px
+    }
+
+    .isfc-card {
+        background: #fff;
+        border: 1px solid #dce8f2;
+        border-radius: 18px;
+        box-shadow: 0 14px 34px rgba(15, 30, 50, .06);
+        padding: 22px;
+        margin-bottom: 18px
+    }
+
+    .isfc-head {
+        background: radial-gradient(circle at 92% 8%, rgba(255,255,255,.24), transparent 16%), linear-gradient(135deg,#102542,#315efb 55%,#0fb6cf);
+        border-radius: 20px;
+        color: #fff;
+        padding: 24px 28px;
+        margin-bottom: 18px
+    }
+
+    .isfc-head h1 {
+        margin: 0;
+        font-size: 32px
+    }
+
+    .isfc-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 14px
+    }
+
+    .lbl {
+        font-weight: 800;
+        color: #123452;
+        margin-bottom: 6px;
+        display: block
+    }
+
+    .inp,
+    .sel {
+        width: 100%;
+        border: 1px solid #cfdae5;
+        border-radius: 13px;
+        padding: 11px 12px;
+        background: #fff
+    }
+
+    .btn {
+        border: 0;
+        border-radius: 13px;
+        padding: 12px 18px;
+        font-weight: 800;
+        text-decoration: none;
+        display: inline-flex;
+        gap: 7px
+    }
+
+    .primary {
+        background: #0f8195;
+        color: #fff
+    }
+
+    .soft {
+        background: #eaf2f8;
+        color: #142a46
+    }
+
+    @media(max-width:900px) {
+        .isfc-grid {
+            grid-template-columns: 1fr
+        }
+    }
+</style>
+<div class="isfc-page">
+    <div class="isfc-head">
+        <h1>Edit {{ page_title }}</h1>
+        <p>Update master record fields.</p>
+    </div>
+    <form method="post">
+        <div class="isfc-card">
+            <div class="isfc-grid">{% for field in editable_fields %}<div><label class="lbl">{{ field.label }}</label>{%
+                    if field.type == 'select' %}<select class="sel" name="{{ field.name }}">
+                        <option value="ACTIVE" {% if field.value in ['ACTIVE','Active'] %}selected{% endif %}>ACTIVE
+                        </option>
+                        <option value="INACTIVE" {% if field.value=='INACTIVE' %}selected{% endif %}>INACTIVE</option>
+                    </select>{% else %}<input class="inp" name="{{ field.name }}" value="{{ field.value or '' }}">{%
+                    endif %}</div>{% endfor %}</div>
+        </div><div class="isfc-form-actions"><button class="btn primary" type="submit">Save Changes</button><a class="btn soft" href="javascript:history.back()">Cancel</a></div>
+    </form>
+</div>
+{% endblock %}

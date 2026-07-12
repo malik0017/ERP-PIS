@@ -1,0 +1,43 @@
+
+# Environment
+python-dotenv==1.0.0
+pymysql
+itsdangerous
+
+# Request handling
+python-multipart==0.0.6
+
+# Data validation
+pydantic==2.5.0
+email-validator==2.1.0
+pydantic-settings==2.1.0
+
+python-jose[cryptography]==3.3.0
+passlib==1.7.4
+bcrypt==4.0.1 
+
+# FastAPI Framework
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+
+# Database
+sqlalchemy==2.0.23
+mysql-connector-python==8.1.0
+
+# Templating
+jinja2==3.1.2
+
+# Session management
+starlette==0.27.0
+
+
+# Optional: For async database operations (recommended)
+# aiomysql==0.2.0
+
+# Optional: For production server
+# gunicorn==21.2.0 
+
+openpyxl
+qrcode[pil]==7.4.2
+segno==1.6.1
+pillow>=10.0.0

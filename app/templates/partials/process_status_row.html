@@ -1,0 +1,117 @@
+{% set active_step = active_step|default('') %} {% set active_kitchen =
+active_kitchen|default('') %} {# Normalize once so 'Hot-Kitchen', 'hot kitchen',
+'Hot Kitchen' all match. #} {% set _ak = active_kitchen|lower|replace('-', '
+')|replace('/', ' ')|replace(' ', ' ')|trim %} {% set _as =
+active_step|lower|trim %}
+<style>
+  .pis-flow-wrap {
+    margin: 12px 0 18px;
+  }
+  /* .pis-process-row {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 0 125px;
+  } */
+  .pis-process-row a,
+  .pis-process-row span {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 9px 12px;
+    background: #edf5fa;
+    color: #173b55;
+    border: 1px solid #dce9f3;
+    border-radius: 999px;
+    text-decoration: none;
+    font-weight: 950;
+    box-shadow: 0 6px 16px rgba(15, 30, 50, 0.04);
+  }
+  .pis-process-row .active {
+    background: #0d7f91 !important;
+    color: #fff !important;
+    border-color: #0d7f91;
+  }
+  .pis-process-row .done {
+    background: #e1fae9;
+    color: #087b2e;
+    border-color: #c7f2d4;
+  }
+  .pis-process-row small {
+    font-weight: 800;
+    opacity: 0.72;
+  }
+  .pis-next-action {
+    background: #f5fbfd;
+    border: 1px dashed #b9deea;
+    border-radius: 16px;
+    padding: 11px 13px;
+    color: #365a72;
+    font-weight: 800;
+    margin: 10px 0 0;
+  }
+  .pis-next-action strong {
+    color: #102542;
+  }
+  /* .pis-subflow {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin: 8px 0 0 0;
+    padding: 0 125px;
+  } */
+  .pis-subflow a {
+    font-size: 12px;
+    padding: 7px 10px;
+    background: #fff;
+    border: 1px solid #dce9f3;
+    border-radius: 999px;
+    color: #31516b;
+    text-decoration: none;
+    font-weight: 800;
+  }
+  .pis-subflow a.active {
+    background: #173b55;
+    color: #fff;
+    border-color: #173b55;
+  }
+  [data-bs-theme="dark"] .pis-process-row a,
+  [data-bs-theme="dark"] .pis-process-row span {
+    background: #1a2332;
+    color: #c7d3e3;
+    border-color: #2a3648;
+  }
+  [data-bs-theme="dark"] .pis-subflow a {
+    background: #141c29;
+    color: #c7d3e3;
+    border-color: #2a3648;
+  }
+</style>
+<div class="pis-flow-wrap">
+  <div class="pis-process-row" aria-label="SAP/Odoo style order process status">
+    {% set steps = [ ('Order','/orders/portal','1'), ('Head
+    Chef','/production/head-chef','2'), ('BOM','/production/orders','3'),
+    ('Store','/production/store-issuance','4'),
+    ('Kitchen','/production/section/Bakery-Pastry','5'), ('QC','/qc','6'),
+    ('Packing','/packing','7'), ('Dispatch','/dispatch','8') ] %} {% for name,
+    url, no in steps %}
+    <a href="{{ url }}" class="{% if _as == name|lower %}active{% endif %}"
+      ><small>{{ no }}</small> {{ name }}</a
+    >
+    {% endfor %}
+  </div>
+  {% if _as == 'kitchen' or show_kitchen_subflow|default(false) %}
+  <div class="pis-subflow" aria-label="Kitchen sub process">
+    {% set kitchen_steps =
+    [('Thawing','/production/section/Thawing'),('Cutting','/production/section/Cutting'),('Butchery','/production/section/Butchery'),('Marination','/production/section/Marination'),('Hot
+    Kitchen','/production/section/Hot-Kitchen'),('Cold
+    Kitchen','/production/section/Cold-Kitchen'),('Bakery/Pastry','/production/section/Bakery-Pastry')]
+    %} {% for name, url in kitchen_steps %} {% set _n = name|lower|replace('-',
+    ' ')|replace('/', ' ')|replace(' ', ' ')|trim %}
+    <a href="{{ url }}" class="{% if _ak == _n %}active{% endif %}"
+      >{{ name }}</a
+    >
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>

@@ -1,0 +1,85 @@
+{% extends "layouts/base.html" %}
+{% block title %}Customer Portal · ISFC{% endblock %}
+{% block content %}
+<div class="container-fluid py-3">
+
+  <div class="pis-hero mb-4" style="background:linear-gradient(135deg,#132947,#0c91a3);border-radius:22px;color:#fff;padding:26px 30px;">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
+      <div>
+        <span class="pis-chip mb-3" style="background:rgba(255,255,255,.15);color:#fff;border-radius:999px;padding:6px 12px;font-weight:800;font-size:12px;display:inline-flex;">Customer Portal</span>
+        <h2 class="mb-1 text-white">{% if customer %}Welcome, {{ customer.customer_name }}{% else %}Customer Portal{% endif %}</h2>
+        <p class="mb-0 opacity-75">{% if customer %}Track your orders from submission to delivery.{% else %}This account is not linked to a customer yet — ask your administrator to set your customer link in Users & Access.{% endif %}</p>
+      </div>
+      {% if customer %}
+      <div class="d-flex gap-2 flex-wrap">
+        <a class="btn btn-light" href="/orders/portal">+ New Order</a>
+        <a class="btn btn-phoenix-secondary" href="/my/orders">Order History</a>
+        <a class="btn btn-phoenix-secondary" href="/my/statement">Statement</a>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if customer %}
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-md"><div class="card shadow-none border h-100"><div class="card-body p-3"><span class="d-block text-uppercase fs-10 fw-bold text-body-tertiary">Total Orders</span><h3 class="mb-0">{{ kpis.total }}</h3></div></div></div>
+    <div class="col-6 col-md"><div class="card shadow-none border h-100"><div class="card-body p-3"><span class="d-block text-uppercase fs-10 fw-bold text-body-tertiary">Open Orders</span><h3 class="mb-0 text-warning">{{ kpis.open }}</h3></div></div></div>
+    <div class="col-6 col-md"><div class="card shadow-none border h-100"><div class="card-body p-3"><span class="d-block text-uppercase fs-10 fw-bold text-body-tertiary">Delivered</span><h3 class="mb-0 text-success">{{ kpis.delivered }}</h3></div></div></div>
+    <div class="col-6 col-md"><div class="card shadow-none border h-100"><div class="card-body p-3"><span class="d-block text-uppercase fs-10 fw-bold text-body-tertiary">Total Portions</span><h3 class="mb-0">{{ kpis.portions }}</h3></div></div></div>
+    <div class="col-6 col-md"><div class="card shadow-none border h-100"><div class="card-body p-3"><span class="d-block text-uppercase fs-10 fw-bold text-body-tertiary">Order Value</span><h3 class="mb-0">{{ kpis.value }}</h3></div></div></div>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-xxl-8">
+      <div class="card shadow-none border h-100" data-component-card>
+        <div class="card-header p-4 border-bottom bg-body d-flex justify-content-between align-items-center">
+          <div><h4 class="text-body mb-1">Recent Orders</h4>
+          <p class="text-body-tertiary mb-0 fs-9">Your latest 8 orders with live production status.</p></div>
+          <a class="btn btn-sm btn-phoenix-primary" href="/my/orders">View all</a>
+        </div>
+        <div class="card-body p-0">
+          <div class="table-responsive">
+            <table class="table fs-9 mb-0">
+              <thead class="bg-body-highlight"><tr><th class="ps-4">Order</th><th>Brand</th><th>Delivery</th><th>Portions</th><th>Value</th><th class="pe-4">Status</th></tr></thead>
+              <tbody>
+                {% for o in orders %}
+                <tr>
+                  <td class="ps-4 fw-bold">{{ o.order_no }}</td>
+                  <td>{{ o.brand or '-' }}</td>
+                  <td>{{ o.delivery_date }} {{ o.delivery_time }}</td>
+                  <td>{{ o.portions }}</td>
+                  <td>{{ '%.2f'|format(o.sale_value or 0) }}</td>
+                  <td class="pe-4"><span class="badge badge-phoenix badge-phoenix-{{ accents.get(o.status, 'secondary') }}">{{ o.status }}</span></td>
+                </tr>
+                {% else %}
+                <tr><td colspan="6" class="text-center text-body-tertiary py-5">No orders yet — create your first order.</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-xxl-4">
+      <div class="card shadow-none border h-100" data-component-card>
+        <div class="card-header p-4 border-bottom bg-body">
+          <h4 class="text-body mb-1">Order Status Mix</h4>
+          <p class="text-body-tertiary mb-0 fs-9">Where your orders are in the pipeline.</p>
+        </div>
+        <div class="card-body">
+          {% set max_c = (status_mix | map(attribute=1) | max) if status_mix else 1 %}
+          {% for status, count in status_mix %}
+          <div class="mb-3">
+            <div class="d-flex justify-content-between fs-9 mb-1"><span class="fw-bold">{{ status }}</span><span>{{ count }}</span></div>
+            <div class="progress" style="height:8px"><div class="progress-bar bg-{{ accents.get(status, 'secondary') }}" style="width:{{ count / max_c * 100 }}%"></div></div>
+          </div>
+          {% else %}
+          <div class="text-center text-body-tertiary py-4">No data yet.</div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

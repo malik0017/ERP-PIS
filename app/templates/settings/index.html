@@ -1,0 +1,95 @@
+{% extends "layouts/base.html" %}
+{% block title %}System Settings | ISFC ERP{% endblock %}
+{% block content %}
+<div class="container-fluid py-3 isfc-page">
+
+  <div class="isfc-hero mb-3">
+    <h1 class="mb-1">{{ t('System Settings') }}</h1>
+    <p class="mb-0">{{ t('Manage company profile, branding, logo, security policy, language, currency and formatting.') }}</p>
+  </div>
+
+  <!-- ============ COMPANY LOGO (separate form: multipart upload) ============ -->
+  <div class="card shadow-none border mb-3">
+    <div class="card-header p-4 border-bottom bg-body d-flex justify-content-between align-items-center flex-wrap gap-2">
+      <h4 class="mb-0"><i class="bi bi-image text-primary me-2"></i>{{ t('Company Logo') }}</h4>
+      <span class="badge badge-phoenix badge-phoenix-info">{{ t('per active company') }}</span>
+    </div>
+    <div class="card-body p-4 d-flex align-items-center gap-4 flex-wrap">
+      <div class="border rounded-3 p-2 bg-body-highlight d-inline-flex align-items-center justify-content-center" style="min-width:160px;min-height:64px">
+        {% if company_logo %}
+        <img src="{{ company_logo }}?v={{ range(1,99999)|random }}" style="max-height:52px;max-width:220px" alt="company logo">
+        {% else %}
+        <span class="text-body-tertiary fs-9"><i class="bi bi-image me-1"></i>{{ t('No logo uploaded yet') }}</span>
+        {% endif %}
+      </div>
+      <form method="post" action="/settings/company-logo" enctype="multipart/form-data" class="d-flex gap-2 flex-wrap align-items-end flex-grow-1">
+        <div class="flex-grow-1" style="max-width:340px">
+          <label class="form-label fw-bold">{{ t('Upload New Logo') }}</label>
+          <input class="form-control" type="file" name="logo" accept=".png,.jpg,.jpeg,.webp,.svg" required>
+        </div>
+        <button class="btn btn-primary"><i class="bi bi-upload me-1"></i>{{ t('Save Logo') }}</button>
+      </form>
+      <p class="fs-10 text-body-tertiary w-100 mb-0"><i class="bi bi-info-circle me-1"></i>{{ t('The logo replaces the header brand for the ACTIVE company only — each company keeps its own branding. Recommended: transparent PNG, height 48–96px.') }}</p>
+    </div>
+  </div>
+
+  <form method="post" action="/settings">
+    <!-- ============ COMPANY PROFILE ============ -->
+    <div class="card shadow-none border mb-3">
+      <div class="card-header p-4 border-bottom bg-body"><h4 class="mb-0"><i class="bi bi-building text-primary me-2"></i>{{ t('Company Profile') }}</h4></div>
+      <div class="card-body p-4 row g-3">
+        <div class="col-md-6"><label class="form-label fw-bold">{{ t('Company Name EN') }}</label><input class="form-control" name="company_name" value="{{ settings.company_name or '' }}"></div>
+        <div class="col-md-6"><label class="form-label fw-bold">{{ t('Company Name AR') }}</label><input class="form-control" name="company_name_ar" dir="rtl" value="{{ settings.company_name_ar or '' }}"></div>
+        <div class="col-md-3"><label class="form-label fw-bold">{{ t('Default Language') }}</label>
+          <select class="form-select" name="default_language">
+            <option value="en" {% if settings.default_language=='en' %}selected{% endif %}>English</option>
+            <option value="ar" {% if settings.default_language=='ar' %}selected{% endif %}>العربية</option>
+          </select></div>
+        <div class="col-md-3"><label class="form-label fw-bold">{{ t('Timezone') }}</label><input class="form-control" name="timezone" value="{{ settings.timezone or 'Asia/Riyadh' }}"></div>
+        <div class="col-md-2"><label class="form-label fw-bold">{{ t('Currency') }}</label><input class="form-control" name="currency" value="{{ settings.currency or 'SAR' }}"></div>
+        <div class="col-md-2"><label class="form-label fw-bold">{{ t('Date Format') }}</label><input class="form-control" name="date_format" value="{{ settings.date_format or 'dd-mm-yyyy' }}"></div>
+        <div class="col-md-2"><label class="form-label fw-bold">{{ t('Number Format') }}</label><input class="form-control" name="number_format" value="{{ settings.number_format or '1,234.00' }}"></div>
+        <div class="col-md-3"><label class="form-label fw-bold">{{ t('RTL Enabled') }}</label>
+          <select class="form-select" name="is_rtl_enabled">
+            <option value="1" {% if settings.is_rtl_enabled %}selected{% endif %}>{{ t('Yes') }}</option>
+            <option value="0" {% if not settings.is_rtl_enabled %}selected{% endif %}>{{ t('No') }}</option>
+          </select></div>
+      </div>
+    </div>
+
+    <!-- ============ BRANDING TEXT ============ -->
+    <div class="card shadow-none border mb-3">
+      <div class="card-header p-4 border-bottom bg-body"><h4 class="mb-0"><i class="bi bi-layout-sidebar text-info me-2"></i>{{ t('Sidebar & Header Branding') }}</h4></div>
+      <div class="card-body p-4">
+        <p class="text-body-tertiary fs-9">{{ t('These values control the names shown in the sidebar and top header. Logout/login after saving if another user needs to see changes.') }}</p>
+        <div class="row g-3">
+          <div class="col-md-3"><label class="form-label fw-bold">{{ t('Sidebar Title') }}</label><input class="form-control" name="sidebar_title" value="{{ settings.sidebar_title or 'ISFC PIS' }}"></div>
+          <div class="col-md-3"><label class="form-label fw-bold">{{ t('Sidebar Subtitle') }}</label><input class="form-control" name="sidebar_subtitle" value="{{ settings.sidebar_subtitle or 'Production Intelligence' }}"></div>
+          <div class="col-md-3"><label class="form-label fw-bold">{{ t('Header Title') }}</label><input class="form-control" name="header_title" value="{{ settings.header_title or 'ISFC' }}"></div>
+          <div class="col-md-3"><label class="form-label fw-bold">{{ t('Header Subtitle') }}</label><input class="form-control" name="header_subtitle" value="{{ settings.header_subtitle or 'Production' }}"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ LOGIN SECURITY ============ -->
+    <div class="card shadow-none border mb-3">
+      <div class="card-header p-4 border-bottom bg-body"><h4 class="mb-0"><i class="bi bi-shield-lock text-warning me-2"></i>{{ t('Login Security') }}</h4></div>
+      <div class="card-body p-4">
+        <p class="text-body-tertiary fs-9">{{ t('Set lockout and global authenticator policy. User-specific 2FA secret is generated from Admin > Users > Edit.') }}</p>
+        <div class="row g-3">
+          <div class="col-md-4"><label class="form-label fw-bold">{{ t('Enable Authenticator Requirement') }}</label>
+            <select class="form-select" name="authenticator_enabled">
+              <option value="1" {% if settings.authenticator_enabled %}selected{% endif %}>{{ t('Yes') }}</option>
+              <option value="0" {% if not settings.authenticator_enabled %}selected{% endif %}>{{ t('No') }}</option>
+            </select></div>
+          <div class="col-md-4"><label class="form-label fw-bold">{{ t('Max Login Attempts') }}</label><input class="form-control" name="max_login_attempts" type="number" min="3" max="10" value="{{ settings.max_login_attempts or 5 }}"></div>
+          <div class="col-md-4"><label class="form-label fw-bold">{{ t('2FA Setup Valid Days') }}</label><input class="form-control" name="two_factor_setup_valid_days" type="number" min="7" max="60" value="{{ settings.two_factor_setup_valid_days or 30 }}">
+            <small class="text-body-tertiary">{{ t('If QR setup is not verified within this period, pending 2FA is cleared and login is not blocked.') }}</small></div>
+        </div>
+      </div>
+    </div>
+
+    <button class="btn btn-primary" type="submit"><i class="bi bi-save me-1"></i>{{ t('Save Settings') }}</button>
+  </form>
+</div>
+{% endblock %}

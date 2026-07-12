@@ -1,0 +1,208 @@
+{% extends "layouts/base.html" %}
+{% block content %}
+{% set active_step = 'Head Chef' %}{% include 'partials/process_status_row.html' %}
+<style>
+  .rep-hero {
+    background: radial-gradient(circle at 92% 8%, rgba(255, 255, 255, .22), transparent 16%), linear-gradient(135deg, #102542, #0d7f91);
+    color: #fff;
+    border-radius: 28px;
+    padding: 30px 34px;
+    box-shadow: 0 22px 48px rgba(16, 37, 66, .22);
+    margin-bottom: 16px
+  }
+
+  .rep-hero h1 {
+    font-size: 34px;
+    font-weight: 950;
+    margin: 0
+  }
+
+  .rep-hero p {
+    margin: 8px 0 0;
+    color: #e7fbff
+  }
+
+  .hc-card {
+    background: #fff;
+    border: 1px solid #dce8f2;
+    border-radius: 18px;
+    box-shadow: 0 12px 28px rgba(15, 30, 50, .06);
+    padding: 18px;
+    margin-bottom: 16px
+  }
+
+  .hc-kpi span {
+    display: block;
+    color: #71849a;
+    font-size: 12px;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: .04em
+  }
+
+  .hc-kpi b {
+    font-size: 30px;
+    color: #142a46
+  }
+
+  .hc-label {
+    font-weight: 900;
+    color: #142a46
+  }
+
+  .hc-input {
+    width: 100%;
+    border: 1px solid #cbdbea;
+    border-radius: 12px;
+    padding: 9px 11px;
+    background: #fff
+  }
+
+  .hc-table th {
+    background: #edf5fb;
+    color: #142a46;
+    text-transform: uppercase;
+    font-size: 12px
+  }
+
+  .hc-status {
+    border-radius: 999px;
+    padding: 5px 10px;
+    font-weight: 900;
+    font-size: 12px;
+    background: #e8f2fb;
+    color: #173b55
+  }
+
+  .hc-pending {
+    background: #fff5d6;
+    color: #9a6700
+  }
+
+  .hc-ok {
+    background: #ddf8e7;
+    color: #0b7c3b
+  }
+
+  .hc-btn {
+    border: 0;
+    border-radius: 12px;
+    padding: 8px 12px;
+    font-weight: 900;
+    text-decoration: none;
+    display: inline-flex
+  }
+
+  .hc-primary {
+    background: #315efb;
+    color: #fff
+  }
+
+  .hc-soft {
+    background: #edf5fb;
+    color: #142a46
+  }
+
+  .chip {
+    border: 1px solid #dce8f2;
+    border-radius: 999px;
+    padding: 8px 12px;
+    background: #fff;
+    text-decoration: none;
+    font-weight: 900;
+    color: #173b55
+  }
+
+  .chip.active {
+    background: #0d7f91;
+    color: #fff
+  }
+
+  .mini {
+    font-size: 12px;
+    color: #6b8198
+  }
+</style>
+<div class="rep-page container-fluid py-3">
+  <div class="rep-hero mb-3">
+    <h2 class="mb-1">Head Chef Planning & Schedule Approval</h2>
+    <p class="mb-0 opacity-75">Head Chef confirms cooking date/time and material receiving date/time. Customer requested
+      delivery is visible but fixed.</p>
+  </div>
+  {% if error %}<div class="alert alert-warning">{{ error }}</div>{% endif %}
+  <div class="row g-3 mb-3">
+    <div class="col-md-3">
+      <div class="hc-card hc-kpi"><span>Total Orders</span><b>{{ stats.total_orders }}</b></div>
+    </div>
+    <div class="col-md-3">
+      <div class="hc-card hc-kpi"><span>Awaiting Head Chef</span><b>{{ stats.awaiting_head_chef }}</b></div>
+    </div>
+    <div class="col-md-3">
+      <div class="hc-card hc-kpi"><span>Scheduled Orders</span><b>{{ stats.scheduled }}</b></div>
+    </div>
+    <div class="col-md-3">
+      <div class="hc-card hc-kpi"><span>BOM Ready</span><b>{{ stats.bom_ready }}</b></div>
+    </div>
+  </div>
+  <div class="hc-card">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+      <div>
+        <h4 class="mb-1">Head Chef Order Queue</h4>
+        <div class="text-muted">Use quick filters for today, this week, this month, pending and process orders.</div>
+      </div><a href="/production/orders" class="hc-btn hc-soft">Production Orders</a>
+    </div>
+    <div class="d-flex gap-2 flex-wrap mb-3">
+      {% for v,label in [('today','Today'),('week','This Week'),('month','This
+      Month'),('pending','Pending'),('all','All')] %}<a class="chip {% if filters.view==v %}active{% endif %}"
+        href="/production/head-chef?view={{ v }}">{{ label }}</a>{% endfor %}
+    </div>
+    <form method="get" class="row g-2 align-items-end mb-3">
+      <div class="col-md-3"><label class="hc-label">Delivery From</label><input type="date" class="hc-input"
+          name="date_from" value="{{ filters.date_from or '' }}"></div>
+      <div class="col-md-3"><label class="hc-label">Delivery To</label><input type="date" class="hc-input"
+          name="date_to" value="{{ filters.date_to or '' }}"></div>
+      <div class="col-md-3"><label class="hc-label">Status</label><select class="hc-input" name="status">
+          <option value="">All Status</option>{% for st in ['Submitted','Head Chef Approved','BOM Generated','Store
+          Pending','In Production','Packing Pending','Packed'] %}<option value="{{ st }}" {% if filters.status==st
+            %}selected{% endif %}>{{ st }}</option>{% endfor %}<option value="pending" {% if filters.status=='pending'
+            %}selected{% endif %}>Pending Group</option>
+          <option value="process" {% if filters.status=='process' %}selected{% endif %}>In Process Group</option>
+        </select></div>
+      <div class="col-md-2"><button class="hc-btn hc-primary w-100">Filter</button></div>
+    </form>
+    <input class="hc-input mb-2" id="hcSearch" placeholder="Quick search order, customer, brand, channel, status..."
+      onkeyup="filterHeadChef()">
+    <div class="table-responsive">
+      <table class="table table-sm table-bordered align-middle hc-table" data-isfc-search="false" id="headChefTable">
+        <thead>
+          <tr>
+            <th>Order</th>
+            <th>Customer / Brand / Channel</th>
+            <th>Status</th>
+            <th>Customer Delivery Request</th>
+            <th>Cooking Schedule</th>
+            <th>Material Receiving</th>
+            <th>Portions</th>
+            <th>Next Action</th>
+          </tr>
+        </thead>
+        <tbody>{% for o in orders %}<tr>
+            <td><strong>{{ o.order_no }}</strong></td>
+            <td><strong>{{ o.customer_name }}</strong><br><span class="mini">{{ o.brand or '-' }} · {{ o.channel or '-'
+                }}</span></td>
+            <td><span class="hc-status {% if o.status == 'Submitted' %}hc-pending{% else %}hc-ok{% endif %}">{{ o.status
+                }}</span></td>
+            <td>{{ o.required_delivery_date or 'Not set' }} {{ o.required_delivery_time or '' }}</td>
+            <td>{{ o.cooking_date or 'Pending' }} {{ o.cooking_time or '' }}</td>
+            <td>{{ o.material_receiving_date or 'Pending' }} {{ o.material_receiving_time or '' }}</td>
+            <td>{{ o.total_planned_portions or 0 }}</td>
+            <td><a class="btn btn-sm btn-primary" href="/production/orders/{{ o.order_no }}">Schedule / Approve</a></td>
+          </tr>{% else %}<tr>
+            <td colspan="8" class="text-center text-muted py-4">No orders found.</td>
+          </tr>{% endfor %}</tbody>
+      </table>
+    </div>
+  </div>
+</div>
+<script>function filterHeadChef() { const q = (document.getElementById('hcSearch').value || '').toLowerCase(); document.querySelectorAll('#headChefTable tbody tr').forEach(tr => tr.style.display = tr.innerText.toLowerCase().includes(q) ? '' : 'none') }</script>
+{% endblock %}

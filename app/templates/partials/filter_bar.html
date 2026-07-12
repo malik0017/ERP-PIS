@@ -1,0 +1,37 @@
+{# ==========================================================================
+   Shared filter bar — same style as Store Issuance / Production Orders.
+   Usage: {% include 'partials/filter_bar.html' with context %}
+   Expects: `filters` dict {search, from_date, to_date, status}
+   Optional: `status_options` list of statuses for the dropdown.
+   ========================================================================== #}
+<form method="get" class="card shadow-none border mb-3">
+  <div class="card-body p-3">
+    <div class="row g-2 align-items-end">
+      <div class="col-6 col-md-2">
+        <label class="form-label fs-10 text-uppercase fw-bold text-body-tertiary mb-1">From Date</label>
+        <input class="form-control form-control-sm" type="date" name="from_date" value="{{ filters.from_date if filters else '' }}">
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label fs-10 text-uppercase fw-bold text-body-tertiary mb-1">To Date</label>
+        <input class="form-control form-control-sm" type="date" name="to_date" value="{{ filters.to_date if filters else '' }}">
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label fs-10 text-uppercase fw-bold text-body-tertiary mb-1">Status</label>
+        <select class="form-select form-select-sm" name="status">
+          <option value="">All Status</option>
+          {% for s in status_options|default([]) %}
+          <option value="{{ s }}" {% if filters and filters.status == s %}selected{% endif %}>{{ s }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-12 col-md-4">
+        <label class="form-label fs-10 text-uppercase fw-bold text-body-tertiary mb-1">Quick Search</label>
+        <input class="form-control form-control-sm" type="search" name="search" placeholder="Search order, customer, brand..." value="{{ filters.search if filters else '' }}">
+      </div>
+      <div class="col-12 col-md-2 d-flex gap-2">
+        <button class="btn btn-primary btn-sm flex-1" type="submit">Filter</button>
+        <a class="btn btn-phoenix-secondary btn-sm" href="{{ request.url.path }}">Reset</a>
+      </div>
+    </div>
+  </div>
+</form>

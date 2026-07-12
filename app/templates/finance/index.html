@@ -1,0 +1,241 @@
+{% extends "layouts/base.html" %}
+{% block title %}Finance | ISFC ERP{% endblock %}
+{% block content %}
+<div class="container-fluid py-3 isfc-page">
+
+  <div class="isfc-hero mb-3 p-4">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+      <h1 class="mb-1">{{ t('Finance Command Center') }}</h1>
+      <a class="btn btn-light" href="/finance/gl"><i class="bi bi-journal-bookmark me-1"></i>{{ t('General Ledger') }}</a>
+    </div>
+    <p class="mb-0">{{ t('AR auto-draft after delivered orders, AP supplier invoice match with PO/GRN, payments and statements.') }}</p>
+  </div>
+
+  <!-- ============ KPI ROW ============ -->
+  <div class="row g-3 mb-3">
+    {% set cards = [
+      ('receipt', 'primary', t('Open AR Invoices'), kpis.ar_open, t('customer invoices not fully paid')),
+      ('cash-coin', 'success', t('AR Outstanding'), '%.2f'|format(kpis.ar_amount or 0), t('receivable balance')),
+      ('receipt-cutoff', 'warning', t('Open AP Invoices'), kpis.ap_open, t('supplier invoices not fully paid')),
+      ('wallet2', 'danger', t('AP Outstanding'), '%.2f'|format(kpis.ap_amount or 0), t('payable balance')),
+    ] %}
+    {% for icon, color, label, value, hint in cards %}
+    <div class="col-sm-6 col-xl-3">
+      <div class="card shadow-none border h-100">
+        <div class="card-body p-4 d-flex align-items-center gap-3">
+          <span class="d-inline-flex align-items-center justify-content-center rounded-3 bg-{{ color }}-subtle text-{{ color }}" style="width:48px;height:48px;flex:0 0 48px"><i class="bi bi-{{ icon }} fs-6"></i></span>
+          <div class="min-w-0">
+            <p class="text-body-tertiary text-uppercase fw-bold fs-10 mb-1">{{ label }}</p>
+            <h3 class="mb-0 isfc-num">{{ value }}</h3>
+            <span class="fs-10 text-body-quaternary">{{ hint }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- ============ AR AGING (Batch 13) ============ -->
+  <div class="row g-3 mb-3">
+    <div class="col-xl-7">
+      <div class="card shadow-none border h-100">
+        <div class="card-header bg-body"><h5 class="mb-0 text-body-emphasis">{{ t('AR Aging — Outstanding by Bucket') }}</h5></div>
+        <div class="card-body p-0"><div class="table-responsive">
+          <table class="table table-sm fs-9 mb-0">
+            <thead><tr class="text-uppercase text-body-tertiary fs-10">
+              <th class="ps-4">{{ t('Bucket') }}</th>
+              <th class="text-end">{{ t('Invoices') }}</th>
+              <th class="text-end pe-4">{{ t('Outstanding') }}</th>
+            </tr></thead>
+            <tbody>
+              {% for b in aging %}
+              <tr>
+                <td class="ps-4 fw-bold">{{ b.bucket }}</td>
+                <td class="text-end">{{ b.invoices }}</td>
+                <td class="text-end pe-4 isfc-num fw-bold {{ 'text-danger' if b.bucket == '90+ days' and (b.outstanding or 0) > 0 else '' }}">{{ '%.2f'|format(b.outstanding or 0) }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div></div>
+      </div>
+    </div>
+    <div class="col-xl-5">
+      <div class="card shadow-none border h-100">
+        <div class="card-header bg-body"><h5 class="mb-0 text-body-emphasis">{{ t('Aging Mix') }}</h5></div>
+        <div class="card-body">
+          <div data-isfc-chart="donut" data-types="donut,pie,bar,hbar"
+               data-labels='{{ aging | map(attribute="bucket") | list | tojson }}'
+               data-values='{{ aging | map(attribute="outstanding") | list | tojson }}'
+               style="min-height:260px;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ TABS: AR / AP / PAYMENTS ============ -->
+  <div class="row g-3">
+    <div class="col-xl-8">
+      <div class="card shadow-none border h-100">
+        <div class="card-header p-0 border-bottom bg-body">
+          <ul class="nav nav-underline fs-9 px-4 pt-3" id="finTabs" role="tablist">
+            <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#tab-ar" role="tab"><i class="bi bi-receipt me-1"></i>{{ t('Accounts Receivable') }} <span class="badge badge-phoenix badge-phoenix-primary ms-1">{{ ar|length }}</span></a></li>
+            <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-ap" role="tab"><i class="bi bi-receipt-cutoff me-1"></i>{{ t('Accounts Payable') }} <span class="badge badge-phoenix badge-phoenix-warning ms-1">{{ ap|length }}</span></a></li>
+            <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-pay" role="tab"><i class="bi bi-cash-stack me-1"></i>{{ t('Payments') }} <span class="badge badge-phoenix badge-phoenix-success ms-1">{{ payments|length }}</span></a></li>
+          </ul>
+        </div>
+        <div class="card-body p-4 tab-content">
+
+          <div class="tab-pane fade show active" id="tab-ar" role="tabpanel">
+            <p class="text-body-tertiary fs-9 mb-3">{{ t('Delivered orders become draft invoices automatically.') }}{% if kpis.drafted %} <span class="badge badge-phoenix badge-phoenix-info">{{ kpis.drafted }} {{ t('drafted just now') }}</span>{% endif %}</p>
+            <div class="table-responsive scrollbar">
+              <table class="table table-sm fs-9 mb-0">
+                <thead><tr class="text-uppercase text-body-tertiary fs-10">
+                  <th>{{ t('Invoice') }}</th><th>{{ t('Order') }}</th><th>{{ t('Customer') }}</th>
+                  <th class="text-end">{{ t('Amount') }}</th><th class="text-end">{{ t('Paid') }}</th>
+                  <th class="text-end">{{ t('Balance') }}</th><th class="text-center">{{ t('Status') }}</th>
+                  <th class="text-center">{{ t('Actions') }}</th>
+                </tr></thead>
+                <tbody>
+                {% for i in ar %}
+                <tr>
+                  <td class="fw-bold text-primary">{{ i.invoice_no }}</td>
+                  <td>{{ i.order_no or '-' }}</td>
+                  <td>{{ i.customer_name or '-' }}</td>
+                  <td class="text-end isfc-num">{{ '%.2f'|format(i.amount or 0) }}</td>
+                  <td class="text-end isfc-num">{{ '%.2f'|format(i.paid_amount or 0) }}</td>
+                  <td class="text-end isfc-num fw-bold">{{ '%.2f'|format((i.amount or 0) - (i.paid_amount or 0)) }}</td>
+                  <td class="text-center">
+                    {% set st = (i.status or 'Draft') %}
+                    <span class="badge badge-phoenix badge-phoenix-{{ 'success' if st=='Paid' else ('warning' if st=='Partially Paid' else ('secondary' if st=='Cancelled' else 'info')) }}">{{ st }}</span>
+                  </td>
+                  <td class="text-center">
+                    {% if st == 'Draft' and can_action('finance', 'edit') %}
+                    <form method="post" action="/finance/ar/{{ i.invoice_no }}/post" class="d-inline">
+                      <button class="btn btn-sm btn-phoenix-success py-0 px-2" type="submit">{{ t('Post') }}</button>
+                    </form>
+                    {% endif %}
+                    {% if st in ('Draft', 'Posted') and (i.paid_amount or 0) == 0 and can_action('finance', 'delete') %}
+                    <form method="post" action="/finance/ar/{{ i.invoice_no }}/cancel" class="d-inline"
+                          onsubmit="return confirm('Cancel invoice {{ i.invoice_no }}?')">
+                      <button class="btn btn-sm btn-phoenix-danger py-0 px-2" type="submit">{{ t('Cancel') }}</button>
+                    </form>
+                    {% endif %}
+                  </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="8" class="text-center text-body-tertiary py-5"><i class="bi bi-inbox fs-4 d-block mb-2"></i>{{ t('No AR invoices yet. Delivered orders will appear here.') }}</td></tr>
+                {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="tab-pane fade" id="tab-ap" role="tabpanel">
+            <div class="table-responsive scrollbar">
+              <table class="table table-sm fs-9 mb-0">
+                <thead><tr class="text-uppercase text-body-tertiary fs-10">
+                  <th>{{ t('AP No') }}</th><th>{{ t('Supplier') }}</th><th>PO</th><th>GRN</th>
+                  <th class="text-end">{{ t('Amount') }}</th><th class="text-center">{{ t('Match') }}</th><th class="text-center">{{ t('Status') }}</th>
+                </tr></thead>
+                <tbody>
+                {% for i in ap %}
+                <tr>
+                  <td class="fw-bold text-primary">{{ i.ap_no }}</td>
+                  <td>{{ i.supplier_name or '-' }}</td>
+                  <td>{{ i.po_no or '-' }}</td>
+                  <td>{{ i.grn_no or '-' }}</td>
+                  <td class="text-end isfc-num">{{ '%.2f'|format(i.amount or 0) }}</td>
+                  <td class="text-center"><span class="badge badge-phoenix badge-phoenix-{{ 'success' if i.match_status=='Matched' else 'danger' }}">{{ i.match_status }}</span></td>
+                  <td class="text-center"><span class="badge badge-phoenix badge-phoenix-{{ 'success' if i.status=='Paid' else ('warning' if i.status=='Partially Paid' else 'info') }}">{{ i.status }}</span></td>
+                </tr>
+                {% else %}
+                <tr><td colspan="7" class="text-center text-body-tertiary py-5"><i class="bi bi-inbox fs-4 d-block mb-2"></i>{{ t('No supplier invoices yet.') }}</td></tr>
+                {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="tab-pane fade" id="tab-pay" role="tabpanel">
+            <div class="table-responsive scrollbar">
+              <table class="table table-sm fs-9 mb-0">
+                <thead><tr class="text-uppercase text-body-tertiary fs-10">
+                  <th>{{ t('Payment No') }}</th><th>{{ t('Party') }}</th><th>{{ t('Reference') }}</th>
+                  <th class="text-end">{{ t('Amount') }}</th><th>{{ t('Method') }}</th><th>{{ t('Date') }}</th>
+                </tr></thead>
+                <tbody>
+                {% for p in payments %}
+                <tr>
+                  <td class="fw-bold text-primary">{{ p.payment_no }}</td>
+                  <td><span class="badge badge-phoenix badge-phoenix-{{ 'primary' if p.party_type=='CUSTOMER' else 'warning' }}">{{ p.party_type }}</span> {{ p.party_name or '' }}</td>
+                  <td>{{ p.reference_no or '-' }}</td>
+                  <td class="text-end isfc-num">{{ '%.2f'|format(p.amount or 0) }}</td>
+                  <td>{{ p.method or '-' }}</td>
+                  <td>{{ p.payment_date or '' }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="6" class="text-center text-body-tertiary py-5"><i class="bi bi-inbox fs-4 d-block mb-2"></i>{{ t('No payments recorded yet.') }}</td></tr>
+                {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ ENTRY FORMS ============ -->
+    <div class="col-xl-4 d-flex flex-column gap-3">
+
+      <div class="card shadow-none border">
+        <div class="card-header p-4 border-bottom bg-body">
+          <h4 class="mb-0"><i class="bi bi-cash-coin text-success me-2"></i>{{ t('Record Payment') }}</h4>
+        </div>
+        <div class="card-body p-4">
+          <form method="post" action="/finance/payment/create" class="row g-3">
+            <div class="col-6">
+              <label class="form-label fw-bold">{{ t('Party Type') }}</label>
+              <select class="form-select" name="party_type"><option value="CUSTOMER">{{ t('Customer') }}</option><option value="SUPPLIER">{{ t('Supplier') }}</option></select>
+            </div>
+            <div class="col-6">
+              <label class="form-label fw-bold">{{ t('Method') }}</label>
+              <select class="form-select" name="method"><option>Bank</option><option>Cash</option><option>Cheque</option><option>Card</option></select>
+            </div>
+            <div class="col-12"><label class="form-label fw-bold">{{ t('Reference No') }}</label><input class="form-control" name="reference_no" placeholder="AR-... / AP-..."></div>
+            <div class="col-7"><label class="form-label fw-bold">{{ t('Party Name') }}</label><input class="form-control" name="party_name"></div>
+            <div class="col-5"><label class="form-label fw-bold">{{ t('Amount') }}</label><input class="form-control" name="amount" type="number" step="0.01" min="0" required></div>
+            <div class="col-12"><label class="form-label fw-bold">{{ t('Remarks') }}</label><input class="form-control" name="remarks"></div>
+            <div class="col-12"><button class="btn btn-success w-100"><i class="bi bi-check2-circle me-1"></i>{{ t('Save Payment') }}</button></div>
+          </form>
+        </div>
+      </div>
+
+      <div class="card shadow-none border">
+        <div class="card-header p-4 border-bottom bg-body">
+          <h4 class="mb-0"><i class="bi bi-receipt-cutoff text-warning me-2"></i>{{ t('Supplier Invoice Entry') }}</h4>
+        </div>
+        <div class="card-body p-4">
+          <form method="post" action="/finance/ap/create" class="row g-3">
+            <div class="col-12">
+              <label class="form-label fw-bold">GRN <span class="fw-normal text-body-tertiary">({{ t('auto-fills PO, supplier & amount') }})</span></label>
+              <select class="form-select" name="grn_no" onchange="let o=this.options[this.selectedIndex];this.form.po_no.value=o.dataset.po||'';this.form.supplier_name.value=o.dataset.sup||'';this.form.amount.value=o.dataset.amount||0">
+                <option value="">{{ t('Manual / select GRN') }}</option>
+                {% for g in grns %}<option value="{{ g.grn_no }}" data-po="{{ g.po_no }}" data-sup="{{ g.supplier_name }}" data-amount="{{ g.amount }}">{{ g.grn_no }} · {{ g.supplier_name }} · {{ g.amount }}</option>{% endfor %}
+              </select>
+            </div>
+            <div class="col-7"><label class="form-label fw-bold">{{ t('Supplier') }}</label><input class="form-control" name="supplier_name"></div>
+            <div class="col-5"><label class="form-label fw-bold">{{ t('PO No') }}</label><input class="form-control" name="po_no"></div>
+            <div class="col-6"><label class="form-label fw-bold">{{ t('Amount') }}</label><input class="form-control" name="amount" type="number" step="0.01" min="0" required></div>
+            <div class="col-6"><label class="form-label fw-bold">{{ t('Remarks') }}</label><input class="form-control" name="remarks"></div>
+            <div class="col-12"><button class="btn btn-warning w-100"><i class="bi bi-save me-1"></i>{{ t('Save AP Invoice') }}</button></div>
+          </form>
+          <p class="fs-10 text-body-tertiary mt-3 mb-0"><i class="bi bi-info-circle me-1"></i>{{ t('3-way match: if the invoice amount differs from the GRN value by more than 0.01, the invoice is flagged as Variance.') }}</p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+{% endblock %}

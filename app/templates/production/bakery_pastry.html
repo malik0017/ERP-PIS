@@ -1,0 +1,182 @@
+{% extends "layouts/base.html" %}
+{% block content %}
+{% set active_step = 'Kitchen' %}{% set show_kitchen_subflow = true %}{% include 'partials/process_status_row.html' %}
+<style>
+  .rep-hero {
+    background: radial-gradient(circle at 92% 8%, rgba(255, 255, 255, .22), transparent 16%), linear-gradient(135deg, #102542, #0d7f91);
+    color: #fff;
+    border-radius: 28px;
+    padding: 30px 34px;
+    box-shadow: 0 22px 48px rgba(16, 37, 66, .22);
+    margin-bottom: 16px
+  }
+
+  .rep-hero h1 {
+    font-size: 34px;
+    font-weight: 950;
+    margin: 0
+  }
+
+  .rep-hero p {
+    margin: 8px 0 0;
+    color: #e7fbff
+  }
+
+  .ks-card {
+    background: #fff;
+    border: 1px solid #dce8f2;
+    border-radius: 18px;
+    box-shadow: 0 12px 28px rgba(15, 30, 50, .06);
+    padding: 18px;
+    margin-bottom: 16px
+  }
+
+  .ks-kpi span {
+    display: block;
+    color: #71849a;
+    font-size: 12px;
+    font-weight: 900;
+    text-transform: uppercase
+  }
+
+  .ks-kpi b {
+    font-size: 28px;
+    color: #142a46
+  }
+
+  .ks-input {
+    width: 100%;
+    border: 1px solid #cbdbea;
+    border-radius: 12px;
+    padding: 9px 11px
+  }
+
+  .ks-btn {
+    border: 0;
+    border-radius: 12px;
+    padding: 8px 12px;
+    font-weight: 900;
+    text-decoration: none;
+    display: inline-flex
+  }
+
+  .ks-primary {
+    background: #315efb;
+    color: #fff
+  }
+
+  .ks-soft {
+    background: #edf5fb;
+    color: #142a46
+  }
+
+  .ks-table th {
+    background: #edf5fb;
+    color: #142a46;
+    text-transform: uppercase;
+    font-size: 12px
+  }
+
+  .chip {
+    border: 1px solid #dce8f2;
+    border-radius: 999px;
+    padding: 8px 12px;
+    background: #fff;
+    text-decoration: none;
+    font-weight: 900;
+    color: #173b55
+  }
+
+  .mini {
+    font-size: 12px;
+    color: #6b8198
+  }
+</style>
+<div class="rep-page container-fluid py-3">
+  <div class="rep-hero mb-3">
+    <div class="d-flex justify-content-between flex-wrap gap-2">
+      <div>
+        <h2 class="mb-1">Kitchen Section Summary</h2>
+        <p class="mb-0 opacity-75">Single control room for Thawing, Cutting, Butchery, Marination, Hot Kitchen, Cold
+          Kitchen and Bakery/Pastry.</p>
+      </div><a class="ks-btn ks-soft"
+        href="/production/bakery-pastry?export=csv{% if filters.section %}&section={{ filters.section }}{% endif %}">Download
+        CSV</a>
+    </div>
+  </div>
+  <div class="row g-3 mb-3">
+    <div class="col-md-3">
+      <div class="ks-card ks-kpi"><span>Orders</span><b>{{ totals.orders }}</b></div>
+    </div>
+    <div class="col-md-3">
+      <div class="ks-card ks-kpi"><span>Recipe Groups</span><b>{{ totals.recipes }}</b></div>
+    </div>
+    <div class="col-md-3">
+      <div class="ks-card ks-kpi"><span>Processed Qty</span><b>{{ '%.2f'|format(totals.processed or 0) }}</b></div>
+    </div>
+    <div class="col-md-3">
+      <div class="ks-card ks-kpi"><span>Waste Qty</span><b>{{ '%.2f'|format(totals.waste or 0) }}</b></div>
+    </div>
+  </div>
+  <div class="ks-card">
+    <h4>Section Workload Filter</h4>
+    <div class="mini mb-2">Purpose: this summary helps supervisors see where each order/recipe is located, how much has
+      been issued, received, processed and wasted before QC/Packing.</div>
+    <form method="get" class="filter-grid-line mb-3">
+      <div><label class="fw-bold">Section</label><select class="ks-input" name="section">
+          <option value="">All Sections</option>{% for sec in sections %}<option
+            value="{{ sec|replace('/','-')|replace(' ','-') }}" {% if filters.section==sec or
+            filters.section==sec|replace('/','-')|replace(' ',' -') %}selected{% endif %}>{{ sec }}</option>{% endfor %}
+        </select></div>
+      <div><label class="fw-bold">Date From</label><input class="ks-input" type="date" name="date_from"
+          value="{{ filters.date_from or '' }}"></div>
+      <div><label class="fw-bold">Date To</label><input class="ks-input" type="date" name="date_to"
+          value="{{ filters.date_to or '' }}"></div>
+      <div><label class="fw-bold">Search</label><input class="ks-input" name="search"
+          value="{{ filters.search or '' }}" placeholder="order, customer, recipe, item"></div>
+      <div class="filter-submit"><button class="ks-btn ks-primary w-100">Filter</button></div>
+    </form>
+    <div class="d-flex gap-2 flex-wrap mb-3">{% for sec in sections %}<a class="chip"
+        href="/production/section/{{ sec|replace('/','-')|replace(' ','-') }}">Open {{ sec }}</a>{% endfor %}</div>
+    <div class="table-responsive">
+      <table class="table table-sm table-bordered align-middle ks-table" data-isfc-search="false">
+        <thead>
+          <tr>
+            <th>Section</th>
+            <th>Order</th>
+            <th>Customer / Brand</th>
+            <th>Plan Date</th>
+            <th>Recipe</th>
+            <th>Lines</th>
+            <th>Issued</th>
+            <th>Received</th>
+            <th>Processed</th>
+            <th>Waste</th>
+            <th>Status</th>
+            <th>Open</th>
+          </tr>
+        </thead>
+        <tbody>{% for r in rows %}<tr>
+            <td><strong>{{ r.current_section }}</strong></td>
+            <td>{{ r.order_no }}</td>
+            <td>{{ r.customer_name }}<br><span class="mini">{{ r.brand }}</span></td>
+            <td>{{ r.plan_date or '-' }}</td>
+            <td><strong>{{ r.recipe_no }}</strong><br>{{ r.recipe_name }}</td>
+            <td>{{ r.ingredient_lines }}</td>
+            <td>{{ r.issued_qty }}</td>
+            <td>{{ r.received_qty }}</td>
+            <td>{{ r.processed_qty }}</td>
+            <td>{{ r.waste_qty }}</td>
+            <td>{{ r.status }}</td>
+            <td><a class="btn btn-sm btn-primary"
+                href="/production/section/{{ r.current_section|replace('/','-')|replace(' ','-') }}/orders/{{ r.order_no }}">Open</a>
+            </td>
+          </tr>{% else %}<tr>
+            <td colspan="12" class="text-center text-muted py-4">No kitchen section activity found for the selected
+              filter.</td>
+          </tr>{% endfor %}</tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

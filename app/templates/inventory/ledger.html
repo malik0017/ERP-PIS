@@ -1,0 +1,45 @@
+{% extends "layouts/base.html" %}
+{% block title %}Ledger {{ code }} · ISFC{% endblock %}
+{% block content %}
+<div class="container-fluid py-3">
+  <div class="pis-hero mb-4" style="background:linear-gradient(135deg,#132947,#0c91a3);border-radius:22px;color:#fff;padding:26px 30px;">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
+      <div>
+        <span class="pis-chip mb-3" style="background:rgba(255,255,255,.15);color:#fff;border-radius:999px;padding:6px 12px;font-weight:800;font-size:12px;display:inline-flex;">Stock Ledger</span>
+        <h2 class="mb-1 text-white">{{ code }}</h2>
+        <p class="mb-0 opacity-75">{{ item_name }} · every movement in and out, newest first, with running balance.</p>
+      </div>
+      <a class="btn btn-phoenix-secondary" href="/inventory">Back to Valuation</a>
+    </div>
+  </div>
+
+  <div class="card shadow-none border" data-component-card>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table fs-9 mb-0">
+          <thead class="bg-body-highlight"><tr>
+            <th class="ps-4">Date</th><th>Type</th><th>Reference</th><th>In</th><th>Out</th>
+            <th>Unit Cost</th><th>Running Balance</th><th class="pe-4">Remarks / By</th>
+          </tr></thead>
+          <tbody>
+            {% for r in rows %}
+            <tr>
+              <td class="ps-4 text-body-tertiary">{{ r.movement_date or r.txn_date or r.transaction_date or '-' }}</td>
+              <td><span class="badge badge-phoenix badge-phoenix-{{ 'success' if (r.qty_in or 0) > 0 else 'warning' }}">{{ r.txn_type or r.movement_type or ('IN' if (r.qty_in or 0) > 0 else 'OUT') }}</span></td>
+              <td>{{ r.ref_no or r.reference_no or '-' }}</td>
+              <td class="text-success">{{ r.qty_in or '' }}</td>
+              <td class="text-warning">{{ r.qty_out or '' }}</td>
+              <td>{{ r.unit_cost or '-' }}</td>
+              <td class="fw-bold {% if running[loop.index0] < 0 %}text-danger{% endif %}">{{ '%.4f'|format(running[loop.index0]) }}</td>
+              <td class="pe-4 text-body-tertiary">{{ r.remarks or '' }} {% if r.created_by %}· {{ r.created_by }}{% endif %}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="8" class="text-center text-body-tertiary py-5">No movements for this item.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

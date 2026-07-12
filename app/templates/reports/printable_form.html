@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <title>{{ title }} · {{ order.order_no }}</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      color: #14213d;
+      padding: 28px;
+      font-size: 13px;
+      background: #fff;
+    }
+
+    .doc {
+      max-width: 900px;
+      margin: 0 auto;
+    }
+
+    .head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      border-bottom: 3px solid #132947;
+      padding-bottom: 14px;
+      margin-bottom: 16px;
+    }
+
+    .brand h1 {
+      font-size: 22px;
+      color: #132947;
+      letter-spacing: .5px;
+    }
+
+    .brand p {
+      color: #5b6b82;
+      font-size: 11px;
+      margin-top: 2px;
+    }
+
+    .docname {
+      text-align: right;
+    }
+
+    .docname h2 {
+      font-size: 20px;
+      color: #0c91a3;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .docname p {
+      font-size: 12px;
+      color: #5b6b82;
+    }
+
+    .meta {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    .meta div {
+      border: 1px solid #dbe4ee;
+      border-radius: 8px;
+      padding: 8px 10px;
+    }
+
+    .meta b {
+      display: block;
+      font-size: 10px;
+      text-transform: uppercase;
+      color: #7b8aa0;
+      margin-bottom: 2px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 16px;
+    }
+
+    th {
+      background: #132947;
+      color: #fff;
+      text-align: left;
+      padding: 8px 9px;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .4px;
+    }
+
+    td {
+      padding: 7px 9px;
+      border-bottom: 1px solid #e4ebf3;
+    }
+
+    tr:nth-child(even) td {
+      background: #f7fafd;
+    }
+
+    .totals {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+
+    .totals div {
+      border: 1px solid #dbe4ee;
+      border-radius: 8px;
+      padding: 8px 14px;
+      min-width: 140px;
+    }
+
+    .totals b {
+      display: block;
+      font-size: 10px;
+      text-transform: uppercase;
+      color: #7b8aa0;
+    }
+
+    .signs {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+      margin-top: 46px;
+    }
+
+    .signs div {
+      border-top: 1.5px solid #14213d;
+      padding-top: 6px;
+      font-size: 11px;
+      color: #5b6b82;
+      text-align: center;
+    }
+
+    .foot {
+      margin-top: 26px;
+      display: flex;
+      justify-content: space-between;
+      font-size: 10px;
+      color: #8a97ab;
+      border-top: 1px solid #e4ebf3;
+      padding-top: 8px;
+    }
+
+    .status-pill {
+      display: inline-block;
+      border-radius: 999px;
+      padding: 3px 10px;
+      font-weight: 700;
+      font-size: 11px;
+      background: #e8f4fd;
+      color: #1466b8;
+    }
+
+    .noprint {
+      text-align: center;
+      margin-bottom: 14px;
+    }
+
+    .noprint button {
+      background: #132947;
+      color: #fff;
+      border: 0;
+      border-radius: 8px;
+      padding: 10px 22px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    @media print {
+      .noprint {
+        display: none;
+      }
+
+      body {
+        padding: 0;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="doc">
+    <div class="noprint"><button onclick="window.print()">🖨 Print / Save as PDF</button></div>
+
+    <div class="head">
+      <div class="brand">
+        <h1>International Specialized Food Company</h1>
+        <p>Production & Inventory Management System · Riyadh, Saudi Arabia</p>
+      </div>
+      <div class="docname">
+        <h2>{{ title }}</h2>
+        <p>Document No: {{ order.order_no }}{% if extra.pd and extra.pd.dispatch_no %} · {{ extra.pd.dispatch_no }}{%
+          endif %}</p>
+      </div>
+    </div>
+
+    <div class="meta">
+      <div><b>Customer</b>{{ order.customer_name }}</div>
+      <div><b>Brand / Channel</b>{{ order.brand or '-' }} · {{ order.channel or '-' }}</div>
+      <div><b>Delivery</b>{{ order.required_delivery_date }} {{ order.required_delivery_time }}</div>
+      <div><b>Status</b><span class="status-pill">{{ order.status }}</span></div>
+    </div>
+
+    {# ================= ORDER SHEET ================= #}
+    {% if form_type == 'order-sheet' %}
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Recipe</th>
+          <th>Portions</th>
+          <th>Batches</th>
+          <th>Food Cost</th>
+          <th>Sale Value</th>
+          <th>Margin</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for l in lines %}<tr>
+          <td>{{ loop.index }}</td>
+          <td>{{ l.recipe_no }} — {{ l.recipe_name }}</td>
+          <td>{{ l.portions }}</td>
+          <td>{{ '%.2f'|format(l.planned_batches or 0) }}</td>
+          <td>{{ '%.2f'|format(l.food_cost or 0) }}</td>
+          <td>{{ '%.2f'|format(l.selling_value or 0) }}</td>
+          <td>{{ '%.2f'|format(l.margin or 0) }}</td>
+        </tr>{% endfor %}
+      </tbody>
+    </table>
+    <div class="totals">
+      <div><b>Total Portions</b>{{ order.total_planned_portions }}</div>
+      <div><b>Food Cost</b>{{ '%.2f'|format(order.total_estimated_food_cost or 0) }}</div>
+      <div><b>Sale Value</b>{{ '%.2f'|format(order.total_estimated_selling_value or 0) }}</div>
+      <div><b>Margin</b>{{ '%.2f'|format(order.total_estimated_margin or 0) }}</div>
+    </div>
+    {% endif %}
+
+    {# ================= BOM SHEET ================= #}
+    {% if form_type == 'bom-sheet' %}
+    <table>
+      <thead>
+        <tr>
+          <th>Category</th>
+          <th>Item Code</th>
+          <th>Item</th>
+          <th>Qty</th>
+          <th>UOM</th>
+          <th>Cost</th>
+          <th>Issue Section</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for l in lines %}<tr>
+          <td>{{ l.main_category }}</td>
+          <td>{{ l.ingredient_code }}</td>
+          <td>{{ l.ingredient_name }}</td>
+          <td>{{ l.qty }}</td>
+          <td>{{ l.standard_uom }}</td>
+          <td>{{ l.cost }}</td>
+          <td>{{ l.section }}</td>
+        </tr>{% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+
+    {# ================= STORE ISSUE SLIP ================= #}
+    {% if form_type == 'store-issue-slip' %}
+    <table>
+      <thead>
+        <tr>
+          <th>Item Code</th>
+          <th>Item</th>
+          <th>Required</th>
+          <th>Issued</th>
+          <th>UOM</th>
+          <th>Section</th>
+          <th>Lot</th>
+          <th>Supplier</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for l in lines %}<tr>
+          <td>{{ l.ingredient_code }}</td>
+          <td>{{ l.ingredient_name }}</td>
+          <td>{{ l.required_qty }}</td>
+          <td>{{ l.issued_qty }}</td>
+          <td>{{ l.uom }}</td>
+          <td>{{ l.section }}</td>
+          <td>{{ l.lot_no }}</td>
+          <td>{{ l.supplier }}</td>
+          <td>{{ l.line_status }}</td>
+        </tr>{% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+
+    {# ================= QC CERTIFICATE ================= #}
+    {% if form_type == 'qc-certificate' %}
+    <table>
+      <thead>
+        <tr>
+          <th>QC No</th>
+          <th>Type</th>
+          <th>Status</th>
+          <th>Score</th>
+          <th>Issue Found</th>
+          <th>Corrective Action</th>
+          <th>Checked By</th>
+          <th>Checked At</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for l in lines %}<tr>
+          <td>{{ l.qc_no }}</td>
+          <td>{{ l.check_type }}</td>
+          <td><span class="status-pill">{{ l.status }}</span></td>
+          <td>{{ l.score }}</td>
+          <td>{{ l.issue_found or '—' }}</td>
+          <td>{{ l.corrective_action or '—' }}</td>
+          <td>{{ l.checked_by }}</td>
+          <td>{{ l.checked_at }}</td>
+        </tr>{% endfor %}
+      </tbody>
+    </table>
+    <p style="margin:14px 0;color:#365a72">This certifies that the above order has undergone quality-control inspection
+      per ISFC food-safety procedures.</p>
+    {% endif %}
+
+    {# ================= PACKING SLIP / DELIVERY NOTE ================= #}
+    {% if form_type in ['packing-slip', 'delivery-note'] %}
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Recipe</th>
+          <th>Portions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for l in lines %}<tr>
+          <td>{{ loop.index }}</td>
+          <td>{{ l.recipe_no }} — {{ l.recipe_name }}</td>
+          <td>{{ l.portions }}</td>
+        </tr>{% endfor %}
+      </tbody>
+    </table>
+    <div class="totals">
+      <div><b>Packed Portions</b>{{ extra.pd.packed_portions if extra.pd else '-' }}</div>
+      <div><b>Rejected</b>{{ extra.pd.rejected_portions if extra.pd else '-' }}</div>
+      {% if form_type == 'delivery-note' %}
+      <div><b>Vehicle</b>{{ extra.pd.vehicle_no or '—' }}</div>
+      <div><b>Driver</b>{{ extra.pd.driver_name or '—' }}</div>
+      <div><b>Temp °C</b>{{ extra.pd.delivery_temp or '—' }}</div>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    <div class="signs">
+      {% if form_type == 'order-sheet' %}<div>Prepared By</div>
+      <div>Head Chef Approval</div>
+      <div>Production Manager</div>
+      {% elif form_type == 'bom-sheet' %}<div>Generated By</div>
+      <div>Head Chef</div>
+      <div>Store Keeper</div>
+      {% elif form_type == 'store-issue-slip' %}<div>Issued By (Store)</div>
+      <div>Received By (Section)</div>
+      <div>Store Manager</div>
+      {% elif form_type == 'qc-certificate' %}<div>QC Inspector</div>
+      <div>QC Manager</div>
+      <div>Production Manager</div>
+      {% elif form_type == 'packing-slip' %}<div>Packed By</div>
+      <div>Checked By</div>
+      <div>Packing Manager</div>
+      {% else %}<div>Dispatched By</div>
+      <div>Driver Signature</div>
+      <div>Received By (Customer)</div>{% endif %}
+    </div>
+
+    <div class="foot">
+      <span>Printed by {{ printed_by }} · {{ order.order_no }}</span>
+      <span>ISFC PIMS · This is a system-generated document</span>
+    </div>
+  </div>
+</body>
+
+</html>

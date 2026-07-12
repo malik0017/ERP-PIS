@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="{{ lang|default('en') }}" dir="{{ 'rtl' if is_rtl|default(false) else 'ltr' }}" data-navigation-type="default" data-navbar-horizontal-shape="default">
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <!-- ===============================================-->
+    <!--    Document Title-->
+    <!-- ===============================================-->
+  <title>
+    {% block title %}International Specialized Food Company{% endblock %}
+  </title>
+
+    <!-- ===============================================-->
+    <!--    Favicons-->
+    <!-- ===============================================-->
+    <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', path='img/favicons/apple-touch-icon.png') }}">
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', path='img/favicons/favicon-32x32.png') }}">
+    <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', path='img/favicons/favicon-16x16.png') }}">
+    <link rel="shortcut icon" type="image/x-icon" href="{{ url_for('static', path='img/favicons/favicon.ico') }}">
+    <link rel="manifest" href="{{ url_for('static', path='img/favicons/manifest.json') }}">
+    <meta name="msapplication-TileImage" content="{{ url_for('static', path='img/favicons/mstile-150x150.png') }}">
+    <meta name="theme-color" content="#ffffff">
+    <script src="{{ url_for('static', path='vendors/simplebar/simplebar.min.js') }}"></script>
+    <script src="{{ url_for('static', path='js/config.js') }}"></script>
+
+    <!-- ===============================================-->
+    <!--    Stylesheets-->
+    <!-- ===============================================-->
+    <link rel="preconnect" href="https://fonts.googleapis.com/">
+    <link rel="preconnect" href="https://fonts.gstatic.com/" crossorigin="">
+    <link href="https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@300;400;600;700;800;900&amp;display=swap" rel="stylesheet">
+    <!-- <link href="{{ url_for('static', path='css/theme-rtl.min.css') }}" rel="stylesheet"> -->
+    <link rel="stylesheet" href="{{ url_for('static', path='css/line.css') }}">
+    <!-- Batch 9: Bootstrap Icons (bi-*) — many templates use these classes; font was missing before. -->
+    <link rel="stylesheet" href="{{ url_for('static', path='vendors/bootstrap-icons/bootstrap-icons.min.css') }}">
+    <link href="{{ url_for('static', path='vendors/simplebar/simplebar.min.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', path='vendors/swiper/swiper-bundle.min.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', path='css/theme-rtl.min.css') }}" type="text/css" rel="stylesheet" id="style-rtl">
+    <link href="{{ url_for('static', path='css/theme.min.css') }}" type="text/css" rel="stylesheet" id="style-default">
+    <link href="{{ url_for('static', path='css/user-rtl.min.css') }}" type="text/css" rel="stylesheet" id="user-style-rtl">
+    <link href="{{ url_for('static', path='css/user.min.css') }}" type="text/css" rel="stylesheet" id="user-style-default">
+    <link href="{{ url_for('static', path='css/isfc-dark.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', path='css/isfc-layout.css') }}" rel="stylesheet">
+
+    <script>
+      var phoenixIsRTL = {{ 'true' if is_rtl|default(false) else 'window.config.config.phoenixIsRTL' }};
+      if (phoenixIsRTL) {
+        var linkDefault = document.getElementById('style-default');
+        var userLinkDefault = document.getElementById('user-style-default');
+        linkDefault.setAttribute('disabled', true);
+        userLinkDefault.setAttribute('disabled', true);
+        document.querySelector('html').setAttribute('dir', 'rtl');
+      } else {
+        var linkRTL = document.getElementById('style-rtl');
+        var userLinkRTL = document.getElementById('user-style-rtl');
+        linkRTL.setAttribute('disabled', true);
+        userLinkRTL.setAttribute('disabled', true);
+      }
+    </script>
+    <link href="{{ url_for('static', path='vendors/leaflet/leaflet.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', path='vendors/leaflet.markercluster/MarkerCluster.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', path='vendors/leaflet.markercluster/MarkerCluster.Default.css') }}" rel="stylesheet">
+
+    {% block extra_css %}{% endblock %}
+   <style>
+
+   </style>
+</head>
+
+<body class="isfc-ui isfc-compact-80">
+    <!-- ===============================================-->
+    <!--    Main Content-->
+    <!-- ===============================================-->
+  <main class="main" id="top">
+
+    {% include "partials/sidebar.html" %}
+    <div class="content">
+
+        {% block content %}{% endblock %}
+        
+
+        {% include "partials/footer.html" %}
+     
+    </div>
+
+      {% include "partials/header.html" %}
+     
+  </main>
+
+    <!-- =============================================== -->
+    <!--    End of Main Content-->
+    <!-- ===============================================-->
+  
+    <div>
+   
+   {% include "partials/theme_selector.html" %}
+
+  </div>
+
+    <!-- ===============================================-->
+    <!--    JavaScripts-->
+    <!-- ===============================================-->
+    <script src="{{ url_for('static', path='vendors/popper/popper.min.js') }}"></script>
+    <script src="{{ url_for('static', path='vendors/bootstrap/bootstrap.min.js') }}"></script>
+    <script src="{{ url_for('static', path='vendors/anchorjs/anchor.min.js') }}"></script>
+    <script src="{{ url_for('static', path='vendors/is/is.min.js') }}"></script>
+    <script src="{{ url_for('static', path='vendors/fontawesome/all.min.js') }}"></script>
+    <script src="{{ url_for('static', path='vendors/lodash/lodash.min.js') }}"></script>
+    <script src="{{ url_for('static', path='vendors/list.js/list.min.js') }}"></script>
+    <script src="{{ url_for('static', path='vendors/feather-icons/feather.min.js') }}"></script>
+    <script src="{{ url_for('static', path='vendors/dayjs/dayjs.min.js') }}"></script>
+    <script src="{{ url_for('static', path='vendors/leaflet/leaflet.js') }}"></script>
+    <script src="{{ url_for('static', path='vendors/leaflet.markercluster/leaflet.markercluster.js') }}"></script>
+    <script src="{{ url_for('static', path='vendors/leaflet.tilelayer.colorfilter/leaflet-tilelayer-colorfilter.min.js') }}"></script>
+    <script src="{{ url_for('static', path='vendors/swiper/swiper-bundle.min.js') }}"></script>
+    <script src="{{ url_for('static', path='js/phoenix.js') }}"></script>
+    <script src="{{ url_for('static', path='vendors/echarts/echarts.min.js') }}"></script>
+    <script src="{{ url_for('static', path='js/isfc-charts.js') }}"></script>
+    <script src="{{ url_for('static', path='js/isfc-table-tools.js') }}"></script>
+    <script src="{{ url_for('static', path='js/isfc-global-search.js') }}"></script>
+    <script src="{{ url_for('static', path='js/dashboards/ecommerce-dashboard.js') }}"></script>
+ 
+    {% include "partials/toast.html" %}
+
+    <!-- ===============================================-->
+    <!--  Batch 9: RTL / dark-mode chart + icon safety   -->
+    <!-- ===============================================-->
+    <script>
+    (function () {
+      // Re-render every ECharts instance once layout has settled. In RTL the
+      // chart containers can initialise at width 0; a couple of delayed resizes
+      // guarantee they paint. Also re-run on theme flips and viewport resizes.
+      function resizeAllCharts() {
+        if (!window.echarts) return;
+        document.querySelectorAll('[_echarts_instance_], [data-isfc-chart], .echart, .echart-chart, [class*="echart"]').forEach(function (el) {
+          try { var i = window.echarts.getInstanceByDom(el); if (i) i.resize(); } catch (e) {}
+        });
+        if (window.isfcTableTools && window.isfcTableTools.resizeCharts) {
+          try { window.isfcTableTools.resizeCharts(); } catch (e) {}
+        }
+      }
+      function refreshIcons() {
+        try { if (window.feather) window.feather.replace(); } catch (e) {}
+      }
+      window.addEventListener('load', function () {
+        [120, 400, 900, 1600].forEach(function (ms) { setTimeout(resizeAllCharts, ms); });
+        refreshIcons();
+      });
+      window.addEventListener('resize', function () { setTimeout(resizeAllCharts, 150); });
+      // React to theme (data-bs-theme) and direction (dir) changes.
+      try {
+        new MutationObserver(function () {
+          setTimeout(resizeAllCharts, 60);
+          setTimeout(resizeAllCharts, 350);
+          refreshIcons();
+        }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-bs-theme', 'dir', 'class'] });
+      } catch (e) {}
+      // When a Bootstrap tab becomes visible, its charts finally have width.
+      document.addEventListener('shown.bs.tab', function () { setTimeout(resizeAllCharts, 60); });
+      document.addEventListener('shown.bs.collapse', function () { setTimeout(resizeAllCharts, 60); });
+    })();
+    </script>
+
+    {% block extra_js %}{% endblock %}
+
+</body>
+
+</html>

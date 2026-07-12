@@ -1,0 +1,7 @@
+venv/
+__pycache__/
+*.pyc
+.git/
+docs/
+test.db
+*.zip

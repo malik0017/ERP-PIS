@@ -1,0 +1,34 @@
+{
+  "common": {
+    "search": "Search...", "filter": "Filter", "reset": "Reset", "actions": "Actions",
+    "status": "Status", "save": "Save", "cancel": "Cancel", "delete": "Delete",
+    "edit": "Edit", "view": "View", "open": "Open", "print": "Print",
+    "from_date": "From Date", "to_date": "To Date", "all_status": "All Status",
+    "welcome": "Welcome", "logout": "Logout", "language": "Language"
+  },
+  "sidebar": {
+    "dashboard": "Dashboard", "relationship_map": "Relationship Map", "reports_center": "Reports Center",
+    "masters": "Masters", "upload_master_data": "Upload Master Data", "master_data": "Master Data",
+    "recipes_costing": "Recipes & Costing", "prepare_recipe": "Prepare Recipe",
+    "recipe_missing_data": "Recipe Missing Data", "recipe_approvals": "Recipe Approvals",
+    "order_flow": "Order Flow", "customer_internal_order": "Customer / Internal Order",
+    "production_orders": "Production Orders", "head_chef_planning": "Head Chef Planning",
+    "store_issuance": "Store Issuance", "kitchen_workflow": "Kitchen Workflow",
+    "all_section_summary": "All Section Summary", "section_workstations": "Section Workstations",
+    "quality_logistics": "Quality & Logistics", "quality_control": "Quality Control",
+    "trayline_packing": "Trayline / Packing", "dispatch_delivery": "Dispatch / Delivery",
+    "procurement": "Procurement", "purchase_orders": "Purchase Orders", "grn": "Goods Receipt (GRN)",
+    "customer_portal": "Customer Portal", "my_orders": "My Orders",
+    "system": "System", "my_profile": "My Profile", "users_access": "Users & Access",
+    "audit_logs": "Audit Logs", "settings": "Settings", "notifications": "Notifications"
+  },
+  "dashboard": {
+    "title": "ISFC Production Intelligence Command Center",
+    "subtitle": "Executive view for recipe readiness, customer orders, BOM cost, store issuance, production movement, QC and dispatch readiness.",
+    "active_recipes": "Active Recipes", "inventory_items": "Inventory Items",
+    "open_orders": "Open Orders", "estimated_margin": "Estimated Margin",
+    "order_portions": "Order Portions", "bom_lines": "BOM Lines",
+    "store_progress": "Store Progress", "master_coverage": "Master Coverage",
+    "production_flow": "Production Flow", "recent_orders": "Recent Customer / Internal Orders"
+  }
+}
