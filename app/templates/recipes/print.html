@@ -1,0 +1,31 @@
+{% extends "layouts/base.html" %}
+{% block title %}Print Recipe {{ recipe.recipe_code }}{% endblock %}
+{% block content %}
+<style>
+  @media print { .navbar, .footer, .isfc-no-print, #navbarVerticalCollapse { display: none !important; } }
+  .print-table th { background: #102542; color: #fff; }
+  .print-table td, .print-table th { padding: 6px 8px; border: 1px solid #c9d7e4; font-size: 12px; }
+</style>
+<div class="container py-4">
+  <div class="d-flex justify-content-between align-items-center mb-3 isfc-no-print">
+    <p class="mb-0 text-body-tertiary">{{ t('PDF engine not installed — use your browser: Print → Save as PDF.') }}</p>
+    <button class="btn btn-primary" onclick="window.print()">{{ t('Print / Save as PDF') }}</button>
+  </div>
+  <h2 class="mb-1">Recipe {{ recipe.recipe_code }} — {{ recipe.recipe_name }}</h2>
+  <p class="mb-3">Customer: {{ recipe.customer_name or '-' }} · Category: {{ recipe.category or '-' }} ·
+     Version {{ recipe.version or 1 }} · {{ recipe.status }} · Food Cost {{ recipe.food_cost or 0 }} ·
+     Total Cost {{ recipe.total_cost or 0 }} · Sale Price {{ recipe.sale_price or 0 }}</p>
+  <table class="print-table" style="width:100%; border-collapse: collapse;">
+    <thead><tr><th>#</th><th>Item Code</th><th>Item Name</th><th>UOM</th>
+      <th>Qty/Batch</th><th>Qty/Portion</th><th>Cost/UOM</th><th>Line Cost</th></tr></thead>
+    <tbody>
+      {% for l in recipe.lines %}
+      <tr><td>{{ loop.index }}</td><td>{{ l.inventory_code }}</td><td>{{ l.item_name }}</td><td>{{ l.uom }}</td>
+        <td style="text-align:right">{{ l.qty_batch or 0 }}</td><td style="text-align:right">{{ l.qty_per_portion or 0 }}</td>
+        <td style="text-align:right">{{ '%.4f'|format(l.cost_uom or 0) }}</td><td style="text-align:right">{{ '%.4f'|format(l.line_cost or 0) }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+<script>window.addEventListener('load', function(){ /* auto-open print on request */ });</script>
+{% endblock %}

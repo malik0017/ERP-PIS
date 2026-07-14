@@ -964,14 +964,36 @@ async def process_bakery_recipe(
 async def head_chef_dashboard(request: Request, db: Session = Depends(get_db)):
     require_area(request, "head_chef")
     q, filters = _filtered_orders_query(db, request, date_column="delivery")
-    orders = q.order_by(CustomerOrder.required_delivery_date.desc(), CustomerOrder.id.desc()).limit(200).all()
+    # Batch 17: planning order = SOONEST delivery first (was newest-first),
+    # NULL delivery dates sink to the bottom so dated work is always on top.
+    orders = (q.order_by(CustomerOrder.required_delivery_date.is_(None),
+                         CustomerOrder.required_delivery_date.asc(),
+                         CustomerOrder.required_delivery_time.asc(),
+                         CustomerOrder.id.asc())
+                .limit(200).all())
+    from datetime import date as _date, timedelta as _td
+    _today = _date.today()
+    urgency: dict[str, str] = {}
+    for o in orders:
+        d = o.required_delivery_date
+        done = (o.status or "") in ("Delivered", "Closed", "Cancelled")
+        if not d or done:
+            urgency[o.order_no] = ""
+        elif d < _today:
+            urgency[o.order_no] = "LATE"
+        elif d == _today:
+            urgency[o.order_no] = "TODAY"
+        elif d == _today + _td(days=1):
+            urgency[o.order_no] = "TOMORROW"
+        else:
+            urgency[o.order_no] = ""
     stats = _order_stats(db)
     stats.update({
         "awaiting_head_chef": db.query(CustomerOrder).filter(CustomerOrder.status == "Submitted").count(),
         "scheduled": db.query(CustomerOrder).filter(CustomerOrder.cooking_date.isnot(None)).count(),
         "bom_ready": db.query(CustomerOrder).filter(CustomerOrder.status == "Head Chef Approved").count(),
     })
-    return render(request, "production/head_chef.html", {"orders": orders, "stats": stats, "filters": filters, "page_title": "Head Chef Planning", "error": request.query_params.get("error")})
+    return render(request, "production/head_chef.html", {"orders": orders, "stats": stats, "filters": filters, "urgency": urgency, "page_title": "Head Chef Planning", "error": request.query_params.get("error")})
 
 
 @router.get("/store-issuance")

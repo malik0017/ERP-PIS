@@ -166,7 +166,7 @@ html {
 .btn {
   border-radius: 0.5rem;
   font-weight: 600;
-  padding: 0.625rem 1rem;
+  /* padding: 0.625rem 1rem; */
   font-size: 0.95rem;
 }
 
@@ -367,7 +367,7 @@ html.navbar-vertical-collapsed .navbar-vertical {
 /* ---- 3. Horizontal / combo / dual: uniform top offset for page content ---- */
 html[data-navigation-type="horizontal"] .content,
 html[data-navigation-type="combo"] .content {
-  padding-top: 3rem;
+  padding-top: 4rem;
 }
 
 @media (min-width: 992px) {

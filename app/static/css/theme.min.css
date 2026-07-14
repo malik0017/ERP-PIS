@@ -31349,8 +31349,9 @@ html:not(.navbar-vertical-collapsed) .navbar-vertical.navbar-expand-xs .navbar-v
   [data-navigation-type=horizontal] .navbar-top.navbar-expand-lg .navbar-nav-top .nav-link,
   [data-navigation-type=dual] .navbar-top.navbar-expand-lg .navbar-nav-top .nav-link,
   [data-navigation-type=combo] .navbar-top.navbar-expand-lg .navbar-nav-top .nav-link {
-    padding-left: 1.125rem;
-    padding-right: 1.5rem;
+    /* padding-left: 1.125rem;
+    padding-right: 1.5rem; */
+    padding: 10px 10px;
   }
   [data-navigation-type=horizontal] .navbar-top.navbar-expand-lg .navbar-top-collapse.show,
   [data-navigation-type=dual] .navbar-top.navbar-expand-lg .navbar-top-collapse.show,

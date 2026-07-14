@@ -19,8 +19,13 @@
     <a href="/recipes/{{ recipe.id }}/download-excel" class="btn btn-isfc-success"><i class="bi bi-file-earmark-excel"></i> Download Excel</a>
     <a href="/recipes/{{ recipe.id }}/download-pdf" class="btn btn-isfc-warning"><i class="bi bi-file-earmark-pdf"></i> Download PDF</a>
     <form action="/recipes/{{ recipe.id }}/deactivate" method="post" class="ms-auto">
-      <button type="submit" class="btn btn-isfc-danger"><i class="bi bi-slash-circle"></i> Deactivate</button>
+      {% if (recipe.status or '')|upper == 'ACTIVE' %}<button type="submit" class="btn btn-isfc-danger"><i class="bi bi-slash-circle"></i> Deactivate</button>{% endif %}
     </form>
+    {% if (recipe.status or '')|upper != 'ACTIVE' %}
+    <form method="post" action="/recipes/{{ recipe.id }}/activate" class="d-inline">
+      <button type="submit" class="btn btn-isfc-success"><i class="bi bi-check-circle"></i> Activate</button>
+    </form>
+    {% endif %}
   </div>
 
   <div class="recipe-summary-grid">

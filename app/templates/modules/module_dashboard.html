@@ -36,11 +36,33 @@
     {% endfor %}
   </div>
 
+    {# ---- Quick links (RBAC-filtered server-side) ---- #}
+  <div class="card my-4">
+    <div class="card-header">
+      <h5 class="mb-0 text-body-emphasis">{{ t('Quick Actions') }}</h5>
+    </div>
+    <div class="card-body">
+      <div class="row g-2">
+        {% for l in links %}
+        <div class="col-md-6 col-xl-3">
+          <a class="btn btn-phoenix-primary w-100 d-flex align-items-center justify-content-between"
+             href="{{ l.url }}">
+            <span><span data-feather="{{ l.icon }}" class="me-2"></span>{{ t(l.title) }}</span>
+            <span data-feather="{{ 'arrow-left' if is_rtl else 'arrow-right' }}"></span>
+          </a>
+        </div>
+        {% else %}
+        <p class="text-body-tertiary mb-0">{{ t('No pages available for your access level.') }}</p>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
   {# ---- Time-range slicer (only when a chart supports it) ---- #}
   {% if has_range %}
   <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
     <span class="text-body-tertiary fs-9 text-uppercase fw-bold">{{ t('Period') }}</span>
-    <div class="btn-group btn-group-sm" role="group">
+    <div class="btn-group btn-group-sm gap-2" role="group">
       {% for rk, rlabel in ranges %}
       <a class="btn {{ 'btn-primary' if rk == range_key else 'btn-phoenix-secondary' }}"
          href="?range={{ rk }}">{{ t(rlabel) }}</a>
@@ -72,27 +94,7 @@
   </div>
   {% endif %}
 
-  {# ---- Quick links (RBAC-filtered server-side) ---- #}
-  <div class="card">
-    <div class="card-header">
-      <h5 class="mb-0 text-body-emphasis">{{ t('Quick Actions') }}</h5>
-    </div>
-    <div class="card-body">
-      <div class="row g-2">
-        {% for l in links %}
-        <div class="col-md-6 col-xl-3">
-          <a class="btn btn-phoenix-primary w-100 d-flex align-items-center justify-content-between"
-             href="{{ l.url }}">
-            <span><span data-feather="{{ l.icon }}" class="me-2"></span>{{ t(l.title) }}</span>
-            <span data-feather="{{ 'arrow-left' if is_rtl else 'arrow-right' }}"></span>
-          </a>
-        </div>
-        {% else %}
-        <p class="text-body-tertiary mb-0">{{ t('No pages available for your access level.') }}</p>
-        {% endfor %}
-      </div>
-    </div>
-  </div>
+
 
 </div>
 {% endblock %}

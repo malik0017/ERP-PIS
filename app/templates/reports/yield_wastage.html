@@ -1,4 +1,110 @@
 {% extends "layouts/base.html" %}
-{% block title %}Yield & Wastage{% endblock %}
-{% block extra_css %}<style>.wrap{padding:24px 32px}.hero{background:linear-gradient(135deg,#102542,#0d7f91);color:#fff;border-radius:24px;padding:24px;margin-bottom:18px}.hero h1{font-weight:950}.panel{background:#fff;border:1px solid #dce9f3;border-radius:20px;padding:16px}.table-pro{width:100%;border-collapse:separate;border-spacing:0;font-size:13px}.table-pro th{background:#eef5fa;padding:10px;text-align:left}.table-pro td{border-bottom:1px solid #edf3f8;padding:9px}</style>{% endblock %}
-{% block content %}<div class="wrap container-fluid"><div class="hero"><h1>Yield & Wastage Report</h1><p>Kitchen section input/output, waste, returns and transfer tracking.</p></div>{% set active_step = 'Kitchen' %}{% include 'partials/process_status_row.html' %}<div class="panel table-responsive"><table class="table-pro"><thead><tr><th>Order</th><th>Section</th><th>Recipe</th><th>Item</th><th>Input</th><th>Output</th><th>Waste</th><th>Return</th><th>Transfer</th><th>Status</th><th>Reason</th></tr></thead><tbody>{% for r in rows %}<tr><td>{{ r.order_no }}</td><td>{{ r.current_section }}</td><td>{{ r.recipe_no }} - {{ r.recipe_name }}</td><td>{{ r.ingredient_code }} - {{ r.ingredient_name }}</td><td>{{ r.input_qty }} {{ r.standard_uom }}</td><td>{{ r.output_qty }}</td><td>{{ r.waste_qty }}</td><td>{{ r.return_qty }}</td><td>{{ r.transferred_qty }}</td><td>{{ r.transaction_status }}</td><td>{{ r.waste_reason or r.section_remarks or '-' }}</td></tr>{% else %}<tr><td colspan="11" class="text-center text-muted">No transactions yet.</td></tr>{% endfor %}</tbody></table></div></div>{% endblock %}
+{% block title %}Yield & Wastage | ISFC{% endblock %}
+{% block content %}
+{# Batch 17: rewritten with Phoenix/isfc classes only — dark-mode & RTL safe,
+   filter bar, section summary, and a CSV export that keeps the filters. #}
+<div class="container-fluid py-3 isfc-page">
+
+  <div class="isfc-hero mb-4 p-4 d-flex align-items-center justify-content-between flex-wrap gap-3">
+    <div>
+      <h1 class="mb-1">{{ t('Yield & Wastage Report') }}</h1>
+      <p class="mb-0">{{ t('Kitchen section input/output, waste, returns and transfer tracking.') }}</p>
+    </div>
+    <a class="btn btn-light"
+       href="/reports/yield-wastage?export=csv&order_no={{ filters.order_no }}&section={{ filters.section }}&status={{ filters.status }}&from_date={{ filters.from_date }}&to_date={{ filters.to_date }}">
+      <span data-feather="download" class="me-1"></span>{{ t('Download CSV (filtered)') }}</a>
+  </div>
+
+  {% set active_step = 'Kitchen' %}{% include 'partials/process_status_row.html' %}
+
+  <div class="card mb-3">
+    <div class="card-body">
+      <form method="get" class="row g-2 align-items-end">
+        <div class="col-md-2"><label class="form-label">{{ t('Order No') }}</label>
+          <input class="form-control" name="order_no" value="{{ filters.order_no }}" placeholder="ORD-…"></div>
+        <div class="col-md-2"><label class="form-label">{{ t('Section') }}</label>
+          <select class="form-select" name="section"><option value="">{{ t('All Sections') }}</option>
+            {% for s in sections %}<option value="{{ s }}" {% if s == filters.section %}selected{% endif %}>{{ s }}</option>{% endfor %}
+          </select></div>
+        <div class="col-md-2"><label class="form-label">{{ t('Status') }}</label>
+          <select class="form-select" name="status"><option value="">{{ t('All Statuses') }}</option>
+            {% for s in statuses %}<option value="{{ s }}" {% if s == filters.status %}selected{% endif %}>{{ s }}</option>{% endfor %}
+          </select></div>
+        <div class="col-md-2"><label class="form-label">{{ t('From Date') }}</label>
+          <input type="date" class="form-control" name="from_date" value="{{ filters.from_date }}"></div>
+        <div class="col-md-2"><label class="form-label">{{ t('To Date') }}</label>
+          <input type="date" class="form-control" name="to_date" value="{{ filters.to_date }}"></div>
+        <div class="col-md-2 d-flex gap-2">
+          <button class="btn btn-primary" type="submit">{{ t('Filter') }}</button>
+          <a class="btn btn-phoenix-secondary" href="/reports/yield-wastage">{{ t('Reset') }}</a>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="card mb-3">
+    <div class="card-header"><h5 class="mb-0 text-body-emphasis">{{ t('Section Summary (filtered)') }}</h5></div>
+    <div class="card-body p-0"><div class="table-responsive">
+      <table class="table table-sm fs-9 mb-0">
+        <thead><tr class="text-uppercase text-body-tertiary fs-10">
+          <th class="ps-4">{{ t('Section') }}</th><th class="text-end">{{ t('Input') }}</th>
+          <th class="text-end">{{ t('Output') }}</th><th class="text-end">{{ t('Waste') }}</th>
+          <th class="text-end pe-4">{{ t('Waste %') }}</th>
+        </tr></thead>
+        <tbody>
+          {% for s in summary %}
+          <tr>
+            <td class="ps-4 fw-bold">{{ s.section_name }}</td>
+            <td class="text-end isfc-num">{{ s.input_qty }}</td>
+            <td class="text-end isfc-num">{{ s.output_qty }}</td>
+            <td class="text-end isfc-num">{{ s.waste_qty }}</td>
+            <td class="text-end pe-4">
+              <span class="badge badge-phoenix badge-phoenix-{{ 'danger' if (s.waste_pct or 0) > 5 else ('warning' if (s.waste_pct or 0) > 2 else 'success') }}">{{ s.waste_pct }}%</span></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="5" class="text-center text-body-tertiary py-4">{{ t('No data for these filters.') }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <h5 class="mb-0 text-body-emphasis">{{ t('Transactions') }}</h5>
+      <span class="badge badge-phoenix badge-phoenix-primary">{{ rows|length }}</span>
+    </div>
+    <div class="card-body p-0"><div class="table-responsive">
+      <table class="table table-sm fs-9 mb-0">
+        <thead><tr class="text-uppercase text-body-tertiary fs-10">
+          <th class="ps-4">{{ t('Order') }}</th><th>{{ t('Section') }}</th><th>{{ t('Recipe') }}</th>
+          <th>{{ t('Item') }}</th><th class="text-end">{{ t('Input') }}</th><th class="text-end">{{ t('Output') }}</th>
+          <th class="text-end">{{ t('Waste') }}</th><th class="text-end">{{ t('Waste %') }}</th>
+          <th class="text-end">{{ t('Return') }}</th><th class="text-end">{{ t('Transfer') }}</th>
+          <th>{{ t('Status') }}</th><th class="pe-4">{{ t('Reason') }}</th>
+        </tr></thead>
+        <tbody>
+          {% for r in rows %}
+          <tr>
+            <td class="ps-4">{{ r.order_no }}</td>
+            <td>{{ r.current_section }}</td>
+            <td class="text-truncate" style="max-width:180px;">{{ r.recipe_no }} - {{ r.recipe_name }}</td>
+            <td class="text-truncate" style="max-width:220px;">{{ r.ingredient_code }} - {{ r.ingredient_name }}</td>
+            <td class="text-end isfc-num">{{ r.input_qty }} {{ r.standard_uom }}</td>
+            <td class="text-end isfc-num">{{ r.output_qty }}</td>
+            <td class="text-end isfc-num">{{ r.waste_qty }}</td>
+            <td class="text-end"><span class="badge badge-phoenix badge-phoenix-{{ 'danger' if (r.waste_pct or 0) > 5 else ('warning' if (r.waste_pct or 0) > 2 else 'success') }}">{{ r.waste_pct }}%</span></td>
+            <td class="text-end isfc-num">{{ r.return_qty }}</td>
+            <td class="text-end isfc-num">{{ r.transferred_qty }}</td>
+            <td><span class="badge badge-phoenix badge-phoenix-info">{{ r.transaction_status }}</span></td>
+            <td class="pe-4 text-body-tertiary">{{ r.waste_reason or r.section_remarks or '-' }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="12" class="text-center text-body-tertiary py-5">{{ t('No transactions for these filters.') }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div></div>
+  </div>
+</div>
+{% endblock %}

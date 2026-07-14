@@ -192,7 +192,11 @@
                 }}</span></td>
             <td><span class="hc-status {% if o.status == 'Submitted' %}hc-pending{% else %}hc-ok{% endif %}">{{ o.status
                 }}</span></td>
-            <td>{{ o.required_delivery_date or 'Not set' }} {{ o.required_delivery_time or '' }}</td>
+            <td>{{ o.required_delivery_date or 'Not set' }} {{ o.required_delivery_time or '' }}
+              {% set u = urgency.get(o.order_no, '') %}
+              {% if u == 'LATE' %}<span class="badge badge-phoenix badge-phoenix-danger ms-1">{{ t('LATE') }}</span>
+              {% elif u == 'TODAY' %}<span class="badge badge-phoenix badge-phoenix-warning ms-1">{{ t('TODAY') }}</span>
+              {% elif u == 'TOMORROW' %}<span class="badge badge-phoenix badge-phoenix-info ms-1">{{ t('TOMORROW') }}</span>{% endif %}</td>
             <td>{{ o.cooking_date or 'Pending' }} {{ o.cooking_time or '' }}</td>
             <td>{{ o.material_receiving_date or 'Pending' }} {{ o.material_receiving_time or '' }}</td>
             <td>{{ o.total_planned_portions or 0 }}</td>

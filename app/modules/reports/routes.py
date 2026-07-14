@@ -365,7 +365,30 @@ def reports_center(request: Request, db: Session = Depends(get_db)):
 
 @router.get("/reports/yield-wastage")
 def yield_wastage(request: Request, db: Session = Depends(get_db)):
-    rows = _rows(db, """
+    """Batch 17: professional filters (order / section / status / date range),
+    section summary, and CSV export that respects the active filters."""
+    q = request.query_params
+    f = {
+        "order_no": (q.get("order_no") or "").strip(),
+        "section": (q.get("section") or "").strip(),
+        "status": (q.get("status") or "").strip(),
+        "from_date": (q.get("from_date") or "").strip(),
+        "to_date": (q.get("to_date") or "").strip(),
+    }
+    where, params = ["1=1"], {}
+    if f["order_no"]:
+        where.append("order_no LIKE :ono"); params["ono"] = f"%{f['order_no']}%"
+    if f["section"]:
+        where.append("COALESCE(current_section,'') = :sec"); params["sec"] = f["section"]
+    if f["status"]:
+        where.append("COALESCE(transaction_status,'') = :st"); params["st"] = f["status"]
+    if f["from_date"]:
+        where.append("DATE(updated_at) >= :fd"); params["fd"] = f["from_date"]
+    if f["to_date"]:
+        where.append("DATE(updated_at) <= :td"); params["td"] = f["to_date"]
+    W = " AND ".join(where)
+
+    rows = _rows(db, f"""
         SELECT order_no, current_section, recipe_no, recipe_name, ingredient_code, ingredient_name,
                standard_uom,
                COALESCE(issued_qty_standard,0) AS input_qty,
@@ -376,114 +399,47 @@ def yield_wastage(request: Request, db: Session = Depends(get_db)):
                ROUND(CASE WHEN COALESCE(issued_qty_standard,0) > 0 THEN COALESCE(waste_qty_standard,0) / COALESCE(issued_qty_standard,0) * 100 ELSE 0 END,2) AS waste_pct,
                transaction_status, waste_reason, section_remarks
         FROM kitchen_section_transactions
+        WHERE {W}
         ORDER BY updated_at DESC, order_no DESC
-        LIMIT 500
-    """)
-    summary = _rows(db, """
+        LIMIT 1000
+    """, params)
+
+    if (q.get("export") or "") == "csv":
+        import csv, io
+        buf = io.StringIO()
+        w = csv.writer(buf)
+        w.writerow(["Order", "Section", "Recipe No", "Recipe", "Item Code", "Item", "UOM",
+                    "Input", "Output", "Waste", "Waste %", "Return", "Transfer", "Status", "Reason"])
+        for r in rows:
+            w.writerow([r["order_no"], r["current_section"], r["recipe_no"], r["recipe_name"],
+                        r["ingredient_code"], r["ingredient_name"], r["standard_uom"],
+                        r["input_qty"], r["output_qty"], r["waste_qty"], r["waste_pct"],
+                        r["return_qty"], r["transferred_qty"], r["transaction_status"],
+                        (r["waste_reason"] or r["section_remarks"] or "")])
+        from fastapi.responses import Response as _Resp
+        return _Resp(buf.getvalue(), media_type="text/csv",
+                     headers={"Content-Disposition": 'attachment; filename="yield_wastage.csv"'})
+
+    summary = _rows(db, f"""
         SELECT COALESCE(current_section,'Unassigned') AS section_name,
                ROUND(SUM(COALESCE(issued_qty_standard,0)),2) AS input_qty,
                ROUND(SUM(COALESCE(processed_qty_standard,0)),2) AS output_qty,
                ROUND(SUM(COALESCE(waste_qty_standard,0)),2) AS waste_qty,
                ROUND(CASE WHEN SUM(COALESCE(issued_qty_standard,0)) > 0 THEN SUM(COALESCE(waste_qty_standard,0)) / SUM(COALESCE(issued_qty_standard,0)) * 100 ELSE 0 END,2) AS waste_pct
         FROM kitchen_section_transactions
+        WHERE {W}
         GROUP BY COALESCE(current_section,'Unassigned')
         ORDER BY waste_pct DESC
-    """)
-    return render(request, "reports/yield_wastage.html", {"rows": rows, "summary": summary, "page_title": "Yield & Wastage Report"})
+    """, params)
 
+    sections = [r["s"] for r in _rows(db, "SELECT DISTINCT COALESCE(current_section,'') AS s FROM kitchen_section_transactions ORDER BY 1") if r["s"]]
+    statuses = [r["s"] for r in _rows(db, "SELECT DISTINCT COALESCE(transaction_status,'') AS s FROM kitchen_section_transactions ORDER BY 1") if r["s"]]
 
-EXPORTS = {
-    "recipe-master": """
-        SELECT recipe_code, recipe_name, category, customer_name, brand_name, version, status, approval_status,
-               standard_portions, food_cost, total_cost, sale_price, missing_cost_lines
-        FROM recipes
-        ORDER BY recipe_code, version
-    """,
-    "recipe-bom": """
-        SELECT r.recipe_code, r.recipe_name, ri.ingredient_code, ri.ingredient_name, ri.recipe_uom,
-               ri.qty_per_batch, ri.standard_uom, ri.cost_per_uom, ri.line_cost
-        FROM recipe_ingredients ri
-        JOIN recipes r ON r.id = ri.recipe_id
-        ORDER BY r.recipe_code, ri.ingredient_code
-    """,
-    "order-register": """
-        SELECT order_no, customer_name, brand, channel, status, required_delivery_date, required_delivery_time,
-               cooking_date, cooking_time, material_receiving_date, material_receiving_time,
-               total_planned_portions, total_estimated_food_cost, total_estimated_selling_value, total_estimated_margin
-        FROM customer_orders
-        ORDER BY id DESC
-    """,
-    "bom-lines": """
-        SELECT order_no, recipe_no, recipe_name, ingredient_code, ingredient_name,
-               COALESCE(ingredient_main_category, ingredient_category) AS main_category,
-               ingredient_sub_category, default_issue_section, standard_uom,
-               total_required_with_waste_standard, estimated_cost, bom_status
-        FROM bom_lines
-        ORDER BY order_no DESC, default_issue_section, ingredient_name
-    """,
-    "bom-section-cost": """
-        SELECT x.section_name, COUNT(*) AS total_lines, ROUND(SUM(x.quantity),2) AS quantity, ROUND(SUM(x.cost),2) AS cost
-        FROM (
-            SELECT COALESCE(NULLIF(bl.default_issue_section,''), NULLIF(si.issue_to_section,''), NULLIF(i.default_issue_section,''), 'Unassigned') AS section_name,
-                   COALESCE(bl.total_required_with_waste_standard, bl.required_qty_standard, si.required_qty_with_waste_standard, si.required_qty_standard, 0) AS quantity,
-                   COALESCE(NULLIF(bl.estimated_cost,0),
-                            COALESCE(bl.total_required_with_waste_standard, bl.required_qty_standard, si.required_qty_with_waste_standard, si.required_qty_standard, 0)
-                            * COALESCE(NULLIF(bl.unit_cost_standard,0), NULLIF(i.unit_cost_standard,0), 0), 0) AS cost
-            FROM bom_lines bl
-            LEFT JOIN store_issuance_lines si ON si.bom_line_id = bl.id
-            LEFT JOIN ingredients i ON LOWER(TRIM(i.ingredient_code)) = LOWER(TRIM(bl.ingredient_code))
-        ) x
-        GROUP BY x.section_name
-        ORDER BY cost DESC
-    """,
-    "bom-category-cost": """
-        SELECT x.main_category, x.sub_category, COUNT(*) AS total_lines, ROUND(SUM(x.cost),2) AS cost
-        FROM (
-            SELECT COALESCE(NULLIF(bl.ingredient_main_category,''), NULLIF(si.ingredient_main_category,''), NULLIF(i.main_category,''), NULLIF(bl.ingredient_category,''), NULLIF(i.category,''), 'Unassigned') AS main_category,
-                   COALESCE(NULLIF(bl.ingredient_sub_category,''), NULLIF(si.ingredient_sub_category,''), NULLIF(i.sub_category,''), '-') AS sub_category,
-                   COALESCE(NULLIF(bl.estimated_cost,0),
-                            COALESCE(bl.total_required_with_waste_standard, bl.required_qty_standard, si.required_qty_with_waste_standard, si.required_qty_standard, 0)
-                            * COALESCE(NULLIF(bl.unit_cost_standard,0), NULLIF(i.unit_cost_standard,0), 0), 0) AS cost
-            FROM bom_lines bl
-            LEFT JOIN store_issuance_lines si ON si.bom_line_id = bl.id
-            LEFT JOIN ingredients i ON LOWER(TRIM(i.ingredient_code)) = LOWER(TRIM(bl.ingredient_code))
-        ) x
-        GROUP BY x.main_category, x.sub_category
-        ORDER BY cost DESC
-    """,
-    "store-issuance": """
-        SELECT order_no, recipe_no, recipe_name, ingredient_code, ingredient_name, issue_to_section,
-               standard_uom, required_qty_with_waste_standard, input_material_issued, issued_qty_standard,
-               variance_qty_standard, variance_pct, issuance_status, finalized, store_remarks
-        FROM store_issuance_lines
-        ORDER BY order_no DESC, issue_to_section, ingredient_name
-    """,
-    "yield-wastage": """
-        SELECT order_no, current_section, recipe_no, recipe_name, ingredient_code, ingredient_name, standard_uom,
-               issued_qty_standard, processed_qty_standard, waste_qty_standard, returned_qty_standard,
-               transferred_qty_standard, transaction_status, waste_reason, section_remarks
-        FROM kitchen_section_transactions
-        ORDER BY updated_at DESC
-    """,
-    "qc-checks": """
-        SELECT qc_no, order_no, recipe_no, recipe_name, section, check_type, temperature_c,
-               overall_score, qc_status, checked_by, checked_at, issue_found, corrective_action
-        FROM qc_checks
-        ORDER BY id DESC
-    """,
-    "packing": """
-        SELECT dispatch_no, order_no, customer_name, packed_portions, rejected_portions,
-               dispatch_status, remarks, created_at
-        FROM packing_dispatch
-        ORDER BY id DESC
-    """,
-    "dispatch": """
-        SELECT dispatch_no, order_no, customer_name, dispatch_date, vehicle_no, driver_name,
-               delivery_temperature_c, dispatch_status, remarks, created_at
-        FROM packing_dispatch
-        ORDER BY id DESC
-    """,
-}
+    return render(request, "reports/yield_wastage.html", {
+        "rows": rows, "summary": summary, "filters": f,
+        "sections": sections, "statuses": statuses,
+        "page_title": "Yield & Wastage Report",
+    })
 
 
 @router.get("/reports/export/{report_key}")

@@ -800,3 +800,148 @@ def deactivate_recipe(
     return RedirectResponse(url="/recipes", status_code=303)
 
 
+
+
+# ============================================================================
+# Batch 17 — Activate recipe + Excel / PDF downloads (view.html buttons 404'd)
+# ============================================================================
+from fastapi.responses import StreamingResponse
+import io
+
+
+@router.post("/{recipe_id}/activate")
+def activate_recipe(
+    recipe_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """Mirror of deactivate: bring an INACTIVE recipe back into use."""
+    recipe = (
+        db.query(Recipe)
+        .filter(Recipe.id == recipe_id, Recipe.company_id == _company_id(current_user))
+        .first()
+    )
+    if not recipe:
+        raise HTTPException(status_code=404, detail="Recipe not found.")
+    recipe.status = "ACTIVE"
+    recipe.is_active = True
+    db.commit()
+    return RedirectResponse(url=f"/recipes/{recipe_id}?toast=success&title=Activated&msg=Recipe is active again", status_code=303)
+
+
+def _recipe_for_export(recipe_id: int, db: Session, current_user):
+    recipe = (
+        db.query(Recipe)
+        .options(selectinload(Recipe.lines))
+        .filter(Recipe.id == recipe_id, Recipe.company_id == _company_id(current_user))
+        .first()
+    )
+    if not recipe:
+        raise HTTPException(status_code=404, detail="Recipe not found.")
+    return recipe
+
+
+@router.get("/{recipe_id}/download-excel")
+def download_recipe_excel(
+    recipe_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    recipe = _recipe_for_export(recipe_id, db, current_user)
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Recipe"
+    head_fill = PatternFill("solid", fgColor="102542")
+    head_font = Font(color="FFFFFF", bold=True)
+
+    ws.append([f"Recipe {recipe.recipe_code} — {recipe.recipe_name}"])
+    ws["A1"].font = Font(bold=True, size=14)
+    ws.append([])
+    for label, value in [
+        ("Customer", recipe.customer_name or ""), ("Category", recipe.category or ""),
+        ("Version", recipe.version or 1), ("Status", recipe.status or ""),
+        ("Portions", recipe.standard_portions or 1), ("Wt/Portion (g)", recipe.weight_per_portion_g or 0),
+        ("Food Cost", recipe.food_cost or 0), ("Total Cost", recipe.total_cost or 0),
+        ("Sale Price", recipe.sale_price or 0),
+    ]:
+        ws.append([label, value])
+        ws.cell(row=ws.max_row, column=1).font = Font(bold=True)
+    ws.append([])
+
+    header = ["#", "Type", "Item Code", "Item Name", "UOM", "Qty/Batch", "Portions", "Qty/Portion", "Cost/UOM", "Line Cost", "Remark"]
+    ws.append(header)
+    for c in range(1, len(header) + 1):
+        cell = ws.cell(row=ws.max_row, column=c)
+        cell.fill, cell.font = head_fill, head_font
+        cell.alignment = Alignment(horizontal="center")
+    for i, l in enumerate(recipe.lines or [], start=1):
+        ws.append([i, l.line_type or "Main Recipe", l.inventory_code or "", l.item_name or "",
+                   l.uom or "", float(l.qty_batch or 0), float(l.portions or 0),
+                   float(l.qty_per_portion or 0), float(l.cost_uom or 0),
+                   float(l.line_cost or 0), l.remark or ""])
+    widths = [5, 14, 14, 40, 8, 12, 10, 12, 12, 12, 24]
+    for c, w in enumerate(widths, start=1):
+        ws.column_dimensions[ws.cell(row=1, column=c).column_letter].width = w
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{recipe.recipe_code}_v{recipe.version or 1}.xlsx"'},
+    )
+
+
+@router.get("/{recipe_id}/download-pdf")
+def download_recipe_pdf(
+    recipe_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    recipe = _recipe_for_export(recipe_id, db, current_user)
+    try:
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib import colors
+        from reportlab.lib.units import mm
+        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+        from reportlab.lib.styles import getSampleStyleSheet
+    except Exception:
+        # reportlab not installed -> print-ready HTML (browser: Ctrl+P -> Save as PDF)
+        return templates.TemplateResponse("recipes/print.html", {"request": request, "recipe": recipe})
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=14 * mm, rightMargin=14 * mm,
+                            topMargin=14 * mm, bottomMargin=14 * mm)
+    styles = getSampleStyleSheet()
+    story = [
+        Paragraph(f"Recipe {recipe.recipe_code} — {recipe.recipe_name}", styles["Title"]),
+        Paragraph(f"Customer: {recipe.customer_name or '-'} · Category: {recipe.category or '-'} · "
+                  f"Version {recipe.version or 1} · {recipe.status or ''}", styles["Normal"]),
+        Paragraph(f"Food Cost: {recipe.food_cost or 0} · Total Cost: {recipe.total_cost or 0} · "
+                  f"Sale Price: {recipe.sale_price or 0}", styles["Normal"]),
+        Spacer(1, 8),
+    ]
+    data = [["#", "Item Code", "Item Name", "UOM", "Qty/Batch", "Qty/Portion", "Cost/UOM", "Line Cost"]]
+    for i, l in enumerate(recipe.lines or [], start=1):
+        data.append([i, l.inventory_code or "", (l.item_name or "")[:40], l.uom or "",
+                     f"{float(l.qty_batch or 0):g}", f"{float(l.qty_per_portion or 0):g}",
+                     f"{float(l.cost_uom or 0):.4f}", f"{float(l.line_cost or 0):.4f}"])
+    tbl = Table(data, repeatRows=1, colWidths=[9*mm, 24*mm, 62*mm, 12*mm, 20*mm, 22*mm, 20*mm, 20*mm])
+    tbl.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#102542")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTSIZE", (0, 0), (-1, -1), 7.5),
+        ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#c9d7e4")),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f4f8fc")]),
+        ("ALIGN", (4, 1), (-1, -1), "RIGHT"),
+    ]))
+    story.append(tbl)
+    doc.build(story)
+    buf.seek(0)
+    return StreamingResponse(buf, media_type="application/pdf",
+                             headers={"Content-Disposition": f'attachment; filename="{recipe.recipe_code}_v{recipe.version or 1}.pdf"'})

@@ -1,0 +1,127 @@
+{% extends "layouts/base.html" %}
+{% block title %}New Order · ISFC{% endblock %}
+{% block content %}
+<div class="container-fluid py-3 isfc-page">
+
+  <div class="isfc-hero mb-4 p-4 d-flex align-items-center justify-content-between flex-wrap gap-3">
+    <div>
+      <span class="badge bg-light text-dark mb-2">{{ t('Customer Portal') }}</span>
+      <h2 class="mb-1 text-white">{{ t('New Order') }} · {{ customer.customer_name }}</h2>
+      <p class="mb-0">{{ t('Choose your dishes and portions — the kitchen picks it up from here.') }}</p>
+    </div>
+    <div class="d-flex gap-2">
+      <a class="btn btn-light" href="/my/orders">{{ t('My Orders') }}</a>
+      <a class="btn btn-phoenix-secondary" href="/my">{{ t('Dashboard') }}</a>
+    </div>
+  </div>
+
+  <form method="post" action="/my/orders/new" id="portalOrderForm">
+    <div class="row g-3">
+      <div class="col-lg-4">
+        <div class="card h-100">
+          <div class="card-header"><h5 class="mb-0 text-body-emphasis">{{ t('Delivery') }}</h5></div>
+          <div class="card-body">
+            <div class="mb-3">
+              <label class="form-label fw-bold">{{ t('Required Delivery Date') }} *</label>
+              <input type="date" class="form-control" name="required_delivery_date" min="{{ min_date }}" required>
+            </div>
+            <div class="mb-3">
+              <label class="form-label fw-bold">{{ t('Delivery Time') }}</label>
+              <input type="time" class="form-control" name="required_delivery_time">
+            </div>
+            <div class="mb-3">
+              <label class="form-label fw-bold">{{ t('Channel') }}</label>
+              <input type="text" class="form-control" name="channel" placeholder="{{ t('Catering / Retail / Event…') }}">
+            </div>
+            <div class="mb-0">
+              <label class="form-label fw-bold">{{ t('Notes for the kitchen') }}</label>
+              <textarea class="form-control" name="notes" rows="3"
+                        placeholder="{{ t('Allergies, packaging preferences, delivery instructions…') }}"></textarea>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-lg-8">
+        <div class="card h-100">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0 text-body-emphasis">{{ t('Order Lines') }}</h5>
+            <button class="btn btn-sm btn-phoenix-primary" type="button" id="addLine">
+              <span data-feather="plus"></span> {{ t('Add Line') }}</button>
+          </div>
+          <div class="card-body p-0">
+            <div class="table-responsive">
+              <table class="table table-sm mb-0" id="linesTable">
+                <thead><tr class="text-uppercase text-body-tertiary fs-10">
+                  <th class="ps-4" style="width:55%">{{ t('Recipe') }}</th>
+                  <th style="width:20%">{{ t('Portions') }}</th>
+                  <th class="text-end" style="width:20%">{{ t('Est. Value') }}</th>
+                  <th style="width:5%"></th>
+                </tr></thead>
+                <tbody id="linesBody"></tbody>
+                <tfoot><tr class="fw-bold">
+                  <td class="ps-4">{{ t('Total') }}</td><td id="totPortions">0</td>
+                  <td class="text-end" id="totValue">0.00</td><td></td>
+                </tr></tfoot>
+              </table>
+            </div>
+          </div>
+          <div class="card-footer d-flex justify-content-end gap-2">
+            <a class="btn btn-phoenix-secondary" href="/my/orders">{{ t('Cancel') }}</a>
+            <button class="btn btn-primary" type="submit">
+              <span data-feather="send" class="me-1"></span>{{ t('Submit Order') }}</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </form>
+</div>
+
+<script>
+(function () {
+  var RECIPES = [
+    {% for r in recipes %}{ code: {{ r.recipe_code | tojson }}, name: {{ r.recipe_name | tojson }}, price: {{ r.price | float }} }{{ "," if not loop.last }}
+    {% endfor %}
+  ];
+  var body = document.getElementById('linesBody');
+
+  function options() {
+    return '<option value="">{{ t('Select a recipe…') }}</option>' + RECIPES.map(function (r) {
+      return '<option value="' + r.code + '" data-price="' + r.price + '">' + r.code + ' — ' + r.name + '</option>';
+    }).join('');
+  }
+
+  function addRow() {
+    var tr = document.createElement('tr');
+    tr.innerHTML =
+      '<td class="ps-4"><select class="form-select form-select-sm" name="recipe_no">' + options() + '</select></td>' +
+      '<td><input class="form-control form-control-sm" type="number" name="required_portions" min="0" step="1" value="0"></td>' +
+      '<td class="text-end isfc-num align-middle line-value">0.00</td>' +
+      '<td class="text-center align-middle"><button type="button" class="btn btn-sm btn-phoenix-danger py-0 px-2 rm">&times;</button></td>';
+    body.appendChild(tr);
+  }
+
+  function recalc() {
+    var totP = 0, totV = 0;
+    body.querySelectorAll('tr').forEach(function (tr) {
+      var sel = tr.querySelector('select');
+      var qty = parseFloat(tr.querySelector('input').value) || 0;
+      var price = parseFloat(sel.selectedOptions[0] ? sel.selectedOptions[0].dataset.price || 0 : 0);
+      var v = qty * price;
+      tr.querySelector('.line-value').textContent = v.toFixed(2);
+      totP += qty; totV += v;
+    });
+    document.getElementById('totPortions').textContent = totP;
+    document.getElementById('totValue').textContent = totV.toFixed(2);
+  }
+
+  document.getElementById('addLine').addEventListener('click', addRow);
+  body.addEventListener('input', recalc);
+  body.addEventListener('change', recalc);
+  body.addEventListener('click', function (e) {
+    if (e.target.classList.contains('rm')) { e.target.closest('tr').remove(); recalc(); }
+  });
+  addRow(); addRow();
+})();
+</script>
+{% endblock %}

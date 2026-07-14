@@ -67,6 +67,7 @@ MODULE_DASHBOARDS: dict[str, dict] = {
         ],
         "links": [
             ("Inventory Valuation", "/inventory", "inventory_valuation", "box"),
+            ("Ledger Verification", "/inventory/verification", "inventory_valuation", "check-circle"),
             ("Master Upload", "/masters/upload", "master_upload", "upload-cloud"),
             ("Procurement (GRN)", "/procurement", "procurement", "shopping-bag"),
             ("Reports Center", "/reports", "reports", "bar-chart-2"),

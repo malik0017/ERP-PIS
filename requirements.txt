@@ -41,3 +41,4 @@ openpyxl
 qrcode[pil]==7.4.2
 segno==1.6.1
 pillow>=10.0.0
+reportlab==4.4.10

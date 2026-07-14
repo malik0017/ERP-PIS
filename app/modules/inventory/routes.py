@@ -8,11 +8,12 @@ Procurement/GRN is still being introduced.
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Request
+from fastapi.responses import RedirectResponse
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.templates import render
-from app.core.rbac import require_area
+from app.core.rbac import require_area, require_action
 from app.database.session import get_db
 
 router = APIRouter(prefix="/inventory", tags=["Inventory"])
@@ -164,7 +165,10 @@ def _ingredient_rows(db: Session, search: str) -> list[dict]:
 @router.get("")
 def stock_valuation(request: Request, db: Session = Depends(get_db)):
     require_area(request, "inventory_valuation")
-    _ensure_inventory_ledger(db)
+    try:
+        _ensure_inventory_ledger(db)
+    except Exception:
+        db.rollback()
     q = request.query_params
     search = (q.get("search") or "").strip()
 
@@ -235,3 +239,77 @@ def item_ledger(request: Request, inventory_code: str, db: Session = Depends(get
         "item_name": rows[0].get("item_name") if rows else inventory_code,
         "page_title": f"Ledger {inventory_code}",
     })
+
+
+# ============================================================================
+# Batch 15 — Stock Ledger Verification (the gate before deeper Finance)
+# ============================================================================
+# Compares, per item:  ledger balance = SUM(qty_in) - SUM(qty_out)
+# against the master snapshot ingredients.current_stock.
+# Items where the two disagree beyond a tolerance are flagged so they can be
+# corrected before stock values feed COGS / GL postings.
+
+@router.get("/verification")
+def ledger_verification(request: Request, db: Session = Depends(get_db)):
+    require_area(request, "inventory_valuation")
+    try:
+        _ensure_inventory_ledger(db)
+    except Exception:
+        db.rollback()
+
+    rows = []
+    try:
+        rows = db.execute(text("""
+            SELECT i.ingredient_code AS inventory_code,
+                   COALESCE(i.name,'') AS item_name,
+                   COALESCE(i.current_stock, 0) AS master_stock,
+                   COALESCE(t.ledger_in, 0) AS ledger_in,
+                   COALESCE(t.ledger_out, 0) AS ledger_out,
+                   COALESCE(t.ledger_in, 0) - COALESCE(t.ledger_out, 0) AS ledger_balance,
+                   COALESCE(i.current_stock, 0) - (COALESCE(t.ledger_in, 0) - COALESCE(t.ledger_out, 0)) AS variance
+            FROM ingredients i
+            LEFT JOIN (
+                SELECT inventory_code,
+                       SUM(COALESCE(qty_in, 0)) AS ledger_in,
+                       SUM(COALESCE(qty_out, 0)) AS ledger_out
+                FROM inventory_transactions
+                GROUP BY inventory_code
+            ) t ON t.inventory_code = i.ingredient_code
+            ORDER BY ABS(COALESCE(i.current_stock, 0) - (COALESCE(t.ledger_in, 0) - COALESCE(t.ledger_out, 0))) DESC
+            LIMIT 1000
+        """)).mappings().all()
+    except Exception:
+        rows = []
+
+    TOL = 0.001
+    items = [dict(r) for r in rows]
+    mismatched = [r for r in items if abs(float(r["variance"] or 0)) > TOL]
+    kpis = {
+        "total": len(items),
+        "matched": len(items) - len(mismatched),
+        "mismatched": len(mismatched),
+        "variance_value": round(sum(abs(float(r["variance"] or 0)) for r in mismatched), 3),
+    }
+    return render(request, "inventory/verification.html", {
+        "items": mismatched[:500], "kpis": kpis,
+        "page_title": "Stock Ledger Verification",
+    })
+
+
+@router.post("/verification/align/{inventory_code}")
+def align_master_to_ledger(request: Request, inventory_code: str, db: Session = Depends(get_db)):
+    """Adopt the ledger balance as the master current_stock for ONE item —
+    the ledger (documents) is the source of truth."""
+    require_action(request, "inventory_valuation", "edit")
+    try:
+        bal = db.execute(text("""
+            SELECT COALESCE(SUM(COALESCE(qty_in,0)) - SUM(COALESCE(qty_out,0)), 0)
+            FROM inventory_transactions WHERE inventory_code = :c
+        """), {"c": inventory_code}).scalar() or 0
+        db.execute(text("""
+            UPDATE ingredients SET current_stock = :b WHERE ingredient_code = :c
+        """), {"b": float(bal), "c": inventory_code})
+        db.commit()
+    except Exception:
+        db.rollback()
+    return RedirectResponse("/inventory/verification?toast=success&title=Aligned&msg=Master stock set to ledger balance", status_code=303)

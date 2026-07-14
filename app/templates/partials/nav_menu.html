@@ -1,0 +1,175 @@
+{# ============================================================================
+   ISFC PIMS — Batch 15: ONE navigation definition for ALL navbar types.
+   13 main modules (SAP-style module map). Everything starts COLLAPSED;
+   clicking a module reveals its nested dropdown. RBAC-filtered per child.
+   Used by: vertical sidebar, top navbar, slim top navbar (imported with
+   context so can_access / path / t are available).
+   ============================================================================ #}
+
+{% set NAV_MODULES = [
+  {"key": "main", "title": "Main", "icon": "uil-apps", "children": [
+    {"title": "Module Launcher", "url": "/modules", "area": "dashboard", "feather": "grid"},
+    {"title": "Command Center", "url": "/dashboard", "area": "dashboard", "feather": "monitor"},
+    {"title": "Relationship Map", "url": "/relationship-map", "area": "relationship", "feather": "share-2"},
+    {"title": "Relationship Tree", "url": "/reports/relationship-tree", "area": "relationship", "feather": "git-branch"},
+  ]},
+  {"key": "masters", "title": "Master", "icon": "uil-database", "children": [
+    {"title": "Masters Dashboard", "url": "/module/masters/dashboard", "area": "master_data", "feather": "database"},
+    {"title": "Customers", "url": "/customers", "area": "master_data", "feather": "users"},
+    {"title": "Suppliers", "url": "/suppliers", "area": "master_data", "feather": "truck"},
+    {"title": "Chefs", "url": "/chefs", "area": "master_data", "feather": "user"},
+    {"title": "Brands", "url": "/brands", "area": "master_data", "feather": "tag"},
+    {"title": "Kitchen Sections", "url": "/kitchen-sections", "area": "master_data", "feather": "layout"},
+    {"title": "Kitchen Locations", "url": "/kitchen-locations", "area": "master_data", "feather": "map-pin"},
+    {"title": "Revenue Streams", "url": "/revenue-streams", "area": "master_data", "feather": "trending-up"},
+    {"title": "Master Upload", "url": "/masters/upload", "area": "master_upload", "feather": "upload"},
+    {"title": "Pending Approvals", "url": "/masters/pending", "area": "master_approvals", "feather": "check-circle"},
+    {"title": "Master Archive", "url": "/masters/archive", "area": "master_data", "feather": "archive"},
+  ]},
+  {"key": "sales", "title": "Sales", "icon": "uil-shopping-cart-alt", "children": [
+    {"title": "Customer / Internal Order", "url": "/orders/portal", "area": "order_portal", "feather": "shopping-cart"},
+    {"title": "Order Register", "url": "/production/orders", "area": "production_orders", "feather": "clipboard", "match": "/production/orders"},
+    {"title": "Customer Portal", "url": "/my", "area": "customer_portal", "feather": "user-check", "match": "/my"},
+  ]},
+  {"key": "recipes", "title": "Recipes", "icon": "uil-book-open", "children": [
+    {"title": "Recipes & Costing", "url": "/recipes", "area": "recipe_list", "feather": "book-open"},
+    {"title": "Prepare Recipe", "url": "/recipes/prepare", "area": "recipe_prepare", "feather": "edit-3"},
+    {"title": "Recipe Missing Data", "url": "/recipes/missing-data", "area": "recipe_missing", "feather": "alert-triangle"},
+    {"title": "Recipe Approvals", "url": "/recipes/pending", "area": "recipe_approvals", "feather": "check-square"},
+  ]},
+  {"key": "procurement", "title": "Procurement", "icon": "uil-shop", "children": [
+    {"title": "Procurement Cockpit", "url": "/module/procurement/dashboard", "area": "procurement", "feather": "bar-chart-2"},
+    {"title": "Purchase Orders & GRN", "url": "/procurement", "area": "procurement", "feather": "shopping-bag", "match": "/procurement"},
+  ]},
+  {"key": "inventory", "title": "Inventory", "icon": "uil-box", "children": [
+    {"title": "Inventory Cockpit", "url": "/module/inventory/dashboard", "area": "inventory_valuation", "feather": "bar-chart-2"},
+    {"title": "Stock on Hand & Valuation", "url": "/inventory", "area": "inventory_valuation", "feather": "box", "match": "/inventory"},
+    {"title": "Ledger Verification", "url": "/inventory/verification", "area": "inventory_valuation", "feather": "check-circle"},
+    {"title": "Store Issuance", "url": "/production/store-issuance", "area": "store_issuance", "feather": "package", "match": "/production/store-issuance"},
+  ]},
+  {"key": "production", "title": "Production", "icon": "uil-processor", "children": [
+    {"title": "Production Cockpit", "url": "/module/production/dashboard", "area": "dashboard", "feather": "activity"},
+    {"title": "Head Chef Planning", "url": "/production/head-chef", "area": "head_chef", "feather": "user-check"},
+    {"title": "Production Orders", "url": "/production/orders", "area": "production_orders", "feather": "clipboard"},
+  ]},
+  {"key": "kitchen", "title": "Kitchen", "icon": "uil-fire", "children": [
+    {"title": "All Section Summary", "url": "/production/kitchen-summary", "area": "kitchen_summary", "feather": "layers"},
+    {"title": "Thawing", "url": "/production/section/Thawing", "area": "section_thawing", "feather": "thermometer"},
+    {"title": "Cutting", "url": "/production/section/Cutting", "area": "section_cutting", "feather": "scissors"},
+    {"title": "Butchery", "url": "/production/section/Butchery", "area": "section_butchery", "feather": "crosshair"},
+    {"title": "Marination", "url": "/production/section/Marination", "area": "section_marination", "feather": "droplet"},
+    {"title": "Hot Kitchen", "url": "/production/section/Hot-Kitchen", "area": "section_hot_kitchen", "feather": "sun"},
+    {"title": "Cold Kitchen", "url": "/production/section/Cold-Kitchen", "area": "section_cold_kitchen", "feather": "cloud-snow"},
+    {"title": "Bakery/Pastry", "url": "/production/section/Bakery-Pastry", "area": "section_bakery_pastry", "feather": "gift"},
+  ]},
+  {"key": "quality", "title": "Quality", "icon": "uil-shield-check", "children": [
+    {"title": "Quality Control (QC)", "url": "/qc", "area": "qc", "feather": "check-circle", "match": "/qc"},
+  ]},
+  {"key": "logistics", "title": "Packing", "icon": "uil-truck", "children": [
+    {"title": "Trayline / Packing", "url": "/packing", "area": "packing", "feather": "package", "match": "/packing"},
+    {"title": "Dispatch / Delivery", "url": "/dispatch", "area": "dispatch", "feather": "truck", "match": "/dispatch"},
+  ]},
+  {"key": "finance", "title": "Finance", "icon": "uil-dollar-sign", "children": [
+    {"title": "Finance Cockpit", "url": "/module/finance/dashboard", "area": "finance", "feather": "bar-chart-2"},
+    {"title": "Finance Command Center", "url": "/finance", "area": "finance", "feather": "dollar-sign"},
+    {"title": "General Ledger", "url": "/finance/gl", "area": "finance", "feather": "book"},
+  ]},
+  {"key": "reports", "title": "Reporting", "icon": "uil-chart-bar", "children": [
+    {"title": "Reports Cockpit", "url": "/module/reports/dashboard", "area": "reports", "feather": "pie-chart"},
+    {"title": "Reports Center", "url": "/reports", "area": "reports", "feather": "bar-chart-2"},    
+    {"title": "Yield & Wastage", "url": "/reports/yield-wastage", "area": "reports", "feather": "trending-down"},
+    {"title": "Projects", "url": "/projects", "area": "project_management", "feather": "briefcase", "match": "/projects"},
+  ]},
+  {"key": "system", "title": "System", "icon": "uil-setting", "children": [
+    {"title": "Users & Access", "url": "/admin/users", "area": "users", "feather": "users", "match": "/admin/users"},
+    {"title": "HCM Cockpit", "url": "/module/hr/dashboard", "area": "hr", "feather": "user"},
+    {"title": "Audit Logs", "url": "/admin/audit-logs", "area": "audit", "feather": "file-text"},
+    {"title": "Settings", "url": "/settings", "area": "settings", "feather": "settings", "match": "/settings"},
+  ]},
+] %}
+
+{# ---- helpers ---- #}
+{% macro _child_active(c) -%}
+  {{- (path == c.url) or (c.match and path.startswith(c.match)) -}}
+{%- endmacro %}
+
+{% macro _module_children(m) -%}
+  {%- set ns = namespace(items=[]) -%}
+  {%- for c in m.children -%}
+    {%- if can_access(c.area) -%}{%- set ns.items = ns.items + [c] -%}{%- endif -%}
+  {%- endfor -%}
+  {{- ns.items | length -}}
+{%- endmacro %}
+
+{# ============================================================================
+   TOP NAVBAR variant: 13 collapsed modules; click opens the dropdown.
+   (data-bs-toggle="dropdown" — Phoenix caret style, closed by default)
+   ============================================================================ #}
+{% macro top() %}
+  {% set path = request.url.path %}
+  {% for m in NAV_MODULES %}
+    {% set visible = [] %}
+    {% for c in m.children %}{% if can_access(c.area) %}{% set _ = visible.append(c) %}{% endif %}{% endfor %}
+    {% if visible %}
+    {% set mod_active = [] %}
+    {% for c in visible %}{% if path == c.url or (c.match and path.startswith(c.match)) %}{% set _ = mod_active.append(1) %}{% endif %}{% endfor %}
+    <li class="nav-item dropdown">
+      <a class="nav-link dropdown-toggle lh-1 {% if mod_active %}active{% endif %}" href="#!" role="button"
+         data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-haspopup="true" aria-expanded="false">
+        <span class="uil fs-8 me-2 {{ m.icon }}"></span>{{ t(m.title) }}</a>
+      <ul class="dropdown-menu navbar-dropdown-caret">
+        {% for c in visible %}
+        <li><a class="dropdown-item {% if path == c.url or (c.match and path.startswith(c.match)) %}active{% endif %}"
+               href="{{ c.url }}">
+          <div class="dropdown-item-wrapper"><span class="me-2 uil" data-feather="{{ c.feather }}"></span>{{ t(c.title) }}</div>
+        </a></li>
+        {% endfor %}
+      </ul>
+    </li>
+    {% endif %}
+  {% endfor %}
+{% endmacro %}
+
+{# ============================================================================
+   VERTICAL SIDEBAR variant: 13 collapsed groups; click expands the nested
+   list (Bootstrap collapse). The group containing the current page starts
+   open — everything else starts closed, exactly like the theme demo.
+   ============================================================================ #}
+{% macro vertical() %}
+  {% set path = request.url.path %}
+  {% for m in NAV_MODULES %}
+    {% set visible = [] %}
+    {% for c in m.children %}{% if can_access(c.area) %}{% set _ = visible.append(c) %}{% endif %}{% endfor %}
+    {% if visible %}
+    {% set mod_active = [] %}
+    {% for c in visible %}{% if path == c.url or (c.match and path.startswith(c.match)) %}{% set _ = mod_active.append(1) %}{% endif %}{% endfor %}
+    <li class="nav-item">
+      <a class="nav-link dropdown-indicator label-1 {% if not mod_active %}collapsed{% endif %}"
+         href="#nv-{{ m.key }}" role="button" data-bs-toggle="collapse"
+         aria-expanded="{{ 'true' if mod_active else 'false' }}" aria-controls="nv-{{ m.key }}">
+        <div class="d-flex align-items-center">
+          <div class="dropdown-indicator-icon-wrapper"><span class="fas fa-caret-right dropdown-indicator-icon"></span></div>
+          <span class="nav-link-icon"><span class="uil {{ m.icon }}"></span></span>
+          <span class="nav-link-text">{{ t(m.title) }}</span>
+        </div>
+      </a>
+      <div class="parent-wrapper label-1">
+        <ul class="nav collapse parent {% if mod_active %}show{% endif %}" id="nv-{{ m.key }}"
+            data-bs-parent="#navbarVerticalNav">
+          {% for c in visible %}
+          <li class="nav-item">
+            <a class="nav-link {% if path == c.url or (c.match and path.startswith(c.match)) %}active{% endif %}"
+               href="{{ c.url }}">
+              <div class="d-flex align-items-center">
+                <span class="nav-link-icon me-2"><span data-feather="{{ c.feather }}"></span></span>
+                <span class="nav-link-text">{{ t(c.title) }}</span>
+              </div>
+            </a>
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+    </li>
+    {% endif %}
+  {% endfor %}
+{% endmacro %}

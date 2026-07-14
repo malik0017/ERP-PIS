@@ -1,0 +1,78 @@
+{% extends "layouts/base.html" %}
+{% block title %}Stock Ledger Verification | ISFC{% endblock %}
+{% block content %}
+<div class="container-fluid py-3 isfc-page">
+
+  <div class="isfc-hero mb-4 p-4 d-flex align-items-center justify-content-between flex-wrap gap-3">
+    <div>
+      <h1 class="mb-1">{{ t('Stock Ledger Verification') }}</h1>
+      <p class="mb-0">{{ t('Compares the item master snapshot against the movement ledger (GRN in − issues out). Fix variances before stock values feed Finance.') }}</p>
+    </div>
+    <div class="d-flex gap-2">
+      <a class="btn btn-phoenix-secondary" href="/inventory">{{ t('Stock on Hand') }}</a>
+      <a class="btn btn-phoenix-secondary" href="/module/inventory/dashboard">{{ t('Inventory Cockpit') }}</a>
+    </div>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-sm-6 col-xl-3"><div class="card h-100 isfc-kpi-card"><div class="card-body">
+      <p class="text-body-tertiary text-uppercase fs-10 mb-1">{{ t('Items Checked') }}</p>
+      <h2 class="mb-0 text-body-emphasis">{{ kpis.total }}</h2></div></div></div>
+    <div class="col-sm-6 col-xl-3"><div class="card h-100 isfc-kpi-card"><div class="card-body">
+      <p class="text-body-tertiary text-uppercase fs-10 mb-1">{{ t('Matched') }}</p>
+      <h2 class="mb-0 text-success">{{ kpis.matched }}</h2></div></div></div>
+    <div class="col-sm-6 col-xl-3"><div class="card h-100 isfc-kpi-card"><div class="card-body">
+      <p class="text-body-tertiary text-uppercase fs-10 mb-1">{{ t('Mismatched') }}</p>
+      <h2 class="mb-0 {{ 'text-danger' if kpis.mismatched else 'text-body-emphasis' }}">{{ kpis.mismatched }}</h2></div></div></div>
+    <div class="col-sm-6 col-xl-3"><div class="card h-100 isfc-kpi-card"><div class="card-body">
+      <p class="text-body-tertiary text-uppercase fs-10 mb-1">{{ t('Abs. Variance Qty') }}</p>
+      <h2 class="mb-0 text-body-emphasis">{{ kpis.variance_value }}</h2></div></div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <h5 class="mb-0 text-body-emphasis">{{ t('Items with Variance') }}</h5>
+      {% if kpis.mismatched == 0 %}
+      <span class="badge badge-phoenix badge-phoenix-success">{{ t('Ledger verified — safe to build Finance on top') }}</span>
+      {% endif %}
+    </div>
+    <div class="card-body p-0"><div class="table-responsive">
+      <table class="table table-sm fs-9 mb-0">
+        <thead><tr class="text-uppercase text-body-tertiary fs-10">
+          <th class="ps-4">{{ t('Item') }}</th>
+          <th class="text-end">{{ t('Ledger In') }}</th>
+          <th class="text-end">{{ t('Ledger Out') }}</th>
+          <th class="text-end">{{ t('Ledger Balance') }}</th>
+          <th class="text-end">{{ t('Master Stock') }}</th>
+          <th class="text-end">{{ t('Variance') }}</th>
+          <th class="text-center pe-4">{{ t('Action') }}</th>
+        </tr></thead>
+        <tbody>
+          {% for r in items %}
+          <tr>
+            <td class="ps-4"><span class="fw-bold">{{ r.inventory_code }}</span> {{ r.item_name }}
+              <a class="fs-10 ms-1" href="/inventory/ledger/{{ r.inventory_code }}">{{ t('ledger') }}</a></td>
+            <td class="text-end isfc-num">{{ '%.3f'|format(r.ledger_in|float) }}</td>
+            <td class="text-end isfc-num">{{ '%.3f'|format(r.ledger_out|float) }}</td>
+            <td class="text-end isfc-num">{{ '%.3f'|format(r.ledger_balance|float) }}</td>
+            <td class="text-end isfc-num">{{ '%.3f'|format(r.master_stock|float) }}</td>
+            <td class="text-end isfc-num fw-bold text-danger">{{ '%.3f'|format(r.variance|float) }}</td>
+            <td class="text-center pe-4">
+              {% if can_action('inventory_valuation', 'edit') %}
+              <form method="post" action="/inventory/verification/align/{{ r.inventory_code }}" class="d-inline"
+                    onsubmit="return confirm('{{ t('Set master stock to the ledger balance for') }} {{ r.inventory_code }}?')">
+                <button class="btn btn-sm btn-phoenix-primary py-0 px-2" type="submit">{{ t('Adopt Ledger') }}</button>
+              </form>
+              {% endif %}
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="7" class="text-center text-body-tertiary py-5">
+            {{ t('No variances — every item master matches its movement ledger.') }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div></div>
+  </div>
+</div>
+{% endblock %}
