@@ -77,11 +77,25 @@ def _collect(db: Session) -> dict:
         ORDER BY id DESC LIMIT 50
     """)
 
+    # Batch 20: section-wise kitchen workload — pending receive lines per section.
+    kitchen_sections = _safe_rows(db, """
+        SELECT current_section AS section,
+               COUNT(*) AS pending_lines,
+               COUNT(DISTINCT order_no) AS orders
+        FROM kitchen_section_transactions
+        WHERE COALESCE(received_qty_standard, 0) <= 0
+          AND UPPER(COALESCE(transaction_status,'')) NOT LIKE 'COMPLETED%'
+          AND UPPER(COALESCE(transaction_status,'')) != 'TRANSFERRED'
+        GROUP BY current_section
+        ORDER BY pending_lines DESC
+    """)
+
     return {
         "head_chef": head_chef,
         "store": store,
         "qc": qc,
         "dispatch": dispatch,
+        "kitchen_sections": kitchen_sections,
     }
 
 
@@ -104,6 +118,18 @@ async def notifications_summary(request: Request, db: Session = Depends(get_db))
         {"key": "qc", "label": "QC pending", "count": counts["qc_pending"], "url": "/qc"},
         {"key": "dispatch", "label": "Dispatch pending", "count": counts["dispatch_pending"], "url": "/dispatch"},
     ]
+    # Batch 20: one bell entry per kitchen section with pending receive lines.
+    for ks in data.get("kitchen_sections", []):
+        sec = str(ks.get("section") or "")
+        if not sec:
+            continue
+        slug = "Bakery-Pastry" if sec == "Bakery/Pastry" else ("Trayline-Packing" if sec == "Trayline / Packing" else sec.replace(" ", "-"))
+        items.append({
+            "key": f"section_{slug.lower()}",
+            "label": f"{sec}: {ks['pending_lines']} line(s) to receive ({ks['orders']} order(s))",
+            "count": int(ks["pending_lines"]),
+            "url": f"/production/section/{slug}",
+        })
     return JSONResponse({
         "total": sum(counts.values()),
         "counts": counts,

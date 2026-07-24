@@ -5,15 +5,39 @@
 <style>
 .pis-hero{background:linear-gradient(135deg,#132947,#0c91a3);border-radius:22px;color:#fff;padding:26px 30px;box-shadow:0 18px 40px rgba(15,80,97,.18)}
 .pis-card{background:#fff;border:1px solid #dce8f2;border-radius:18px;box-shadow:0 12px 28px rgba(15,30,50,.06)}
-.pis-kpi{padding:16px 18px}.pis-kpi span{display:block;color:#6b7f95;font-size:12px;text-transform:uppercase;font-weight:800;letter-spacing:.05em}.pis-kpi b{font-size:26px;color:#132947}.pis-chip{display:inline-flex;align-items:center;border-radius:999px;background:#edf5fb;color:#18314f;padding:6px 11px;font-weight:800;font-size:12px}.pis-status{background:#dff8e9;color:#11783f}.pis-btn{border:0;border-radius:12px;padding:9px 13px;font-weight:900;text-decoration:none;display:inline-flex;align-items:center;gap:8px}.pis-primary{background:#315cf6;color:#fff}.pis-success{background:#16a34a;color:#fff}.pis-soft{background:#eef5fb;color:#152b49}.pis-table th{background:#edf5fb;color:#152b49;text-transform:uppercase;font-size:12px;letter-spacing:.04em}.pis-input{border:1px solid #cbdbea;border-radius:10px;padding:8px 10px;width:100%}.recipe-box{border:1px solid #dce8f2;border-radius:16px;padding:16px;background:#fbfdff;margin-bottom:14px}.small-muted{color:#6f8196;font-size:13px}
+.pis-kpi{padding:16px 18px}.pis-kpi span{display:block;color:#6b7f95;font-size:12px;text-transform:uppercase;font-weight:800;letter-spacing:.05em}.pis-kpi b{font-size:22px;color:#132947}
+.pis-chip{display:inline-flex;align-items:center;border-radius:999px;background:#edf5fb;color:#18314f;padding:6px 11px;font-weight:800;font-size:12px}
+.pis-btn{border:0;border-radius:12px;padding:9px 13px;font-weight:900;text-decoration:none;display:inline-flex;align-items:center;gap:8px}
+.pis-primary{background:#315cf6;color:#fff}.pis-success{background:#16a34a;color:#fff}.pis-soft{background:#eef5fb;color:#152b49}
+.pis-table th{background:#edf5fb;color:#152b49;text-transform:uppercase;font-size:12px;letter-spacing:.04em}
+.pis-input{border:1px solid #cbdbea;border-radius:10px;padding:8px 10px;width:100%}
+.recipe-box{border:1px solid #dce8f2;border-radius:16px;padding:16px;background:#fbfdff;margin-bottom:14px}
+.small-muted{color:#6f8196;font-size:13px}
+/* Batch 20: two-row line layout + lock styling */
+.line-group{border-top:2px solid #dce8f2}
+.row-receive td{background:#fbfdff;border-bottom:0!important}
+.row-process td{background:#fff}
+.stage-tag{display:inline-block;font-size:10px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;border-radius:6px;padding:2px 8px}
+.stage-receive{background:#e0f2fe;color:#075985}
+.stage-process{background:#ede9fe;color:#5b21b6}
+tr.locked td{background:#f2f7f2!important;color:#5d7263}
+tr.locked .lock-note{color:#11783f;font-weight:800}
+.delivery-badge{background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.35);border-radius:12px;padding:8px 14px;font-weight:800}
 </style>
 <div class="container-fluid py-3">
   <div class="pis-hero mb-4">
     <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
       <div>
         <span class="pis-chip mb-3">{{ section }} Workstation</span>
-        <h2 class="mb-1">Receiving & Processing: {{ order_no }}</h2>
-        <p class="mb-0 opacity-75">Open order receiving screen. Receive all ingredients, process, record wastage and transfer to the next section.</p>
+        <h2 class="mb-1">Receiving &amp; Processing: {{ order_no }}</h2>
+        <p class="mb-1 opacity-75">Step 1 — Receive the store-issued quantity. Step 2 — Process, record wastage/returns and transfer to the next section. Transferred lines lock automatically.</p>
+        {# Batch 20: delivery timetable is now visible to every section #}
+        <div class="d-flex gap-2 flex-wrap mt-2">
+          <span class="delivery-badge"><i class="bi bi-truck me-1"></i> Delivery:
+            {{ (order.required_delivery_date or '—') if order else '—' }}
+            {{ (order.required_delivery_time or '') if order else '' }}</span>
+          {% if order and order.cooking_date %}<span class="delivery-badge"><i class="bi bi-fire me-1"></i> Cooking: {{ order.cooking_date }} {{ order.cooking_time or '' }}</span>{% endif %}
+        </div>
       </div>
       <div class="d-flex gap-2 flex-wrap">
         <a class="pis-btn pis-soft" href="/production/section/{{ section_slug }}">Back to {{ section }} Orders</a>
@@ -26,11 +50,12 @@
 
   <div class="pis-card p-3 mb-3">
     <div class="row g-3">
-      <div class="col-md-3"><div class="pis-kpi"><span>Customer</span><b style="font-size:18px">{{ order.customer_name if order else '-' }}</b></div></div>
+      <div class="col-md-3"><div class="pis-kpi"><span>Customer</span><b style="font-size:17px">{{ order.customer_name if order else '-' }}</b></div></div>
       <div class="col-md-2"><div class="pis-kpi"><span>Lines</span><b>{{ totals.lines }}</b></div></div>
       <div class="col-md-2"><div class="pis-kpi"><span>Issued</span><b>{{ '%.2f'|format(totals.issued or 0) }}</b></div></div>
       <div class="col-md-2"><div class="pis-kpi"><span>Received</span><b>{{ '%.2f'|format(totals.received or 0) }}</b></div></div>
-      <div class="col-md-3"><div class="pis-kpi"><span>Balance</span><b>{{ '%.2f'|format(totals.balance or 0) }}</b></div></div>
+      <div class="col-md-1"><div class="pis-kpi"><span>Balance</span><b>{{ '%.2f'|format(totals.balance or 0) }}</b></div></div>
+      <div class="col-md-2"><div class="pis-kpi"><span>Completed</span><b>{{ totals.completed }} / {{ totals.lines }}</b></div></div>
     </div>
     <form method="post" action="/production/section/{{ section_slug }}/orders/{{ order_no }}/receive-all" class="mt-2"
           data-confirm="Receive the full store-issued quantity for every pending line in this order?"
@@ -71,53 +96,94 @@
 
   <div class="pis-card p-3">
     <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-      <div><h4 class="mb-1">Ingredient Receiving Lines</h4><div class="small-muted">Line level controls are still available for audit and exception handling.</div></div>
-      <input class="form-control" style="max-width:340px" id="lineSearch" placeholder="Search ingredient, recipe, status..." onkeyup="filterLines()">
+      <div><h4 class="mb-1">Ingredient Receiving &amp; Processing Lines</h4>
+        <div class="small-muted">Each line has a <span class="stage-tag stage-receive">Receive</span> row and a <span class="stage-tag stage-process">Process &amp; Transfer</span> row. Once transferred, the line locks.</div></div>
+      <div class="d-flex gap-2 flex-nowrap align-items-center" style="flex-wrap:nowrap">
+        {# Batch 20: column-level filters — Batch 21: one flex row #}
+        <select id="statusFilter" class="form-select form-select-sm" style="max-width:170px" onchange="filterLines()">
+          <option value="">All Statuses</option>
+          <option value="pending">Pending Receive</option>
+          <option value="received">Received</option>
+          <option value="transferred">Transferred / Locked</option>
+        </select>
+        <select id="recipeFilter" class="form-select form-select-sm" style="max-width:190px" onchange="filterLines()">
+          <option value="">All Recipes</option>
+          {% for rn in txs|map(attribute='recipe_no')|unique %}<option value="{{ rn }}">{{ rn }}</option>{% endfor %}
+        </select>
+        <input class="form-control form-control-sm" style="max-width:280px" id="lineSearch" placeholder="Search ingredient, recipe, status..." onkeyup="filterLines()">
+      </div>
     </div>
     <div class="table-responsive">
       <table class="table align-middle pis-table" id="linesTable">
         <thead>
           <tr>
+            <th style="width:80px">Stage</th>
             <th style="min-width:130px">Recipe</th>
             <th style="min-width:180px">Ingredient</th>
             <th style="min-width:110px">Issued</th>
-            <th style="min-width:100px">Status</th>
-            <th style="min-width:230px">Receive</th>
-            <th style="width:96px">Processed</th>
-            <th style="width:84px">Waste</th>
-            <th style="width:84px">Return</th>
-            <th style="width:96px">Transfer</th>
-            <th style="min-width:120px">Next Section</th>
-            <th style="min-width:110px">Reason</th>
-            <th style="width:92px"></th>
+            <th style="min-width:110px">Status</th>
+            <th colspan="6">Action</th>
           </tr>
         </thead>
         <tbody>
         {% for tx in txs %}
-          <tr>
-            <td><strong>{{ tx.recipe_no }}</strong><br><span class="small-muted">{{ tx.recipe_name }}</span></td>
-            <td><strong>{{ tx.ingredient_code }}</strong><br>{{ tx.ingredient_name }}</td>
-            <td>{{ tx.issued_qty_standard }} {{ tx.standard_uom }}<br><span class="small-muted">Recv: {{ tx.received_qty_standard or 0 }}</span></td>
-            <td><span class="pis-chip {% if tx.transaction_status and tx.transaction_status.startswith('Completed') %}pis-status{% endif %}">{{ tx.transaction_status }}</span></td>
-            <td>
-              <form method="post" action="/production/tx/{{ tx.id }}/receive" class="d-flex gap-2">
+          {% set st = (tx.transaction_status or '') %}
+          {% set locked = st == 'Transferred' or st.upper().startswith('COMPLETED') %}
+          {% set received = (tx.received_qty_standard or 0) > 0 %}
+          <tr class="line-group row-receive {{ 'locked' if locked }}"
+              data-status="{{ 'transferred' if locked else 'received' if received else 'pending' }}"
+              data-recipe="{{ tx.recipe_no }}">
+            <td rowspan="2" style="vertical-align:top;padding-top:14px">
+              <span class="stage-tag stage-receive d-block mb-2">Receive</span>
+              <span class="stage-tag stage-process d-block">Process</span>
+            </td>
+            <td rowspan="2" style="vertical-align:top"><strong>{{ tx.recipe_no }}</strong><br><span class="small-muted">{{ tx.recipe_name }}</span></td>
+            <td rowspan="2" style="vertical-align:top"><strong>{{ tx.ingredient_code }}</strong><br>{{ tx.ingredient_name }}</td>
+            <td rowspan="2" style="vertical-align:top">{{ tx.issued_qty_standard }} {{ tx.standard_uom }}<br><span class="small-muted">Recv: {{ tx.received_qty_standard or 0 }}</span></td>
+            <td rowspan="2" style="vertical-align:top">
+              <span class="isfc-tx-status {{ 'st-completed' if st.upper().startswith('COMPLETED') else 'st-transferred' if st == 'Transferred' else 'st-received' if st == 'Received' else 'st-pending' if 'Pending' in st else 'st-other' }}">{{ st or 'Pending Receive' }}</span>
+              {% if locked %}<div class="lock-note mt-2"><i class="bi bi-lock-fill"></i> Locked — sent to {{ tx.to_section or 'next section' }}</div>{% endif %}
+            </td>
+            {# ---------- ROW 1: RECEIVE ---------- #}
+            {% if locked %}
+            <td colspan="6" class="small-muted">Received {{ tx.received_qty_standard or 0 }} {{ tx.standard_uom }} by {{ tx.received_by or '—' }} {{ tx.received_at or '' }}</td>
+            {% else %}
+            <td colspan="6">
+              <form method="post" action="/production/tx/{{ tx.id }}/receive" class="d-flex gap-2" style="max-width:340px">
                 <input class="pis-input" type="number" step="0.0001" name="received_qty_standard" value="{{ tx.received_qty_standard or tx.issued_qty_standard or 0 }}">
-                <button class="pis-btn pis-soft">Receive</button>
+                <button class="pis-btn pis-soft" {% if received %}title="Update received quantity"{% endif %}>{{ 'Update' if received else 'Receive' }}</button>
               </form>
             </td>
-            {# Every Process/Transfer field is its own aligned table column,
-               so the whole grid lines up row after row. One form spans the
-               cells via the HTML5 form attribute. #}
-            <td><input form="txf{{ tx.id }}" class="pis-input" type="number" step="0.0001" name="processed_qty_standard" value="{{ tx.received_qty_standard or tx.issued_qty_standard or 0 }}"></td>
-            <td><input form="txf{{ tx.id }}" class="pis-input" type="number" step="0.0001" name="waste_qty_standard" value="0"></td>
-            <td><input form="txf{{ tx.id }}" class="pis-input" type="number" step="0.0001" name="returned_qty_standard" value="0"></td>
-            <td><input form="txf{{ tx.id }}" class="pis-input" type="number" step="0.0001" name="transferred_qty_standard" value="{{ tx.balance_qty_standard or tx.received_qty_standard or tx.issued_qty_standard or 0 }}"></td>
-            <td><select form="txf{{ tx.id }}" class="pis-input" name="next_section"><option value="">Use route</option>{% for s in next_sections %}<option>{{ s }}</option>{% endfor %}</select></td>
-            <td><input form="txf{{ tx.id }}" class="pis-input" name="waste_reason" placeholder="Reason"></td>
-            <td>
-              <form method="post" id="txf{{ tx.id }}" action="/production/tx/{{ tx.id }}/transfer"></form>
-              <button form="txf{{ tx.id }}" class="pis-btn pis-primary">Transfer</button>
+            {% endif %}
+          </tr>
+          {# ---------- ROW 2: PROCESS & TRANSFER ---------- #}
+          <tr class="row-process {{ 'locked' if locked }}"
+              data-status="{{ 'transferred' if locked else 'received' if received else 'pending' }}"
+              data-recipe="{{ tx.recipe_no }}">
+            {% if locked %}
+            <td colspan="6" class="small-muted">
+              Processed {{ tx.processed_qty_standard or 0 }} · Waste {{ tx.waste_qty_standard or 0 }} · Return {{ tx.returned_qty_standard or 0 }} ·
+              Transferred {{ tx.transferred_qty_standard or 0 }} {{ tx.standard_uom }} by {{ tx.transferred_by or '—' }}
+              {% if tx.waste_reason %}· Reason: {{ tx.waste_reason }}{% endif %}
             </td>
+            {% else %}
+            <td style="width:110px"><label class="small-muted d-block">Processed</label><input form="txf{{ tx.id }}" class="pis-input tx-processed" data-tx="{{ tx.id }}" data-avail="{{ tx.received_qty_standard or tx.issued_qty_standard or 0 }}" type="number" step="0.0001" name="processed_qty_standard" value="{{ tx.received_qty_standard or tx.issued_qty_standard or 0 }}" {% if not received %}disabled{% endif %}></td>
+            <td style="width:95px"><label class="small-muted d-block">Waste</label><input form="txf{{ tx.id }}" class="pis-input tx-waste" data-tx="{{ tx.id }}" type="number" step="0.0001" min="0" name="waste_qty_standard" value="0" {% if not received %}disabled{% endif %}></td>
+            <td style="width:95px"><label class="small-muted d-block">Return</label><input form="txf{{ tx.id }}" class="pis-input tx-return" data-tx="{{ tx.id }}" type="number" step="0.0001" min="0" name="returned_qty_standard" value="0" {% if not received %}disabled{% endif %}></td>
+            <td style="width:110px"><label class="small-muted d-block">Transfer <span class="text-secondary" title="Auto = Received − Waste − Return">⟳</span></label><input form="txf{{ tx.id }}" class="pis-input tx-transfer" data-tx="{{ tx.id }}" type="number" step="0.0001" min="0" name="transferred_qty_standard" value="{{ tx.balance_qty_standard or tx.received_qty_standard or tx.issued_qty_standard or 0 }}" {% if not received %}disabled{% endif %}></td>
+            <td style="min-width:220px"><label class="small-muted d-block">Next Section / Reason</label>
+              <div class="d-flex gap-1">
+                <select form="txf{{ tx.id }}" class="pis-input" name="next_section" {% if not received %}disabled{% endif %}><option value="">Use route</option>{% for s in next_sections %}<option>{{ s }}</option>{% endfor %}</select>
+                <input form="txf{{ tx.id }}" class="pis-input" name="waste_reason" placeholder="Reason" {% if not received %}disabled{% endif %}>
+              </div>
+            </td>
+            <td style="width:110px;vertical-align:bottom">
+              <form method="post" id="txf{{ tx.id }}" action="/production/tx/{{ tx.id }}/transfer"
+                    data-confirm="Transfer this line to the next section? It will lock after transfer."
+                    data-confirm-title="Confirm Transfer" data-confirm-ok="Transfer" data-confirm-variant="primary"></form>
+              <button form="txf{{ tx.id }}" class="pis-btn pis-primary w-100" {% if not received %}disabled title="Receive first"{% endif %}>Transfer</button>
+            </td>
+            {% endif %}
           </tr>
         {% endfor %}
         </tbody>
@@ -126,9 +192,51 @@
   </div>
 </div>
 <script>
+/* Batch 21: automatic quantity balancing.
+   Rule: Received = Waste + Return + Transfer.
+   - Edit Waste or Return  -> Transfer auto = Received - Waste - Return
+   - Edit Transfer         -> Return auto = Received - Waste - Transfer
+   Values never go below zero; a toast warns if the numbers cannot balance. */
+(function(){
+  function n(v){ var x = parseFloat(v); return isNaN(x) ? 0 : x; }
+  function group(tx){
+    return {
+      avail: n(document.querySelector('.tx-processed[data-tx="'+tx+'"]')?.dataset.avail),
+      waste: document.querySelector('.tx-waste[data-tx="'+tx+'"]'),
+      ret:   document.querySelector('.tx-return[data-tx="'+tx+'"]'),
+      tra:   document.querySelector('.tx-transfer[data-tx="'+tx+'"]')
+    };
+  }
+  document.addEventListener('input', function(e){
+    var el = e.target, tx = el.dataset && el.dataset.tx;
+    if (!tx) return;
+    var g = group(tx);
+    if (!g.waste || !g.ret || !g.tra) return;
+    if (el.classList.contains('tx-waste') || el.classList.contains('tx-return')) {
+      var t = g.avail - n(g.waste.value) - n(g.ret.value);
+      if (t < 0) { t = 0; if (window.showToast) showToast('Waste + Return exceeds the received quantity', 'warning', 'Check quantities'); }
+      g.tra.value = +t.toFixed(4);
+    } else if (el.classList.contains('tx-transfer')) {
+      var r = g.avail - n(g.waste.value) - n(g.tra.value);
+      if (r < 0) { r = 0; if (window.showToast) showToast('Waste + Transfer exceeds the received quantity', 'warning', 'Check quantities'); }
+      g.ret.value = +r.toFixed(4);
+    }
+  });
+})();
 function filterLines(){
   const q=(document.getElementById('lineSearch').value||'').toLowerCase();
-  document.querySelectorAll('#linesTable tbody tr').forEach(tr=>{tr.style.display=tr.innerText.toLowerCase().includes(q)?'':'none'});
+  const st=document.getElementById('statusFilter').value;
+  const rc=document.getElementById('recipeFilter').value;
+  const rows=document.querySelectorAll('#linesTable tbody tr');
+  for(let i=0;i<rows.length;i+=2){
+    const a=rows[i], b=rows[i+1];
+    let show=true;
+    if(st && a.dataset.status!==st) show=false;
+    if(rc && a.dataset.recipe!==rc) show=false;
+    if(q && !(a.innerText+' '+(b?b.innerText:'')).toLowerCase().includes(q)) show=false;
+    a.style.display=show?'':'none';
+    if(b) b.style.display=show?'':'none';
+  }
 }
 </script>
 {% endblock %}

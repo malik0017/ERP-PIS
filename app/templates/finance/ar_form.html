@@ -1,0 +1,53 @@
+{% extends "layouts/base.html" %}
+{% block title %}New A/R Invoice | ISFC{% endblock %}
+{% block content %}
+{# Batch 22 — Manual A/R (receivable) invoice #}
+<div class="container-fluid py-3 isfc-page">
+  {% if request.query_params.get('error') %}
+  <div class="alert alert-danger"><i class="bi bi-exclamation-triangle me-2"></i>{{ request.query_params.get('error') }}</div>
+  {% endif %}
+
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h3 class="mb-0 fw-bolder"><i class="bi bi-receipt me-2"></i>{{ t('New A/R Invoice') }}</h3>
+    <a href="/finance" class="btn btn-phoenix-secondary btn-sm"><i class="bi bi-arrow-left me-1"></i>{{ t('Finance') }}</a>
+  </div>
+
+  <div class="card border">
+    <div class="card-body">
+      <form method="post" action="/finance/ar/create" class="row g-3">
+        <div class="col-md-6">
+          <label class="form-label fw-semibold">{{ t('Customer') }} *</label>
+          <input name="customer_name" class="form-control" list="custList" required>
+          <datalist id="custList">
+            {% for c in customers %}<option value="{{ c.customer_name }}">{% endfor %}
+          </datalist>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label fw-semibold">{{ t('Order No') }}</label>
+          <input name="order_no" class="form-control" placeholder="{{ t('optional') }}">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label fw-semibold">{{ t('Amount') }} *</label>
+          <input name="amount" type="number" step="0.01" min="0" class="form-control" required>
+        </div>
+        <div class="col-12">
+          <label class="form-label fw-semibold">{{ t('Remarks') }}</label>
+          <input name="remarks" class="form-control">
+        </div>
+        <div class="col-12">
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" name="post_now" value="1" id="postNow" checked>
+            <label class="form-check-label" for="postNow">
+              {{ t('Post to General Ledger immediately (Dr 1200 Receivable / Cr 4000 Sales)') }}
+            </label>
+          </div>
+        </div>
+        <div class="col-12 d-flex gap-2 mt-2">
+          <button class="btn btn-primary"><i class="bi bi-check-lg me-1"></i>{{ t('Create Invoice') }}</button>
+          <a href="/finance" class="btn btn-phoenix-secondary">{{ t('Cancel') }}</a>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

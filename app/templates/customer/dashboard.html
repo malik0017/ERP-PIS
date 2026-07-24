@@ -8,17 +8,49 @@
       <div>
         <span class="pis-chip mb-3" style="background:rgba(255,255,255,.15);color:#fff;border-radius:999px;padding:6px 12px;font-weight:800;font-size:12px;display:inline-flex;">Customer Portal</span>
         <h2 class="mb-1 text-white">{% if customer %}Welcome, {{ customer.customer_name }}{% else %}Customer Portal{% endif %}</h2>
-        <p class="mb-0 opacity-75">{% if customer %}Track your orders from submission to delivery.{% else %}This account is not linked to a customer yet — ask your administrator to set your customer link in Users & Access.{% endif %}</p>
+        <p class="mb-0 opacity-75">{% if customer %}Track your orders from submission to delivery.{% elif is_admin_preview %}You are an internal/admin user — pick a customer below to preview their portal exactly as they see it.{% else %}This account is not linked to a customer yet — ask your administrator to set your customer link in Users & Access.{% endif %}</p>
       </div>
       {% if customer %}
       <div class="d-flex gap-2 flex-wrap">
         <a class="btn btn-light" href="/my/orders/new">+ New Order</a>
         <a class="btn btn-phoenix-secondary" href="/my/orders">Order History</a>
         <a class="btn btn-phoenix-secondary" href="/my/statement">Statement</a>
+        {% if preview_mode %}<a class="btn btn-outline-light" href="/my?customer=exit" title="Leave this customer's portal preview">Exit Preview</a>{% endif %}
       </div>
       {% endif %}
     </div>
   </div>
+
+  {# Batch 21: admin preview — customer picker + quick list #}
+  {% if not customer and is_admin_preview %}
+  <div class="card shadow-none border mb-4">
+    <div class="card-body p-4">
+      <h4 class="mb-1">Preview a Customer Portal</h4>
+      <p class="text-body-tertiary mb-3">As admin you can open any customer's portal (read/write, same rules as the customer). Choose a customer:</p>
+      <form method="get" action="/my" class="row g-2 align-items-end mb-3" style="max-width:560px">
+        <div class="col-8">
+          <select name="customer" class="form-select">
+            {% for c in admin_pick_list %}
+            <option value="{{ c.customer_code }}">{{ c.customer_name }} ({{ c.customer_code }}){% if c.brand %} — {{ c.brand }}{% endif %}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-4"><button class="btn btn-primary w-100">Open Portal</button></div>
+      </form>
+      <div class="table-responsive" style="max-height:420px;overflow:auto">
+        <table class="table table-sm align-middle">
+          <thead><tr><th>Code</th><th>Customer</th><th>Brand</th><th></th></tr></thead>
+          <tbody>
+            {% for c in admin_pick_list %}
+            <tr><td>{{ c.customer_code }}</td><td>{{ c.customer_name }}</td><td>{{ c.brand }}</td>
+                <td class="text-end"><a class="btn btn-sm btn-outline-primary" href="/my?customer={{ c.customer_code }}">Open</a></td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  {% endif %}
 
   {% if customer %}
   <div class="row g-3 mb-4">

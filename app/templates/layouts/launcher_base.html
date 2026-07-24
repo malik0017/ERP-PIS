@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="{{ lang|default('en') }}" dir="{{ 'rtl' if is_rtl|default(false) else 'ltr' }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}ERP Modules | ISFC{% endblock %}</title>
+
+  {# ==========================================================================
+     Batch 23 — STANDALONE (chrome-less) layout for the Module Launcher.
+     No header, no footer, no sidebar/navbar — as requested. It still loads the
+     theme CSS + ECharts so the cards and charts look and behave identically,
+     and it keeps dark mode + RTL working.
+     ========================================================================== #}
+  <link rel="shortcut icon" type="image/x-icon" href="{{ url_for('static', path='img/favicons/favicon.ico') }}">
+  <link rel="preconnect" href="https://fonts.googleapis.com/">
+  <link rel="preconnect" href="https://fonts.gstatic.com/" crossorigin="">
+  <link href="https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@300;400;600;700;800;900&amp;display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', path='vendors/bootstrap-icons/bootstrap-icons.min.css') }}">
+  <link href="{{ url_for('static', path='css/theme-rtl.min.css') }}" type="text/css" rel="stylesheet" id="style-rtl">
+  <link href="{{ url_for('static', path='css/theme.min.css') }}" type="text/css" rel="stylesheet" id="style-default">
+  <link href="{{ url_for('static', path='css/user-rtl.min.css') }}" type="text/css" rel="stylesheet" id="user-style-rtl">
+  <link href="{{ url_for('static', path='css/user.min.css') }}" type="text/css" rel="stylesheet" id="user-style-default">
+  <link href="{{ url_for('static', path='css/isfc-dark.css') }}" rel="stylesheet">
+  <script src="{{ url_for('static', path='js/config.js') }}"></script>
+  <script>
+    var phoenixIsRTL = {{ 'true' if is_rtl|default(false) else 'false' }};
+    if (phoenixIsRTL) {
+      document.getElementById('style-default').setAttribute('disabled', true);
+      document.getElementById('user-style-default').setAttribute('disabled', true);
+      document.querySelector('html').setAttribute('dir', 'rtl');
+    } else {
+      document.getElementById('style-rtl').setAttribute('disabled', true);
+      document.getElementById('user-style-rtl').setAttribute('disabled', true);
+    }
+  </script>
+  <style>
+    /* Full-bleed page: no sidebar offset, no header padding. */
+    body.isfc-launcher-standalone { background: var(--phoenix-body-bg); min-height: 100vh; margin: 0; }
+    body.isfc-launcher-standalone .launcher-shell { max-width: 1600px; margin: 0 auto; padding: 24px 28px 48px; }
+    /* Minimal top strip: brand + theme toggle + sign out (no full navbar). */
+    .launcher-topstrip {
+      display: flex; align-items: center; justify-content: space-between;
+      max-width: 1600px; margin: 0 auto; padding: 16px 28px 0;
+    }
+    .launcher-brand { display: flex; align-items: center; gap: 10px; font-weight: 900; font-size: 1.15rem;
+                      color: var(--phoenix-emphasis-color); text-decoration: none; }
+    .launcher-brand img { height: 30px; }
+  </style>
+  {% block extra_css %}{% endblock %}
+</head>
+<body class="isfc-launcher-standalone">
+
+  <div class="launcher-topstrip">
+    <a class="launcher-brand" href="/modules">
+      {% if company_logo %}<img src="{{ company_logo }}" alt="logo">{% endif %}
+      <span>{{ t('PIS') }}</span>
+    </a>
+    <div class="d-flex align-items-center gap-2">
+      <button class="btn btn-sm btn-phoenix-secondary" type="button" id="launcherThemeToggle" title="{{ t('Toggle theme') }}">
+        <i class="bi bi-circle-half"></i>
+      </button>
+      
+      <a class="btn btn-sm btn-phoenix-danger" href="/logout"><i class="bi bi-box-arrow-right me-1"></i>{{ t('Sign out') }}</a>
+    </div>
+  </div>
+
+  <div class="launcher-shell">
+    {% block content %}{% endblock %}
+    <span class="text-body-tertiary fs-9 d-none d-sm-inline float-end">{{ t('Signed in as') }}: {{ session_username|default('user') }}</span>
+  </div>
+
+  <script src="{{ url_for('static', path='vendors/popper/popper.min.js') }}"></script>
+  <script src="{{ url_for('static', path='vendors/bootstrap/bootstrap.min.js') }}"></script>
+  <script src="{{ url_for('static', path='vendors/echarts/echarts.min.js') }}"></script>
+  <script src="{{ url_for('static', path='js/isfc-charts.js') }}"></script>
+  <script>
+    // Simple dark/light toggle (persisted) — the full theme selector lives in
+    // the main app chrome, which this standalone page intentionally omits.
+    (function () {
+      var html = document.documentElement;
+      var saved = localStorage.getItem('phoenixTheme');
+      if (saved) html.setAttribute('data-bs-theme', saved);
+      var btn = document.getElementById('launcherThemeToggle');
+      if (btn) btn.addEventListener('click', function () {
+        var next = html.getAttribute('data-bs-theme') === 'dark' ? 'light' : 'dark';
+        html.setAttribute('data-bs-theme', next);
+        localStorage.setItem('phoenixTheme', next);
+        setTimeout(function () {
+          if (!window.echarts) return;
+          document.querySelectorAll('[_echarts_instance_]').forEach(function (el) {
+            var i = window.echarts.getInstanceByDom(el); if (i) i.resize();
+          });
+        }, 80);
+      });
+      // Charts need a resize once layout settles (zero-width guard).
+      window.addEventListener('load', function () {
+        [120, 400, 900].forEach(function (ms) {
+          setTimeout(function () {
+            if (!window.echarts) return;
+            document.querySelectorAll('[_echarts_instance_]').forEach(function (el) {
+              var i = window.echarts.getInstanceByDom(el); if (i) i.resize();
+            });
+          }, ms);
+        });
+      });
+    })();
+  </script>
+  {% block extra_js %}{% endblock %}
+</body>
+</html>

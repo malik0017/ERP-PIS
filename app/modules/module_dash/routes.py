@@ -251,25 +251,30 @@ MODULE_DASHBOARDS: dict[str, dict] = {
     "hr": {
         "area": "hr",
         "title": "HCM Dashboard",
-        "subtitle": "Human capital management — employees, attendance and payroll (next phase).",
+        "subtitle": "Employees, attendance, sections and system users — payroll in the next phase.",
         "icon": "users",
         "kpis": [
-            ("Employees", "SELECT COUNT(*) FROM employees", "employee master"),
-            ("Chefs", "SELECT COUNT(*) FROM chefs", "kitchen staff"),
-            ("Users", "SELECT COUNT(*) FROM users", "system users"),
-            ("Active Users", "SELECT COUNT(*) FROM users WHERE is_active = 1", "enabled accounts"),
+            ("Employees", "SELECT COUNT(*) FROM hr_employees", "in the employee master"),
+            ("Active Employees", "SELECT COUNT(*) FROM hr_employees WHERE status='Active'", "currently employed"),
+            ("Present Today", "SELECT COUNT(*) FROM hr_attendance WHERE att_date=CURDATE() AND status='Present'", "marked present"),
+            ("System Users", "SELECT COUNT(*) FROM users WHERE COALESCE(is_active,1)=1", "can log in"),
         ],
         "links": [
-            ("Users & Access", "/admin/users", "users", "users"),
+            ("Employees", "/hr/employees", "hr", "users"),
+            ("Attendance", "/hr/attendance", "hr", "calendar"),
+            ("Users & Access", "/admin/users", "users", "shield"),
         ],
         "charts": [
+            {"title": "Employees by Section",
+             "sql": "SELECT COALESCE(section,'Unassigned') AS label, COUNT(*) AS value "
+                    "FROM hr_employees GROUP BY 1 ORDER BY value DESC", "default": "donut"},
+            {"title": "Attendance Mix (period)",
+             "sql": "SELECT COALESCE(status,'') AS label, COUNT(*) AS value FROM hr_attendance "
+                    "WHERE 1=1 {range} GROUP BY 1", "range_col": "att_date", "default": "pie"},
             {"title": "Users by Role",
              "sql": "SELECT COALESCE(r.name,'No Role') AS label, COUNT(*) AS value "
                     "FROM users u LEFT JOIN roles r ON r.id = u.role_id "
-                    "GROUP BY COALESCE(r.name,'No Role') ORDER BY value DESC", "default": "donut"},
-            {"title": "Active vs Inactive Users",
-             "sql": "SELECT CASE WHEN is_active = 1 THEN 'Active' ELSE 'Inactive' END AS label, "
-                    "COUNT(*) AS value FROM users GROUP BY 1", "default": "pie"},
+                    "GROUP BY COALESCE(r.name,'No Role') ORDER BY value DESC", "default": "bar"},
         ],
     },
     "production": {

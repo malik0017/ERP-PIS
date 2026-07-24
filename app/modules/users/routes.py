@@ -43,10 +43,8 @@ MODULES = [
     ("bom", "BOM", "Generate and view BOM documents"),
     ("store_issuance", "Store Issuance", "Issue materials to production sections"),
     ("kitchen_summary", "All Section Summary", "Kitchen section summary and filters"),
-    ("section_thawing", "Section: Thawing", "Thawing workstation"),
     ("section_cutting", "Section: Cutting", "Cutting workstation"),
     ("section_butchery", "Section: Butchery", "Butchery workstation"),
-    ("section_marination", "Section: Marination", "Marination workstation"),
     ("section_hot_kitchen", "Section: Hot Kitchen", "Hot kitchen workstation"),
     ("section_cold_kitchen", "Section: Cold Kitchen", "Cold kitchen workstation"),
     ("section_bakery_pastry", "Section: Bakery/Pastry", "Bakery/Pastry workstation"),
@@ -301,7 +299,14 @@ def user_access(request: Request, user_id: int, db: Session = Depends(get_db), c
         raise HTTPException(status_code=404, detail="User not found")
     roles = db.query(Role).order_by(Role.name).all()
     access = _load_access(db, user_id)
-    return render(request, "users/access_edit.html", {"target_user": user, "roles": roles, "modules": MODULES, "access_map": access})
+    # Batch 20: the customer link is set from THIS screen too (the one admins
+    # actually use), not only from the profile edit page.
+    customers = db.execute(text("""
+        SELECT customer_code, customer_name FROM customers
+        ORDER BY customer_name LIMIT 1000
+    """)).mappings().all()
+    linked_code = str((db.execute(text("SELECT COALESCE(customer_code,'') FROM users WHERE id=:id"), {"id": user_id}).scalar()) or "")
+    return render(request, "users/access_edit.html", {"target_user": user, "roles": roles, "modules": MODULES, "access_map": access, "customers": customers, "linked_customer_code": linked_code})
 
 
 @router.post("/admin/users/{user_id}/access")
@@ -318,6 +323,10 @@ async def save_user_access(request: Request, user_id: int, db: Session = Depends
     two_factor = str(form.get("two_factor_enabled") or "0") == "1"
     force_password_change = str(form.get("force_password_change") or "0") == "1"
     db.execute(text("UPDATE users SET two_factor_enabled = :two_factor, force_password_change = :force WHERE id = :id"), {"two_factor": two_factor, "force": force_password_change, "id": user_id})
+    # Batch 20: save the customer link from the access screen.
+    if "customer_code" in form:
+        cc = str(form.get("customer_code") or "").strip()
+        db.execute(text("UPDATE users SET customer_code = :cc WHERE id = :id"), {"cc": cc or None, "id": user_id})
 
     selected = set(form.getlist("pages"))
     add_pages = set(form.getlist("add_pages"))

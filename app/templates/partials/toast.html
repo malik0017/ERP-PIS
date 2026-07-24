@@ -37,12 +37,14 @@
   /* ---------------------------------------------------------------
      1. Toast system
   ----------------------------------------------------------------*/
+  /* Batch 20: professional toast palette — white card, colored accent bar,
+     icon bubble and auto-dismiss progress bar. */
   var TYPES = {
-    success: { icon: 'uil-check-circle',        cls: 'text-bg-success',  title: 'Success' },
-    error:   { icon: 'uil-times-circle',        cls: 'text-bg-danger',   title: 'Error' },
-    danger:  { icon: 'uil-times-circle',        cls: 'text-bg-danger',   title: 'Error' },
-    warning: { icon: 'uil-exclamation-triangle',cls: 'text-bg-warning',  title: 'Warning' },
-    info:    { icon: 'uil-info-circle',         cls: 'text-bg-info',     title: 'Notice' }
+    success: { icon: 'uil-check-circle',         color: '#16a34a', bg: '#e8f8ef', title: 'Success' },
+    error:   { icon: 'uil-times-circle',         color: '#dc2626', bg: '#fdecec', title: 'Error' },
+    danger:  { icon: 'uil-times-circle',         color: '#dc2626', bg: '#fdecec', title: 'Error' },
+    warning: { icon: 'uil-exclamation-triangle', color: '#d97706', bg: '#fdf3e3', title: 'Warning' },
+    info:    { icon: 'uil-info-circle',          color: '#2563eb', bg: '#e9f1fe', title: 'Notice' }
   };
 
   window.showToast = function (message, type, title) {
@@ -52,24 +54,33 @@
     if (!area || !message) return;
 
     var el = document.createElement('div');
-    el.className = 'toast align-items-center border-0 shadow ' + cfg.cls;
+    var delay = (type === 'error' || type === 'danger') ? 7000 : 4500;
+    el.className = 'toast border-0';
     el.setAttribute('role', 'alert');
-    el.style.borderRadius = '12px';
-    el.style.minWidth = '320px';
+    el.style.cssText = 'border-radius:14px;min-width:340px;max-width:420px;background:#fff;' +
+      'box-shadow:0 14px 38px rgba(15,30,50,.18);border-left:5px solid ' + cfg.color + ';overflow:hidden;';
     el.innerHTML =
-      '<div class="d-flex">' +
-        '<div class="toast-body d-flex align-items-start gap-2 py-3">' +
-          '<span class="uil ' + cfg.icon + ' fs-8 mt-1"></span>' +
-          '<div>' +
-            '<div class="fw-bold">' + (title || cfg.title) + '</div>' +
-            '<div class="fs-9">' + String(message).replace(/</g, '&lt;') + '</div>' +
+      '<div class="d-flex align-items-stretch">' +
+        '<div class="toast-body d-flex align-items-start gap-3 py-3 flex-grow-1">' +
+          '<span class="d-inline-flex align-items-center justify-content-center rounded-circle flex-shrink-0"' +
+            ' style="width:38px;height:38px;background:' + cfg.bg + ';color:' + cfg.color + ';">' +
+            '<span class="uil ' + cfg.icon + ' fs-7"></span></span>' +
+          '<div style="color:#152b49">' +
+            '<div class="fw-bolder" style="letter-spacing:.01em">' + (title || cfg.title) + '</div>' +
+            '<div class="fs-9" style="color:#5a6c82">' + String(message).replace(/</g, '&lt;') + '</div>' +
           '</div>' +
         '</div>' +
-        '<button type="button" class="btn-close btn-close-white me-3 m-auto" data-bs-dismiss="toast"></button>' +
-      '</div>';
+        '<button type="button" class="btn-close me-3 m-auto" data-bs-dismiss="toast"></button>' +
+      '</div>' +
+      '<div class="isfc-toast-progress" style="height:3px;background:' + cfg.color +
+        ';width:100%;transition:width ' + delay + 'ms linear;"></div>';
     area.appendChild(el);
-    var t = new bootstrap.Toast(el, { delay: type === 'error' ? 7000 : 4500 });
+    var t = new bootstrap.Toast(el, { delay: delay });
     t.show();
+    requestAnimationFrame(function () {
+      var bar = el.querySelector('.isfc-toast-progress');
+      if (bar) requestAnimationFrame(function () { bar.style.width = '0%'; });
+    });
     el.addEventListener('hidden.bs.toast', function () { el.remove(); });
   };
 

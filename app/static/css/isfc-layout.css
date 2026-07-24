@@ -432,3 +432,45 @@ html[data-navigation-type="combo"] .pis-process-row {
 /* ---- 5. RTL: never allow content to be clipped on the far edge ---- */
 html[dir="rtl"] .content { overflow-x: clip; }
 html[dir="rtl"] .footer .text-end { text-align: left !important; }
+
+/* ---- Batch 18: brand consistency — all page heroes use the blue gradient ---- */
+.hero, .isfc-hero, .page-hero {
+  background: linear-gradient(135deg, #102542 0%, #2755d8 55%, #37c8f0 130%) !important;
+  color: #fff !important;
+}
+.hero h1, .hero p, .isfc-hero h1, .isfc-hero p { color: #fff !important; }
+
+/* ---- Batch 19: hero decorations were swallowing clicks on hero buttons
+   (the "Download CSV not working" bug) — decorations become click-through
+   and hero controls sit above them. ---- */
+.pis-hero::before, .pis-hero::after,
+.si-hero::before, .si-hero::after,
+.po-hero::before, .po-hero::after,
+.rep-hero::before, .rep-hero::after,
+.qc-hero::before, .qc-hero::after,
+.packing-hero::before, .packing-hero::after,
+.dispatch-hero::before, .dispatch-hero::after,
+.section-hero::before, .section-hero::after,
+.isfc-hero::before, .isfc-hero::after,
+.hero::before, .hero::after {
+  pointer-events: none !important;
+}
+.pis-hero a, .pis-hero .btn, .pis-hero form,
+.isfc-hero a, .isfc-hero .btn, .isfc-hero form,
+.hero a, .hero .btn, .hero form {
+  position: relative;
+  z-index: 5;
+}
+
+/* ---- Batch 19: kitchen receiving line status — clear color coding ---- */
+.isfc-tx-status { border-radius: .5rem; padding: .35rem .6rem; font-weight: 700; font-size: .72rem; display: inline-block; text-align: center; min-width: 92px; }
+.isfc-tx-status.st-pending    { background: #fff4d6; color: #8a6100; }
+.isfc-tx-status.st-received   { background: #d9e8ff; color: #1b4fbf; }
+.isfc-tx-status.st-transferred{ background: #d9f5e5; color: #0d7a43; }
+.isfc-tx-status.st-completed  { background: #e2f7d9; color: #3c7a0d; }
+.isfc-tx-status.st-other      { background: #eef2f6; color: #51606f; }
+html[data-bs-theme="dark"] .isfc-tx-status.st-pending    { background: rgba(255,193,7,.16); color: #ffd76a; }
+html[data-bs-theme="dark"] .isfc-tx-status.st-received   { background: rgba(96,165,250,.18); color: #93c5fd; }
+html[data-bs-theme="dark"] .isfc-tx-status.st-transferred{ background: rgba(52,211,153,.16); color: #6ee7b7; }
+html[data-bs-theme="dark"] .isfc-tx-status.st-completed  { background: rgba(132,204,22,.16); color: #bef264; }
+html[data-bs-theme="dark"] .isfc-tx-status.st-other      { background: rgba(148,163,184,.16); color: #cbd5e1; }

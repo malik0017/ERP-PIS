@@ -198,6 +198,12 @@ def _workbook_response(wb: Workbook, filename: str):
     )
 
 
+@router.get("/masters")
+def masters_home():
+    """Batch 19: /masters had no index route (404 from search/pages links)."""
+    return RedirectResponse("/module/masters/dashboard", status_code=303)
+
+
 @router.get("/masters/upload", response_class=HTMLResponse)
 def master_upload_page(request: Request, selected: str = "customers"):
     # Full master workbook upload must stay admin/super-admin only.

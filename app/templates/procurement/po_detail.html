@@ -10,7 +10,31 @@
         <h2 class="mb-1 text-white">{{ po.po_no }}</h2>
         <p class="mb-0 opacity-75">{{ po.supplier_name }} · PO Date {{ po.po_date }} · Expected {{ po.expected_date or '-' }} · <b>{{ po.status }}</b></p>
       </div>
-      <a class="btn btn-phoenix-secondary" href="/procurement">Back to Register</a>
+      <div class="d-flex gap-2">
+        <a class="btn btn-light" href="/procurement/po/{{ po.po_no }}/print" target="_blank">
+          <i class="bi bi-printer me-1"></i>Print PO</a>
+
+        {# Batch 26: Oracle/SAP-B1 style document control. Close stops further
+           receiving but keeps all history; Cancel is only offered before any
+           goods arrived; Reopen recomputes the true status. #}
+        {% if po.status in ['Open', 'Partially Received'] %}
+        <form method="post" action="/procurement/po/{{ po.po_no }}/status" class="d-inline"
+              onsubmit="return confirm('Close this PO? No further goods can be received against it. History is kept.');">
+          <input type="hidden" name="new_status" value="Closed">
+          <input type="hidden" name="reason" value="Closed from PO detail">
+          <button class="btn btn-warning" type="submit"><i class="bi bi-lock me-1"></i>Close PO</button>
+        </form>
+        {% endif %}
+
+        {% if po.status in ['Closed', 'Cancelled'] %}
+        <form method="post" action="/procurement/po/{{ po.po_no }}/status" class="d-inline">
+          <input type="hidden" name="new_status" value="Open">
+          <button class="btn btn-success" type="submit"><i class="bi bi-unlock me-1"></i>Reopen PO</button>
+        </form>
+        {% endif %}
+
+        <a class="btn btn-phoenix-secondary" href="/procurement">Back to Register</a>
+      </div>
     </div>
   </div>
 

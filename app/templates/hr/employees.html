@@ -1,0 +1,124 @@
+{% extends "layouts/base.html" %}
+{% block title %}Employees | ISFC{% endblock %}
+{% block content %}
+<div class="container-fluid py-3 isfc-page">
+
+  <div class="isfc-hero mb-4 p-4 d-flex align-items-center justify-content-between flex-wrap gap-3">
+    <div>
+      <h1 class="mb-1">{{ t('Employees') }}</h1>
+      <p class="mb-0">{{ t('HCM employee master — kitchen staff, sections, positions and linked system users.') }}</p>
+    </div>
+    <div class="d-flex gap-2">
+      <a class="btn btn-light" href="/hr/attendance"><span data-feather="calendar" class="me-1"></span>{{ t('Attendance') }}</a>
+      <a class="btn btn-phoenix-secondary" href="/module/hr/dashboard">{{ t('HCM Cockpit') }}</a>
+    </div>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-sm-6 col-xl-3"><div class="card h-100 isfc-kpi-card"><div class="card-body">
+      <p class="text-body-tertiary text-uppercase fs-10 mb-1">{{ t('Employees') }}</p>
+      <h2 class="mb-0 text-body-emphasis">{{ kpis.total }}</h2></div></div></div>
+    <div class="col-sm-6 col-xl-3"><div class="card h-100 isfc-kpi-card"><div class="card-body">
+      <p class="text-body-tertiary text-uppercase fs-10 mb-1">{{ t('Active') }}</p>
+      <h2 class="mb-0 text-success">{{ kpis.active }}</h2></div></div></div>
+    <div class="col-sm-6 col-xl-3"><div class="card h-100 isfc-kpi-card"><div class="card-body">
+      <p class="text-body-tertiary text-uppercase fs-10 mb-1">{{ t('Present Today') }}</p>
+      <h2 class="mb-0 text-body-emphasis">{{ kpis.present_today }}</h2></div></div></div>
+    <div class="col-sm-6 col-xl-3"><div class="card h-100 isfc-kpi-card"><div class="card-body">
+      <p class="text-body-tertiary text-uppercase fs-10 mb-1">{{ t('Absent / Leave Today') }}</p>
+      <h2 class="mb-0 {{ 'text-danger' if kpis.absent_today else 'text-body-emphasis' }}">{{ kpis.absent_today }}</h2></div></div></div>
+  </div>
+
+  {# ---- New employee ---- #}
+  {% if can_action('hr', 'create') %}
+  <div class="card mb-3">
+    <div class="card-header"><h5 class="mb-0 text-body-emphasis">{{ t('New Employee') }}</h5></div>
+    <div class="card-body">
+      <form method="post" action="/hr/employees/create" class="row g-2 align-items-end">
+        <div class="col-md-2"><label class="form-label">{{ t('Code') }}</label>
+          <input class="form-control" name="employee_code" value="{{ next_code }}"></div>
+        <div class="col-md-2"><label class="form-label">{{ t('Full Name') }} *</label>
+          <input class="form-control" name="full_name" required></div>
+        <div class="col-md-2"><label class="form-label">{{ t('Name (Arabic)') }}</label>
+          <input class="form-control" name="full_name_ar" dir="rtl"></div>
+        <div class="col-md-2"><label class="form-label">{{ t('Section') }}</label>
+          <select class="form-select" name="section"><option value="">—</option>
+            {% for s in sections %}<option>{{ s }}</option>{% endfor %}</select></div>
+        <div class="col-md-2"><label class="form-label">{{ t('Position') }}</label>
+          <input class="form-control" name="position" placeholder="Chef / Helper / QC…"></div>
+        <div class="col-md-2"><label class="form-label">{{ t('Phone') }}</label>
+          <input class="form-control" name="phone"></div>
+        <div class="col-md-2"><label class="form-label">{{ t('Hire Date') }}</label>
+          <input type="date" class="form-control" name="hire_date"></div>
+        <div class="col-md-2"><label class="form-label">{{ t('Linked User') }}</label>
+          <select class="form-select" name="linked_username"><option value="">—</option>
+            {% for u in users %}<option>{{ u.username }}</option>{% endfor %}</select></div>
+        <div class="col-md-2"><button class="btn btn-primary w-100" type="submit">
+          <span data-feather="user-plus" class="me-1"></span>{{ t('Add Employee') }}</button></div>
+      </form>
+    </div>
+  </div>
+  {% endif %}
+
+  {# ---- Filter + list ---- #}
+  <div class="card">
+    <div class="card-header">
+      <form method="get" class="row g-2 align-items-end">
+        <div class="col-md-3"><input class="form-control" name="q" value="{{ filters.q }}"
+          placeholder="{{ t('Search code / name…') }}"></div>
+        <div class="col-md-3"><select class="form-select" name="section">
+          <option value="">{{ t('All Sections') }}</option>
+          {% for s in sections %}<option {% if s == filters.section %}selected{% endif %}>{{ s }}</option>{% endfor %}
+        </select></div>
+        <div class="col-md-3 d-flex gap-2">
+          <button class="btn btn-primary" type="submit">{{ t('Filter') }}</button>
+          <a class="btn btn-phoenix-secondary" href="/hr/employees">{{ t('Reset') }}</a>
+        </div>
+      </form>
+    </div>
+    <div class="card-body p-0"><div class="table-responsive">
+      <table class="table table-sm fs-9 mb-0 align-middle">
+        <thead><tr class="text-uppercase text-body-tertiary fs-10">
+          <th class="ps-4">{{ t('Code') }}</th><th>{{ t('Name') }}</th><th>{{ t('Name (AR)') }}</th>
+          <th>{{ t('Section') }}</th><th>{{ t('Position') }}</th><th>{{ t('Phone') }}</th>
+          <th>{{ t('Linked User') }}</th><th>{{ t('Status') }}</th>
+          {% if can_action('hr','edit') %}<th class="pe-4 text-center" style="min-width:120px">{{ t('Save') }}</th>{% endif %}
+        </tr></thead>
+        <tbody>
+          {% for r in rows %}
+          <tr>
+            {% if can_action('hr','edit') %}
+            <form method="post" action="/hr/employees/{{ r.id }}/update">
+            <td class="ps-4 fw-bold">{{ r.employee_code }}</td>
+            <td><input class="form-control form-control-sm" name="full_name" value="{{ r.full_name }}"></td>
+            <td><input class="form-control form-control-sm" name="full_name_ar" value="{{ r.full_name_ar }}" dir="rtl"></td>
+            <td><select class="form-select form-select-sm" name="section"><option value="">—</option>
+              {% for s in sections %}<option {% if s == r.section %}selected{% endif %}>{{ s }}</option>{% endfor %}</select></td>
+            <td><input class="form-control form-control-sm" name="position" value="{{ r.position }}"></td>
+            <td><input class="form-control form-control-sm" name="phone" value="{{ r.phone }}">
+                <input type="hidden" name="hire_date" value="{{ r.hire_date }}"></td>
+            <td><select class="form-select form-select-sm" name="linked_username"><option value="">—</option>
+              {% for u in users %}<option {% if u.username == r.linked_username %}selected{% endif %}>{{ u.username }}</option>{% endfor %}</select></td>
+            <td><select class="form-select form-select-sm" name="status">
+              <option {% if r.status == 'Active' %}selected{% endif %}>Active</option>
+              <option {% if r.status == 'Inactive' %}selected{% endif %}>Inactive</option></select></td>
+            <td class="pe-4 text-center"><button class="btn btn-sm btn-phoenix-primary py-0 px-2" type="submit">{{ t('Save') }}</button></td>
+            </form>
+            {% else %}
+            <td class="ps-4 fw-bold">{{ r.employee_code }}</td>
+            <td>{{ r.full_name }}</td><td dir="rtl">{{ r.full_name_ar }}</td>
+            <td>{{ r.section }}</td><td>{{ r.position }}</td><td>{{ r.phone }}</td>
+            <td>{{ r.linked_username }}</td>
+            <td><span class="badge badge-phoenix badge-phoenix-{{ 'success' if r.status == 'Active' else 'secondary' }}">{{ r.status }}</span></td>
+            {% endif %}
+          </tr>
+          {% else %}
+          <tr><td colspan="9" class="text-center text-body-tertiary py-5">
+            {{ t('No employees yet — add your kitchen staff above.') }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div></div>
+  </div>
+</div>
+{% endblock %}

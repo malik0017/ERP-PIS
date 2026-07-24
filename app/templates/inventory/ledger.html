@@ -30,7 +30,10 @@
               <td class="text-success">{{ r.qty_in or '' }}</td>
               <td class="text-warning">{{ r.qty_out or '' }}</td>
               <td>{{ r.unit_cost or '-' }}</td>
-              <td class="fw-bold {% if running[loop.index0] < 0 %}text-danger{% endif %}">{{ '%.4f'|format(running[loop.index0]) }}</td>
+              {# Batch 24: defensive — if `running` is ever missing or short, show
+                 a dash instead of raising UndefinedError and 500-ing the page. #}
+              {% set rb = (running[loop.index0] if running is defined and running is not none and running|length > loop.index0 else None) %}
+              <td class="fw-bold {% if rb is not none and rb < 0 %}text-danger{% endif %}">{{ '%.4f'|format(rb) if rb is not none else '—' }}</td>
               <td class="pe-4 text-body-tertiary">{{ r.remarks or '' }} {% if r.created_by %}· {{ r.created_by }}{% endif %}</td>
             </tr>
             {% else %}

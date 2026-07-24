@@ -39,7 +39,7 @@ PAGE_AREAS = {
     "kitchen_summary",
 
     # Kitchen sections
-    "section_thawing", "section_cutting", "section_butchery", "section_marination",
+    "section_cutting", "section_butchery",
     "section_hot_kitchen", "section_cold_kitchen", "section_bakery_pastry",
 
     # Project Management
@@ -58,10 +58,8 @@ AREA_PARENTS = {
     "production_orders": "orders",
     "store_issuance": "store",
     "kitchen_summary": "kitchen",
-    "section_thawing": "kitchen",
     "section_cutting": "kitchen",
     "section_butchery": "kitchen",
-    "section_marination": "kitchen",
     "section_hot_kitchen": "kitchen",
     "section_cold_kitchen": "kitchen",
     "section_bakery_pastry": "kitchen",

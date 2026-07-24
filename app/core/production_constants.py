@@ -35,12 +35,12 @@ ORDER_STATUSES = [
     "Cancelled",
 ]
 
+# Batch 20: Thawing and Marination are retired as standalone stations.
+# Both activities are handled INSIDE Butchery. Do not re-add them here.
 SECTIONS = [
     "Store",
-    "Thawing",
     "Cutting",
     "Butchery",
-    "Marination",
     "Hot Kitchen",
     "Cold Kitchen",
     "Bakery/Pastry",
@@ -50,10 +50,8 @@ SECTIONS = [
 ]
 
 KITCHEN_SECTIONS = [
-    "Thawing",
     "Cutting",
     "Butchery",
-    "Marination",
     "Hot Kitchen",
     "Cold Kitchen",
     "Bakery/Pastry",

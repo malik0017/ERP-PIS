@@ -1,0 +1,86 @@
+{% extends "layouts/base.html" %}
+{% block title %}Attendance | ISFC{% endblock %}
+{% block content %}
+<div class="container-fluid py-3 isfc-page">
+
+  <div class="isfc-hero mb-4 p-4 d-flex align-items-center justify-content-between flex-wrap gap-3">
+    <div>
+      <h1 class="mb-1">{{ t('Daily Attendance') }}</h1>
+      <p class="mb-0">{{ t('Mark Present / Absent / Leave / Sick per employee, with check-in and check-out times.') }}</p>
+    </div>
+    <a class="btn btn-light" href="/hr/employees"><span data-feather="users" class="me-1"></span>{{ t('Employees') }}</a>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-sm-6 col-xl-3"><div class="card h-100 isfc-kpi-card"><div class="card-body">
+      <p class="text-body-tertiary text-uppercase fs-10 mb-1">{{ t('Employees') }}</p>
+      <h2 class="mb-0 text-body-emphasis">{{ kpis.employees }}</h2></div></div></div>
+    <div class="col-sm-6 col-xl-3"><div class="card h-100 isfc-kpi-card"><div class="card-body">
+      <p class="text-body-tertiary text-uppercase fs-10 mb-1">{{ t('Marked') }}</p>
+      <h2 class="mb-0 text-body-emphasis">{{ kpis.marked }}</h2></div></div></div>
+    <div class="col-sm-6 col-xl-3"><div class="card h-100 isfc-kpi-card"><div class="card-body">
+      <p class="text-body-tertiary text-uppercase fs-10 mb-1">{{ t('Present') }}</p>
+      <h2 class="mb-0 text-success">{{ kpis.present }}</h2></div></div></div>
+    <div class="col-sm-6 col-xl-3"><div class="card h-100 isfc-kpi-card"><div class="card-body">
+      <p class="text-body-tertiary text-uppercase fs-10 mb-1">{{ t('Absent / Leave / Sick') }}</p>
+      <h2 class="mb-0 {{ 'text-danger' if kpis.absent else 'text-body-emphasis' }}">{{ kpis.absent }}</h2></div></div></div>
+  </div>
+
+  <div class="card mb-3">
+    <div class="card-body">
+      <form method="get" class="row g-2 align-items-end">
+        <div class="col-md-3"><label class="form-label">{{ t('Date') }}</label>
+          <input type="date" class="form-control" name="att_date" value="{{ att_date }}"></div>
+        <div class="col-md-3"><label class="form-label">{{ t('Section') }}</label>
+          <select class="form-select" name="section"><option value="">{{ t('All Sections') }}</option>
+            {% for s in sections %}<option {% if s == section %}selected{% endif %}>{{ s }}</option>{% endfor %}
+          </select></div>
+        <div class="col-md-3"><button class="btn btn-primary" type="submit">{{ t('Load') }}</button></div>
+      </form>
+    </div>
+  </div>
+
+  <form method="post" action="/hr/attendance/mark">
+    <input type="hidden" name="att_date" value="{{ att_date }}">
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0 text-body-emphasis">{{ t('Attendance for') }} {{ att_date }}</h5>
+        {% if can_action('hr', 'edit') %}
+        <button class="btn btn-primary btn-sm" type="submit">
+          <span data-feather="save" class="me-1"></span>{{ t('Save All') }}</button>
+        {% endif %}
+      </div>
+      <div class="card-body p-0"><div class="table-responsive">
+        <table class="table table-sm fs-9 mb-0 align-middle">
+          <thead><tr class="text-uppercase text-body-tertiary fs-10">
+            <th class="ps-4">{{ t('Employee') }}</th><th>{{ t('Section') }}</th>
+            <th style="width:150px">{{ t('Status') }}</th>
+            <th style="width:120px">{{ t('Check In') }}</th>
+            <th style="width:120px">{{ t('Check Out') }}</th>
+            <th class="pe-4">{{ t('Remarks') }}</th>
+          </tr></thead>
+          <tbody>
+            {% for r in rows %}
+            <tr>
+              <td class="ps-4"><span class="fw-bold">{{ r.employee_code }}</span> {{ r.full_name }}
+                <input type="hidden" name="employee_code" value="{{ r.employee_code }}"></td>
+              <td>{{ r.section }}</td>
+              <td><select class="form-select form-select-sm" name="att_status">
+                <option value="">—</option>
+                {% for s in statuses %}<option {% if s == r.att_status %}selected{% endif %}>{{ s }}</option>{% endfor %}
+              </select></td>
+              <td><input type="time" class="form-control form-control-sm" name="check_in" value="{{ r.check_in }}"></td>
+              <td><input type="time" class="form-control form-control-sm" name="check_out" value="{{ r.check_out }}"></td>
+              <td class="pe-4"><input class="form-control form-control-sm" name="remarks" value="{{ r.remarks }}"></td>
+            </tr>
+            {% else %}
+            <tr><td colspan="6" class="text-center text-body-tertiary py-5">
+              {{ t('No active employees — add them on the Employees page first.') }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div></div>
+    </div>
+  </form>
+</div>
+{% endblock %}

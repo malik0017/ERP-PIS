@@ -167,7 +167,7 @@ html[data-bs-theme="dark"] .input-group-text {
 }
 
 /* ========== 6. BUTTONS ========== */
-html[data-bs-theme="dark"] .btn-secondary,
+/* html[data-bs-theme="dark"] .btn-secondary,
 html[data-bs-theme="dark"] .btn-outline-secondary {
   color: var(--isfc-text-primary);
   border-color: var(--isfc-border);
@@ -176,7 +176,7 @@ html[data-bs-theme="dark"] .btn-outline-secondary {
 html[data-bs-theme="dark"] .btn-outline-secondary:hover {
   background: var(--isfc-bg-tertiary);
   color: var(--isfc-text-primary);
-}
+} */
 
 html[data-bs-theme="dark"] .btn-close {
   filter: brightness(0.8);

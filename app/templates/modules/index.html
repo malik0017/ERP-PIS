@@ -1,45 +1,70 @@
-{% extends "layouts/base.html" %}
+{# Batch 23: chrome-less launcher — no header, no footer, no sidebar/navbar. #}
+{% extends "layouts/launcher_base.html" %}
 {% block title %}ERP Modules | ISFC{% endblock %}
 {% block content %}
 {# ============================================================================
-   Batch 10 — ERP Module Launcher (post-login landing page for ALL users)
-   - Every card opens the module's OWN dashboard (/module/{key}/dashboard or
-     the module's existing command center).
-   - Cards are gated by can_access(): access is 100% managed from the
-     Users & Access UI (no code changes needed).
-   - Admin / superadmin / administrator always see every card incl.
-     Customer Portal.
-   - Dark mode: uses Phoenix CSS variables only, no hard-coded colors.
+   Batch 22 — ERP Module Launcher (redesigned)
+   - Keeps the app chrome (header / sidebar / footer) because access is
+     role-based and users navigate from here.
+   - Removes the old static annotation + static KPI badge strip.
+   - Adds live KPI tiles and THREE real ECharts (orders, inventory value,
+     receivable vs payable) fed with real data from build_launcher_context().
+   - Cards remain gated by can_access(); admins see everything.
+   - Dark-mode safe (Phoenix variables only).
    ============================================================================ #}
 <div class="container-fluid py-3 isfc-page module-launcher">
-  <div class="isfc-hero mb-4 p-4">
-    <h1 class="mb-1">{{ t('ISFC ERP Module Launcher') }}</h1>
-    <p class="mb-0">
+
+  <div class="isfc-hero mb-4 p-4 rounded-4 text-white"
+       style="background: linear-gradient(120deg,#1e3a8a 0%,#2563eb 55%,#3b82f6 100%);">
+    <h1 class="mb-1 fw-bolder">{{ t('PIS ERP Module Launcher') }}</h1>
+    <p class="mb-0 opacity-75">
       {{ t('Select the business area you want to work in. Cards are shown based on your role and access matrix.') }}
     </p>
   </div>
 
+  {# ---------------- Live KPI tiles ---------------- #}
   {% if stats %}
-  <div class="d-flex flex-wrap gap-2 mb-4">
-    <span class="badge badge-phoenix badge-phoenix-primary fs-9"><i class="bi bi-cart me-1"></i>{{ t('Open Orders') }}: {{ stats.open_orders }}</span>
-    <span class="badge badge-phoenix badge-phoenix-info fs-9"><i class="bi bi-box-seam me-1"></i>{{ t('Inventory Items') }}: {{ stats.inventory_items }}</span>
-    <span class="badge badge-phoenix badge-phoenix-warning fs-9"><i class="bi bi-bag me-1"></i>{{ t('Open POs') }}: {{ stats.open_pos }}</span>
-    <span class="badge badge-phoenix badge-phoenix-success fs-9"><i class="bi bi-receipt me-1"></i>{{ t('Open AR') }}: {{ stats.ar_open }}</span>
-    <span class="badge badge-phoenix badge-phoenix-secondary fs-9"><i class="bi bi-people me-1"></i>{{ t('Customers') }}: {{ stats.customers }}</span>
+  <div class="row g-3 mb-4">
+    {% set tiles = [
+      ('Open Orders', stats.open_orders, 'cart', 'primary'),
+      ('Inventory Items', stats.inventory_items, 'box-seam', 'info'),
+      ('Stock Value', '%.0f'|format(stats.stock_value), 'bank', 'success'),
+      ('Open POs', stats.open_pos, 'bag', 'warning'),
+      ('Open AR', '%.0f'|format(stats.ar_open), 'receipt', 'danger'),
+      ('Customers', stats.customers, 'people', 'secondary')
+    ] %}
+    {% for label, value, icon, color in tiles %}
+    <div class="col-6 col-md-4 col-xl-2">
+      <div class="card border h-100 shadow-none">
+        <div class="card-body d-flex align-items-center gap-3 p-3">
+          <span class="d-inline-flex align-items-center justify-content-center rounded-3 bg-{{ color }}-subtle text-{{ color }}"
+                style="width:44px;height:44px;font-size:20px;">
+            <i class="bi bi-{{ icon }}"></i>
+          </span>
+          <div>
+            <div class="fs-7 fw-bolder mb-0">{{ value }}</div>
+            <div class="text-body-tertiary fs-9">{{ t(label) }}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
   </div>
   {% endif %}
 
+  {# Batch 23: the three-chart strip was removed at the client's request.
+     Charts remain available inside each module dashboard. #}
+
+  {# ---------------- Module cards (RBAC-gated) ---------------- #}
   <div class="row g-3">
 
     {% if can_access('dashboard') or can_access('production_orders') or can_access('kitchen_summary') %}
     <div class="col-md-6 col-xl-4">
       <a class="module-card" href="/module/production/dashboard">
-        <span class="module-icon bg-primary"><span data-feather="activity"></span></span>
-        <div>
-          <h3>{{ t('Production Intelligence') }}</h3>
+        <span class="module-icon bg-primary"><i class="bi bi-activity"></i></span>
+        <div><h3>{{ t('Production Intelligence') }}</h3>
           <p>{{ t('Orders, head chef planning, BOM, store issuance, kitchen, QC, packing and dispatch.') }}</p>
-          <b>{{ t('Open Production Dashboard') }} →</b>
-        </div>
+          <b>{{ t('Open Production Dashboard') }} →</b></div>
       </a>
     </div>
     {% endif %}
@@ -47,12 +72,10 @@
     {% if can_access('inventory_valuation') %}
     <div class="col-md-6 col-xl-4">
       <a class="module-card" href="/module/inventory/dashboard">
-        <span class="module-icon bg-info"><span data-feather="box"></span></span>
-        <div>
-          <h3>{{ t('Inventory & Valuation') }}</h3>
+        <span class="module-icon bg-info"><i class="bi bi-box-seam"></i></span>
+        <div><h3>{{ t('Inventory & Valuation') }}</h3>
           <p>{{ t('Stock on hand, GRN movements, issue movements, item ledger and valuation.') }}</p>
-          <b>{{ t('Open Inventory Dashboard') }} →</b>
-        </div>
+          <b>{{ t('Open Inventory Dashboard') }} →</b></div>
       </a>
     </div>
     {% endif %}
@@ -60,12 +83,10 @@
     {% if can_access('procurement') %}
     <div class="col-md-6 col-xl-4">
       <a class="module-card" href="/module/procurement/dashboard">
-        <span class="module-icon bg-warning"><span data-feather="shopping-bag"></span></span>
-        <div>
-          <h3>{{ t('Procurement') }}</h3>
+        <span class="module-icon bg-warning"><i class="bi bi-bag"></i></span>
+        <div><h3>{{ t('Procurement') }}</h3>
           <p>{{ t('Purchase orders, GRN receiving, supplier purchases and inventory entry.') }}</p>
-          <b>{{ t('Open Procurement Dashboard') }} →</b>
-        </div>
+          <b>{{ t('Open Procurement Dashboard') }} →</b></div>
       </a>
     </div>
     {% endif %}
@@ -73,12 +94,10 @@
     {% if can_access('project_management') %}
     <div class="col-md-6 col-xl-4">
       <a class="module-card" href="/module/projects/dashboard">
-        <span class="module-icon bg-info"><span data-feather="briefcase"></span></span>
-        <div>
-          <h3>{{ t('Project Management') }}</h3>
+        <span class="module-icon bg-info"><i class="bi bi-briefcase"></i></span>
+        <div><h3>{{ t('Project Management') }}</h3>
           <p>{{ t('Create, plan, and manage projects with team assignments, timelines, and budgets.') }}</p>
-          <b>{{ t('Open Projects Dashboard') }} →</b>
-        </div>
+          <b>{{ t('Open Projects Dashboard') }} →</b></div>
       </a>
     </div>
     {% endif %}
@@ -86,12 +105,10 @@
     {% if can_access('finance') %}
     <div class="col-md-6 col-xl-4">
       <a class="module-card" href="/module/finance/dashboard">
-        <span class="module-icon bg-success"><span data-feather="dollar-sign"></span></span>
-        <div>
-          <h3>{{ t('Finance') }}</h3>
-          <p>{{ t('AR invoice drafts, AP supplier invoices, payments and statement foundation.') }}</p>
-          <b>{{ t('Open Finance Dashboard') }} →</b>
-        </div>
+        <span class="module-icon bg-success"><i class="bi bi-cash-coin"></i></span>
+        <div><h3>{{ t('Finance') }}</h3>
+          <p>{{ t('Chart of accounts, journals, AR, AP, payments and real-time trial balance.') }}</p>
+          <b>{{ t('Open Finance Dashboard') }} →</b></div>
       </a>
     </div>
     {% endif %}
@@ -99,12 +116,10 @@
     {% if can_access('reports') %}
     <div class="col-md-6 col-xl-4">
       <a class="module-card" href="/module/reports/dashboard">
-        <span class="module-icon bg-secondary"><span data-feather="bar-chart-2"></span></span>
-        <div>
-          <h3>{{ t('Reports & BI') }}</h3>
+        <span class="module-icon bg-secondary"><i class="bi bi-bar-chart-line"></i></span>
+        <div><h3>{{ t('Reports & BI') }}</h3>
           <p>{{ t('Management reports, printable forms, drill-downs and export packs.') }}</p>
-          <b>{{ t('Open Reports Dashboard') }} →</b>
-        </div>
+          <b>{{ t('Open Reports Dashboard') }} →</b></div>
       </a>
     </div>
     {% endif %}
@@ -112,12 +127,10 @@
     {% if can_access('master_data') or can_access('master_upload') %}
     <div class="col-md-6 col-xl-4">
       <a class="module-card" href="/module/masters/dashboard">
-        <span class="module-icon bg-danger"><span data-feather="database"></span></span>
-        <div>
-          <h3>{{ t('Master Data') }}</h3>
+        <span class="module-icon bg-danger"><i class="bi bi-database"></i></span>
+        <div><h3>{{ t('Master Data') }}</h3>
           <p>{{ t('Customers, suppliers, chefs, brands, kitchen sections, revenue streams and items.') }}</p>
-          <b>{{ t('Open Masters Dashboard') }} →</b>
-        </div>
+          <b>{{ t('Open Masters Dashboard') }} →</b></div>
       </a>
     </div>
     {% endif %}
@@ -125,12 +138,21 @@
     {% if can_access('hr') or user_role in ['ADMIN','SUPER_ADMIN','SUPERADMIN','ADMINISTRATOR'] %}
     <div class="col-md-6 col-xl-4">
       <a class="module-card" href="/module/hr/dashboard">
-        <span class="module-icon bg-primary"><span data-feather="users"></span></span>
-        <div>
-          <h3>{{ t('HCM (Human Capital)') }}</h3>
+        <span class="module-icon bg-primary"><i class="bi bi-people"></i></span>
+        <div><h3>{{ t('HCM (Human Capital)') }}</h3>
           <p>{{ t('Employees, kitchen staff, system users and access — payroll in next phase.') }}</p>
-          <b>{{ t('Open HCM Dashboard') }} →</b>
-        </div>
+          <b>{{ t('Open HCM Dashboard') }} →</b></div>
+      </a>
+    </div>
+    {% endif %}
+
+    {% if user_role in ['ADMIN','SUPER_ADMIN','SUPERADMIN','ADMINISTRATOR'] %}
+    <div class="col-md-6 col-xl-4">
+      <a class="module-card" href="/admin/users">
+        <span class="module-icon bg-dark"><i class="bi bi-shield-lock"></i></span>
+        <div><h3>{{ t('Users & Access') }}</h3>
+          <p>{{ t('Manage users, roles and the per-user access matrix. Super-admin controls everything.') }}</p>
+          <b>{{ t('Open User Management') }} →</b></div>
       </a>
     </div>
     {% endif %}
@@ -138,12 +160,10 @@
     {% if can_access('customer_portal') or user_role in ['ADMIN','SUPER_ADMIN','SUPERADMIN','ADMINISTRATOR'] %}
     <div class="col-md-6 col-xl-4">
       <a class="module-card" href="/my">
-        <span class="module-icon bg-success"><span data-feather="user-check"></span></span>
-        <div>
-          <h3>{{ t('Customer Portal') }}</h3>
+        <span class="module-icon bg-success"><i class="bi bi-person-check"></i></span>
+        <div><h3>{{ t('Customer Portal') }}</h3>
           <p>{{ t('Customer-facing order tracking, delivery status and statements.') }}</p>
-          <b>{{ t('Open Customer Portal') }} →</b>
-        </div>
+          <b>{{ t('Open Customer Portal') }} →</b></div>
       </a>
     </div>
     {% endif %}
@@ -152,33 +172,21 @@
 </div>
 
 <style>
-  /* Theme-variable driven => automatically correct in dark mode. */
   .module-card {
-    display: flex;
-    gap: 18px;
-    height: 100%;
-    padding: 24px;
-    border: 1px solid var(--phoenix-border-color);
-    border-radius: 22px;
+    display: flex; gap: 18px; height: 100%; padding: 24px;
+    border: 1px solid var(--phoenix-border-color); border-radius: 22px;
     background: var(--phoenix-emphasis-bg);
     box-shadow: 0 16px 32px rgba(15, 23, 42, 0.08);
-    text-decoration: none;
-    color: var(--phoenix-body-color);
-    transition: 0.18s ease;
+    text-decoration: none; color: var(--phoenix-body-color); transition: 0.18s ease;
   }
-  .module-card:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 22px 42px rgba(15, 23, 42, 0.12);
-  }
-  .module-card h3 { font-weight: 900; margin: 0 0 6px; color: var(--phoenix-emphasis-color); }
-  .module-card p { color: var(--phoenix-secondary-color); margin-bottom: 14px; }
+  .module-card:hover { transform: translateY(-3px); box-shadow: 0 22px 42px rgba(15, 23, 42, 0.12); }
+  .module-card h3 { font-weight: 900; margin: 0 0 6px; font-size: 1.15rem; color: var(--phoenix-emphasis-color); }
+  .module-card p { color: var(--phoenix-secondary-color); margin-bottom: 14px; font-size: .9rem; }
   .module-card b { color: var(--phoenix-primary); }
   .module-icon {
-    width: 56px; height: 56px; border-radius: 16px;
-    display: inline-flex; align-items: center; justify-content: center;
-    color: #fff; flex: 0 0 56px;
+    width: 56px; height: 56px; border-radius: 16px; display: inline-flex;
+    align-items: center; justify-content: center; color: #fff; flex: 0 0 56px; font-size: 24px;
   }
-  .module-icon svg { width: 26px; height: 26px; }
   [data-bs-theme="dark"] .module-card {
     background: var(--isfc-bg-secondary, #111c2e);
     border-color: var(--isfc-border, #2a3a55);

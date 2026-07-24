@@ -1,6 +1,8 @@
 # app/modules/finance/routes.py
 from __future__ import annotations
 
+import logging  # Batch 26: never hide finance query failures
+
 from datetime import date
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import RedirectResponse
@@ -76,6 +78,117 @@ def _ensure_finance_schema(db: Session) -> None:
             KEY idx_pay_ref (reference_no), KEY idx_pay_party (party_type, party_name)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     """)
+    # ------------------------------------------------------------------
+    # Batch 27 — SELF-HEALING COLUMN REPAIR.
+    #
+    # THE BUG THIS FIXES: "No GRNs found" in Supplier Invoice Entry even when
+    # GRNs clearly exist on the PO screen.
+    #
+    # CREATE TABLE IF NOT EXISTS does NOTHING when the table already exists. On
+    # databases where ap_invoices / ar_invoices were first created by the older
+    # SQLAlchemy models, columns such as grn_no, match_status and paid_amount
+    # were never added. The GRN picker joins ap_invoices ON grn_no, so the whole
+    # query raised "Unknown column 'grn_no'" and the dropdown fell back to an
+    # empty list — exactly the symptom reported.
+    #
+    # Rather than require a manual migration, we ALTER the tables into shape on
+    # every request. Each ALTER is cheap and guarded: if the column is already
+    # there MySQL raises #1060 and we simply move on.
+    # ------------------------------------------------------------------
+    _repair = {
+        "ap_invoices": {
+            "company_id":   "INT NULL",
+            "po_no":        "VARCHAR(80) NULL",
+            "grn_no":       "VARCHAR(80) NULL",
+            "invoice_date": "DATE NULL",
+            "status":       "VARCHAR(40) NOT NULL DEFAULT 'Open'",
+            "amount":       "DECIMAL(18,4) NOT NULL DEFAULT 0",
+            "paid_amount":  "DECIMAL(18,4) NOT NULL DEFAULT 0",
+            "match_status": "VARCHAR(40) NOT NULL DEFAULT 'Pending Match'",
+            "remarks":      "TEXT NULL",
+            "created_by":   "VARCHAR(120) NULL",
+        },
+        "ar_invoices": {
+            "company_id":   "INT NULL",
+            "order_no":     "VARCHAR(80) NULL",
+            "invoice_date": "DATE NULL",
+            "status":       "VARCHAR(40) NOT NULL DEFAULT 'Open'",
+            "amount":       "DECIMAL(18,4) NOT NULL DEFAULT 0",
+            "paid_amount":  "DECIMAL(18,4) NOT NULL DEFAULT 0",
+            "remarks":      "TEXT NULL",
+            "created_by":   "VARCHAR(120) NULL",
+        },
+        "finance_payments": {
+            "company_id":   "INT NULL",
+            "party_type":   "VARCHAR(20) NULL",
+            "party_name":   "VARCHAR(255) NULL",
+            "reference_no": "VARCHAR(80) NULL",
+            "payment_date": "DATE NULL",
+            "amount":       "DECIMAL(18,4) NOT NULL DEFAULT 0",
+            "method":       "VARCHAR(50) NULL",
+            "remarks":      "TEXT NULL",
+            "created_by":   "VARCHAR(120) NULL",
+        },
+    }
+    for _table, _cols in _repair.items():
+        try:
+            existing = {r["Field"] for r in
+                        db.execute(text(f"SHOW COLUMNS FROM {_table}")).mappings().all()}
+        except Exception:
+            db.rollback()
+            continue  # table genuinely absent; the CREATE above handles it
+        for _col, _ddl in _cols.items():
+            if _col not in existing:
+                _try(f"ALTER TABLE {_table} ADD COLUMN {_col} {_ddl}")
+                logging.getLogger(__name__).warning(
+                    "finance: repaired missing column %s.%s", _table, _col)
+
+    # ------------------------------------------------------------------
+    # Batch 28 — COLLATION REPAIR.
+    #
+    # MySQL error #1267 "Illegal mix of collations
+    # (utf8mb4_0900_ai_ci,IMPLICIT) and (utf8mb4_unicode_ci,IMPLICIT)".
+    #
+    # A collation is the rule set MySQL uses to compare text. It REFUSES to
+    # compare two strings governed by different rules, so a join such as
+    #     inv.grn_no = g.grn_no
+    # blows up when the two tables were created with different collations.
+    #
+    # On this database the procurement tables (grn_receipts, grn_lines,
+    # purchase_orders, ...) came out as utf8mb4_0900_ai_ci — the MySQL 8
+    # default — while the finance tables are utf8mb4_unicode_ci. The mismatch
+    # was invisible until the GRN picker joined across the boundary, which is
+    # why "No GRNs found" appeared even though GRNs plainly existed.
+    #
+    # The queries themselves now pin COLLATE explicitly, so they work either
+    # way. This block additionally normalises the tables so EVERY future query
+    # is safe, not just the ones we remembered to annotate.
+    # ------------------------------------------------------------------
+    _collation_tables = [
+        "grn_receipts", "grn_lines", "purchase_orders", "purchase_order_lines",
+        "goods_receipts", "goods_receipt_lines", "store_issue_audit",
+        "ap_invoices", "ar_invoices", "finance_payments",
+        "gl_accounts", "gl_journals", "gl_journal_lines", "document_sequences",
+    ]
+    try:
+        wrong = {r["TABLE_NAME"] for r in db.execute(text("""
+            SELECT TABLE_NAME
+            FROM information_schema.TABLES
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND TABLE_COLLATION IS NOT NULL
+              AND TABLE_COLLATION <> 'utf8mb4_unicode_ci'
+        """)).mappings().all()}
+    except Exception:
+        db.rollback()
+        wrong = set()
+
+    for _t in _collation_tables:
+        if _t in wrong:
+            _try(f"ALTER TABLE {_t} CONVERT TO CHARACTER SET utf8mb4 "
+                 f"COLLATE utf8mb4_unicode_ci")
+            logging.getLogger(__name__).warning(
+                "finance: normalised collation of table %s", _t)
+
     try:
         db.commit()
     except Exception:
@@ -83,6 +196,11 @@ def _ensure_finance_schema(db: Session) -> None:
 
 
 def _safe_scalar(db: Session, sql: str, params=None, default=0):
+    """Run a scalar query, returning `default` on any error."""
+    try:
+        return db.execute(text(sql), params or {}).scalar() or default
+    except Exception:
+        return default
     try:
         return db.execute(text(sql), params or {}).scalar() or default
     except Exception:
@@ -122,24 +240,86 @@ def finance_dashboard(request: Request, db: Session = Depends(get_db)):
     ar = db.execute(text("SELECT * FROM ar_invoices ORDER BY id DESC LIMIT 100")).mappings().all()
     ap = db.execute(text("SELECT * FROM ap_invoices ORDER BY id DESC LIMIT 100")).mappings().all()
     payments = db.execute(text("SELECT * FROM finance_payments ORDER BY id DESC LIMIT 100")).mappings().all()
+
+    # ------------------------------------------------------------------
+    # Batch 26 — GRN picker for Supplier Invoice Entry.
+    #
+    # Was: the query sat inside `except Exception: pass`, so ANY error left the
+    # dropdown silently empty ("Manual / select GRN" with nothing under it) and
+    # the Supplier / PO / Amount fields never auto-filled.
+    #
+    # Now: errors are logged, and each GRN carries the extra data the form needs
+    # (received date, already-invoiced flag, remaining un-invoiced value) so the
+    # UI can auto-fill everything and grey out GRNs that are already billed.
+    # ------------------------------------------------------------------
     grns = []
+    # Batch 27: TWO-STAGE, fault-tolerant GRN picker.
+    # Stage 1 = full query (GRN value + already-invoiced + remaining).
+    # Stage 2 = minimal fallback that touches ONLY grn_receipts/grn_lines, used
+    #           if stage 1 fails for any reason. A schema problem in ap_invoices
+    #           can therefore never again leave the user with an empty dropdown.
     try:
-        grns = db.execute(text("""
-            SELECT g.grn_no, g.po_no, COALESCE(po.supplier_name,'') AS supplier_name,
-                   ROUND(SUM(COALESCE(l.received_qty,0)*COALESCE(l.unit_price,0)),2) AS amount
+        grns = [dict(r) for r in db.execute(text("""
+            SELECT  g.grn_no,
+                    COALESCE(g.po_no, '')                           AS po_no,
+                    COALESCE(po.supplier_name, g.supplier_name, '') AS supplier_name,
+                    COALESCE(g.received_date, CURDATE())            AS received_date,
+                    ROUND(COALESCE(v.grn_value, 0), 2)              AS amount,
+                    ROUND(COALESCE(inv.invoiced, 0), 2)             AS invoiced,
+                    ROUND(COALESCE(v.grn_value, 0)
+                          - COALESCE(inv.invoiced, 0), 2)           AS remaining
             FROM grn_receipts g
-            LEFT JOIN grn_lines l ON l.grn_no=g.grn_no
-            LEFT JOIN purchase_orders po ON po.po_no=g.po_no
-            GROUP BY g.grn_no, g.po_no, po.supplier_name
-            ORDER BY MAX(g.id) DESC LIMIT 200
-        """)).mappings().all()
-    except Exception:
-        pass
+            LEFT JOIN purchase_orders po
+                   ON po.po_no COLLATE utf8mb4_unicode_ci = g.po_no COLLATE utf8mb4_unicode_ci
+            LEFT JOIN (
+                SELECT grn_no,
+                       SUM(COALESCE(received_qty,0) * COALESCE(unit_price,0)) AS grn_value
+                FROM grn_lines GROUP BY grn_no
+            ) v ON v.grn_no COLLATE utf8mb4_unicode_ci = g.grn_no COLLATE utf8mb4_unicode_ci
+            LEFT JOIN (
+                SELECT grn_no, SUM(COALESCE(amount,0)) AS invoiced
+                FROM ap_invoices
+                WHERE COALESCE(status,'') <> 'Cancelled' AND grn_no IS NOT NULL
+                GROUP BY grn_no
+            ) inv ON inv.grn_no COLLATE utf8mb4_unicode_ci = g.grn_no COLLATE utf8mb4_unicode_ci
+            ORDER BY g.id DESC
+            LIMIT 200
+        """)).mappings().all()]
+    except Exception as exc:
+        logging.getLogger(__name__).error(
+            "finance: full GRN picker query failed (%s) - falling back", exc)
+        try:
+            grns = [dict(r) for r in db.execute(text("""
+                SELECT  g.grn_no,
+                        COALESCE(g.po_no, '')        AS po_no,
+                        COALESCE(g.supplier_name,'') AS supplier_name,
+                        COALESCE(g.received_date, CURDATE()) AS received_date,
+                        ROUND(COALESCE((
+                            SELECT SUM(COALESCE(l.received_qty,0)*COALESCE(l.unit_price,0))
+                            FROM grn_lines l WHERE l.grn_no = g.grn_no
+                        ),0),2) AS amount,
+                        0 AS invoiced,
+                        ROUND(COALESCE((
+                            SELECT SUM(COALESCE(l.received_qty,0)*COALESCE(l.unit_price,0))
+                            FROM grn_lines l WHERE l.grn_no = g.grn_no
+                        ),0),2) AS remaining
+                FROM grn_receipts g
+                ORDER BY g.id DESC
+                LIMIT 200
+            """)).mappings().all()]
+            logging.getLogger(__name__).warning(
+                "finance: GRN fallback returned %d rows", len(grns))
+        except Exception as exc2:
+            logging.getLogger(__name__).error(
+                "finance: GRN fallback ALSO failed: %s", exc2)
     kpis = {
-        "ar_open": _safe_scalar(db, "SELECT COUNT(*) FROM ar_invoices WHERE status <> 'Paid'"),
-        "ar_amount": _safe_scalar(db, "SELECT ROUND(SUM(amount-paid_amount),2) FROM ar_invoices WHERE status <> 'Paid'", default=0),
-        "ap_open": _safe_scalar(db, "SELECT COUNT(*) FROM ap_invoices WHERE status <> 'Paid'"),
-        "ap_amount": _safe_scalar(db, "SELECT ROUND(SUM(amount-paid_amount),2) FROM ap_invoices WHERE status <> 'Paid'", default=0),
+        # Batch 26: an invoice that is Paid, Closed or Cancelled is NOT an open
+        # item. Previously only 'Paid' was excluded, so manually closed and
+        # voided invoices kept inflating the outstanding balances.
+        "ar_open": _safe_scalar(db, "SELECT COUNT(*) FROM ar_invoices WHERE COALESCE(status,'') NOT IN ('Paid','Closed','Cancelled')"),
+        "ar_amount": _safe_scalar(db, "SELECT ROUND(SUM(amount-COALESCE(paid_amount,0)),2) FROM ar_invoices WHERE COALESCE(status,'') NOT IN ('Paid','Closed','Cancelled')", default=0),
+        "ap_open": _safe_scalar(db, "SELECT COUNT(*) FROM ap_invoices WHERE COALESCE(status,'') NOT IN ('Paid','Closed','Cancelled')"),
+        "ap_amount": _safe_scalar(db, "SELECT ROUND(SUM(amount-COALESCE(paid_amount,0)),2) FROM ap_invoices WHERE COALESCE(status,'') NOT IN ('Paid','Closed','Cancelled')", default=0),
         "drafted": drafted,
     }
     return render(request, "finance/index.html", {"ar": ar, "ap": ap, "payments": payments, "grns": grns, "kpis": kpis, "aging": ar_aging(db), "page_title": "Finance"})
@@ -149,6 +329,18 @@ def finance_dashboard(request: Request, db: Session = Depends(get_db)):
 def create_ap_invoice(request: Request, supplier_name: str = Form(""), po_no: str = Form(""), grn_no: str = Form(""), amount: float = Form(0), remarks: str = Form(""), db: Session = Depends(get_db)):
     require_action(request, "finance", "add")
     _ensure_finance_schema(db)
+
+    # Batch 26: basic validation — an AP invoice with no supplier or no value is
+    # meaningless and used to be saved silently.
+    if not (supplier_name or "").strip():
+        return RedirectResponse(
+            "/finance?toast=danger&title=AP Invoice&msg=Supplier is required",
+            status_code=303)
+    if float(amount or 0) <= 0:
+        return RedirectResponse(
+            "/finance?toast=danger&title=AP Invoice&msg=Amount must be greater than zero",
+            status_code=303)
+
     match_status = "Matched"
     if grn_no:
         grn_value = _safe_scalar(db, "SELECT ROUND(SUM(COALESCE(received_qty,0)*COALESCE(unit_price,0)),2) FROM grn_lines WHERE grn_no=:g", {"g": grn_no}, 0)
@@ -157,15 +349,71 @@ def create_ap_invoice(request: Request, supplier_name: str = Form(""), po_no: st
     ap_no = next_document_no(db, _cid(request), "AP", "AP")
     db.execute(text("""
         INSERT INTO ap_invoices (company_id, ap_no, supplier_name, po_no, grn_no, invoice_date, status, amount, match_status, remarks, created_by)
-        VALUES (:cid, :ap, :sup, :po, :grn, CURDATE(), 'Draft', :amount, :match, :remarks, :by)
+        VALUES (:cid, :ap, :sup, :po, :grn, CURDATE(), 'Open', :amount, :match, :remarks, :by)
     """), {"cid": _cid(request), "ap": ap_no, "sup": supplier_name, "po": po_no, "grn": grn_no, "amount": amount, "match": match_status, "remarks": remarks, "by": _user(request)})
     db.commit()
     if float(amount or 0) > 0:
+        # ------------------------------------------------------------------
+        # Batch 26 ACCOUNTING FIX.
+        # This used to debit 5000 (Purchases / COGS). That DOUBLE-COUNTS cost:
+        # the GRN already added the goods to stock, so the value is sitting in
+        # 1300 Inventory. Expensing it again at invoice time overstates cost and
+        # understates inventory. Correct entry for a stocked purchase is:
+        #     Dr 1300 Inventory   /   Cr 2100 Accounts Payable
+        # The cost only becomes an expense later, when the stock is issued to
+        # production (Dr 5000 COGS / Cr 1300 Inventory).
+        # A GRN-less invoice (services, utilities) still expenses to 5000.
+        # ------------------------------------------------------------------
+        debit_account = "1300" if grn_no else "5000"
         post_journal(db, request, "AP_INVOICE", ap_no,
                      f"AP invoice {ap_no} — {supplier_name}",
-                     [("5000", float(amount), 0.0, supplier_name),
+                     [(debit_account, float(amount), 0.0, supplier_name),
                       ("2100", 0.0, float(amount), supplier_name)])
-    return RedirectResponse("/finance?toast=success&title=AP Invoice&msg=Supplier invoice saved and posted to GL", status_code=303)
+    return RedirectResponse(f"/finance?toast=success&title=AP Invoice&msg={ap_no} saved and posted to GL", status_code=303)
+
+
+# ---------------------------------------------------------------------------
+# Batch 26 — DOCUMENT STATUS WORKFLOW (Oracle / SAP B1 style)
+# ---------------------------------------------------------------------------
+# Oracle and SAP B1 both let you CLOSE a document manually so it stops appearing
+# in open-item lists even if it was never fully paid/received (e.g. the supplier
+# short-shipped the rest and you agree to write it off).
+#
+# Statuses used here:
+#   Open           — live, awaiting payment
+#   Partially Paid — some money applied
+#   Paid           — fully settled (set automatically by the payment routine)
+#   Closed         — manually closed; excluded from open KPIs and aging
+#   Cancelled      — voided
+# ---------------------------------------------------------------------------
+@router.post("/ap/{ap_no}/status")
+def set_ap_status(request: Request, ap_no: str, new_status: str = Form(...), db: Session = Depends(get_db)):
+    require_action(request, "finance", "edit")
+    _ensure_finance_schema(db)
+    allowed = {"Open", "Closed", "Cancelled"}
+    if new_status not in allowed:
+        return RedirectResponse("/finance?toast=danger&title=AP&msg=Invalid status", status_code=303)
+    db.execute(text("UPDATE ap_invoices SET status = :s WHERE ap_no = :a"),
+               {"s": new_status, "a": ap_no})
+    db.commit()
+    return RedirectResponse(
+        f"/finance?toast=success&title=AP Invoice&msg={ap_no} marked {new_status}",
+        status_code=303)
+
+
+@router.post("/ar/{invoice_no}/status")
+def set_ar_status(request: Request, invoice_no: str, new_status: str = Form(...), db: Session = Depends(get_db)):
+    require_action(request, "finance", "edit")
+    _ensure_finance_schema(db)
+    allowed = {"Open", "Closed", "Cancelled"}
+    if new_status not in allowed:
+        return RedirectResponse("/finance?toast=danger&title=AR&msg=Invalid status", status_code=303)
+    db.execute(text("UPDATE ar_invoices SET status = :s WHERE invoice_no = :i"),
+               {"s": new_status, "i": invoice_no})
+    db.commit()
+    return RedirectResponse(
+        f"/finance?toast=success&title=AR Invoice&msg={invoice_no} marked {new_status}",
+        status_code=303)
 
 
 @router.post("/payment/create")

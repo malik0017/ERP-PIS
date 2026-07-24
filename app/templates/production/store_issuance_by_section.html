@@ -1,0 +1,88 @@
+{% extends "layouts/base.html" %}
+{% block content %}
+<style>
+.si-hero{background:linear-gradient(135deg,#132947,#0c91a3);border-radius:22px;color:#fff;padding:24px 28px}
+.si-card{background:#fff;border:1px solid #dce8f2;border-radius:18px;box-shadow:0 12px 28px rgba(15,30,50,.06)}
+.si-sec-head{background:#edf5fb;border-radius:14px;padding:14px 18px}
+.si-tag{display:inline-block;border-radius:999px;padding:4px 12px;font-weight:800;font-size:12px}
+.si-pending{background:#fdf3e3;color:#92600a}.si-done{background:#e8f8ef;color:#11783f}
+.si-table th{background:#f4f8fc;font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:#152b49}
+</style>
+<div class="container-fluid py-3">
+  <div class="si-hero mb-4 d-flex justify-content-between flex-wrap gap-3 align-items-center">
+    <div>
+      <h2 class="mb-1">Store Issuance — By Kitchen Section</h2>
+      <p class="mb-0 opacity-75">All released material grouped by target section, ordered by delivery-date priority. Consolidated totals help you pick once per ingredient.</p>
+    </div>
+    <a class="btn btn-light fw-bold" href="/production/store-issuance"><i class="bi bi-arrow-left"></i> Back to Orders View</a>
+  </div>
+
+  <div class="si-card p-3 mb-4">
+    <form class="row g-2 align-items-end" method="get">
+      <div class="col-md-3"><label class="form-label fw-bold">Section</label>
+        <select name="section" class="form-select">
+          <option value="">All sections</option>
+          {% for s in all_sections %}<option value="{{ s }}" {% if filters.section == s %}selected{% endif %}>{{ s }}</option>{% endfor %}
+        </select></div>
+      <div class="col-md-3"><label class="form-label fw-bold">Show</label>
+        <select name="show" class="form-select">
+          <option value="pending" {% if filters.show == 'pending' %}selected{% endif %}>Pending issuance only</option>
+          <option value="all" {% if filters.show == 'all' %}selected{% endif %}>All lines (incl. issued)</option>
+        </select></div>
+      <div class="col-md-2"><button class="btn btn-primary fw-bold w-100">Apply</button></div>
+    </form>
+  </div>
+
+  {% for g in groups %}
+  <div class="si-card p-3 mb-4">
+    <div class="si-sec-head d-flex justify-content-between flex-wrap gap-2 align-items-center mb-3">
+      <h4 class="mb-0"><i class="bi bi-diagram-3 me-2"></i>{{ g.section }}</h4>
+      <div class="d-flex gap-2">
+        <span class="si-tag si-pending">{{ g.pending }} pending line(s)</span>
+        <span class="si-tag si-done">Required {{ '%.2f'|format(g.total_required) }} · Issued {{ '%.2f'|format(g.total_issued) }}</span>
+      </div>
+    </div>
+
+    <details class="mb-3">
+      <summary class="fw-bold">Consolidated picking list ({{ g.consolidated|length }} ingredients)</summary>
+      <div class="table-responsive mt-2">
+        <table class="table table-sm si-table">
+          <thead><tr><th>Code</th><th>Ingredient</th><th class="text-end">Total Required</th><th class="text-end">Issued</th><th>UOM</th><th>Orders</th></tr></thead>
+          <tbody>
+          {% for c in g.consolidated %}
+          <tr><td>{{ c.ingredient_code }}</td><td>{{ c.ingredient_name }}</td>
+              <td class="text-end fw-bold">{{ '%.3f'|format(c.required) }}</td>
+              <td class="text-end">{{ '%.3f'|format(c.issued) }}</td>
+              <td>{{ c.uom }}</td><td class="small">{{ c.orders|join(', ') }}</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </details>
+
+    <div class="table-responsive">
+      <table class="table align-middle si-table">
+        <thead><tr><th>Priority</th><th>Order</th><th>Customer</th><th>Recipe</th><th>Ingredient</th><th class="text-end">Required</th><th class="text-end">Issued</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+        {% for l in g.lines %}
+        <tr class="{% if l.finalized %}table-success{% endif %}">
+          <td><strong>{{ l.delivery_date or '—' }}</strong><br><span class="text-secondary small">{{ l.delivery_time }}</span></td>
+          <td>{{ l.order_no }}</td>
+          <td>{{ l.customer_name }}</td>
+          <td>{{ l.recipe_no }}<br><span class="text-secondary small">{{ l.recipe_name }}</span></td>
+          <td><strong>{{ l.ingredient_code }}</strong><br>{{ l.ingredient_name }}</td>
+          <td class="text-end">{{ '%.3f'|format(l.required_qty or 0) }} {{ l.uom }}</td>
+          <td class="text-end">{{ '%.3f'|format(l.issued_qty or 0) }}</td>
+          <td>{% if l.finalized %}<span class="si-tag si-done">Locked / Issued</span>{% else %}<span class="si-tag si-pending">{{ l.issuance_status }}</span>{% endif %}</td>
+          <td><a class="btn btn-sm btn-outline-primary" href="/production/orders/{{ l.order_no }}/store-issuance">Open</a></td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% else %}
+  <div class="si-card p-5 text-center text-secondary">Nothing pending — every released line is issued. 🎉</div>
+  {% endfor %}
+</div>
+{% endblock %}

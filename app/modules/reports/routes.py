@@ -16,6 +16,94 @@ router = APIRouter(tags=["Reports"])
 
 
 
+# ---------------------------------------------------------------------------
+# Batch 18: EXPORTS registry restored — it was missing from the file, which
+# broke EVERY report download (CSV and Excel) with a NameError 500.
+# One SQL per report key used by the Reports Center cards and quick exports.
+# ---------------------------------------------------------------------------
+EXPORTS: dict[str, str] = {
+    "recipe-master": """
+        SELECT recipe_code, recipe_name, COALESCE(customer_name,'') AS customer,
+               COALESCE(category,'') AS category, COALESCE(version,1) AS version,
+               COALESCE(status,'') AS status, COALESCE(approval_status,'') AS approval,
+               COALESCE(food_cost,0) AS food_cost, COALESCE(total_cost,0) AS total_cost,
+               COALESCE(sale_price,0) AS sale_price, COALESCE(missing_cost_lines,0) AS missing_cost_lines
+        FROM recipes ORDER BY recipe_code""",
+    "recipe-bom": """
+        SELECT r.recipe_code, r.recipe_name, ri.inventory_code,
+               COALESCE(ri.item_name,'') AS item_name, COALESCE(ri.uom,'') AS uom,
+               COALESCE(ri.qty_batch,0) AS qty_batch, COALESCE(ri.qty_per_portion,0) AS qty_per_portion,
+               COALESCE(ri.cost_uom,0) AS cost_uom, COALESCE(ri.line_cost,0) AS line_cost
+        FROM recipe_ingredients ri JOIN recipes r ON r.id = ri.recipe_id
+        ORDER BY r.recipe_code, ri.id""",
+    "order-register": """
+        SELECT order_no, order_date, customer_name, COALESCE(brand,'') AS brand,
+               COALESCE(channel,'') AS channel, COALESCE(required_delivery_date,'') AS delivery_date,
+               COALESCE(required_delivery_time,'') AS delivery_time,
+               COALESCE(total_planned_portions,0) AS portions,
+               COALESCE(total_estimated_food_cost,0) AS food_cost,
+               COALESCE(total_estimated_selling_value,0) AS sale_value,
+               COALESCE(total_estimated_margin,0) AS margin, status
+        FROM customer_orders ORDER BY id DESC""",
+    "bom-lines": """
+        SELECT order_no, COALESCE(recipe_no,'') AS recipe_no, COALESCE(recipe_name,'') AS recipe_name,
+               COALESCE(inventory_code,'') AS inventory_code,
+               COALESCE(item_name, ingredient_name,'') AS item_name,
+               COALESCE(issue_section, section,'') AS issue_section,
+               COALESCE(required_qty, quantity, 0) AS required_qty, COALESCE(uom,'') AS uom,
+               COALESCE(estimated_cost,0) AS estimated_cost
+        FROM bom_lines ORDER BY order_no, id""",
+    "store-issuance": """
+        SELECT order_no, COALESCE(inventory_code,'') AS inventory_code,
+               COALESCE(item_name, ingredient_name,'') AS item_name,
+               COALESCE(required_qty,0) AS required_qty, COALESCE(issued_qty,0) AS issued_qty,
+               COALESCE(required_qty,0) - COALESCE(issued_qty,0) AS short_qty,
+               COALESCE(finalized,0) AS finalized
+        FROM store_issuance_lines ORDER BY order_no, id""",
+    "yield-wastage": """
+        SELECT order_no, COALESCE(current_section,'') AS section,
+               COALESCE(recipe_no,'') AS recipe_no, COALESCE(recipe_name,'') AS recipe_name,
+               COALESCE(ingredient_code,'') AS item_code, COALESCE(ingredient_name,'') AS item_name,
+               COALESCE(issued_qty_standard,0) AS input_qty,
+               COALESCE(processed_qty_standard,0) AS output_qty,
+               COALESCE(waste_qty_standard,0) AS waste_qty,
+               COALESCE(returned_qty_standard,0) AS return_qty,
+               COALESCE(transferred_qty_standard,0) AS transfer_qty,
+               COALESCE(transaction_status,'') AS status,
+               COALESCE(waste_reason, section_remarks, '') AS reason
+        FROM kitchen_section_transactions ORDER BY updated_at DESC""",
+    "qc-checks": """
+        SELECT order_no, COALESCE(check_point,'') AS check_point, COALESCE(status,'') AS status,
+               COALESCE(score,0) AS score, COALESCE(issue_found,'') AS issue_found,
+               COALESCE(corrective_action,'') AS corrective_action
+        FROM qc_checks ORDER BY id DESC""",
+    "packing": """
+        SELECT order_no, COALESCE(packed_portions,0) AS packed_portions,
+               COALESCE(rejected_portions,0) AS rejected_portions,
+               COALESCE(packing_status, dispatch_status,'') AS status,
+               COALESCE(packing_remarks, remarks,'') AS remarks
+        FROM packing_dispatch ORDER BY id DESC""",
+    "dispatch": """
+        SELECT order_no, COALESCE(vehicle_no,'') AS vehicle_no, COALESCE(driver_name,'') AS driver_name,
+               COALESCE(delivery_temperature,'') AS delivery_temperature,
+               COALESCE(dispatch_status,'') AS dispatch_status
+        FROM packing_dispatch ORDER BY id DESC""",
+    "bom-section-cost": """
+        SELECT COALESCE(issue_section, section, 'Unassigned') AS issue_section,
+               ROUND(SUM(COALESCE(estimated_cost,0)),2) AS material_cost,
+               COUNT(*) AS bom_lines
+        FROM bom_lines GROUP BY COALESCE(issue_section, section, 'Unassigned')
+        ORDER BY material_cost DESC""",
+    "bom-category-cost": """
+        SELECT COALESCE(i.main_category,'Uncategorized') AS main_category,
+               ROUND(SUM(COALESCE(b.estimated_cost,0)),2) AS material_cost,
+               COUNT(*) AS bom_lines
+        FROM bom_lines b LEFT JOIN ingredients i ON i.ingredient_code = b.inventory_code
+        GROUP BY COALESCE(i.main_category,'Uncategorized')
+        ORDER BY material_cost DESC""",
+}
+
+
 def _xlsx_response(rows: list[dict], filename: str):
     wb = Workbook()
     ws = wb.active
@@ -403,6 +491,29 @@ def yield_wastage(request: Request, db: Session = Depends(get_db)):
         ORDER BY updated_at DESC, order_no DESC
         LIMIT 1000
     """, params)
+
+    # Batch 21: downloadable SECTION SUMMARY (respects active filters).
+    if (q.get("export") or "") == "summary":
+        import csv, io
+        buf = io.StringIO()
+        w = csv.writer(buf)
+        w.writerow(["Section", "Input", "Output", "Waste", "Waste %"])
+        srows = _rows(db, f"""
+            SELECT COALESCE(current_section,'Unassigned') AS section_name,
+                   ROUND(SUM(COALESCE(issued_qty_standard,0)),2) AS input_qty,
+                   ROUND(SUM(COALESCE(processed_qty_standard,0)),2) AS output_qty,
+                   ROUND(SUM(COALESCE(waste_qty_standard,0)),2) AS waste_qty,
+                   ROUND(CASE WHEN SUM(COALESCE(issued_qty_standard,0)) > 0 THEN SUM(COALESCE(waste_qty_standard,0)) / SUM(COALESCE(issued_qty_standard,0)) * 100 ELSE 0 END,2) AS waste_pct
+            FROM kitchen_section_transactions
+            WHERE {W}
+            GROUP BY COALESCE(current_section,'Unassigned')
+            ORDER BY waste_pct DESC
+        """, params)
+        for r in srows:
+            w.writerow([r["section_name"], r["input_qty"], r["output_qty"], r["waste_qty"], r["waste_pct"]])
+        from fastapi.responses import Response as _Resp
+        return _Resp(buf.getvalue(), media_type="text/csv",
+                     headers={"Content-Disposition": 'attachment; filename="yield_section_summary.csv"'})
 
     if (q.get("export") or "") == "csv":
         import csv, io

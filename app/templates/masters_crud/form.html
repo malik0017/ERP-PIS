@@ -1,0 +1,77 @@
+{% extends "layouts/base.html" %}
+{% block title %}{{ page_title }} | ISFC{% endblock %}
+{% block content %}
+{# ==========================================================================
+   Batch 22 — Manual master-data entry form (Add / Edit)
+   Config-driven: renders whatever fields cfg.fields defines. Works for every
+   master type. Dark-mode safe (Phoenix CSS variables only).
+   ========================================================================== #}
+<div class="container-fluid py-3 isfc-page">
+
+  {% if request.query_params.get('error') %}
+  <div class="alert alert-danger d-flex align-items-center" role="alert">
+    <i class="bi bi-exclamation-triangle-fill me-2"></i>{{ request.query_params.get('error') }}
+  </div>
+  {% endif %}
+
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+      <h3 class="mb-0 fw-bolder">
+        <i class="bi bi-{{ 'pencil-square' if mode == 'edit' else 'plus-circle' }} me-2"></i>
+        {{ t(page_title) }}
+      </h3>
+      <p class="text-body-tertiary mb-0">{{ t('Fill the fields below and save. Fields marked * are required.') }}</p>
+    </div>
+    <a href="{{ cfg.list_url }}" class="btn btn-phoenix-secondary btn-sm">
+      <i class="bi bi-arrow-left me-1"></i>{{ t('Back to list') }}
+    </a>
+  </div>
+
+  <div class="card shadow-none border">
+    <div class="card-body">
+      <form method="post"
+            action="{% if mode == 'edit' %}/masters-crud/{{ mtype }}/{{ row.id }}/edit{% else %}/masters-crud/{{ mtype }}/new{% endif %}">
+        <div class="row g-3">
+          {% for col, label, ftype, required in cfg.fields %}
+          <div class="col-md-6 col-lg-4">
+            <label class="form-label fw-semibold">
+              {{ t(label) }}{% if required %} <span class="text-danger">*</span>{% endif %}
+            </label>
+
+            {% if ftype == 'textarea' %}
+              <textarea name="{{ col }}" class="form-control" rows="2"
+                        {% if required %}required{% endif %}>{{ row.get(col, '') or '' }}</textarea>
+
+            {% elif ftype.startswith('select:') %}
+              <select name="{{ col }}" class="form-select">
+                {% for opt in ftype.split(':',1)[1].split('|') %}
+                <option value="{{ opt }}" {% if (row.get(col) or 'ACTIVE') == opt %}selected{% endif %}>{{ opt|title }}</option>
+                {% endfor %}
+              </select>
+
+            {% elif ftype == 'number' %}
+              <input type="number" step="any" name="{{ col }}" class="form-control"
+                     value="{{ row.get(col, '') if row.get(col) is not none else '' }}"
+                     {% if required %}required{% endif %}>
+
+            {% else %}
+              <input type="{{ 'email' if ftype == 'email' else 'text' }}" name="{{ col }}"
+                     class="form-control" value="{{ row.get(col, '') or '' }}"
+                     {% if required %}required{% endif %}
+                     {% if col == cfg.code_col and mode == 'new' %}placeholder="{{ t('Auto-generated if left blank') }}"{% endif %}>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+
+        <div class="d-flex gap-2 mt-4">
+          <button type="submit" class="btn btn-primary">
+            <i class="bi bi-check-lg me-1"></i>{{ t('Save') }}
+          </button>
+          <a href="{{ cfg.list_url }}" class="btn btn-phoenix-secondary">{{ t('Cancel') }}</a>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

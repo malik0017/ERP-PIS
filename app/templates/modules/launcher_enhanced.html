@@ -1,0 +1,205 @@
+{# app/templates/modules/launcher_enhanced.html #}
+{# Batch 29: Enhanced Module Launcher with Live KPIs #}
+
+{% extends "layouts/base.html" %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Header -->
+    <div class="row mb-4">
+        <div class="col-md-8">
+            <h1 class="h3 mb-2"><i class="bi bi-grid-3x3-gap"></i> ISFC ERP Module Launcher</h1>
+            <p class="text-muted">Select a business module. Cards show live data (auto-refreshes every 60 seconds).</p>
+        </div>
+        <div class="col-md-4 text-end">
+            <div class="badge bg-info">Last updated: <span id="refresh-time">now</span></div>
+        </div>
+    </div>
+
+    <!-- KPI Cards (Live Data) -->
+    <div class="row mb-4">
+        {% for kpi in kpis %}
+        <div class="col-md-6 col-lg-2-5 mb-3">
+            <div class="card h-100 kpi-card kpi-{{ kpi.color }}" onclick="{% if kpi.link %}window.location='{{ kpi.link }}'{% endif %}" style="cursor: pointer;">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <p class="text-muted mb-1 small">{{ kpi.label }}</p>
+                            <h4 class="mb-0 kpi-value" data-label="{{ kpi.label }}">{{ kpi.value }}</h4>
+                        </div>
+                        <i class="bi bi-{{ kpi.icon }} text-{{ kpi.color }} opacity-50" style="font-size: 1.5rem;"></i>
+                    </div>
+                    {% if kpi.trend_data %}
+                    <div class="mt-3" style="height: 30px;">
+                        <canvas class="trend-chart" data-values="{{ kpi.trend_data }}"></canvas>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Module Cards Grid -->
+    <div class="row">
+        {% set modules = [
+            {
+                "title": "Production Intelligence",
+                "icon": "lightning-fill",
+                "color": "primary",
+                "description": "Orders, head chef planning, BOM, kitchen sections, QC, packing, dispatch",
+                "link": "/production/dashboard"
+            },
+            {
+                "title": "Inventory & Valuation",
+                "icon": "box",
+                "color": "info",
+                "description": "Stock on hand, GRN movements, issue movements, item ledger and valuation",
+                "link": "/inventory/dashboard"
+            },
+            {
+                "title": "Procurement",
+                "icon": "bag-check",
+                "color": "warning",
+                "description": "Purchase orders, GRN receiving, supplier purchases and inventory entry",
+                "link": "/procurement/dashboard"
+            },
+            {
+                "title": "Finance",
+                "icon": "cash-coin",
+                "color": "success",
+                "description": "Chart of accounts, journals, AR/AP, payments and real-time trial balance",
+                "link": "/finance/dashboard"
+            },
+            {
+                "title": "Reports & BI",
+                "icon": "graph-up",
+                "color": "secondary",
+                "description": "Management reports, printable forms, drill-downs and export packs",
+                "link": "/reports/center"
+            },
+            {
+                "title": "Master Data",
+                "icon": "book",
+                "color": "danger",
+                "description": "Customers, suppliers, chefs, brands, kitchen sections, revenue streams",
+                "link": "/masters/dashboard"
+            },
+            {
+                "title": "Recipes",
+                "icon": "chef",
+                "color": "info",
+                "description": "Recipe CRUD, BOM management, sub-recipes, yield and costing",
+                "link": "/recipes/dashboard"
+            },
+            {
+                "title": "Project Management",
+                "icon": "briefcase",
+                "color": "primary",
+                "description": "Create, plan, and manage projects with team assignments and budgets",
+                "link": "/projects/dashboard"
+            },
+            {
+                "title": "Customer Portal",
+                "icon": "person-check",
+                "color": "success",
+                "description": "Customer-facing order tracking, delivery status and statements",
+                "link": "/customer/portal"
+            },
+            {
+                "title": "Users & Access",
+                "icon": "shield-lock",
+                "color": "dark",
+                "description": "Manage users, roles and the per-user access matrix. Super-admin controls everything",
+                "link": "/users/dashboard"
+            }
+        ] %}
+
+        {% for module in modules %}
+        <div class="col-md-6 col-lg-4 mb-4">
+            <a href="{{ module.link }}" class="card card-hover h-100 text-decoration-none" style="border-left: 4px solid var(--bs-{{ module.color }});">
+                <div class="card-body">
+                    <div class="d-flex align-items-start mb-3">
+                        <div class="bg-{{ module.color }} bg-opacity-10 p-3 rounded me-3">
+                            <i class="bi bi-{{ module.icon }} text-{{ module.color }}" style="font-size: 1.5rem;"></i>
+                        </div>
+                        <div>
+                            <h5 class="card-title mb-0">{{ module.title }}</h5>
+                        </div>
+                    </div>
+                    <p class="card-text text-muted small">{{ module.description }}</p>
+                    <a href="{{ module.link }}" class="stretched-link"></a>
+                </div>
+                <div class="card-footer bg-transparent border-top-0">
+                    <small class="text-primary"><i class="bi bi-arrow-right"></i> Open Module</small>
+                </div>
+            </a>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Charts Row -->
+    {% if charts %}
+    <div class="row mt-4 mb-4">
+        {% for chart in charts %}
+        <div class="col-md-6 mb-4">
+            <div class="card h-100">
+                <div class="card-header bg-light">
+                    <h6 class="mb-0">{{ chart.title }}</h6>
+                </div>
+                <div class="card-body">
+                    <canvas class="chart-canvas" 
+                        data-type="{{ chart.type }}"
+                        data-labels="{{ chart.labels | tojson }}"
+                        data-values="{{ chart.values | tojson }}"
+                        data-id="{{ chart.id }}"></canvas>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+</div>
+
+<style>
+.kpi-card { 
+    border: none; 
+    box-shadow: 0 0.125rem 0.25rem rgba(0,0,0,0.075);
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+.kpi-card:hover { 
+    transform: translateY(-5px);
+    box-shadow: 0 0.5rem 1rem rgba(0,0,0,0.15);
+}
+.card-hover { 
+    transition: transform 0.2s, box-shadow 0.2s;
+    border: 1px solid rgba(0,0,0,0.1);
+}
+.card-hover:hover { 
+    transform: translateY(-8px);
+    box-shadow: 0 0.5rem 1rem rgba(0,0,0,0.15);
+}
+@media (max-width: 1400px) {
+    .col-lg-2-5 { flex: 0 0 calc(50% - 0.5rem); }
+}
+@media (max-width: 768px) {
+    .col-lg-2-5 { flex: 0 0 100%; }
+}
+</style>
+
+<script>
+// Auto-refresh KPIs every 60 seconds
+setInterval(function() {
+    fetch('/modules/kpi-refresh')
+        .then(r => r.json())
+        .then(data => {
+            document.querySelector('[data-label="Open Orders"]').textContent = data.open_orders;
+            document.querySelector('[data-label="Inventory Value"]').textContent = '$' + data.inventory_value.toLocaleString('en-US', {maximumFractionDigits: 2});
+            document.querySelector('[data-label="AR Outstanding"]').textContent = '$' + data.ar_outstanding.toLocaleString('en-US', {maximumFractionDigits: 2});
+            document.querySelector('[data-label="AP Outstanding"]').textContent = '$' + data.ap_outstanding.toLocaleString('en-US', {maximumFractionDigits: 2});
+            document.getElementById('refresh-time').textContent = new Date().toLocaleTimeString();
+        })
+        .catch(e => console.error('KPI refresh failed:', e));
+}, 60000);  // 60 seconds
+</script>
+{% endblock %}

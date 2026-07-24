@@ -1,7 +1,6 @@
 {% set active_step = active_step|default('') %} {% set active_kitchen =
 active_kitchen|default('') %} {# Normalize once so 'Hot-Kitchen', 'hot kitchen',
-'Hot Kitchen' all match. #} {% set _ak = active_kitchen|lower|replace('-', '
-')|replace('/', ' ')|replace(' ', ' ')|trim %} {% set _as =
+'Hot Kitchen' all match. #} {% set _ak = active_kitchen|lower|replace('-', ' ')|replace('/', ' ')|trim %}{% set _ak = _ak.split()|join(' ') %} {% set _as =
 active_step|lower|trim %}
 <style>
   .pis-flow-wrap {
@@ -28,9 +27,9 @@ active_step|lower|trim %}
     box-shadow: 0 6px 16px rgba(15, 30, 50, 0.04);
   }
   .pis-process-row .active {
-    background: #0d7f91 !important;
+    background: #3874ff !important;
     color: #fff !important;
-    border-color: #0d7f91;
+    border-color: #3874ff;
   }
   .pis-process-row .done {
     background: #e1fae9;
@@ -102,12 +101,7 @@ active_step|lower|trim %}
   </div>
   {% if _as == 'kitchen' or show_kitchen_subflow|default(false) %}
   <div class="pis-subflow" aria-label="Kitchen sub process">
-    {% set kitchen_steps =
-    [('Thawing','/production/section/Thawing'),('Cutting','/production/section/Cutting'),('Butchery','/production/section/Butchery'),('Marination','/production/section/Marination'),('Hot
-    Kitchen','/production/section/Hot-Kitchen'),('Cold
-    Kitchen','/production/section/Cold-Kitchen'),('Bakery/Pastry','/production/section/Bakery-Pastry')]
-    %} {% for name, url in kitchen_steps %} {% set _n = name|lower|replace('-',
-    ' ')|replace('/', ' ')|replace(' ', ' ')|trim %}
+    {% set kitchen_steps = [('Cutting','/production/section/Cutting'),('Butchery','/production/section/Butchery'),('Hot Kitchen','/production/section/Hot-Kitchen'),('Cold Kitchen','/production/section/Cold-Kitchen'),('Bakery/Pastry','/production/section/Bakery-Pastry')] %} {% for name, url in kitchen_steps %} {% set _n = name|lower|replace('-', ' ')|replace('/', ' ')|trim %}{% set _n = _n.split()|join(' ') %}
     <a href="{{ url }}" class="{% if _ak == _n %}active{% endif %}"
       >{{ name }}</a
     >

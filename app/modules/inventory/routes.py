@@ -233,8 +233,31 @@ def item_ledger(request: Request, inventory_code: str, db: Session = Depends(get
         WHERE t.inventory_code = :c
         ORDER BY t.id DESC LIMIT 500
     """), {"c": inventory_code}).mappings().all()]
+
+    # ------------------------------------------------------------------
+    # Batch 24 FIX — 500 error: "'running' is undefined".
+    # inventory/ledger.html renders a "Running Balance" column using
+    # running[loop.index0], but this route never built that list, so Jinja2
+    # raised UndefinedError on every item drill-down.
+    #
+    # `rows` is NEWEST-FIRST (ORDER BY id DESC). A running balance only makes
+    # sense oldest-first, so we walk the list in reverse, accumulate
+    # (qty_in - qty_out), then flip the result back so index N of `running`
+    # lines up with index N of `rows`.
+    # ------------------------------------------------------------------
+    running: list[float] = []
+    balance = 0.0
+    for r in reversed(rows):                      # oldest -> newest
+        try:
+            balance += float(r.get("qty_in") or 0) - float(r.get("qty_out") or 0)
+        except (TypeError, ValueError):
+            pass
+        running.append(round(balance, 4))
+    running.reverse()                             # back to newest -> oldest
+
     return render(request, "inventory/ledger.html", {
         "rows": rows,
+        "running": running,
         "code": inventory_code,
         "item_name": rows[0].get("item_name") if rows else inventory_code,
         "page_title": f"Ledger {inventory_code}",

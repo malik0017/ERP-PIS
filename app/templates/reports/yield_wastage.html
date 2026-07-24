@@ -43,7 +43,12 @@
   </div>
 
   <div class="card mb-3">
-    <div class="card-header"><h5 class="mb-0 text-body-emphasis">{{ t('Section Summary (filtered)') }}</h5></div>
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <h5 class="mb-0 text-body-emphasis">{{ t('Section Summary (filtered)') }}</h5>
+      <a class="btn btn-sm btn-phoenix-primary"
+         href="?order_no={{ filters.order_no }}&section={{ filters.section }}&status={{ filters.status }}&from_date={{ filters.from_date }}&to_date={{ filters.to_date }}&export=summary">
+        <i class="bi bi-download me-1"></i>{{ t('Download Summary CSV') }}</a>
+    </div>
     <div class="card-body p-0"><div class="table-responsive">
       <table class="table table-sm fs-9 mb-0">
         <thead><tr class="text-uppercase text-body-tertiary fs-10">
@@ -75,7 +80,7 @@
       <span class="badge badge-phoenix badge-phoenix-primary">{{ rows|length }}</span>
     </div>
     <div class="card-body p-0"><div class="table-responsive">
-      <table class="table table-sm fs-9 mb-0">
+      <table class="table table-sm fs-9 mb-0 isfc-sortable" id="yieldTxTable">
         <thead><tr class="text-uppercase text-body-tertiary fs-10">
           <th class="ps-4">{{ t('Order') }}</th><th>{{ t('Section') }}</th><th>{{ t('Recipe') }}</th>
           <th>{{ t('Item') }}</th><th class="text-end">{{ t('Input') }}</th><th class="text-end">{{ t('Output') }}</th>
@@ -107,4 +112,40 @@
     </div></div>
   </div>
 </div>
+<style>
+/* Batch 21: breathing room + sortable headers for the transactions table */
+#yieldTxTable th, #yieldTxTable td { padding: .65rem .8rem; vertical-align: middle; }
+#yieldTxTable thead th { cursor: pointer; user-select: none; white-space: nowrap; }
+#yieldTxTable thead th.sorted-asc::after  { content: " \2191"; }
+#yieldTxTable thead th.sorted-desc::after { content: " \2193"; }
+</style>
+<script>
+/* Batch 21: click a column header to sort ascending, click again for descending.
+   Numeric columns sort numerically (units stripped), text columns alphabetically. */
+(function(){
+  var table = document.getElementById('yieldTxTable');
+  if (!table) return;
+  var ths = table.querySelectorAll('thead th');
+  ths.forEach(function(th, idx){
+    th.addEventListener('click', function(){
+      var tbody = table.querySelector('tbody');
+      var rows = Array.prototype.slice.call(tbody.querySelectorAll('tr'))
+                   .filter(function(r){ return r.children.length > 1; });
+      var asc = !th.classList.contains('sorted-asc');
+      ths.forEach(function(h){ h.classList.remove('sorted-asc','sorted-desc'); });
+      th.classList.add(asc ? 'sorted-asc' : 'sorted-desc');
+      rows.sort(function(a, b){
+        var av = (a.children[idx] ? a.children[idx].innerText : '').trim();
+        var bv = (b.children[idx] ? b.children[idx].innerText : '').trim();
+        var an = parseFloat(av.replace(/[^0-9.\-]/g, ''));
+        var bn = parseFloat(bv.replace(/[^0-9.\-]/g, ''));
+        var num = !isNaN(an) && !isNaN(bn) && av !== '' && bv !== '';
+        var cmp = num ? an - bn : av.localeCompare(bv);
+        return asc ? cmp : -cmp;
+      });
+      rows.forEach(function(r){ tbody.appendChild(r); });
+    });
+  });
+})();
+</script>
 {% endblock %}

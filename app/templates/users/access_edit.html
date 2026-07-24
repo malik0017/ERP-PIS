@@ -3,7 +3,7 @@
 {% block content %}
 <style>
   .rep-hero {
-    background: radial-gradient(circle at 92% 8%, rgba(255, 255, 255, .22), transparent 16%), linear-gradient(135deg, #102542, #0d7f91);
+    background: radial-gradient(circle at 92% 8%, rgba(255, 255, 255, .22), transparent 16%), linear-gradient(135deg, #102542, #3874ff);
     color: #fff;
     border-radius: 28px;
     padding: 30px 34px;
@@ -49,6 +49,16 @@
             <option value="0">Disabled</option>
             <option value="1">Enabled</option>
           </select></div>
+        {# Batch 20: link this login to a customer so the /my portal resolves. #}
+        <div class="col-md-4"><label class="form-label">Linked Customer <span class="text-secondary">(for CUSTOMER portal login)</span></label>
+          <select name="customer_code" class="form-select">
+            <option value="">— Not a customer login —</option>
+            {% for c in customers %}
+            <option value="{{ c.customer_code }}" {% if c.customer_code == linked_customer_code %}selected{% endif %}>{{ c.customer_name }} ({{ c.customer_code }})</option>
+            {% endfor %}
+          </select>
+          <small class="text-secondary">Required for the Customer Portal (/my). The user only sees this customer's orders.</small>
+        </div>
         <div class="col-12"><label class="form-check"><input class="form-check-input" type="checkbox"
               name="force_password_change" value="1"> <span class="form-check-label">Force password change on next
               login</span></label></div>

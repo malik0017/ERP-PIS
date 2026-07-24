@@ -71,6 +71,25 @@
           {% else %}
           <p class="mb-0 text-body-tertiary">{{ t('Not dispatched yet.') }}</p>
           {% endif %}
+          {# Batch 20: customer can change delivery or cancel ONLY while Submitted #}
+          {% if order.status == 'Submitted' %}
+          <hr>
+          <form method="post" action="/my/orders/{{ order.order_no }}/update-delivery" class="row g-2">
+            <div class="col-7"><input type="date" class="form-control form-control-sm" name="required_delivery_date" value="{{ order.delivery_date }}" required></div>
+            <div class="col-5"><input type="time" class="form-control form-control-sm" name="required_delivery_time" value="{{ order.delivery_time }}"></div>
+            <div class="col-12"><button class="btn btn-sm btn-primary w-100">{{ t('Update Delivery Date/Time') }}</button></div>
+          </form>
+          <form method="post" action="/my/orders/{{ order.order_no }}/cancel" class="mt-2"
+                data-confirm="Cancel order {{ order.order_no }}? This cannot be undone."
+                data-confirm-title="Cancel Order" data-confirm-ok="Yes, cancel it" data-confirm-variant="danger">
+            <button class="btn btn-sm btn-outline-danger w-100">{{ t('Cancel Order') }}</button>
+          </form>
+          <p class="small text-body-tertiary mt-2 mb-0">{{ t('You can change or cancel this order only until the Head Chef approves it. After that it is locked.') }}</p>
+          {% elif order.status not in ('Cancelled', 'Closed') %}
+          <hr>
+          <div class="alert alert-secondary py-2 px-3 small mb-0"><i class="bi bi-lock-fill me-1"></i>
+            {{ t('This order is locked — production has started. To change it, contact your account manager.') }}</div>
+          {% endif %}
         </div>
       </div>
       <div class="card">

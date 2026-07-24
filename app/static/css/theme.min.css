@@ -5996,9 +5996,9 @@ textarea.form-control-lg {
   -ms-flex-preferred-size: auto;
   flex-basis: auto;
 }
-.navbar-expand .navbar-toggler {
+/* .navbar-expand .navbar-toggler {
   display: none;
-}
+} */
 .navbar-expand .offcanvas {
   position: static;
   z-index: auto;

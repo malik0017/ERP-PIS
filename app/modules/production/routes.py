@@ -618,7 +618,26 @@ async def update_store_issue(
     except Exception:
         db.rollback()
 
-    return RedirectResponse(f"/production/orders/{line.order_no}/store-issuance", status_code=HTTP_303_SEE_OTHER)
+    return RedirectResponse(
+        f"/production/orders/{line.order_no}/store-issuance?toast=success&title=Line Saved&msg={line.ingredient_name}: issued {line.input_material_issued} {line.issued_uom} to {line.issue_to_section}",
+        status_code=HTTP_303_SEE_OTHER)
+
+
+@router.post("/store-issuance/{line_id}/reissue")
+async def reissue_store_line(request: Request, line_id: int, db: Session = Depends(get_db)):
+    """Batch 19: the Re-Issue/Edit button posted here but the route did not
+    exist (404). Un-finalizes ONE line so the store can correct the issued
+    quantity, provided the order has not moved past the store stage."""
+    require_action(request, "store_issuance", "edit")
+    line = db.query(StoreIssuanceLine).filter(StoreIssuanceLine.id == line_id).first()
+    if not line:
+        raise HTTPException(404, "Store issuance line not found")
+    order = db.query(CustomerOrder).filter(CustomerOrder.order_no == line.order_no).first()
+    if order and (order.status or "") not in ("Store Pending", "BOM Generated", "Head Chef Approved", "In Production"):
+        return redirect_with_error("/production/store-issuance", f"Order {line.order_no} is already {order.status} — reissue not allowed.")
+    line.finalized = False
+    db.commit()
+    return RedirectResponse(f"/production/store-issuance?toast=success&title=Re-issue&msg=Line {line_id} reopened for editing", status_code=HTTP_303_SEE_OTHER)
 
 
 @router.post("/orders/{order_no}/finalize-store")
@@ -629,11 +648,14 @@ async def finalize_store(request: Request, order_no: str, db: Session = Depends(
     except ValueError as exc:
         return redirect_with_error(f"/production/orders/{order_no}/store-issuance", str(exc))
 
-    return RedirectResponse("/production/store-issuance", status_code=HTTP_303_SEE_OTHER)
+    return RedirectResponse(
+        f"/production/store-issuance?toast=success&title=Store Issue Finalized&msg=Order {order_no}: selected lines locked and material sent to kitchen sections",
+        status_code=HTTP_303_SEE_OTHER)
 
 
+# Batch 20: Thawing/Marination retired — handled inside Butchery.
 CANONICAL_SECTIONS = [
-    "Thawing", "Cutting", "Butchery", "Marination",
+    "Cutting", "Butchery",
     "Hot Kitchen", "Cold Kitchen", "Bakery/Pastry", "Trayline / Packing",
 ]
 
@@ -782,7 +804,7 @@ async def section_order_page(request: Request, section_name: str, order_no: str,
         output.seek(0)
         return StreamingResponse(iter(['\ufeff' + output.getvalue()]), media_type="text/csv", headers={"Content-Disposition": f"attachment; filename={order_no}_{_section_slug(section)}_receiving.csv"})
 
-    next_sections = ["Thawing", "Cutting", "Butchery", "Marination", "Hot Kitchen", "Cold Kitchen", "Bakery/Pastry", "QC", "Packing", "Trayline / Packing", "Dispatch"]
+    next_sections = ["Cutting", "Butchery", "Hot Kitchen", "Cold Kitchen", "Bakery/Pastry", "QC", "Trayline / Packing", "Dispatch"]  # Batch 19: Thawing/Marination retired; Packing unified into Trayline / Packing
 
     return render(
         request,
@@ -813,6 +835,7 @@ async def receive_section_order_all(request: Request, section_name: str, order_n
     if not txs:
         return redirect_with_error(f"/production/section/{_section_slug(section)}", "No lines found to receive.")
     user = current_user_name(request)
+    received_n, skipped_n = 0, 0
     for tx in txs:
         if float(tx.received_qty_standard or 0) <= 0 and not str(tx.transaction_status or '').upper().startswith('COMPLETED'):
             qty = float(tx.issued_qty_standard or tx.balance_qty_standard or 0)
@@ -821,8 +844,15 @@ async def receive_section_order_all(request: Request, section_name: str, order_n
             tx.received_by = user
             tx.received_at = tx.received_at or datetime.utcnow()
             tx.transaction_status = "Received"
+            received_n += 1
+        else:
+            skipped_n += 1
     db.commit()
-    return RedirectResponse(f"/production/section/{_section_slug(section)}/orders/{order_no}", status_code=HTTP_303_SEE_OTHER)
+    # Batch 19: real feedback instead of a silent redirect.
+    if received_n:
+        msg = f"{received_n} line(s) received at full issued quantity" + (f", {skipped_n} already received/completed" if skipped_n else "")
+        return RedirectResponse(f"/production/section/{_section_slug(section)}/orders/{order_no}?toast=success&title=Received&msg={msg}", status_code=HTTP_303_SEE_OTHER)
+    return RedirectResponse(f"/production/section/{_section_slug(section)}/orders/{order_no}?toast=info&title=Nothing to receive&msg=All {skipped_n} line(s) were already received or completed", status_code=HTTP_303_SEE_OTHER)
 
 
 @router.post("/tx/{tx_id}/receive")
@@ -913,7 +943,7 @@ async def bakery_page(request: Request, db: Session = Depends(get_db)):
         ORDER BY plan_date DESC, k.current_section, k.order_no DESC
         LIMIT 500
     """), params).mappings().all()
-    sections = ["Thawing","Cutting","Butchery","Marination","Hot Kitchen","Cold Kitchen","Bakery/Pastry"]
+    sections = ["Cutting","Butchery","Hot Kitchen","Cold Kitchen","Bakery/Pastry"]
     totals = {
         "orders": len({r.order_no for r in rows}),
         "recipes": len(rows),
@@ -1011,6 +1041,82 @@ async def store_issuance_dashboard(request: Request, db: Session = Depends(get_d
     return render(request, "production/store_issuance.html", {"orders": orders, "line_map": line_map, "stats": stats, "filters": filters, "lines": [], "page_title": "Store Issuance"})
 
 
+# ============================================================================
+# Batch 20 — Store: consolidated section-wise issuance view
+# The store keeper can see all pending material grouped BY KITCHEN SECTION
+# (across every released order), sorted by delivery-date priority, and jump
+# straight to the owning order's issuance screen.
+# ============================================================================
+@router.get("/store-issuance/by-section")
+async def store_issuance_by_section(request: Request, db: Session = Depends(get_db)):
+    require_area(request, "store_issuance")
+    section_filter = (request.query_params.get("section") or "").strip()
+    show = (request.query_params.get("show") or "pending").strip()  # pending | all
+
+    where = "1=1"
+    params: dict = {}
+    if show == "pending":
+        where += " AND COALESCE(s.finalized, 0) = 0"
+    if section_filter:
+        where += " AND s.issue_to_section = :sec"
+        params["sec"] = section_filter
+
+    rows = db.execute(text(f"""
+        SELECT s.id, s.order_no, s.issue_to_section AS section,
+               s.recipe_no, s.recipe_name, s.ingredient_code, s.ingredient_name,
+               COALESCE(s.required_qty_with_waste_standard, s.required_qty_standard, 0) AS required_qty,
+               COALESCE(s.input_material_issued, 0) AS issued_qty,
+               COALESCE(s.standard_uom, 'Kg') AS uom,
+               COALESCE(s.issuance_status, 'Pending') AS issuance_status,
+               COALESCE(s.finalized, 0) AS finalized,
+               COALESCE(co.required_delivery_date, '') AS delivery_date,
+               COALESCE(co.required_delivery_time, '') AS delivery_time,
+               COALESCE(co.customer_name, '') AS customer_name
+        FROM store_issuance_lines s
+        LEFT JOIN customer_orders co ON co.order_no = s.order_no
+        WHERE {where}
+        ORDER BY (co.required_delivery_date IS NULL), co.required_delivery_date ASC,
+                 s.issue_to_section, s.ingredient_name
+        LIMIT 2000
+    """), params).mappings().all()
+
+    # Group by section, with a consolidated per-ingredient rollup inside each.
+    groups: dict = {}
+    for r in rows:
+        sec = r["section"] or "Unassigned"
+        g = groups.setdefault(sec, {"section": sec, "lines": [], "total_required": 0.0,
+                                     "total_issued": 0.0, "pending": 0, "consolidated": {}})
+        g["lines"].append(dict(r))
+        g["total_required"] += float(r["required_qty"] or 0)
+        g["total_issued"] += float(r["issued_qty"] or 0)
+        if not r["finalized"]:
+            g["pending"] += 1
+        key = (r["ingredient_code"], r["uom"])
+        c = g["consolidated"].setdefault(key, {"ingredient_code": r["ingredient_code"],
+                                               "ingredient_name": r["ingredient_name"],
+                                               "uom": r["uom"], "required": 0.0, "issued": 0.0, "orders": set()})
+        c["required"] += float(r["required_qty"] or 0)
+        c["issued"] += float(r["issued_qty"] or 0)
+        c["orders"].add(r["order_no"])
+
+    section_groups = []
+    for sec in sorted(groups):
+        g = groups[sec]
+        g["consolidated"] = sorted(
+            ({**c, "orders": sorted(c["orders"])} for c in g["consolidated"].values()),
+            key=lambda c: c["ingredient_name"])
+        section_groups.append(g)
+
+    all_sections = [r[0] for r in db.execute(text(
+        "SELECT DISTINCT issue_to_section FROM store_issuance_lines WHERE issue_to_section IS NOT NULL ORDER BY 1")).all()]
+
+    return render(request, "production/store_issuance_by_section.html", {
+        "groups": section_groups, "all_sections": all_sections,
+        "filters": {"section": section_filter, "show": show},
+        "page_title": "Store Issuance by Section",
+    })
+
+
 # JSON APIs for future React/mobile screens
 @router.get("/api/orders/{order_no}/bom/consolidated")
 async def api_consolidated_bom(order_no: str, db: Session = Depends(get_db)):
@@ -1043,7 +1149,7 @@ async def kitchen_summary(request: Request, db: Session = Depends(get_db)):
             MAX(k.updated_at) AS last_activity
         FROM kitchen_section_transactions k
         GROUP BY k.current_section
-        ORDER BY FIELD(k.current_section, 'Thawing','Cutting','Butchery','Marination','Hot Kitchen','Cold Kitchen','Bakery/Pastry','QC','Trayline / Packing'), k.current_section
+        ORDER BY FIELD(k.current_section, 'Cutting','Butchery','Hot Kitchen','Cold Kitchen','Bakery/Pastry','QC','Trayline / Packing'), k.current_section
     """)).mappings().all()
 
     totals = {

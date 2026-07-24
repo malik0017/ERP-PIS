@@ -162,12 +162,20 @@
   }
 </style>
 <div class="isfc-page">
+  {% if request.query_params.get('success') %}
+  <div class="alert alert-success py-2"><i class="bi bi-check-circle me-2"></i>{{ request.query_params.get('success') }}</div>
+  {% endif %}
+  {% if request.query_params.get('error') %}
+  <div class="alert alert-danger py-2"><i class="bi bi-exclamation-triangle me-2"></i>{{ request.query_params.get('error') }}</div>
+  {% endif %}
   <div class="isfc-hero">
     <div>
       <h1>{{ page_title }}</h1>
       <p>Search, view, edit and control uploaded master data.</p>
     </div>
-    <div class="isfc-master-actions">{% if can_upload_this_master %}<a class="isfc-btn isfc-btn-soft"
+    <div class="isfc-master-actions">{% if master_type != 'archive' and can_action('master_data','add') %}<a
+        class="isfc-btn isfc-btn-primary" href="/masters-crud/{{ master_type }}/new"><i class="bi bi-plus-lg"></i>
+        New {{ config.title|replace('Master','')|replace('Customers','Customer')|replace('Suppliers','Supplier')|trim }}</a>{% endif %}{% if can_upload_this_master %}<a class="isfc-btn isfc-btn-soft"
         href="/masters/upload/{{ master_type }}"><i class="bi bi-upload"></i> Upload</a>{% endif %}<a
         class="isfc-btn isfc-btn-soft" href="/masters/template/{{ master_type }}"><i class="bi bi-download"></i>
         Template</a>
@@ -221,7 +229,7 @@
             <td>
               <div class="isfc-actions"><a class="isfc-mini" href="/masters/{{ master_type }}/{{ row.id }}">View</a>{%
                 if master_type!='archive' %}<a class="isfc-mini"
-                  href="/masters/{{ master_type }}/{{ row.id }}/edit">Edit</a>{% endif %}</div>
+                  href="/masters-crud/{{ master_type }}/{{ row.id }}/edit">Edit</a>{% endif %}</div>
             </td>
           </tr>{% else %}<tr>
             <td colspan="20" style="text-align:center;color:#6f8196;padding:28px">No records found.</td>

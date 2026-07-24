@@ -1,0 +1,83 @@
+{% extends "layouts/base.html" %}
+{% block title %}Chart of Accounts | ISFC{% endblock %}
+{% block content %}
+{# Batch 22 — Chart of Accounts management (add accounts, view live balances) #}
+<div class="container-fluid py-3 isfc-page">
+
+  {% if request.query_params.get('success') %}
+  <div class="alert alert-success"><i class="bi bi-check-circle me-2"></i>{{ request.query_params.get('success') }}</div>
+  {% endif %}
+  {% if request.query_params.get('error') %}
+  <div class="alert alert-danger"><i class="bi bi-exclamation-triangle me-2"></i>{{ request.query_params.get('error') }}</div>
+  {% endif %}
+
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+      <h3 class="mb-0 fw-bolder"><i class="bi bi-diagram-3 me-2"></i>{{ t('Chart of Accounts') }}</h3>
+      <p class="text-body-tertiary mb-0">{{ t('The general ledger accounts every journal posts to.') }}</p>
+    </div>
+    <div class="d-flex gap-2">
+      <a href="/finance/gl" class="btn btn-phoenix-secondary btn-sm"><i class="bi bi-journal-text me-1"></i>{{ t('General Ledger') }}</a>
+      <button class="btn btn-primary btn-sm" type="button" onclick="document.getElementById('coaForm').classList.toggle('d-none')">
+        <i class="bi bi-plus-lg me-1"></i>{{ t('New Account') }}
+      </button>
+    </div>
+  </div>
+
+  {# Inline add form — hidden by default (SAP-B1 style) #}
+  <div id="coaForm" class="card border mb-3 d-none">
+    <div class="card-body">
+      <form method="post" action="/finance/coa/create" class="row g-3 align-items-end">
+        <div class="col-md-3">
+          <label class="form-label fw-semibold">{{ t('Account Code') }} *</label>
+          <input name="account_code" class="form-control" required placeholder="e.g. 6000">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label fw-semibold">{{ t('Account Name') }} *</label>
+          <input name="account_name" class="form-control" required placeholder="e.g. Utilities Expense">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label fw-semibold">{{ t('Type') }}</label>
+          <select name="account_type" class="form-select">
+            <option>Asset</option><option>Liability</option><option>Equity</option>
+            <option>Income</option><option>Expense</option>
+          </select>
+        </div>
+        <div class="col-md-2">
+          <button class="btn btn-primary w-100"><i class="bi bi-check-lg me-1"></i>{{ t('Save') }}</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="card border">
+    <div class="card-body p-0">
+      <table class="table table-hover mb-0 align-middle">
+        <thead class="bg-body-secondary">
+          <tr>
+            <th>{{ t('Code') }}</th><th>{{ t('Account') }}</th><th>{{ t('Type') }}</th>
+            <th class="text-end">{{ t('Debit') }}</th><th class="text-end">{{ t('Credit') }}</th>
+            <th class="text-end">{{ t('Balance') }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for a in accounts %}
+          <tr>
+            <td class="fw-bold">{{ a.account_code }}</td>
+            <td>{{ a.account_name }}</td>
+            <td><span class="badge badge-phoenix badge-phoenix-secondary">{{ a.account_type }}</span></td>
+            <td class="text-end">{{ '%.2f'|format(a.total_debit or 0) }}</td>
+            <td class="text-end">{{ '%.2f'|format(a.total_credit or 0) }}</td>
+            <td class="text-end fw-bold {{ 'text-success' if (a.balance or 0) >= 0 else 'text-danger' }}">
+              {{ '%.2f'|format(a.balance or 0) }}
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="6" class="text-center text-body-tertiary py-4">{{ t('No accounts yet.') }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -124,6 +124,7 @@
         <p class="mb-0 opacity-75">Order-wise issue screen for approved BOM materials. Store keeps issuance quantities,
           UOM, section routing, lot, supplier and remarks.</p>
       </div>
+      <div><a class="btn btn-light fw-bold" href="/production/store-issuance/by-section"><i class="bi bi-layers me-1"></i> Issuance by Section</a></div>
     </div>
   </div>
   {% if error %}<div class="alert alert-warning">{{ error }}</div>{% endif %}
@@ -241,7 +242,7 @@
                 l.recipe_no }} - {{ l.recipe_name }}</span></td>
             <td>{{ '%.4f'|format(l.required_qty_with_waste_standard or 0) }} {{ l.standard_uom }}</td>
             <td><input form="issue-form-{{ l.id }}" class="form-control form-control-sm" type="number" step="0.0001" name="input_material_issued"
-                value="{{ l.input_material_issued or l.required_qty_with_waste_standard or 0 }}" {% if l.finalized %}readonly{% endif %}></td>
+                value="{{ l.input_material_issued if l.input_material_issued is not none else (l.required_qty_with_waste_standard or 0) }}" {% if l.finalized %}readonly{% endif %}></td>
             <td><input form="issue-form-{{ l.id }}" class="form-control form-control-sm" name="issued_uom"
                 value="{{ l.issued_uom or l.standard_uom }}" {% if l.finalized %}readonly{% endif %}></td>
             <td><select form="issue-form-{{ l.id }}" class="form-select form-select-sm" name="issue_to_section" {% if l.finalized %}disabled{% endif %}>{% for sec in

@@ -24,6 +24,8 @@ from sqlalchemy.orm import Session
 from app.core.templates import render
 from app.core.rbac import require_area, require_action
 from app.database.session import get_db
+# Batch 23: shared, legacy-aware stock ledger writer (see app/core/stock_ledger.py)
+from app.core.stock_ledger import post_stock_movement
 
 router = APIRouter(prefix="/procurement", tags=["Procurement"])
 
@@ -239,6 +241,7 @@ async def po_receive(request: Request, po_no: str, db: Session = Depends(get_db)
     grn_no = _next_no(db, "grn_receipts", "grn_no", "GRN")
     cid = _cid(request)
     posted = 0
+    ledger_failures: list[str] = []  # Batch 23: surface ledger problems, never hide them
 
     for i, lid in enumerate(line_ids):
         try:
@@ -261,17 +264,29 @@ async def po_receive(request: Request, po_no: str, db: Session = Depends(get_db)
             "UPDATE purchase_order_lines SET received_qty = COALESCE(received_qty,0) + :q WHERE id = :i"
         ), {"q": qty, "i": int(lid)})
         # ---- THE REAL STOCK MOVEMENT (GRN_IN in the ledger) ----
-        try:
-            db.execute(text("""
-                INSERT INTO inventory_transactions
-                    (company_id, txn_date, transaction_date, inventory_code, item_name, uom,
-                     qty_in, qty_out, movement_type, reference_no, unit_cost, remarks, created_by)
-                VALUES (:cid, NOW(), NOW(), :code, :name, :uom, :qty, 0, 'GRN_IN', :ref, :cost, :rm, :cb)
-            """), {"cid": cid, "code": line["inventory_code"], "name": line["item_name"],
-                   "uom": line["uom"], "qty": qty, "ref": grn_no,
-                   "cost": line["unit_price"], "rm": f"GRN against {po_no}", "cb": _user(request)})
-        except Exception:
-            pass  # ledger schema may differ; GRN tables remain the document of record
+        # Batch 23 FIX: this used to INSERT only the NEW column names inside a
+        # bare `except: pass`. On databases where inventory_transactions still
+        # has the LEGACY NOT NULL columns (transaction_no / ingredient_code /
+        # ingredient_name / transaction_type) the INSERT was rejected and the
+        # error was swallowed — the PO went to "RECEIVED" while stock stayed 0.
+        # post_stock_movement() fills legacy AND new columns and reports failure.
+        ok = post_stock_movement(
+            db,
+            company_id=cid,
+            inventory_code=line["inventory_code"],
+            item_name=line["item_name"],
+            uom=line["uom"] or "",
+            qty=qty,
+            movement_type="GRN_IN",
+            reference_no=grn_no,
+            unit_cost=float(line["unit_price"] or 0),
+            remarks=f"GRN against {po_no}",
+            created_by=_user(request),
+            lot_no=form.get("lot_no") or "",
+            to_location="Main Store",
+        )
+        if not ok:
+            ledger_failures.append(line["inventory_code"])
         posted += 1
 
     if not posted:
@@ -290,4 +305,96 @@ async def po_receive(request: Request, po_no: str, db: Session = Depends(get_db)
     new_status = "Received" if int(open_lines) == 0 else "Partially Received"
     db.execute(text("UPDATE purchase_orders SET status = :s WHERE po_no = :p"), {"s": new_status, "p": po_no})
     db.commit()
-    return RedirectResponse(f"/procurement/po/{po_no}?success=GRN {grn_no} posted - stock received into ledger", status_code=303)
+    # Batch 23: if any line failed to reach the stock ledger, SAY SO. Previously
+    # this always reported success even when zero stock had actually moved.
+    if ledger_failures:
+        bad = ", ".join(ledger_failures[:5])
+        return RedirectResponse(
+            f"/procurement/po/{po_no}?error=GRN {grn_no} saved but the stock ledger "
+            f"rejected {len(ledger_failures)} line(s): {bad}. Check the server log "
+            f"and run the Batch 23 migration.",
+            status_code=303)
+    return RedirectResponse(
+        f"/procurement/po/{po_no}?success=GRN {grn_no} posted - stock received into ledger",
+        status_code=303)
+
+
+# ============================================================================
+# Batch 26 — PO CLOSE / REOPEN  (Oracle & SAP B1 style document control)
+# ----------------------------------------------------------------------------
+# In Oracle Purchasing and SAP B1 a buyer can CLOSE a purchase order manually,
+# even when it was never fully received. Typical reasons:
+#   * the supplier short-shipped and will not send the remainder
+#   * the balance is no longer needed
+#   * the PO was raised in error
+#
+# A closed PO stops appearing in the "open commitments" list and can no longer
+# receive a GRN, but all its history (lines, GRNs, stock movements, journals)
+# is preserved — closing is NOT deleting.
+#
+# Statuses:
+#   Open               awaiting receipt
+#   Partially Received some lines received
+#   Received           fully received
+#   Closed             manually closed; no further GRN allowed
+#   Cancelled          voided before any receipt
+# ============================================================================
+@router.post("/po/{po_no}/status")
+async def set_po_status(request: Request, po_no: str, db: Session = Depends(get_db)):
+    require_action(request, "procurement", "edit")
+    _ensure_procurement_schema(db)
+    form = await request.form()
+    new_status = (form.get("new_status") or "").strip()
+    reason = (form.get("reason") or "").strip()
+
+    allowed = {"Open", "Closed", "Cancelled"}
+    if new_status not in allowed:
+        return RedirectResponse(
+            f"/procurement/po/{po_no}?error=Invalid status '{new_status}'",
+            status_code=303)
+
+    po = db.execute(text("SELECT * FROM purchase_orders WHERE po_no = :p"),
+                    {"p": po_no}).mappings().first()
+    if not po:
+        return RedirectResponse("/procurement?error=PO not found", status_code=303)
+
+    # Cancelling is only safe before ANY goods were received — otherwise stock
+    # already moved and the document must be Closed, not voided.
+    if new_status == "Cancelled":
+        received = db.execute(text(
+            "SELECT COALESCE(SUM(COALESCE(received_qty,0)),0) FROM purchase_order_lines WHERE po_no = :p"
+        ), {"p": po_no}).scalar() or 0
+        if float(received) > 0:
+            return RedirectResponse(
+                f"/procurement/po/{po_no}?error=Cannot cancel: goods already received. "
+                f"Use Close instead so stock history is preserved.",
+                status_code=303)
+
+    # Re-opening recomputes the true status from the received quantities so we
+    # never re-open into a misleading state.
+    if new_status == "Open":
+        open_lines = db.execute(text("""
+            SELECT SUM(CASE WHEN COALESCE(received_qty,0) >= COALESCE(ordered_qty,0) THEN 0 ELSE 1 END)
+            FROM purchase_order_lines WHERE po_no = :p
+        """), {"p": po_no}).scalar() or 0
+        any_received = db.execute(text(
+            "SELECT COALESCE(SUM(COALESCE(received_qty,0)),0) FROM purchase_order_lines WHERE po_no = :p"
+        ), {"p": po_no}).scalar() or 0
+        if int(open_lines) == 0:
+            new_status = "Received"
+        elif float(any_received) > 0:
+            new_status = "Partially Received"
+
+    note = f"[{new_status} by {_user(request)}]"
+    if reason:
+        note += f" {reason}"
+    db.execute(text("""
+        UPDATE purchase_orders
+           SET status = :s,
+               remarks = TRIM(CONCAT(COALESCE(remarks,''), ' ', :note))
+         WHERE po_no = :p
+    """), {"s": new_status, "note": note, "p": po_no})
+    db.commit()
+    return RedirectResponse(
+        f"/procurement/po/{po_no}?success=PO {po_no} is now {new_status}",
+        status_code=303)

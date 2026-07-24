@@ -1,0 +1,153 @@
+{% extends "layouts/base.html" %}
+{% block title %}New Journal Entry | ISFC{% endblock %}
+{% block content %}
+{# ==========================================================================
+   Batch 22 — Manual Journal Entry (double-entry)
+   Live JS totals Debit vs Credit and shows the difference. The Post button
+   stays DISABLED until the entry is balanced. The server re-validates too, so
+   an unbalanced entry can never post.
+   ========================================================================== #}
+<div class="container-fluid py-3 isfc-page">
+
+  {% if request.query_params.get('error') %}
+  <div class="alert alert-danger"><i class="bi bi-exclamation-triangle me-2"></i>{{ request.query_params.get('error') }}</div>
+  {% endif %}
+
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+      <h3 class="mb-0 fw-bolder"><i class="bi bi-journal-plus me-2"></i>{{ t('New Journal Entry') }}</h3>
+      <p class="text-body-tertiary mb-0">{{ t('Enter debit and credit lines. Total debit must equal total credit.') }}</p>
+    </div>
+    <a href="/finance/gl" class="btn btn-phoenix-secondary btn-sm"><i class="bi bi-arrow-left me-1"></i>{{ t('General Ledger') }}</a>
+  </div>
+
+  <form method="post" action="/finance/journal/new" id="jvForm">
+    <div class="card border mb-3">
+      <div class="card-body">
+        <div class="row g-3 mb-3">
+          <div class="col-md-8">
+            <label class="form-label fw-semibold">{{ t('Memo / Description') }}</label>
+            <input name="memo" class="form-control" placeholder="e.g. October office rent">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fw-semibold">{{ t('Entry Type') }}</label>
+            <select name="source_type" class="form-select">
+              <option value="MANUAL_JV">General Journal</option>
+              <option value="EXPENSE">Expense Record</option>
+              <option value="ADJUSTMENT">Adjustment</option>
+            </select>
+          </div>
+        </div>
+
+        <table class="table align-middle mb-0" id="jvTable">
+          <thead class="bg-body-secondary">
+            <tr>
+              <th style="width:34%">{{ t('Account') }}</th>
+              <th style="width:22%">{{ t('Party / Note') }}</th>
+              <th class="text-end" style="width:18%">{{ t('Debit') }}</th>
+              <th class="text-end" style="width:18%">{{ t('Credit') }}</th>
+              <th style="width:8%"></th>
+            </tr>
+          </thead>
+          <tbody id="jvBody">
+            {% for _ in range(2) %}
+            <tr class="jv-row">
+              <td>
+                <select name="account_code" class="form-select form-select-sm">
+                  <option value="">— {{ t('select') }} —</option>
+                  {% for a in accounts %}
+                  <option value="{{ a.account_code }}">{{ a.account_code }} · {{ a.account_name }}</option>
+                  {% endfor %}
+                </select>
+              </td>
+              <td><input name="party" class="form-control form-control-sm" placeholder="{{ t('optional') }}"></td>
+              <td><input name="debit" type="number" step="0.01" min="0" class="form-control form-control-sm text-end jv-dr" value=""></td>
+              <td><input name="credit" type="number" step="0.01" min="0" class="form-control form-control-sm text-end jv-cr" value=""></td>
+              <td class="text-center"><button type="button" class="btn btn-sm btn-link text-danger jv-del"><i class="bi bi-x-circle"></i></button></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+          <tfoot>
+            <tr class="fw-bold">
+              <td colspan="2" class="text-end">{{ t('Totals') }}</td>
+              <td class="text-end"><span id="totDr">0.00</span></td>
+              <td class="text-end"><span id="totCr">0.00</span></td>
+              <td></td>
+            </tr>
+          </tfoot>
+        </table>
+
+        <div class="d-flex justify-content-between align-items-center mt-3">
+          <button type="button" class="btn btn-phoenix-secondary btn-sm" id="addRow">
+            <i class="bi bi-plus-lg me-1"></i>{{ t('Add line') }}
+          </button>
+          <div id="balanceBadge" class="badge fs-9 bg-danger">
+            {{ t('Difference') }}: <span id="diffVal">0.00</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="d-flex gap-2">
+      <button type="submit" class="btn btn-primary" id="postBtn" disabled>
+        <i class="bi bi-check-lg me-1"></i>{{ t('Post Journal') }}
+      </button>
+      <a href="/finance/gl" class="btn btn-phoenix-secondary">{{ t('Cancel') }}</a>
+    </div>
+  </form>
+</div>
+
+<script>
+(function () {
+  const body = document.getElementById('jvBody');
+  const addBtn = document.getElementById('addRow');
+  const postBtn = document.getElementById('postBtn');
+  const totDr = document.getElementById('totDr');
+  const totCr = document.getElementById('totCr');
+  const diffVal = document.getElementById('diffVal');
+  const badge = document.getElementById('balanceBadge');
+
+  function recalc() {
+    let dr = 0, cr = 0;
+    body.querySelectorAll('.jv-dr').forEach(i => dr += parseFloat(i.value || 0));
+    body.querySelectorAll('.jv-cr').forEach(i => cr += parseFloat(i.value || 0));
+    totDr.textContent = dr.toFixed(2);
+    totCr.textContent = cr.toFixed(2);
+    const diff = +(dr - cr).toFixed(2);
+    diffVal.textContent = diff.toFixed(2);
+    const balanced = Math.abs(diff) < 0.005 && dr > 0;
+    badge.classList.toggle('bg-danger', !balanced);
+    badge.classList.toggle('bg-success', balanced);
+    badge.firstChild.textContent = balanced ? '{{ t("Balanced") }} ' : '{{ t("Difference") }}: ';
+    postBtn.disabled = !balanced;
+  }
+
+  // A debit and a credit on the same line are mutually exclusive — clear the other.
+  body.addEventListener('input', function (e) {
+    if (e.target.classList.contains('jv-dr') && e.target.value) {
+      e.target.closest('tr').querySelector('.jv-cr').value = '';
+    }
+    if (e.target.classList.contains('jv-cr') && e.target.value) {
+      e.target.closest('tr').querySelector('.jv-dr').value = '';
+    }
+    recalc();
+  });
+
+  body.addEventListener('click', function (e) {
+    if (e.target.closest('.jv-del')) {
+      if (body.querySelectorAll('.jv-row').length > 2) e.target.closest('tr').remove();
+      recalc();
+    }
+  });
+
+  addBtn.addEventListener('click', function () {
+    const tpl = body.querySelector('.jv-row').cloneNode(true);
+    tpl.querySelectorAll('input').forEach(i => i.value = '');
+    tpl.querySelector('select').value = '';
+    body.appendChild(tpl);
+  });
+
+  recalc();
+})();
+</script>
+{% endblock %}

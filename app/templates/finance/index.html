@@ -6,7 +6,12 @@
   <div class="isfc-hero mb-3 p-4">
     <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
       <h1 class="mb-1">{{ t('Finance Command Center') }}</h1>
-      <a class="btn btn-light" href="/finance/gl"><i class="bi bi-journal-bookmark me-1"></i>{{ t('General Ledger') }}</a>
+      <div class="d-flex gap-2 flex-wrap">
+        <a class="btn btn-primary" href="/finance/ar/new"><i class="bi bi-receipt me-1"></i>{{ t('New A/R Invoice') }}</a>
+        <a class="btn btn-light" href="/finance/journal/new"><i class="bi bi-journal-plus me-1"></i>{{ t('New Journal') }}</a>
+        <a class="btn btn-light" href="/finance/coa"><i class="bi bi-diagram-3 me-1"></i>{{ t('Chart of Accounts') }}</a>
+        <a class="btn btn-light" href="/finance/gl"><i class="bi bi-journal-bookmark me-1"></i>{{ t('General Ledger') }}</a>
+      </div>
     </div>
     <p class="mb-0">{{ t('AR auto-draft after delivered orders, AP supplier invoice match with PO/GRN, payments and statements.') }}</p>
   </div>
@@ -136,7 +141,7 @@
               <table class="table table-sm fs-9 mb-0">
                 <thead><tr class="text-uppercase text-body-tertiary fs-10">
                   <th>{{ t('AP No') }}</th><th>{{ t('Supplier') }}</th><th>PO</th><th>GRN</th>
-                  <th class="text-end">{{ t('Amount') }}</th><th class="text-center">{{ t('Match') }}</th><th class="text-center">{{ t('Status') }}</th>
+                  <th class="text-end">{{ t('Amount') }}</th><th class="text-center">{{ t('Match') }}</th><th class="text-center">{{ t('Status') }}</th><th class="text-center">{{ t('Actions') }}</th>
                 </tr></thead>
                 <tbody>
                 {% for i in ap %}
@@ -147,10 +152,25 @@
                   <td>{{ i.grn_no or '-' }}</td>
                   <td class="text-end isfc-num">{{ '%.2f'|format(i.amount or 0) }}</td>
                   <td class="text-center"><span class="badge badge-phoenix badge-phoenix-{{ 'success' if i.match_status=='Matched' else 'danger' }}">{{ i.match_status }}</span></td>
-                  <td class="text-center"><span class="badge badge-phoenix badge-phoenix-{{ 'success' if i.status=='Paid' else ('warning' if i.status=='Partially Paid' else 'info') }}">{{ i.status }}</span></td>
+                  <td class="text-center"><span class="badge badge-phoenix badge-phoenix-{{ 'success' if i.status=='Paid' else ('warning' if i.status=='Partially Paid' else ('secondary' if i.status in ['Closed','Cancelled'] else 'info')) }}">{{ i.status }}</span></td>
+                  {# Batch 26: Oracle-style manual Close / Reopen on each invoice. #}
+                  <td class="text-center">
+                    {% if i.status not in ['Paid','Closed','Cancelled'] %}
+                    <form method="post" action="/finance/ap/{{ i.ap_no }}/status" class="d-inline"
+                          onsubmit="return confirm('Close {{ i.ap_no }}? It will drop out of the open payables balance.');">
+                      <input type="hidden" name="new_status" value="Closed">
+                      <button class="btn btn-link btn-sm p-0 text-warning" title="Close invoice"><i class="bi bi-lock"></i></button>
+                    </form>
+                    {% elif i.status in ['Closed','Cancelled'] %}
+                    <form method="post" action="/finance/ap/{{ i.ap_no }}/status" class="d-inline">
+                      <input type="hidden" name="new_status" value="Open">
+                      <button class="btn btn-link btn-sm p-0 text-success" title="Reopen invoice"><i class="bi bi-unlock"></i></button>
+                    </form>
+                    {% else %}<span class="text-body-tertiary">—</span>{% endif %}
+                  </td>
                 </tr>
                 {% else %}
-                <tr><td colspan="7" class="text-center text-body-tertiary py-5"><i class="bi bi-inbox fs-4 d-block mb-2"></i>{{ t('No supplier invoices yet.') }}</td></tr>
+                <tr><td colspan="8" class="text-center text-body-tertiary py-5"><i class="bi bi-inbox fs-4 d-block mb-2"></i>{{ t('No supplier invoices yet.') }}</td></tr>
                 {% endfor %}
                 </tbody>
               </table>
@@ -203,8 +223,30 @@
               <label class="form-label fw-bold">{{ t('Method') }}</label>
               <select class="form-select" name="method"><option>Bank</option><option>Cash</option><option>Cheque</option><option>Card</option></select>
             </div>
-            <div class="col-12"><label class="form-label fw-bold">{{ t('Reference No') }}</label><input class="form-control" name="reference_no" placeholder="AR-... / AP-..."></div>
-            <div class="col-7"><label class="form-label fw-bold">{{ t('Party Name') }}</label><input class="form-control" name="party_name"></div>
+            {# Batch 27: pick an OPEN invoice instead of typing a reference from
+               memory. Selecting one fills Party Name and the outstanding Amount.
+               Every field stays editable (partial payments are allowed). #}
+            <div class="col-12">
+              <label class="form-label fw-bold">{{ t('Open Invoice') }}
+                <span class="fw-normal text-body-tertiary">({{ t('fills party & amount') }})</span></label>
+              <select class="form-select" id="payPicker">
+                <option value="">{{ t('Manual entry / select invoice') }}</option>
+                {% for i in ar if i.status not in ['Paid','Closed','Cancelled'] %}
+                <option value="{{ i.invoice_no }}" data-party="{{ i.customer_name }}" data-type="CUSTOMER"
+                        data-amount="{{ '%.2f'|format((i.amount or 0) - (i.paid_amount or 0)) }}">
+                  AR · {{ i.invoice_no }} · {{ i.customer_name }} · {{ '%.2f'|format((i.amount or 0) - (i.paid_amount or 0)) }} due
+                </option>
+                {% endfor %}
+                {% for i in ap if i.status not in ['Paid','Closed','Cancelled'] %}
+                <option value="{{ i.ap_no }}" data-party="{{ i.supplier_name }}" data-type="SUPPLIER"
+                        data-amount="{{ '%.2f'|format((i.amount or 0) - (i.paid_amount or 0)) }}">
+                  AP · {{ i.ap_no }} · {{ i.supplier_name }} · {{ '%.2f'|format((i.amount or 0) - (i.paid_amount or 0)) }} due
+                </option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-12"><label class="form-label fw-bold">{{ t('Reference No') }}</label><input class="form-control" name="reference_no" id="payRef" placeholder="AR-... / AP-..."></div>
+            <div class="col-7"><label class="form-label fw-bold">{{ t('Party Name') }}</label><input class="form-control" name="party_name" id="payParty"></div>
             <div class="col-5"><label class="form-label fw-bold">{{ t('Amount') }}</label><input class="form-control" name="amount" type="number" step="0.01" min="0" required></div>
             <div class="col-12"><label class="form-label fw-bold">{{ t('Remarks') }}</label><input class="form-control" name="remarks"></div>
             <div class="col-12"><button class="btn btn-success w-100"><i class="bi bi-check2-circle me-1"></i>{{ t('Save Payment') }}</button></div>
@@ -218,12 +260,34 @@
         </div>
         <div class="card-body p-4">
           <form method="post" action="/finance/ap/create" class="row g-3">
+            {# Batch 26: full auto-link. Selecting a GRN fills Supplier, PO and
+               Amount (remaining un-invoiced value). All fields stay EDITABLE.
+               GRNs already fully invoiced are shown but disabled. #}
             <div class="col-12">
               <label class="form-label fw-bold">GRN <span class="fw-normal text-body-tertiary">({{ t('auto-fills PO, supplier & amount') }})</span></label>
-              <select class="form-select" name="grn_no" onchange="let o=this.options[this.selectedIndex];this.form.po_no.value=o.dataset.po||'';this.form.supplier_name.value=o.dataset.sup||'';this.form.amount.value=o.dataset.amount||0">
+              <select class="form-select" name="grn_no" id="grnPicker">
                 <option value="">{{ t('Manual / select GRN') }}</option>
-                {% for g in grns %}<option value="{{ g.grn_no }}" data-po="{{ g.po_no }}" data-sup="{{ g.supplier_name }}" data-amount="{{ g.amount }}">{{ g.grn_no }} · {{ g.supplier_name }} · {{ g.amount }}</option>{% endfor %}
+                {% for g in grns %}
+                <option value="{{ g.grn_no }}"
+                        data-po="{{ g.po_no }}"
+                        data-sup="{{ g.supplier_name }}"
+                        data-amount="{{ g.remaining if g.remaining and g.remaining > 0 else g.amount }}"
+                        data-grnvalue="{{ g.amount }}"
+                        data-invoiced="{{ g.invoiced }}"
+                        {% if g.remaining is not none and g.remaining <= 0.009 %}disabled{% endif %}>
+                  {{ g.grn_no }} · {{ g.supplier_name or 'no supplier' }} · {{ '%.2f'|format(g.amount or 0) }}
+                  {%- if g.invoiced and g.invoiced > 0 %} · invoiced {{ '%.2f'|format(g.invoiced) }}{% endif %}
+                  {%- if g.remaining is not none and g.remaining <= 0.009 %} (fully invoiced){% endif %}
+                </option>
+                {% endfor %}
               </select>
+              {% if not grns %}
+              <div class="alert alert-warning mt-2 mb-0 py-2 fs-10">
+                <i class="bi bi-exclamation-triangle me-1"></i>
+                {{ t('No GRNs found. Receive goods against a Purchase Order first (Procurement → open PO → Post GRN), then the supplier invoice can be matched here.') }}
+              </div>
+              {% endif %}
+              <div id="grnHint" class="fs-10 text-body-tertiary mt-2" style="display:none;"></div>
             </div>
             <div class="col-7"><label class="form-label fw-bold">{{ t('Supplier') }}</label><input class="form-control" name="supplier_name"></div>
             <div class="col-5"><label class="form-label fw-bold">{{ t('PO No') }}</label><input class="form-control" name="po_no"></div>
@@ -232,10 +296,77 @@
             <div class="col-12"><button class="btn btn-warning w-100"><i class="bi bi-save me-1"></i>{{ t('Save AP Invoice') }}</button></div>
           </form>
           <p class="fs-10 text-body-tertiary mt-3 mb-0"><i class="bi bi-info-circle me-1"></i>{{ t('3-way match: if the invoice amount differs from the GRN value by more than 0.01, the invoice is flagged as Variance.') }}</p>
+<script>
+(function () {
+  // Batch 26: GRN -> Supplier / PO / Amount auto-link with live variance hint.
+  var picker = document.getElementById('grnPicker');
+  if (!picker) return;
+  var form = picker.form;
+  var hint = document.getElementById('grnHint');
+
+  function fill() {
+    var o = picker.options[picker.selectedIndex];
+    if (!o || !o.value) { hint.style.display = 'none'; return; }
+    // Auto-fill but leave every field editable.
+    if (form.supplier_name) form.supplier_name.value = o.dataset.sup || '';
+    if (form.po_no)         form.po_no.value         = o.dataset.po  || '';
+    if (form.amount)        form.amount.value        = o.dataset.amount || 0;
+    showHint();
+  }
+
+  function showHint() {
+    var o = picker.options[picker.selectedIndex];
+    if (!o || !o.value) { hint.style.display = 'none'; return; }
+    var grnValue = parseFloat(o.dataset.grnvalue || 0);
+    var invoiced = parseFloat(o.dataset.invoiced || 0);
+    var typed    = parseFloat((form.amount && form.amount.value) || 0);
+    var diff     = +(typed - grnValue).toFixed(2);
+    var msg = 'GRN value ' + grnValue.toFixed(2);
+    if (invoiced > 0) msg += ' · already invoiced ' + invoiced.toFixed(2);
+    if (Math.abs(diff) > 0.01) {
+      msg += ' · <span class="text-danger fw-bold">variance ' + (diff > 0 ? '+' : '') +
+             diff.toFixed(2) + ' — will be flagged</span>';
+    } else {
+      msg += ' · <span class="text-success fw-bold">matched</span>';
+    }
+    hint.innerHTML = msg;
+    hint.style.display = 'block';
+  }
+
+  picker.addEventListener('change', fill);
+  if (form.amount) form.amount.addEventListener('input', showHint);
+})();
+</script>
         </div>
       </div>
 
     </div>
   </div>
 </div>
+
+<script>
+(function () {
+  // Batch 27: open-invoice picker -> fills party type, name and amount due.
+  var picker = document.getElementById('payPicker');
+  if (!picker) return;
+  picker.addEventListener('change', function () {
+    var o = picker.options[picker.selectedIndex];
+    if (!o || !o.value) return;
+    var ref = document.getElementById('payRef');
+    var party = document.getElementById('payParty');
+    var form = picker.form;
+    if (ref)   ref.value   = o.value;
+    if (party) party.value = o.dataset.party || '';
+    if (form && form.amount) form.amount.value = o.dataset.amount || '';
+    if (form && form.party_type) {
+      var want = o.dataset.type || '';
+      for (var i = 0; i < form.party_type.options.length; i++) {
+        if ((form.party_type.options[i].value || '').toUpperCase() === want) {
+          form.party_type.selectedIndex = i; break;
+        }
+      }
+    }
+  });
+})();
+</script>
 {% endblock %}

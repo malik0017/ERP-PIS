@@ -36,8 +36,16 @@ from app.modules.customer.routes import router as customer_router
 from app.modules.procurement.routes import router as procurement_router
 from app.modules.finance.routes import router as finance_router
 from app.modules.projects.routes import router as projects_router
+from app.modules.hr.routes import router as hr_router
 # Batch 10: config-driven per-module dashboards (/module/{key}/dashboard)
 from app.modules.module_dash.routes import router as module_dash_router
+
+# Batch 22: new & extended routers (manual masters CRUD, finance extensions,
+# PO print). These extend existing namespaces; base routers stay untouched.
+from app.modules.masters_crud.routes import router as masters_crud_router
+from app.modules.finance.routes_ext import router as finance_ext_router
+from app.modules.procurement.routes_print import router as procurement_print_router
+from app.modules.module_dash.routes_launcher import build_launcher_context
 
 
 # ===== LOGGING =====
@@ -177,7 +185,13 @@ app.include_router(customer_router)
 app.include_router(procurement_router)
 app.include_router(finance_router)
 app.include_router(projects_router)
+app.include_router(hr_router)
 app.include_router(module_dash_router)
+
+# Batch 22: register new/extended routers.
+app.include_router(masters_crud_router)
+app.include_router(finance_ext_router)
+app.include_router(procurement_print_router)
 
 # ===== ROUTES =====
 
@@ -194,28 +208,22 @@ async def module_launcher(request: Request):
     # user (login redirect + logo both point here). Cards are filtered by
     # can_access() inside the template, so a user with a single module sees
     # one card. Admin/superadmin/administrator see every card.
-    stats = {}
+    # Batch 22: live KPI tiles + real chart data (orders / inventory / AR-AP).
+    ctx = {"stats": {}, "charts": {}}
     try:
-        from sqlalchemy import text as _text
         from app.database.session import SessionLocal
         _db = SessionLocal()
-
-        def _n(sql: str) -> int:
-            try:
-                return int(_db.execute(_text(sql)).scalar() or 0)
-            except Exception:
-                return 0
-        stats = {
-            "open_orders": _n("SELECT COUNT(*) FROM customer_orders WHERE COALESCE(status,'') NOT IN ('Delivered','Closed','Cancelled')"),
-            "inventory_items": _n("SELECT COUNT(*) FROM ingredients"),
-            "open_pos": _n("SELECT COUNT(*) FROM purchase_orders WHERE COALESCE(status,'') NOT IN ('Closed','Cancelled')"),
-            "ar_open": _n("SELECT COUNT(*) FROM ar_invoices WHERE status <> 'Paid'"),
-            "customers": _n("SELECT COUNT(*) FROM customers"),
-        }
-        _db.close()
+        try:
+            ctx = build_launcher_context(_db)
+        finally:
+            _db.close()
     except Exception:
-        stats = {}
-    return render(request, "modules/index.html", {"page_title": "ERP Modules", "stats": stats})
+        ctx = {"stats": {}, "charts": {}}
+    return render(request, "modules/index.html", {
+        "page_title": "ERP Modules",
+        "stats": ctx.get("stats", {}),
+        "charts": ctx.get("charts", {}),
+    })
 
 @app.get("/health")
 async def health_check():

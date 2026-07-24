@@ -49,6 +49,18 @@ def _dump_route(route: list[str]) -> str:
     return json.dumps(route, ensure_ascii=False)
 
 
+def _normalize_section(name: str) -> str:
+    """Batch 19: retired sections collapse to their successor; 'Packing' and
+    'Trayline / Packing' are ONE stage (standardized on 'Trayline / Packing')."""
+    n = (name or "").strip()
+    if n == "Packing":
+        return "Trayline / Packing"
+    # Batch 20: both activities live inside Butchery now.
+    if n in ("Thawing", "Marination"):
+        return "Butchery"
+    return n
+
+
 def generate_order_no(db: Session) -> str:
     today = date.today().strftime("%Y%m%d")
     count = db.query(CustomerOrder).filter(CustomerOrder.order_no.like(f"ORD-{today}-%")).count() + 1
@@ -90,29 +102,27 @@ def default_route_for_ingredient(ingredient: Ingredient | None, ingredient_name:
     name = (ingredient_name or "").lower()
     if ingredient:
         if ingredient.is_bakery_item or ingredient.default_issue_section == "Bakery/Pastry":
-            return ["Store", "Bakery/Pastry", "Packing"]
-        if ingredient.requires_thawing and ingredient.requires_butchery and ingredient.requires_marination:
-            return ["Store", "Thawing", "Butchery", "Marination", "Hot Kitchen", "QC", "Packing"]
-        if ingredient.requires_thawing and ingredient.requires_cutting:
-            return ["Store", "Thawing", "Cutting", "Hot Kitchen", "QC", "Packing"]
-        if ingredient.requires_thawing:
-            return ["Store", "Thawing", "Hot Kitchen", "QC", "Packing"]
+            return ["Store", "Bakery/Pastry", "Trayline / Packing"]
+        # Batch 20: thawing/marination flags now route through Butchery,
+        # which owns thawing + marination internally.
+        if ingredient.requires_thawing or ingredient.requires_marination:
+            return ["Store", "Butchery", "Hot Kitchen", "QC", "Trayline / Packing"]
         if ingredient.requires_butchery:
-            return ["Store", "Butchery", "Marination", "Hot Kitchen", "QC", "Packing"]
+            return ["Store", "Butchery", "Hot Kitchen", "QC", "Trayline / Packing"]
         if ingredient.requires_cutting and ingredient.is_cold_kitchen_item:
-            return ["Store", "Cutting", "Cold Kitchen", "QC", "Packing"]
+            return ["Store", "Cutting", "Cold Kitchen", "QC", "Trayline / Packing"]
         if ingredient.requires_cutting:
-            return ["Store", "Cutting", "Hot Kitchen", "QC", "Packing"]
+            return ["Store", "Cutting", "Hot Kitchen", "QC", "Trayline / Packing"]
         if ingredient.is_cold_kitchen_item:
-            return ["Store", "Cold Kitchen", "QC", "Packing"]
+            return ["Store", "Cold Kitchen", "QC", "Trayline / Packing"]
 
     if any(x in name for x in ["flour", "sugar", "butter", "yeast", "chocolate", "cream", "milk"]):
-        return ["Store", "Bakery/Pastry", "Packing"]
+        return ["Store", "Bakery/Pastry", "Trayline / Packing"]
     if any(x in name for x in ["chicken", "beef", "meat", "mutton", "fish"]):
-        return ["Store", "Thawing", "Butchery", "Marination", "Hot Kitchen", "QC", "Packing"]
+        return ["Store", "Butchery", "Hot Kitchen", "QC", "Trayline / Packing"]
     if any(x in name for x in ["onion", "tomato", "lettuce", "cucumber", "vegetable", "salad"]):
-        return ["Store", "Cutting", "Hot Kitchen", "QC", "Packing"]
-    return ["Store", "Hot Kitchen", "QC", "Packing"]
+        return ["Store", "Cutting", "Hot Kitchen", "QC", "Trayline / Packing"]
+    return ["Store", "Hot Kitchen", "QC", "Trayline / Packing"]
 
 
 def create_order(db: Session, payload: CustomerOrderCreate, created_by: str = "system", company_id: int | None = None) -> CustomerOrder:
@@ -633,6 +643,10 @@ def receive_transaction(db: Session, tx_id: int, received_qty: float, received_b
     tx = db.query(KitchenSectionTransaction).filter(KitchenSectionTransaction.id == tx_id).first()
     if not tx:
         raise ValueError("Transaction not found")
+    # Batch 20: transferred/completed lines are locked for receiving too.
+    _st = str(tx.transaction_status or "").upper()
+    if _st == "TRANSFERRED" or _st.startswith("COMPLETED"):
+        raise ValueError(f"Line {tx.ingredient_name} is already {tx.transaction_status} and locked.")
     tx.received_qty_standard = _num(received_qty)
     tx.balance_qty_standard = _num(received_qty)
     tx.received_by = received_by
@@ -658,6 +672,11 @@ def transfer_transaction(
     tx = db.query(KitchenSectionTransaction).filter(KitchenSectionTransaction.id == tx_id).first()
     if not tx:
         raise ValueError("Transaction not found")
+    # Batch 20: a transferred/completed line is LOCKED — it cannot be
+    # transferred again from this section. The next section owns it now.
+    cur_status = str(tx.transaction_status or "").upper()
+    if cur_status == "TRANSFERRED" or cur_status.startswith("COMPLETED"):
+        raise ValueError(f"Line {tx.ingredient_name} is already {tx.transaction_status} and locked.")
     received = _num(tx.received_qty_standard) or _num(tx.issued_qty_standard)
     processed = _num(processed_qty)
     waste = _num(waste_qty)
@@ -686,7 +705,7 @@ def transfer_transaction(
     # when production needs to branch (Thawing -> Butchery/Hot Kitchen, Cutting -> Cold Kitchen, etc.).
     # We keep route_template for audit but allow an operational override.
     if next_section_override:
-        next_section = next_section_override
+        next_section = _normalize_section(next_section_override)
         if tx.current_section not in route:
             route.insert(0, tx.current_section)
         cur_idx = route.index(tx.current_section) if tx.current_section in route else int(_num(tx.route_step_no))
@@ -695,6 +714,7 @@ def transfer_transaction(
             tx.route_template = _dump_route(route)
         next_step = cur_idx + 1
 
+    next_section = _normalize_section(next_section) if next_section else next_section
     after_next = route[int(next_step) + 1] if len(route) > int(next_step) + 1 else None
 
     if next_section and transfer > 0:

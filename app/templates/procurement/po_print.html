@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="{{ lang|default('en') }}" dir="{{ 'rtl' if is_rtl|default(false) else 'ltr' }}">
+<head>
+  <meta charset="utf-8">
+  <title>{{ page_title }}</title>
+  <style>
+    /* Batch 22 — self-contained print stylesheet (no theme dependency) */
+    * { box-sizing: border-box; }
+    body { font-family: "Segoe UI", Arial, sans-serif; color: #1a1a1a; margin: 0; padding: 28px 34px; }
+    .po-header { display: flex; justify-content: space-between; border-bottom: 3px solid #2563eb; padding-bottom: 14px; margin-bottom: 20px; }
+    .po-header h1 { margin: 0; font-size: 26px; color: #2563eb; letter-spacing: .5px; }
+    .company { font-size: 13px; color: #444; margin-top: 4px; }
+    .po-title { text-align: right; }
+    .po-title .doc { font-size: 22px; font-weight: 800; }
+    .po-title .no { font-size: 14px; color: #555; }
+    .meta { display: flex; gap: 40px; margin-bottom: 20px; font-size: 13px; }
+    .meta .box { flex: 1; border: 1px solid #ddd; border-radius: 8px; padding: 12px 14px; }
+    .meta h4 { margin: 0 0 6px; font-size: 12px; text-transform: uppercase; color: #888; letter-spacing: .5px; }
+    .meta .line { margin: 2px 0; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 18px; }
+    thead th { background: #eff4ff; color: #1e3a8a; text-align: left; padding: 9px 10px; border-bottom: 2px solid #c7d7fe; }
+    tbody td { padding: 8px 10px; border-bottom: 1px solid #eee; }
+    tbody tr:nth-child(even) { background: #fafbff; }
+    .num { text-align: right; }
+    tfoot td { padding: 9px 10px; font-weight: 700; border-top: 2px solid #2563eb; }
+    .totals { display: flex; justify-content: flex-end; }
+    .totals table { width: 320px; }
+    .remarks { font-size: 12px; color: #555; border: 1px dashed #ccc; border-radius: 8px; padding: 10px 12px; margin-top: 8px; }
+    .signs { display: flex; justify-content: space-between; margin-top: 60px; font-size: 12px; }
+    .signs .s { width: 40%; border-top: 1px solid #333; padding-top: 6px; text-align: center; }
+    .toolbar { margin-bottom: 16px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .btn { display: inline-block; padding: 8px 16px; border-radius: 6px; text-decoration: none; font-size: 13px; border: none; cursor: pointer; }
+    .btn-print { background: #2563eb; color: #fff; }
+    .btn-edit { background: #f1f5f9; color: #0f172a; border: 1px solid #cbd5e1; }
+    .btn-edit.btn-active { background: #16a34a; color: #fff; border-color: #16a34a; }
+    .btn-recalc { background: #f1f5f9; color: #0f172a; border: 1px solid #cbd5e1; }
+    .btn-back { background: #e5e7eb; color: #111; }
+    .edit-hint { display: none; font-size: 12px; color: #b45309; background: #fffbeb;
+                 border: 1px solid #fde68a; border-radius: 6px; padding: 6px 10px; }
+    /* Editable fields get a subtle highlight ONLY while editing. */
+    .is-editing { outline: 1px dashed #2563eb; background: #eff6ff; border-radius: 3px;
+                  padding: 1px 3px; min-width: 30px; display: inline-block; }
+    .is-editing:focus { outline: 2px solid #2563eb; background: #fff; }
+    @media print {
+      .toolbar { display: none; }
+      body { padding: 0; }
+      .is-editing { outline: none !important; background: transparent !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <button class="btn btn-edit" id="btnEdit" type="button">✎ Edit document</button>
+    <button class="btn btn-recalc" id="btnRecalc" type="button">↻ Recalculate total</button>
+    <button class="btn btn-print" id="btnPrint" type="button">🖨 Print</button>
+    <a class="btn btn-back" href="/procurement/po/{{ po.po_no }}">← Back</a>
+    <span class="edit-hint" id="editHint">
+      Click any highlighted field to change it. Edits affect this printout only —
+      they are not saved to the database.
+    </span>
+  </div>
+
+  <div class="po-header">
+    <div>
+      <h1 data-editable>{{ company_name }}</h1>
+      <div class="company" data-editable>Purchase Order Document</div>
+    </div>
+    <div class="po-title">
+      <div class="doc">PURCHASE ORDER</div>
+      <div class="no">{{ po.po_no }}</div>
+      <div class="no">{{ t('Date') }}: {{ po.po_date }}</div>
+      <div class="no">{{ t('Status') }}: {{ po.status }}</div>
+    </div>
+  </div>
+
+  <div class="meta">
+    <div class="box">
+      <h4>{{ t('Supplier') }}</h4>
+      <div class="line"><strong data-editable>{{ po.supplier_name }}</strong></div>
+      {% if po.supplier_code %}<div class="line">{{ t('Code') }}: {{ po.supplier_code }}</div>{% endif %}
+      {% if supplier %}
+        {% if supplier.phone %}<div class="line">{{ t('Phone') }}: {{ supplier.phone }}</div>{% endif %}
+        {% if supplier.email %}<div class="line">{{ t('Email') }}: {{ supplier.email }}</div>{% endif %}
+        {% if supplier.city %}<div class="line">{{ t('City') }}: {{ supplier.city }}</div>{% endif %}
+        {% if supplier.vat_number %}<div class="line">{{ t('VAT') }}: {{ supplier.vat_number }}</div>{% endif %}
+      {% endif %}
+    </div>
+    <div class="box">
+      <h4>{{ t('Order Details') }}</h4>
+      <div class="line">{{ t('Expected Date') }}: {{ po.expected_date or '—' }}</div>
+      <div class="line">{{ t('Created By') }}: {{ po.created_by or '—' }}</div>
+      <div class="line">{{ t('Lines') }}: {{ lines|length }}</div>
+    </div>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>#</th><th>{{ t('Code') }}</th><th>{{ t('Item') }}</th>
+        <th class="num">{{ t('Qty') }}</th><th>{{ t('UoM') }}</th>
+        <th class="num">{{ t('Unit Price') }}</th><th class="num">{{ t('Line Value') }}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for l in lines %}
+      <tr>
+        <td>{{ l.line_no }}</td>
+        <td>{{ l.inventory_code }}</td>
+        <td data-editable>{{ l.item_name }}</td>
+        <td class="num" data-editable>{{ '%.2f'|format(l.ordered_qty or 0) }}</td>
+        <td>{{ l.uom or '' }}</td>
+        <td class="num" data-editable>{{ '%.2f'|format(l.unit_price or 0) }}</td>
+        <td class="num" data-editable data-line-value>{{ '%.2f'|format(l.line_value or 0) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="totals">
+    <table>
+      <tfoot>
+        <tr><td>{{ t('Total Value') }}</td><td class="num"><span id="grandTotal" data-editable>{{ '%.2f'|format(po.total_value or 0) }}</span></td></tr>
+      </tfoot>
+    </table>
+  </div>
+
+  {% if po.remarks %}
+  <div class="remarks"><strong>{{ t('Remarks') }}:</strong> <span data-editable>{{ po.remarks }}</span></div>
+  {% endif %}
+
+  <div class="signs">
+    <div class="s" data-editable>{{ t('Prepared By') }}</div>
+    <div class="s" data-editable>{{ t('Approved By') }}</div>
+  </div>
+
+  <script>
+    // Batch 25: auto-print REMOVED. The page now opens as an editable preview;
+    // the user reviews/edits and clicks Print when ready.
+    (function () {
+      var editing = false;
+      var btn = document.getElementById('btnEdit');
+      var hint = document.getElementById('editHint');
+      var fields = document.querySelectorAll('[data-editable]');
+
+      function setEditing(on) {
+        editing = on;
+        fields.forEach(function (el) {
+          el.setAttribute('contenteditable', on ? 'true' : 'false');
+          el.classList.toggle('is-editing', on);
+        });
+        btn.innerHTML = on ? '✓ Done editing' : '✎ Edit document';
+        btn.classList.toggle('btn-active', on);
+        hint.style.display = on ? 'inline' : 'none';
+      }
+
+      btn.addEventListener('click', function () { setEditing(!editing); });
+
+      // Never print while still in edit mode (contenteditable outlines would show).
+      document.getElementById('btnPrint').addEventListener('click', function () {
+        if (editing) setEditing(false);
+        setTimeout(function () { window.print(); }, 120);
+      });
+
+      // Recalculate the total when a line value or qty/price is edited.
+      document.getElementById('btnRecalc').addEventListener('click', function () {
+        var sum = 0;
+        document.querySelectorAll('[data-line-value]').forEach(function (cell) {
+          var v = parseFloat((cell.textContent || '').replace(/[^0-9.\-]/g, '')) || 0;
+          sum += v;
+        });
+        document.getElementById('grandTotal').textContent = sum.toFixed(2);
+      });
+
+      setEditing(false);
+    })();
+  </script>
+</body>
+</html>
