@@ -8,7 +8,7 @@
       <div>
         <span class="pis-chip mb-3" style="background:rgba(255,255,255,.15);color:#fff;border-radius:999px;padding:6px 12px;font-weight:800;font-size:12px;display:inline-flex;">Customer Portal</span>
         <h2 class="mb-1 text-white">{% if customer %}Welcome, {{ customer.customer_name }}{% else %}Customer Portal{% endif %}</h2>
-        <p class="mb-0 opacity-75">{% if customer %}Track your orders from submission to delivery.{% elif is_admin_preview %}You are an internal/admin user — pick a customer below to preview their portal exactly as they see it.{% else %}This account is not linked to a customer yet — ask your administrator to set your customer link in Users & Access.{% endif %}</p>
+        <p class="mb-0 opacity-75">{% if customer %}Track your orders from submission to delivery.{% elif is_admin_preview %}You are an internal/admin user {% else %} Account is not linked to a customer yet — ask your administrator to set your customer link in Users & Access.{% endif %}</p>
       </div>
       {% if customer %}
       <div class="d-flex gap-2 flex-wrap">
@@ -26,24 +26,51 @@
   <div class="card shadow-none border mb-4">
     <div class="card-body p-4">
       <h4 class="mb-1">Preview a Customer Portal</h4>
-      <p class="text-body-tertiary mb-3">As admin you can open any customer's portal (read/write, same rules as the customer). Choose a customer:</p>
-      <form method="get" action="/my" class="row g-2 align-items-end mb-3" style="max-width:560px">
-        <div class="col-8">
-          <select name="customer" class="form-select">
-            {% for c in admin_pick_list %}
-            <option value="{{ c.customer_code }}">{{ c.customer_name }} ({{ c.customer_code }}){% if c.brand %} — {{ c.brand }}{% endif %}</option>
-            {% endfor %}
+      {# Batch 69: filter bar #}
+      <form method="get" action="/my" class="row g-2 align-items-end mb-3">
+        <div class="col-12 col-md-4">
+          <label class="form-label fs-9 text-body-tertiary mb-1">Search customer</label>
+          <input type="text" name="q" value="{{ pick_filters.q }}" class="form-control form-control-sm" placeholder="Name or code">
+        </div>
+        <div class="col-6 col-md-3">
+          <label class="form-label fs-9 text-body-tertiary mb-1">Order status</label>
+          <select name="status" class="form-select form-select-sm">
+            <option value="">All statuses</option>
+            {% for s in pick_statuses %}<option value="{{ s }}" {% if s==pick_filters.status %}selected{% endif %}>{{ s }}</option>{% endfor %}
           </select>
         </div>
-        <div class="col-4"><button class="btn btn-primary w-100">Open Portal</button></div>
+        <div class="col-6 col-md-2">
+          <label class="form-label fs-9 text-body-tertiary mb-1">Delivery from</label>
+          <input type="date" name="from_date" value="{{ pick_filters.from_date }}" class="form-control form-control-sm">
+        </div>
+        <div class="col-6 col-md-2">
+          <label class="form-label fs-9 text-body-tertiary mb-1">Delivery to</label>
+          <input type="date" name="to_date" value="{{ pick_filters.to_date }}" class="form-control form-control-sm">
+        </div>
+        <div class="col-6 col-md-1 d-flex gap-1">
+          <button class="btn btn-primary btn-sm w-100" title="Apply filters"><i class="bi bi-funnel"></i></button>
+        </div>
       </form>
-      <div class="table-responsive" style="max-height:420px;overflow:auto">
+
+      <div class="table-responsive" style="max-height:520px;overflow:auto">
         <table class="table table-sm align-middle">
-          <thead><tr><th>Code</th><th>Customer</th><th>Brand</th><th></th></tr></thead>
+          <thead><tr>
+            <th>Code</th><th>Customer</th><th>Brand</th>
+            <th class="text-center">Orders</th><th>Last Delivery</th><th class="text-end">Total Value</th><th></th>
+          </tr></thead>
           <tbody>
             {% for c in admin_pick_list %}
-            <tr><td>{{ c.customer_code }}</td><td>{{ c.customer_name }}</td><td>{{ c.brand }}</td>
-                <td class="text-end"><a class="btn btn-sm btn-outline-primary" href="/my?customer={{ c.customer_code }}">Open</a></td></tr>
+            <tr>
+              <td class="font-monospace">{{ c.customer_code }}</td>
+              <td class="fw-bold">{{ c.customer_name }}</td>
+              <td>{{ c.brand }}</td>
+              <td class="text-center"><span class="badge badge-phoenix badge-phoenix-primary">{{ c.order_count }}</span></td>
+              <td>{{ c.last_delivery or '—' }}</td>
+              <td class="text-end">{{ '%.2f'|format(c.total_value or 0) }}</td>
+              <td class="text-end"><a class="btn btn-sm btn-outline-primary" href="/my?customer={{ c.customer_code }}">Open</a></td>
+            </tr>
+            {% else %}
+            <tr><td colspan="7" class="text-center text-body-tertiary py-4">No customers match these filters, or no orders have been placed yet.</td></tr>
             {% endfor %}
           </tbody>
         </table>

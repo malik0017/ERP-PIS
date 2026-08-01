@@ -1,126 +1,143 @@
 {% extends "layouts/base.html" %}
-{% block title %}Edit User Access{% endblock %}
+{% block title %}Edit User Access | ISFC{% endblock %}
 {% block content %}
+{# ============================================================================
+   Batch 68 — User Access matrix, regrouped
+   Same backend contract (input names pages / add_pages / edit_pages /
+   delete_pages / export_pages) so save_user_access is unchanged. The 30+ areas
+   are now organised into collapsible GROUPS (Sales, Production & Kitchen,
+   Procurement, Inventory, Finance, Reports & Data, Administration) with a
+   per-group bulk toggle for each permission column, plus a whole-matrix "grant
+   view to all". This kills the flat-list clutter while keeping every granular
+   checkbox. Dark-mode + RTL safe.
+   ============================================================================ #}
 <style>
-  .rep-hero {
-    background: radial-gradient(circle at 92% 8%, rgba(255, 255, 255, .22), transparent 16%), linear-gradient(135deg, #102542, #3874ff);
-    color: #fff;
-    border-radius: 28px;
-    padding: 30px 34px;
-    box-shadow: 0 22px 48px rgba(16, 37, 66, .22);
-    margin-bottom: 16px
-  }
-
-  .rep-hero h1 {
-    font-size: 34px;
-    font-weight: 950;
-    margin: 0
-  }
-
-  .rep-hero p {
-    margin: 8px 0 0;
-    color: #e7fbff
-  }
-  .access-matrix th,.access-matrix td{padding:14px!important}.access-matrix input{transform:scale(1.18)}
+  .acc-hero{background:linear-gradient(120deg,#0f172a 0%,#1e3a8a 55%,#2563eb 100%);color:#fff;border-radius:20px;padding:24px 28px;margin-bottom:16px;}
+  .acc-hero h1{font-size:26px;font-weight:900;margin:0}
+  .acc-hero p{margin:6px 0 0;opacity:.8}
+  .acc-group{border:1px solid var(--phoenix-border-color);border-radius:14px;margin-bottom:12px;overflow:hidden;background:var(--phoenix-emphasis-bg);}
+  .acc-group > summary{list-style:none;cursor:pointer;padding:12px 16px;display:flex;align-items:center;gap:10px;
+        background:var(--phoenix-body-highlight,rgba(0,0,0,.03));font-weight:800;}
+  .acc-group > summary::-webkit-details-marker{display:none}
+  .acc-group > summary .chev{transition:transform .15s}
+  .acc-group[open] > summary .chev{transform:rotate(90deg)}
+  .acc-group .cnt{margin-inline-start:auto;font-size:.72rem;font-weight:700;color:var(--phoenix-secondary-color)}
+  .acc-tbl{width:100%;border-collapse:collapse}
+  .acc-tbl th,.acc-tbl td{padding:10px 12px;border-top:1px solid var(--phoenix-border-color);vertical-align:middle}
+  .acc-tbl thead th{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;color:var(--phoenix-secondary-color);border-top:none}
+  .acc-tbl input{transform:scale(1.2);cursor:pointer}
+  .acc-tbl td.t-c,.acc-tbl th.t-c{text-align:center;width:82px}
+  .acc-name strong{color:var(--phoenix-emphasis-color)}
+  .acc-name small{color:var(--phoenix-secondary-color)}
+  .colhead{font-size:.62rem;color:var(--phoenix-secondary-color);cursor:pointer;text-decoration:underline dotted}
+  [data-bs-theme="dark"] .acc-group{background:var(--isfc-bg-secondary,#111c2e)}
 </style>
-<div class="rep-page container-fluid py-4">
-  <div class="rep-hero mb-3 p-4">
-    <h1 class="mb-1">Edit User Access</h1>
-    <p class="mb-0">Screen-wise and action-wise access control. View opens the page; Add/Edit/Delete/Export controls what the user can do inside it.</p>
+
+<div class="container-fluid py-4">
+  <div class="acc-hero">
+    <h1><i class="bi bi-shield-lock me-2"></i>Edit User Access</h1>
+    <p>Screen-wise and action-wise control. <b>View</b> opens the page; Add / Edit / Delete / Export control what the user can do inside it.</p>
   </div>
+
   <form method="post" action="/admin/users/{{ target_user.id }}/access">
-    <div class="pis-card p-4 mb-3">
+    <div class="card border shadow-none p-3 mb-3">
       <div class="row g-3 align-items-end">
-        <div class="col-md-3"><label class="form-label">User</label><input class="form-control"
-            value="{{ target_user.username }} - {{ target_user.full_name }}" disabled></div>
-        <div class="col-md-3"><label class="form-label">Role</label><select name="role_id" class="form-select">{% for r
-            in roles %}<option value="{{ r.id }}" {% if r.id==target_user.role_id %}selected{% endif %}>{{ r.name }}
-            </option>{% endfor %}</select></div>
-        <div class="col-md-2"><label class="form-label">Active</label><select name="is_active" class="form-select">
-            <option value="1" {% if target_user.is_active %}selected{% endif %}>Yes</option>
-            <option value="0" {% if not target_user.is_active %}selected{% endif %}>No</option>
-          </select></div>
-        <div class="col-md-2"><label class="form-label">Verified</label><select name="is_verified" class="form-select">
-            <option value="1" {% if target_user.is_verified %}selected{% endif %}>Yes</option>
-            <option value="0" {% if not target_user.is_verified %}selected{% endif %}>No</option>
-          </select></div>
-        <div class="col-md-2"><label class="form-label">Authenticator</label><select name="two_factor_enabled"
-            class="form-select">
-            <option value="0">Disabled</option>
-            <option value="1">Enabled</option>
-          </select></div>
-        {# Batch 20: link this login to a customer so the /my portal resolves. #}
-        <div class="col-md-4"><label class="form-label">Linked Customer <span class="text-secondary">(for CUSTOMER portal login)</span></label>
+        <div class="col-md-3"><label class="form-label">User</label><input class="form-control" value="{{ target_user.username }} - {{ target_user.full_name }}" disabled></div>
+        <div class="col-md-3"><label class="form-label">Role</label><select name="role_id" class="form-select">{% for r in roles %}<option value="{{ r.id }}" {% if r.id==target_user.role_id %}selected{% endif %}>{{ r.name }}</option>{% endfor %}</select></div>
+        <div class="col-md-2"><label class="form-label">Active</label><select name="is_active" class="form-select"><option value="1" {% if target_user.is_active %}selected{% endif %}>Yes</option><option value="0" {% if not target_user.is_active %}selected{% endif %}>No</option></select></div>
+        <div class="col-md-2"><label class="form-label">Verified</label><select name="is_verified" class="form-select"><option value="1" {% if target_user.is_verified %}selected{% endif %}>Yes</option><option value="0" {% if not target_user.is_verified %}selected{% endif %}>No</option></select></div>
+        <div class="col-md-2"><label class="form-label">Authenticator</label><select name="two_factor_enabled" class="form-select"><option value="0">Disabled</option><option value="1">Enabled</option></select></div>
+        <div class="col-md-5"><label class="form-label">Linked Customer <span class="text-secondary">(for Customer Portal login)</span></label>
           <select name="customer_code" class="form-select">
             <option value="">— Not a customer login —</option>
-            {% for c in customers %}
-            <option value="{{ c.customer_code }}" {% if c.customer_code == linked_customer_code %}selected{% endif %}>{{ c.customer_name }} ({{ c.customer_code }})</option>
-            {% endfor %}
+            {% for c in customers %}<option value="{{ c.customer_code }}" {% if c.customer_code == linked_customer_code %}selected{% endif %}>{{ c.customer_name }} ({{ c.customer_code }})</option>{% endfor %}
           </select>
-          <small class="text-secondary">Required for the Customer Portal (/my). The user only sees this customer's orders.</small>
         </div>
-        <div class="col-12"><label class="form-check"><input class="form-check-input" type="checkbox"
-              name="force_password_change" value="1"> <span class="form-check-label">Force password change on next
-              login</span></label></div>
+        <div class="col-md-7 d-flex align-items-end"><label class="form-check mb-2"><input class="form-check-input" type="checkbox" name="force_password_change" value="1"> <span class="form-check-label">Force password change on next login</span></label></div>
       </div>
     </div>
-    <div class="pis-card p-4">
-      <div class="d-flex justify-content-between align-items-center mb-3">
-        <div><h4 class="mb-0">Module / Page Access Matrix</h4><small class="text-secondary">Use this as the master authority matrix for every user.</small></div>
-        <div><button type="button" class="btn btn-light" onclick="toggleAll(true)">Tick All View</button><button type="button" class="btn btn-light" onclick="toggleAll(false)">Clear View</button><button class="btn btn-theme">Save Access</button></div>
+
+    <div class="card border shadow-none p-3">
+      <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+        <div><h4 class="mb-0">Module / Page Access Matrix</h4><small class="text-secondary">Grouped by business area. Use the group toggles to grant a whole area at once.</small></div>
+        <div class="d-flex gap-2">
+          <button type="button" class="btn btn-phoenix-secondary btn-sm" onclick="toggleAll('pages',true)">Grant View to All</button>
+          <button type="button" class="btn btn-phoenix-secondary btn-sm" onclick="toggleAll('pages',false)">Clear All View</button>
+          <button class="btn btn-primary btn-sm fw-bold"><i class="bi bi-check2-circle me-1"></i>Save Access</button>
+        </div>
       </div>
-      <div class="table-responsive no-isfc-table-tools">
-        <table class="table table-sm align-middle access-matrix">
-          <thead><tr><th>Module / Page</th><th class="text-center">View</th><th class="text-center">Add</th><th class="text-center">Edit</th><th class="text-center">Delete</th><th class="text-center">Export</th></tr></thead>
-          <tbody>
-          {% for key, label, desc in modules %}
-            {% set row = access_map.get(key) or {} %}
+
+      {# ----- group definitions (area key -> which group) ----- #}
+      {% set GROUPS = [
+        ('Sales & Orders', 'cart', ['order_portal','customer_portal','production_orders']),
+        ('Production & Kitchen', 'activity', ['dashboard','head_chef','bom','store_issuance','kitchen_summary','section_cutting','section_butchery','section_hot_kitchen','section_cold_kitchen','section_bakery_pastry','qc','packing','dispatch']),
+        ('Recipes', 'journal-text', ['recipe_list','recipe_prepare','recipe_missing','recipe_approvals']),
+        ('Procurement', 'bag', ['procurement']),
+        ('Inventory', 'box-seam', ['inventory_valuation']),
+        ('Finance', 'cash-coin', ['finance']),
+        ('Reports & Data', 'bar-chart-line', ['reports','relationship','master_upload','master_data']),
+        ('Projects & HR', 'people', ['project_management','hr']),
+        ('Administration', 'shield-lock', ['module_home','settings','users','audit'])
+      ] %}
+      {% set MOD = {} %}
+      {% for key, label, desc in modules %}{% set _ = MOD.update({key: (label, desc)}) %}{% endfor %}
+
+      {% for gname, gicon, gkeys in GROUPS %}
+      {% set present = gkeys|select('in', MOD)|list %}
+      {% if present %}
+      <details class="acc-group" {% if gname in ['Sales & Orders','Production & Kitchen'] %}open{% endif %} data-group="{{ loop.index }}">
+        <summary>
+          <i class="bi bi-chevron-right chev"></i>
+          <i class="bi bi-{{ gicon }} text-primary"></i>
+          <span>{{ gname }}</span>
+          <span class="cnt">{{ present|length }} screens</span>
+        </summary>
+        <table class="acc-tbl">
+          <thead>
             <tr>
-              <td><strong>{{ label }}</strong><br><small class="text-secondary">{{ desc }}</small></td>
-              <td class="text-center"><input class="form-check-input view-check" type="checkbox" name="pages" value="{{ key }}" {% if row.get('allowed') or row is sameas true %}checked{% endif %}></td>
-              <td class="text-center"><input class="form-check-input" type="checkbox" name="add_pages" value="{{ key }}" {% if row.get('can_add') %}checked{% endif %}></td>
-              <td class="text-center"><input class="form-check-input" type="checkbox" name="edit_pages" value="{{ key }}" {% if row.get('can_edit') %}checked{% endif %}></td>
-              <td class="text-center"><input class="form-check-input" type="checkbox" name="delete_pages" value="{{ key }}" {% if row.get('can_delete') %}checked{% endif %}></td>
-              <td class="text-center"><input class="form-check-input" type="checkbox" name="export_pages" value="{{ key }}" {% if row.get('can_export') %}checked{% endif %}></td>
+              <th>Module / Page</th>
+              {% for col, name in [('pages','View'),('add_pages','Add'),('edit_pages','Edit'),('delete_pages','Delete'),('export_pages','Export')] %}
+              <th class="t-c">{{ name }}<br><span class="colhead" onclick="toggleGroup('{{ loop.index0 }}','{{ col }}',{{ loop.index }})">all</span></th>
+              {% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+          {% for key in present %}
+            {% set row = access_map.get(key) or {} %}
+            {% set label = MOD[key][0] %}{% set desc = MOD[key][1] %}
+            <tr data-grp="{{ loop.index0 }}">
+              <td class="acc-name"><strong>{{ label }}</strong><br><small>{{ desc }}</small></td>
+              <td class="t-c"><input class="form-check-input view-check g-pages" type="checkbox" name="pages" value="{{ key }}" {% if row.get('allowed') or row is sameas true %}checked{% endif %}></td>
+              <td class="t-c"><input class="form-check-input g-add_pages act" type="checkbox" name="add_pages" value="{{ key }}" {% if row.get('can_add') %}checked{% endif %}></td>
+              <td class="t-c"><input class="form-check-input g-edit_pages act" type="checkbox" name="edit_pages" value="{{ key }}" {% if row.get('can_edit') %}checked{% endif %}></td>
+              <td class="t-c"><input class="form-check-input g-delete_pages act" type="checkbox" name="delete_pages" value="{{ key }}" {% if row.get('can_delete') %}checked{% endif %}></td>
+              <td class="t-c"><input class="form-check-input g-export_pages act" type="checkbox" name="export_pages" value="{{ key }}" {% if row.get('can_export') %}checked{% endif %}></td>
             </tr>
           {% endfor %}
           </tbody>
         </table>
-      </div>
+      </details>
+      {% endif %}
+      {% endfor %}
     </div>
   </form>
 </div>
-<style>
-  .pis-access-card {
-    display: flex;
-    gap: 12px;
-    height: 100%;
-    border: 1px solid #dbe7f3;
-    border-radius: 16px;
-    padding: 16px;
-    background: #fff;
-    cursor: pointer;
-    box-shadow: 0 10px 22px rgba(15, 23, 42, .04)
-  }
 
-  .pis-access-card input {
-    margin-top: 4px;
-    transform: scale(1.2)
+<script>
+  // Whole-matrix view toggle.
+  function toggleAll(name, v){ document.querySelectorAll('input[name="'+name+'"]').forEach(function(cb){ cb.checked=v; }); }
+  // Per-group column toggle: flips every checkbox of one permission column inside one group.
+  function toggleGroup(gname, col, groupNo){
+    var details = document.querySelectorAll('.acc-group')[groupNo-1];
+    if(!details) return;
+    var boxes = details.querySelectorAll('input.g-'+col);
+    var allOn = Array.prototype.every.call(boxes, function(b){ return b.checked; });
+    boxes.forEach(function(b){ b.checked = !allOn; });
   }
-
-  .pis-access-card strong {
-    color: #13284b
-  }
-
-  .pis-access-card small {
-    color: #64748b
-  }
-.access-matrix th,.access-matrix td{padding:14px!important}.access-matrix input{transform:scale(1.18)}
-</style>
-<script>function toggleAll(v) { document.querySelectorAll('input.view-check').forEach(cb => cb.checked = v) }
-  document.querySelectorAll('.access-matrix tbody tr').forEach(function(row){
-    const view = row.querySelector('input.view-check');
-    row.querySelectorAll('input:not(.view-check)').forEach(function(cb){
+  // Ticking any action auto-grants View on that row.
+  document.querySelectorAll('.acc-tbl tbody tr').forEach(function(row){
+    var view = row.querySelector('input.view-check');
+    row.querySelectorAll('input.act').forEach(function(cb){
       cb.addEventListener('change', function(){ if(cb.checked && view) view.checked = true; });
     });
   });

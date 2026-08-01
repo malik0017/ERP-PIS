@@ -113,10 +113,6 @@
 </style>
 <div class="container-fluid py-3">
   <h3 class="sap-title">Customer / Internal Order Portal</h3>
-  <div class="sap-help my-3">
-    Customer, Brand Code & Name, Sales Channel and Recipe Code & Name are linked
-    with master data. Search works by code or name.
-  </div>
 
   <div class="sap-card">
     <form method="post" action="/production/orders/create" id="orderForm">
@@ -162,12 +158,13 @@
             class="sap-input"
             type="date"
             name="required_delivery_date"
+            id="deliveryDate"
             required
           />
         </div>
         <div>
           <div class="sap-label">Delivery Time</div>
-          <input class="sap-input" type="time" name="required_delivery_time" />
+          <input class="sap-input" type="time" name="required_delivery_time" id="deliveryTime" />
         </div>
       </div>
 
@@ -217,10 +214,6 @@
         class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2"
       >
         <h5 class="m-0">Recipes Ordered</h5>
-        <span class="portal-note"
-          >Quantity Ordered is aligned with Recipe Code & Name and means total
-          portions ordered.</span
-        >
       </div>
 
       <div id="portal-lines" class="portal-lines-pro">
@@ -337,8 +330,30 @@
       bindRecipeLine(e.target.closest(".order-line"));
   });
   document.getElementById("orderForm").addEventListener("submit", (e) => {
+    // Batch 69: 48-hour rule. Delivery date+time must be >= now + 48h.
+    var dEl = document.getElementById("deliveryDate");
+    var tEl = document.getElementById("deliveryTime");
+    if (dEl && dEl.value) {
+      var t = (tEl && tEl.value) ? tEl.value : "00:00";
+      var deliv = new Date(dEl.value + "T" + t);
+      var minAllowed = new Date(Date.now() + 48 * 3600 * 1000);
+      if (deliv < minAllowed) {
+        e.preventDefault();
+        alert("Orders must be placed at least 48 hours before the delivery date and time.");
+        return;
+      }
+    }
     bindHeaderFields();
     document.querySelectorAll(".order-line").forEach(bindRecipeLine);
   });
+
+  // Set the date picker's minimum to 48 hours from now (date part).
+  (function () {
+    var dEl = document.getElementById("deliveryDate");
+    if (!dEl) return;
+    var min = new Date(Date.now() + 48 * 3600 * 1000);
+    var iso = min.toISOString().slice(0, 10);
+    dEl.setAttribute("min", iso);
+  })();
 </script>
 {% endblock %}

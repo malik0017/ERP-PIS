@@ -354,17 +354,14 @@ def create_ap_invoice(request: Request, supplier_name: str = Form(""), po_no: st
     db.commit()
     if float(amount or 0) > 0:
         # ------------------------------------------------------------------
-        # Batch 26 ACCOUNTING FIX.
-        # This used to debit 5000 (Purchases / COGS). That DOUBLE-COUNTS cost:
-        # the GRN already added the goods to stock, so the value is sitting in
-        # 1300 Inventory. Expensing it again at invoice time overstates cost and
-        # understates inventory. Correct entry for a stocked purchase is:
-        #     Dr 1300 Inventory   /   Cr 2100 Accounts Payable
-        # The cost only becomes an expense later, when the stock is issued to
-        # production (Dr 5000 COGS / Cr 1300 Inventory).
-        # A GRN-less invoice (services, utilities) still expenses to 5000.
+        # Batch 67 workflow alignment.
+        # The GRN already posted Dr 1130 Inventory / Cr 2200 GR accrual. The
+        # vendor invoice must therefore CLEAR the GR accrual, not touch stock
+        # again:  Dr 2200 GR accrual / Cr 2100 Accounts payable.
+        # A GRN-less invoice (services, utilities, no goods received) has no
+        # accrual to clear, so it expenses to 5100 instead.
         # ------------------------------------------------------------------
-        debit_account = "1300" if grn_no else "5000"
+        debit_account = "2200" if grn_no else "5100"
         post_journal(db, request, "AP_INVOICE", ap_no,
                      f"AP invoice {ap_no} — {supplier_name}",
                      [(debit_account, float(amount), 0.0, supplier_name),
@@ -431,16 +428,17 @@ def create_payment(request: Request, party_type: str = Form(...), party_name: st
         db.execute(text("UPDATE ap_invoices SET paid_amount=LEAST(amount, paid_amount+:a), status=CASE WHEN paid_amount+:a >= amount THEN 'Paid' ELSE 'Partially Paid' END WHERE ap_no=:r"), {"a": amount, "r": reference_no})
     db.commit()
     if float(amount or 0) > 0:
+        # Batch 67 workflow codes: 1110 Bank, 1120 AR, 2100 AP.
         if party_type.upper() == "CUSTOMER":
             post_journal(db, request, "PAYMENT_IN", pay_no,
                          f"Customer payment {pay_no} ({party_name})",
-                         [("1000", float(amount), 0.0, party_name),
-                          ("1200", 0.0, float(amount), party_name)])
+                         [("1110", float(amount), 0.0, party_name),
+                          ("1120", 0.0, float(amount), party_name)])
         elif party_type.upper() == "SUPPLIER":
             post_journal(db, request, "PAYMENT_OUT", pay_no,
                          f"Supplier payment {pay_no} ({party_name})",
                          [("2100", float(amount), 0.0, party_name),
-                          ("1000", 0.0, float(amount), party_name)])
+                          ("1110", 0.0, float(amount), party_name)])
     return RedirectResponse("/finance?toast=success&title=Payment&msg=Payment recorded", status_code=303)
 
 
@@ -460,10 +458,19 @@ def post_ar_invoice(request: Request, invoice_no: str, db: Session = Depends(get
     db.commit()
     inv = db.execute(text("SELECT customer_name, COALESCE(amount,0) AS amount FROM ar_invoices WHERE invoice_no=:i"), {"i": invoice_no}).mappings().first()
     if inv and float(inv["amount"] or 0) > 0:
+        # Batch 67: split the gross amount into net revenue + output VAT so the
+        # workflow posting is Dr 1120 AR / Cr 4100 Revenue + Cr 2300 VAT.
+        gross = float(inv["amount"])
+        vat_rate = 0.15
+        net = round(gross / (1 + vat_rate), 2)
+        vat = round(gross - net, 2)
+        lines = [("1120", gross, 0.0, inv["customer_name"]),
+                 ("4100", 0.0, net, inv["customer_name"])]
+        if vat > 0:
+            lines.append(("2300", 0.0, vat, inv["customer_name"]))
         post_journal(db, request, "AR_INVOICE", invoice_no,
                      f"AR invoice {invoice_no} posted — {inv['customer_name']}",
-                     [("1200", float(inv["amount"]), 0.0, inv["customer_name"]),
-                      ("4000", 0.0, float(inv["amount"]), inv["customer_name"])])
+                     lines)
     return RedirectResponse(f"/finance?toast=success&title=AR Posted&msg=Invoice {invoice_no} posted to receivables and GL", status_code=303)
 
 
@@ -637,6 +644,15 @@ def post_journal(db: Session, request: Request, source_type: str, source_no: str
         """), {"st": source_type, "sn": source_no}).scalar()
         if dup:
             return None
+        # Batch 73: block postings into a closed period (soft — if the periods
+        # table/feature is absent, is_period_open returns True so nothing breaks).
+        try:
+            from datetime import date as _date
+            from app.modules.finance.routes_periods import is_period_open as _pio
+            if not _pio(db, _cid(request), _date.today()):
+                return None
+        except Exception:
+            pass
         total_dr = round(sum(l[1] for l in lines), 4)
         total_cr = round(sum(l[2] for l in lines), 4)
         if total_dr <= 0 or abs(total_dr - total_cr) > 0.005:

@@ -465,12 +465,25 @@ html[dir="rtl"] .footer .text-end { text-align: left !important; }
 /* ---- Batch 19: kitchen receiving line status — clear color coding ---- */
 .isfc-tx-status { border-radius: .5rem; padding: .35rem .6rem; font-weight: 700; font-size: .72rem; display: inline-block; text-align: center; min-width: 92px; }
 .isfc-tx-status.st-pending    { background: #fff4d6; color: #8a6100; }
-.isfc-tx-status.st-received   { background: #d9e8ff; color: #1b4fbf; }
+/* UI fix: "Received" used to be a muted blue that looked the same weight as
+   Pending at a glance. It's now a bold, saturated green with a check mark and
+   a subtle border so a chef scanning the list instantly sees which lines are
+   ready to process, without confusing it with Transferred (softer green). */
+.isfc-tx-status.st-received   { background: #16a34a; color: #fff; font-weight: 800; border: 1px solid #0f7c39; box-shadow: 0 1px 3px rgba(22,163,74,.35); }
+.isfc-tx-status.st-received::before { content: "\2713"; margin-right: 4px; }
 .isfc-tx-status.st-transferred{ background: #d9f5e5; color: #0d7a43; }
 .isfc-tx-status.st-completed  { background: #e2f7d9; color: #3c7a0d; }
 .isfc-tx-status.st-other      { background: #eef2f6; color: #51606f; }
 html[data-bs-theme="dark"] .isfc-tx-status.st-pending    { background: rgba(255,193,7,.16); color: #ffd76a; }
-html[data-bs-theme="dark"] .isfc-tx-status.st-received   { background: rgba(96,165,250,.18); color: #93c5fd; }
+html[data-bs-theme="dark"] .isfc-tx-status.st-received   { background: #22c55e; color: #06280f; border-color: #16a34a; }
 html[data-bs-theme="dark"] .isfc-tx-status.st-transferred{ background: rgba(52,211,153,.16); color: #6ee7b7; }
 html[data-bs-theme="dark"] .isfc-tx-status.st-completed  { background: rgba(132,204,22,.16); color: #bef264; }
 html[data-bs-theme="dark"] .isfc-tx-status.st-other      { background: rgba(148,163,184,.16); color: #cbd5e1; }
+/* Row-level highlight: a received-but-not-yet-processed line gets a green
+   left rail so the whole row reads as "ready", not just the small badge. */
+tr.row-receive[data-status="received"] td:first-child,
+tr.row-process[data-status="received"] td:first-child { box-shadow: inset 3px 0 0 #16a34a; }
+tr.row-receive[data-status="received"],
+tr.row-process[data-status="received"] { background: #f4fbf6; }
+html[data-bs-theme="dark"] tr.row-receive[data-status="received"],
+html[data-bs-theme="dark"] tr.row-process[data-status="received"] { background: rgba(34,197,94,.06); }

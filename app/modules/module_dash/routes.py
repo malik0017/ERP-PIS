@@ -96,13 +96,13 @@ MODULE_DASHBOARDS: dict[str, dict] = {
     "procurement": {
         "area": "procurement",
         "title": "Procurement Dashboard",
-        "subtitle": "Purchase orders, GRN receiving, supplier purchases and inventory entry.",
+        "subtitle": "",
         "icon": "shopping-bag",
         "kpis": [
-            ("Open POs", "SELECT COUNT(*) FROM purchase_orders WHERE COALESCE(status,'') NOT IN ('Closed','Cancelled')", "not closed / cancelled"),
-            ("Total POs", "SELECT COUNT(*) FROM purchase_orders", "all purchase orders"),
-            ("GRNs", "SELECT COUNT(*) FROM grns", "goods receipts"),
-            ("Suppliers", "SELECT COUNT(*) FROM suppliers", "supplier master"),
+            ("Open POs", "SELECT COUNT(*) FROM purchase_orders WHERE COALESCE(status,'') NOT IN ('Closed','Cancelled')", ""),
+            ("Total POs", "SELECT COUNT(*) FROM purchase_orders", ""),
+            ("GRNs", "SELECT COUNT(*) FROM grns", ""),
+            ("Suppliers", "SELECT COUNT(*) FROM suppliers", ""),
         ],
         "links": [
             ("Purchase Orders", "/procurement", "procurement", "file-text"),
@@ -137,7 +137,17 @@ MODULE_DASHBOARDS: dict[str, dict] = {
         ],
         "links": [
             ("Finance Command Center", "/finance", "finance", "dollar-sign"),
+            ("New A/R Invoice", "/finance/ar/new", "finance", "file-plus"),
             ("General Ledger", "/finance/gl", "finance", "book"),
+            ("New Journal Entry", "/finance/journal/new", "finance", "edit-3"),
+            ("Chart of Accounts", "/finance/coa", "finance", "list"),
+            ("AR Aging", "/reports/aging?report_type=ar", "finance", "trending-up"),
+            ("AP Aging", "/reports/aging?report_type=ap", "finance", "trending-down"),
+            ("Profit & Loss", "/statements/profit-loss", "finance", "bar-chart-2"),
+            ("Balance Sheet", "/statements/balance-sheet", "finance", "layers"),
+            ("Cash Flow", "/statements/cash-flow", "finance", "activity"),
+            ("Period Close", "/periods", "finance", "calendar"),
+            ("Cost Centers", "/cost-centers", "finance", "grid"),
             ("Customer Orders", "/orders", "orders", "shopping-cart"),
             ("Reports Center", "/reports", "reports", "bar-chart-2"),
         ],
@@ -165,7 +175,7 @@ MODULE_DASHBOARDS: dict[str, dict] = {
     "masters": {
         "area": "masters",
         "title": "Master Data Dashboard",
-        "subtitle": "Customers, suppliers, chefs, brands, kitchen sections, revenue streams and items.",
+        "subtitle": "",
         "icon": "database",
         "kpis": [
             ("Customers", "SELECT COUNT(*) FROM customers", "customer master"),
@@ -251,17 +261,20 @@ MODULE_DASHBOARDS: dict[str, dict] = {
     "hr": {
         "area": "hr",
         "title": "HCM Dashboard",
-        "subtitle": "Employees, attendance, sections and system users — payroll in the next phase.",
+        "subtitle": "Employees, attendance, leave, shifts and payroll.",
         "icon": "users",
         "kpis": [
             ("Employees", "SELECT COUNT(*) FROM hr_employees", "in the employee master"),
             ("Active Employees", "SELECT COUNT(*) FROM hr_employees WHERE status='Active'", "currently employed"),
             ("Present Today", "SELECT COUNT(*) FROM hr_attendance WHERE att_date=CURDATE() AND status='Present'", "marked present"),
-            ("System Users", "SELECT COUNT(*) FROM users WHERE COALESCE(is_active,1)=1", "can log in"),
+            ("Pending Leave", "SELECT COUNT(*) FROM hr_leave_requests WHERE status='Pending'", "awaiting decision"),
         ],
         "links": [
             ("Employees", "/hr/employees", "hr", "users"),
             ("Attendance", "/hr/attendance", "hr", "calendar"),
+            ("Leave", "/hr/leave", "hr", "calendar"),
+            ("Shifts", "/hr/shifts", "hr", "clock"),
+            ("Payroll", "/hr/payroll", "hr", "credit-card"),
             ("Users & Access", "/admin/users", "users", "shield"),
         ],
         "charts": [

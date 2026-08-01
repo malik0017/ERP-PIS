@@ -1,180 +1,66 @@
-{# app/templates/finance/profit_loss.html #}
-{# Batch 29: P&L Statement Template #}
-
 {% extends "layouts/base.html" %}
-
+{% block title %}Profit & Loss | ISFC{% endblock %}
 {% block content %}
-<div class="container-fluid">
-    <!-- Header -->
-    <div class="row mb-4">
-        <div class="col-md-6">
-            <h1 class="h3"><i class="bi bi-graph-up"></i> Profit & Loss Statement</h1>
-            <p class="text-muted">
-                Period: <strong>{{ from_date }}</strong> to <strong>{{ to_date }}</strong>
-                {% if cost_center %}<br><strong>Cost Center:</strong> {{ cost_center }}{% endif %}
-            </p>
-        </div>
-        <div class="col-md-6 text-end">
-            <button class="btn btn-outline-primary btn-sm" onclick="window.print()">
-                <i class="bi bi-printer"></i> Print
-            </button>
-            <a href="?export=pdf" class="btn btn-outline-success btn-sm">
-                <i class="bi bi-file-pdf"></i> Export PDF
-            </a>
-        </div>
+{# Batch 67 — P&L statement (Phoenix theme, dark/RTL safe) #}
+<div class="container-fluid py-3 isfc-page">
+
+  <div class="isfc-hero mb-4 p-4 rounded-4 text-white d-flex align-items-center justify-content-between flex-wrap gap-3"
+       style="background:linear-gradient(120deg,#065f46 0%,#059669 60%,#10b981 100%);">
+    <div>
+      <h1 class="mb-1 fw-bolder"><i class="bi bi-graph-up-arrow me-2"></i>{{ t('Profit & Loss Statement') }}</h1>
+      <p class="mb-0 opacity-75">{{ t('Period') }}: <b>{{ from_date }}</b> → <b>{{ to_date }}</b></p>
     </div>
-
-    <!-- Filter Form -->
-    <div class="card mb-4">
-        <div class="card-body">
-            <form method="get" class="row g-3">
-                <div class="col-md-2">
-                    <label class="form-label">From Date</label>
-                    <input type="date" class="form-control" name="from_date" value="{{ from_date }}">
-                </div>
-                <div class="col-md-2">
-                    <label class="form-label">To Date</label>
-                    <input type="date" class="form-control" name="to_date" value="{{ to_date }}">
-                </div>
-                <div class="col-md-2">
-                    <label class="form-label">Cost Center</label>
-                    <input type="text" class="form-control" name="cost_center" placeholder="Optional" value="{{ cost_center or '' }}">
-                </div>
-                <div class="col-md-2 d-flex align-items-end">
-                    <button type="submit" class="btn btn-primary w-100">
-                        <i class="bi bi-funnel"></i> Apply Filters
-                    </button>
-                </div>
-            </form>
-        </div>
+    <div class="d-flex gap-2">
+      <button class="btn btn-light btn-sm fw-bold" onclick="window.print()"><i class="bi bi-printer me-1"></i>{{ t('Print') }}</button>
+      <a class="btn btn-light btn-sm fw-bold" href="/finance/gl">{{ t('General Ledger') }}</a>
     </div>
+  </div>
 
-    <!-- P&L Statement -->
-    <div class="card">
-        <div class="card-body">
-            <table class="table table-hover">
-                <thead>
-                    <tr class="table-light">
-                        <th>Account</th>
-                        <th class="text-end" style="width: 200px;">Amount</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <!-- REVENUE SECTION -->
-                    {% if revenue %}
-                    <tr class="table-primary fw-bold">
-                        <td colspan="2"><i class="bi bi-arrow-up-circle"></i> REVENUE</td>
-                    </tr>
-                    {% for row in revenue %}
-                    <tr>
-                        <td class="ps-4">{{ row.account_code }} - {{ row.account_name }}</td>
-                        <td class="text-end text-success">{{ "%.2f"|format(row.amount) }}</td>
-                    </tr>
-                    {% endfor %}
-                    <tr class="table-light fw-bold">
-                        <td class="ps-4">Total Revenue</td>
-                        <td class="text-end text-success">{{ "%.2f"|format(totals.total_revenue) }}</td>
-                    </tr>
-                    <tr><td colspan="2"></td></tr>
-                    {% endif %}
+  {% include "finance/_stmt_filter.html" %}
 
-                    <!-- COGS SECTION -->
-                    {% if cogs %}
-                    <tr class="table-warning fw-bold">
-                        <td colspan="2"><i class="bi bi-box-seam"></i> COST OF GOODS SOLD</td>
-                    </tr>
-                    {% for row in cogs %}
-                    <tr>
-                        <td class="ps-4">{{ row.account_code }} - {{ row.account_name }}</td>
-                        <td class="text-end text-danger">{{ "%.2f"|format(row.amount) }}</td>
-                    </tr>
-                    {% endfor %}
-                    <tr class="table-light fw-bold">
-                        <td class="ps-4">Total COGS</td>
-                        <td class="text-end text-danger">{{ "%.2f"|format(totals.total_cogs) }}</td>
-                    </tr>
-                    <tr class="table-light">
-                        <td class="ps-4"><strong>GROSS PROFIT</strong></td>
-                        <td class="text-end"><strong>{{ "%.2f"|format(totals.gross_profit) }}</strong></td>
-                    </tr>
-                    <tr><td colspan="2"></td></tr>
-                    {% endif %}
-
-                    <!-- EXPENSES SECTION -->
-                    {% if expenses %}
-                    <tr class="table-danger fw-bold">
-                        <td colspan="2"><i class="bi bi-cash-flow"></i> OPERATING EXPENSES</td>
-                    </tr>
-                    {% for row in expenses %}
-                    <tr>
-                        <td class="ps-4">{{ row.account_code }} - {{ row.account_name }}</td>
-                        <td class="text-end text-danger">{{ "%.2f"|format(row.amount) }}</td>
-                    </tr>
-                    {% endfor %}
-                    <tr class="table-light fw-bold">
-                        <td class="ps-4">Total Expenses</td>
-                        <td class="text-end text-danger">{{ "%.2f"|format(totals.total_expenses) }}</td>
-                    </tr>
-                    <tr><td colspan="2"></td></tr>
-                    {% endif %}
-
-                    <!-- NET INCOME -->
-                    <tr class="table-success fw-bold" style="font-size: 1.1em;">
-                        <td><i class="bi bi-graph-up-arrow"></i> NET INCOME</td>
-                        <td class="text-end">
-                            {% if totals.net_income >= 0 %}
-                                <span class="text-success">{{ "%.2f"|format(totals.net_income) }}</span>
-                            {% else %}
-                                <span class="text-danger">{{ "%.2f"|format(totals.net_income) }}</span>
-                            {% endif %}
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
+  <div class="row g-3 mb-3">
+    {% set kpis = [
+      ('Revenue', totals.total_revenue, 'success'),
+      ('COGS', totals.total_cogs, 'warning'),
+      ('Gross Profit', totals.gross_profit, 'info'),
+      ('Expenses', totals.total_expenses, 'danger'),
+      ('Net Income', totals.net_income, 'primary')
+    ] %}
+    {% for label, val, color in kpis %}
+    <div class="col-6 col-md-4 col-xl">
+      <div class="card border h-100 shadow-none">
+        <div class="card-body p-3">
+          <div class="text-body-tertiary fs-9 text-uppercase">{{ t(label) }}</div>
+          <div class="fs-5 fw-bolder text-{{ color }}">{{ '%.2f'|format(val) }}</div>
         </div>
+      </div>
     </div>
+    {% endfor %}
+  </div>
 
-    <!-- Summary Cards -->
-    <div class="row mt-4">
-        <div class="col-md-3">
-            <div class="card bg-success bg-opacity-10">
-                <div class="card-body">
-                    <p class="text-muted mb-1">Total Revenue</p>
-                    <h5 class="text-success">{{ "%.2f"|format(totals.total_revenue) }}</h5>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="card bg-info bg-opacity-10">
-                <div class="card-body">
-                    <p class="text-muted mb-1">Gross Profit</p>
-                    <h5 class="text-info">{{ "%.2f"|format(totals.gross_profit) }}</h5>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="card bg-warning bg-opacity-10">
-                <div class="card-body">
-                    <p class="text-muted mb-1">Total Expenses</p>
-                    <h5 class="text-warning">{{ "%.2f"|format(totals.total_expenses) }}</h5>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="card {% if totals.net_income >= 0 %}bg-success{% else %}bg-danger{% endif %} bg-opacity-10">
-                <div class="card-body">
-                    <p class="text-muted mb-1">Net Income</p>
-                    <h5 class="{% if totals.net_income >= 0 %}text-success{% else %}text-danger{% endif %}">{{ "%.2f"|format(totals.net_income) }}</h5>
-                </div>
-            </div>
-        </div>
+  <div class="card border shadow-none">
+    <div class="card-body p-0">
+      <table class="table table-hover mb-0">
+        <thead class="bg-body-highlight"><tr><th>{{ t('Account') }}</th><th>{{ t('Name') }}</th><th class="text-end">{{ t('Amount') }}</th></tr></thead>
+        <tbody>
+          <tr class="table-active"><td colspan="3" class="fw-bolder text-success">{{ t('Revenue') }}</td></tr>
+          {% for r in revenue %}<tr><td class="font-monospace">{{ r.account_code }}</td><td>{{ r.account_name }}</td><td class="text-end">{{ '%.2f'|format(r.amount) }}</td></tr>{% else %}<tr><td colspan="3" class="text-body-tertiary text-center">{{ t('No revenue in period') }}</td></tr>{% endfor %}
+          <tr class="fw-bold"><td colspan="2" class="text-end">{{ t('Total Revenue') }}</td><td class="text-end text-success">{{ '%.2f'|format(totals.total_revenue) }}</td></tr>
+
+          <tr class="table-active"><td colspan="3" class="fw-bolder text-warning">{{ t('Cost of Goods Sold') }}</td></tr>
+          {% for r in cogs %}<tr><td class="font-monospace">{{ r.account_code }}</td><td>{{ r.account_name }}</td><td class="text-end">{{ '%.2f'|format(r.amount) }}</td></tr>{% else %}<tr><td colspan="3" class="text-body-tertiary text-center">{{ t('No COGS in period') }}</td></tr>{% endfor %}
+          <tr class="fw-bold"><td colspan="2" class="text-end">{{ t('Total COGS') }}</td><td class="text-end text-warning">{{ '%.2f'|format(totals.total_cogs) }}</td></tr>
+
+          <tr class="fw-bolder table-info"><td colspan="2" class="text-end">{{ t('Gross Profit') }}</td><td class="text-end">{{ '%.2f'|format(totals.gross_profit) }}</td></tr>
+
+          <tr class="table-active"><td colspan="3" class="fw-bolder text-danger">{{ t('Operating Expenses') }}</td></tr>
+          {% for r in expenses %}<tr><td class="font-monospace">{{ r.account_code }}</td><td>{{ r.account_name }}</td><td class="text-end">{{ '%.2f'|format(r.amount) }}</td></tr>{% else %}<tr><td colspan="3" class="text-body-tertiary text-center">{{ t('No expenses in period') }}</td></tr>{% endfor %}
+          <tr class="fw-bold"><td colspan="2" class="text-end">{{ t('Total Expenses') }}</td><td class="text-end text-danger">{{ '%.2f'|format(totals.total_expenses) }}</td></tr>
+
+          <tr class="fw-bolder fs-6" style="border-top:2px solid var(--phoenix-primary)"><td colspan="2" class="text-end">{{ t('Net Income') }}</td><td class="text-end {{ 'text-success' if totals.net_income >= 0 else 'text-danger' }}">{{ '%.2f'|format(totals.net_income) }}</td></tr>
+        </tbody>
+      </table>
     </div>
+  </div>
 </div>
-
-<style>
-@media print {
-    .btn, form { display: none !important; }
-    body { font-size: 11pt; }
-}
-</style>
 {% endblock %}

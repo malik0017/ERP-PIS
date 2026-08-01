@@ -18,6 +18,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from app.config import APP_NAME, COMPANY_NAME, SECRET_KEY
 from app.core.templates import render
 from app.modules.auth.routes import router as auth_router
+from app.modules.auth.routes_register import router as self_register_router  # Batch 71
 from app.modules.dashboard.routes import router as dashboard_router
 from app.modules.production.routes import router as production_router
 from app.modules.recipes.routes import router as recipes_router
@@ -25,10 +26,16 @@ from app.modules.inventory.routes import router as inventory_router
 from app.modules.masters.routes import router as masters_router
 from app.modules.orders.routes import router as orders_router
 from app.modules.qc.routes import router as qc_router
+from app.modules.production.routes_docs import router as prod_docs_router  # Batch 70
+from app.modules.production.routes_kitchen import router as kitchen_prod_router  # Batch 72
 from app.modules.dispatch.routes import router as dispatch_router
 from app.modules.packing.routes import router as packing_router
 from app.modules.settings.routes import router as settings_router
+from app.modules.settings.routes_modules import router as settings_modules_router  # Batch 65
 from app.modules.reports.routes import router as reports_router
+from app.modules.reports.routes_tree import router as reports_tree_router  # Batch 68
+from app.modules.reports.routes_workflow import router as reports_workflow_router  # Batch 66
+from app.modules.reports.routes_schedule import router as report_schedule_router  # Batch 74
 from app.modules.users.routes import router as users_router
 from app.modules.notifications.routes import router as notifications_router
 from app.modules.search.routes import router as search_router
@@ -37,6 +44,9 @@ from app.modules.procurement.routes import router as procurement_router
 from app.modules.finance.routes import router as finance_router
 from app.modules.projects.routes import router as projects_router
 from app.modules.hr.routes import router as hr_router
+from app.modules.hr.routes_payroll import router as hr_payroll_router  # Batch 74
+from app.modules.subscriptions.routes import router as subscriptions_router  # Batch 76
+from app.modules.subscriptions.routes_portal import router as subscriptions_portal_router  # Batch 76
 # Batch 10: config-driven per-module dashboards (/module/{key}/dashboard)
 from app.modules.module_dash.routes import router as module_dash_router
 
@@ -44,6 +54,8 @@ from app.modules.module_dash.routes import router as module_dash_router
 # PO print). These extend existing namespaces; base routers stay untouched.
 from app.modules.masters_crud.routes import router as masters_crud_router
 from app.modules.finance.routes_ext import router as finance_ext_router
+from app.modules.finance.routes_statements import router as finance_statements_router  # Batch 67
+from app.modules.finance.routes_periods import router as finance_periods_router  # Batch 73
 from app.modules.procurement.routes_print import router as procurement_print_router
 from app.modules.module_dash.routes_launcher import build_launcher_context
 
@@ -164,20 +176,32 @@ except Exception as e:
 
 # ===== REGISTER ROUTERS =====
 app.include_router(auth_router)
+# Batch 71: public self-service registration (form POST /register)
+app.include_router(self_register_router)
 # Recipes router is intentionally registered before dashboard.
 # Older versions had a placeholder /recipes route in dashboard, which shadowed
 # the real recipe list and made the screen show zero records.
 app.include_router(recipes_router)
 app.include_router(dashboard_router)
 app.include_router(production_router)
+# Batch 72: kitchen production state machine (receive-all → produce → transfer)
+app.include_router(kitchen_prod_router)
 app.include_router(inventory_router)
 app.include_router(masters_router)
 app.include_router(orders_router)
 app.include_router(qc_router)
 app.include_router(packing_router)
 app.include_router(dispatch_router)
+
+# Batch 70: printable documents (QC certificate, delivery note)
+app.include_router(prod_docs_router)
 app.include_router(settings_router)
+# Batch 68: SAP-style relationship tree (registered before reports_router so
+# its /reports/relationship-tree page + /reports/api/tree-node endpoint win).
+app.include_router(reports_tree_router)
 app.include_router(reports_router)
+# Batch 74: scheduled report exports
+app.include_router(report_schedule_router)
 app.include_router(users_router)
 app.include_router(notifications_router)
 app.include_router(search_router)
@@ -186,12 +210,27 @@ app.include_router(procurement_router)
 app.include_router(finance_router)
 app.include_router(projects_router)
 app.include_router(hr_router)
+# Batch 74: HCM payroll + leave + shifts
+app.include_router(hr_payroll_router)
+app.include_router(subscriptions_router)
+app.include_router(subscriptions_portal_router)
 app.include_router(module_dash_router)
 
 # Batch 22: register new/extended routers.
 app.include_router(masters_crud_router)
 app.include_router(finance_ext_router)
 app.include_router(procurement_print_router)
+
+# Batch 65: module visibility admin (Settings ▸ Module Visibility)
+app.include_router(settings_modules_router)
+
+# Batch 66: ERP workflow / data-movement reference (Reports ▸ Data Flow)
+app.include_router(reports_workflow_router)
+
+# Batch 67: financial statements (P&L, Balance Sheet, Cash Flow, Aging)
+app.include_router(finance_statements_router)
+# Batch 73: finance period close + cost centers
+app.include_router(finance_periods_router)
 
 # ===== ROUTES =====
 
@@ -222,7 +261,8 @@ async def module_launcher(request: Request):
     return render(request, "modules/index.html", {
         "page_title": "ERP Modules",
         "stats": ctx.get("stats", {}),
-        "charts": ctx.get("charts", {}),
+        "cards": ctx.get("cards", {}),
+        "session_username": request.session.get("username"),
     })
 
 @app.get("/health")

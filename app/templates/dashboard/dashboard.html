@@ -552,22 +552,7 @@
 {% set max_store = (store_status | map(attribute='total') | max) if store_status else 1 %}
 <div class="exec-page container-fluid px-4">
   <div class="exec-hero">
-    <h1>ISFC Production Intelligence Command Center</h1>
-    <p>Executive view for recipe readiness, customer orders, BOM cost, store issuance, production movement, QC and
-      dispatch readiness.</p>
-  </div>
-
-  <div class="quick-actions">
-    <a class="primary" href="/orders/portal"><i class="bi bi-cart-plus"></i> Create Customer / Internal Order</a>
-    <a href="/recipes?status=ACTIVE"><i class="bi bi-journal-check"></i> Active Recipes</a>
-    <a href="/recipes/ingredients?status=ACTIVE"><i class="bi bi-diagram-3"></i> Recipe BOM Master</a>
-    <a href="/production/orders"><i class="bi bi-clipboard-data"></i> Production Orders</a>
-    <a href="/production/store-issuance"><i class="bi bi-box-arrow-up"></i> Store Issuance</a>
-    <a href="/qc"><i class="bi bi-patch-check"></i> Quality Control</a>
-    <a href="/packing"><i class="bi bi-box-seam"></i> Trayline / Packing</a>
-    <a href="/dispatch"><i class="bi bi-truck"></i> Dispatch</a>
-    <a href="/relationship-map"><i class="bi bi-diagram-3-fill"></i> Relationship Map</a>
-    <a href="/reports"><i class="bi bi-bar-chart-line"></i> Reports Center</a>
+    <h1>PIS Production Intelligence</h1>
   </div>
 
 
@@ -628,7 +613,6 @@
 
   <div class="panel mb-3">
     <h3>Quality & Logistics Readiness</h3>
-    <p>Shows mandatory final steps after section workstations: QC pass, trayline/packing, dispatch and delivery closure.
     </p>
     <div class="status-grid">
       <div class="status-tile"><span>Orders Waiting QC</span><strong>{{ kpis.qc_waiting_orders }}</strong></div>
@@ -643,7 +627,6 @@
     <div class="card shadow-none border h-100" data-component-card="data-component-card">
       <div class="card-header p-4 border-bottom bg-body">
         <h4 class="text-body mb-0">Order Pipeline Status</h4>
-        <p class="text-body-tertiary mb-0 fs-9">Live status mix of production orders.</p>
       </div>
       <div class="card-body">
         {% if order_status %}
@@ -658,7 +641,6 @@
     </div>
     <div class="panel">
       <h3>Management Exceptions</h3>
-      <p>Items needing operational follow-up.</p>
       <div class="action-list">
         {% for item in action_items %}
         <a class="action-item {{ item.level }}" href="{{ item.url }}"><strong>{{ item.title }}</strong><span>{{
@@ -678,8 +660,6 @@
   <div class="card shadow-none border mb-3" data-component-card="data-component-card">
     <div class="card-header p-4 border-bottom bg-body">
       <h4 class="text-body mb-0">Recent Customer / Internal Orders</h4>
-      <p class="mb-0 mt-2 text-body-secondary">Latest orders, delivery request, cost and margin. Click column headers to
-        sort.</p>
     </div>
     <div class="card-body p-0 py-2 ">
       <div id="ordersTableContainer"
@@ -795,7 +775,6 @@
   <div class="panel-grid">
     <div class="panel dashboard-report-card">
       <h3>Production Control Reports</h3>
-      <p>Direct operational reports replacing empty BOM cost placeholders.</p>
       <a class="dashboard-report-link" href="/production/orders"><strong>Open Production Orders</strong><span>{{ kpis.open_orders }}</span></a>
       <a class="dashboard-report-link" href="/production/store-issuance"><strong>Store Lines Not Finalized</strong><span>{{ kpis.store_lines - kpis.store_finalized }}</span></a>
       <a class="dashboard-report-link" href="/qc"><strong>Orders Waiting QC</strong><span>{{ kpis.qc_waiting_orders }}</span></a>
@@ -803,7 +782,6 @@
     </div>
     <div class="panel dashboard-report-card">
       <h3>Recipe Profitability Mix</h3>
-      <p>Active recipe allocation by category for menu and costing review.</p>
       {% if recipe_categories %}
       <div class="isfc-chart-panel" data-isfc-chart="hbar" data-types="hbar,bar,line,pie,donut"
            data-labels='{{ recipe_categories | map(attribute="label") | list | tojson }}'
@@ -815,7 +793,6 @@
 <div class="panel-grid">
   <div class="panel">
     <h3>Store Issuance Status</h3>
-    <p>Store release and issue status by line.</p>
     <div class="status-grid">
       {% for row in store_status %}
       <div class="status-tile"><span>{{ row.label }}</span><strong>{{ row.total }}</strong></div>
@@ -829,7 +806,6 @@
   </div>
   <div class="panel">
     <h3>Recipe Customer Mix</h3>
-    <p>Active recipe allocation by customer.</p>
     {% if recipe_customer_mix %}
     <div class="isfc-chart-panel" data-isfc-chart="hbar" data-types="hbar,bar,line,pie,donut"
          data-labels='{{ recipe_customer_mix | map(attribute="label") | list | tojson }}'

@@ -1,0 +1,106 @@
+{% extends "layouts/base.html" %}
+{% block title %}Module Visibility | ISFC ERP{% endblock %}
+{% block content %}
+{# ============================================================================
+   Batch 65 — Module Visibility admin
+   Tick-boxes decide which sellable modules a company sees. Switching a module
+   OFF hides its launcher card + navbar/sidebar entries and blocks its routes
+   for every user (admins included). Users & Access is locked ON so nobody can
+   accidentally lock themselves out of administration.
+   Dark-mode + RTL safe (Phoenix variables only).
+   ============================================================================ #}
+<div class="container-fluid py-3 isfc-page">
+
+  <div class="isfc-hero mb-4 p-4 rounded-4 text-white d-flex align-items-center justify-content-between flex-wrap gap-3"
+       style="background: linear-gradient(120deg,#0f172a 0%,#1e3a8a 55%,#2563eb 100%);">
+    <div>
+      <h1 class="mb-1 fw-bolder"><i class="bi bi-toggles2 me-2"></i>{{ t('Module Visibility') }}</h1>
+      <p class="mb-0 opacity-75">
+        {{ t('Switch business modules on or off for this company. Sell and enable them one at a time — Production first, then Procurement, Inventory, Finance and more.') }}
+      </p>
+    </div>
+    <a href="/settings" class="btn btn-light btn-sm fw-bold"><i class="bi bi-arrow-left me-1"></i>{{ t('Back to Settings') }}</a>
+  </div>
+
+  <form method="post" action="/settings/modules">
+    <div class="card border shadow-none mb-3">
+      <div class="card-header p-3 border-bottom bg-body d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <h4 class="mb-0"><i class="bi bi-grid-3x3-gap text-primary me-2"></i>{{ t('Sellable Modules') }}</h4>
+        <div class="d-flex gap-2">
+          <button class="btn btn-sm btn-phoenix-secondary" type="button" onclick="toggleAll(true)">{{ t('Enable all') }}</button>
+          <button class="btn btn-sm btn-phoenix-secondary" type="button" onclick="toggleAll(false)">{{ t('Core only') }}</button>
+        </div>
+      </div>
+      <div class="card-body p-3">
+        <div class="row g-3">
+          {% for m in modules %}
+          <div class="col-12 col-md-6 col-xl-4">
+            <label class="mvis-card {{ 'is-locked' if m.locked }}" for="mod_{{ m.key }}">
+              <span class="mvis-icon bg-{{ m.color }}-subtle text-{{ m.color }}"><i class="bi bi-{{ m.icon }}"></i></span>
+              <span class="flex-grow-1">
+                <span class="mvis-title">{{ t(m.label) }}</span>
+                <span class="mvis-key text-body-tertiary">{{ m.key }}</span>
+              </span>
+              <span class="form-check form-switch m-0">
+                <input class="form-check-input mvis-toggle" type="checkbox"
+                       role="switch" id="mod_{{ m.key }}" name="mod_{{ m.key }}"
+                       {{ 'checked' if m.enabled }} {{ 'disabled' if m.locked }}>
+              </span>
+              {% if m.locked %}
+              <input type="hidden" name="mod_{{ m.key }}" value="on">
+              <span class="badge badge-phoenix badge-phoenix-secondary mvis-lock">{{ t('Always on') }}</span>
+              {% endif %}
+            </label>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="card-footer p-3 border-top d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <span class="text-body-tertiary fs-9">
+          <i class="bi bi-info-circle me-1"></i>
+          {{ t('Disabled modules are hidden from the launcher, navbars and sidebar, and their pages return 403 — for all users.') }}
+        </span>
+        <button class="btn btn-primary fw-bold px-4" type="submit">
+          <i class="bi bi-check2-circle me-1"></i>{{ t('Save changes') }}
+        </button>
+      </div>
+    </div>
+  </form>
+</div>
+
+<style>
+  .mvis-card {
+    display: flex; align-items: center; gap: 14px; width: 100%;
+    padding: 16px 18px; border: 1px solid var(--phoenix-border-color);
+    border-radius: 16px; background: var(--phoenix-emphasis-bg);
+    cursor: pointer; transition: .16s ease; margin: 0;
+  }
+  .mvis-card:hover { border-color: var(--phoenix-primary); transform: translateY(-2px);
+                     box-shadow: 0 12px 26px rgba(15,23,42,.08); }
+  .mvis-card.is-locked { opacity: .85; cursor: default; }
+  .mvis-icon { width: 46px; height: 46px; border-radius: 13px; flex: 0 0 46px;
+               display: inline-flex; align-items: center; justify-content: center; font-size: 20px; }
+  .mvis-title { display: block; font-weight: 800; color: var(--phoenix-emphasis-color); line-height: 1.15; }
+  .mvis-key   { display: block; font-size: .72rem; font-family: monospace; }
+  .mvis-lock  { font-size: .62rem; }
+  .mvis-toggle { transform: scale(1.25); cursor: pointer; }
+  [data-bs-theme="dark"] .mvis-card {
+    background: var(--isfc-bg-secondary, #111c2e);
+    border-color: var(--isfc-border, #2a3a55);
+  }
+</style>
+<script>
+  function toggleAll(state) {
+    document.querySelectorAll('.mvis-toggle').forEach(function (cb) {
+      if (cb.disabled) return;              // locked modules stay on
+      if (state === false) {
+        // "Core only" -> leave production/inventory/procurement/recipes/masters/reports/customer_portal
+        var core = ['production','inventory','procurement','recipes','masters','reports','customer_portal'];
+        cb.checked = core.indexOf(cb.id.replace('mod_','')) !== -1;
+      } else {
+        cb.checked = true;
+      }
+    });
+  }
+</script>
+{% endblock %}

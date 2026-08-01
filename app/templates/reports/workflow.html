@@ -1,0 +1,147 @@
+{% extends "layouts/base.html" %}
+{% block title %}ERP Workflow & Data Movement | ISFC{% endblock %}
+{% block content %}
+{# ============================================================================
+   Batch 66 — ERP Workflow & Data Movement (in-app reference)
+   Renders the five-phase flow (Master data ▸ Procurement ▸ Inventory ▸ Sales &
+   delivery ▸ Finance) plus a LIVE GL auto-posting matrix and trial-balance
+   health, so the workflow document is a working screen, not a static file.
+   Phoenix variables only -> dark mode + RTL safe.
+   ============================================================================ #}
+<style>
+  .wf-hero{background:linear-gradient(120deg,#0b0f1a 0%,#1f2937 55%,#374151 100%);}
+  .wf-flow{display:grid;grid-template-columns:repeat(5,1fr);gap:12px}
+  @media(max-width:1100px){.wf-flow{grid-template-columns:1fr 1fr}}
+  @media(max-width:640px){.wf-flow{grid-template-columns:1fr}}
+  .wf-stage{border:1px solid var(--phoenix-border-color);border-radius:16px;padding:16px;
+            background:var(--phoenix-emphasis-bg);position:relative}
+  .wf-stage h5{font-weight:800;font-size:.95rem;margin-bottom:2px}
+  .wf-stage .num{font-size:.65rem;font-weight:700;letter-spacing:.08em;opacity:.7;text-transform:uppercase}
+  .wf-stage .rows{margin-top:10px;display:flex;flex-direction:column;gap:6px}
+  .wf-chip{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:.8rem;
+           padding:6px 10px;border-radius:9px;background:var(--phoenix-body-highlight, rgba(0,0,0,.03))}
+  .wf-chip b{font-weight:800}
+  .wf-accent-master{border-top:3px solid #a78bfa}
+  .wf-accent-proc{border-top:3px solid #2dd4bf}
+  .wf-accent-inv{border-top:3px solid #60a5fa}
+  .wf-accent-sales{border-top:3px solid #fb923c}
+  .wf-accent-fin{border-top:3px solid #34d399}
+  .gl-table td,.gl-table th{vertical-align:middle}
+  .gl-dr{color:#dc2626;font-family:monospace;font-weight:700}
+  .gl-cr{color:#16a34a;font-family:monospace;font-weight:700}
+  [data-bs-theme="dark"] .wf-chip{background:rgba(255,255,255,.05)}
+</style>
+
+<div class="container-fluid py-3 isfc-page">
+
+  <div class="wf-hero isfc-hero mb-4 p-4 rounded-4 text-white d-flex align-items-center justify-content-between flex-wrap gap-3">
+    <div>
+      <h1 class="mb-1 fw-bolder"><i class="bi bi-diagram-2 me-2"></i>{{ t('ERP Workflow & Data Movement') }}</h1>
+      <p class="mb-0 opacity-75">{{ t('How data enters each module, flows between them, and auto-posts to the general ledger.') }}</p>
+    </div>
+    <a href="/reports" class="btn btn-light btn-sm fw-bold"><i class="bi bi-arrow-left me-1"></i>{{ t('Reports Center') }}</a>
+  </div>
+
+  {# -------- Trial balance health banner -------- #}
+  <div class="alert {{ 'alert-subtle-success' if tb.balanced else 'alert-subtle-warning' }} d-flex align-items-center justify-content-between flex-wrap gap-2 mb-4">
+    <span>
+      <i class="bi {{ 'bi-check-circle-fill' if tb.balanced else 'bi-exclamation-triangle-fill' }} me-2"></i>
+      {{ t('Trial balance') }}:
+      <b class="gl-dr">Dr {{ '%.2f'|format(tb.debit) }}</b> =
+      <b class="gl-cr">Cr {{ '%.2f'|format(tb.credit) }}</b>
+      — {{ t('balanced') if tb.balanced else t('out of balance — review journals') }}
+    </span>
+    <a href="/finance/gl" class="btn btn-sm btn-phoenix-primary">{{ t('Open General Ledger') }} →</a>
+  </div>
+
+  {# -------- Five-phase flow -------- #}
+  <h5 class="fw-bold text-uppercase text-body-tertiary mb-2">{{ t('End-to-end data flow') }}</h5>
+  <div class="wf-flow mb-4">
+    <div class="wf-stage wf-accent-master">
+      <div class="num">01 · {{ t('Master data') }}</div>
+      <h5>{{ t('Customer · Vendor · Item · CoA') }}</h5>
+      <div class="rows">
+        <div class="wf-chip"><span>{{ t('Customers') }}</span><b>{{ phases.customers }}</b></div>
+        <div class="wf-chip"><span>{{ t('Suppliers') }}</span><b>{{ phases.suppliers }}</b></div>
+        <div class="wf-chip"><span>{{ t('Items / SKU') }}</span><b>{{ phases.items }}</b></div>
+        <div class="wf-chip"><span>{{ t('GL accounts') }}</span><b>{{ phases.coa }}</b></div>
+      </div>
+    </div>
+    <div class="wf-stage wf-accent-proc">
+      <div class="num">02 · {{ t('Procurement') }}</div>
+      <h5>{{ t('PO → GRN → AP') }}</h5>
+      <div class="rows">
+        <div class="wf-chip"><span>{{ t('Purchase orders') }}</span><b>{{ phases.pos }}</b></div>
+        <div class="wf-chip"><span>{{ t('GRN receipts') }}</span><b>{{ phases.grns }}</b></div>
+        <div class="wf-chip"><span>{{ t('AP invoices') }}</span><b>{{ phases.ap }}</b></div>
+      </div>
+    </div>
+    <div class="wf-stage wf-accent-inv">
+      <div class="num">03 · {{ t('Inventory') }}</div>
+      <h5>{{ t('Warehouse · Issuance') }}</h5>
+      <div class="rows">
+        <div class="wf-chip"><span>{{ t('Items in stock') }}</span><b>{{ phases.items }}</b></div>
+        <div class="wf-chip"><span>{{ t('Orders issued') }}</span><b>{{ phases.issues }}</b></div>
+      </div>
+    </div>
+    <div class="wf-stage wf-accent-sales">
+      <div class="num">04 · {{ t('Sales & delivery') }}</div>
+      <h5>{{ t('SO → Delivery → AR') }}</h5>
+      <div class="rows">
+        <div class="wf-chip"><span>{{ t('Customer orders') }}</span><b>{{ phases.orders }}</b></div>
+        <div class="wf-chip"><span>{{ t('Dispatches') }}</span><b>{{ phases.dispatch }}</b></div>
+        <div class="wf-chip"><span>{{ t('AR invoices') }}</span><b>{{ phases.ar }}</b></div>
+      </div>
+    </div>
+    <div class="wf-stage wf-accent-fin">
+      <div class="num">05 · {{ t('Finance') }}</div>
+      <h5>{{ t('Subledgers → GL → TB') }}</h5>
+      <div class="rows">
+        <div class="wf-chip"><span>{{ t('GL journals') }}</span><b>{{ phases.journals }}</b></div>
+        <div class="wf-chip"><span>{{ t('Balanced') }}</span><b>{{ t('Yes') if tb.balanced else t('No') }}</b></div>
+      </div>
+    </div>
+  </div>
+
+  {# -------- GL auto-posting matrix (live) -------- #}
+  <div class="card border shadow-none">
+    <div class="card-header p-3 border-bottom bg-body">
+      <h4 class="mb-0"><i class="bi bi-journal-check text-primary me-2"></i>{{ t('GL auto-posting sources') }}</h4>
+      <small class="text-body-tertiary">{{ t('Every operational transaction creates a balanced double-entry. Live count = journals already posted for that source.') }}</small>
+    </div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-hover gl-table mb-0">
+          <thead class="bg-body-highlight">
+            <tr>
+              <th>{{ t('Source transaction') }}</th>
+              <th>{{ t('Debit account') }}</th>
+              <th>{{ t('Credit account') }}</th>
+              <th class="text-center">{{ t('Live journals') }}</th>
+              <th class="text-center">{{ t('Status') }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for s in sources %}
+            <tr>
+              <td class="fw-bold">{{ t(s.label) }}</td>
+              <td class="gl-dr">{{ s.debit }}</td>
+              <td class="gl-cr">{{ s.credit }}</td>
+              <td class="text-center"><span class="badge badge-phoenix badge-phoenix-secondary">{{ s.live }}</span></td>
+              <td class="text-center">
+                {% if s.live > 0 %}
+                  <span class="badge badge-phoenix badge-phoenix-success">{{ t('Posting') }}</span>
+                {% else %}
+                  <span class="badge badge-phoenix badge-phoenix-warning">{{ t('Wired · no data yet') }}</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

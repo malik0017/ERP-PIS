@@ -1,0 +1,67 @@
+{% extends "layouts/base.html" %}
+{% block title %}Scheduled Exports | Reports{% endblock %}
+{% block content %}
+{# Batch 74 — scheduled report exports registry #}
+<div class="container-fluid py-3 isfc-page">
+  <div class="isfc-hero mb-4 p-4 rounded-4 text-white d-flex align-items-center justify-content-between flex-wrap gap-3">
+    <div>
+      <h1 class="mb-1 fw-bold"><i class="bi bi-calendar-event me-2"></i>{{ t('Scheduled Exports') }}</h1>
+      <p class="mb-0 opacity-75">{{ t('Schedule reports to export and email on a recurring basis.') }}</p>
+    </div>
+    <a class="btn btn-light btn-sm fw-bold" href="/reports">{{ t('Reports Center') }}</a>
+  </div>
+
+  <div class="card border mb-3">
+    <div class="card-body">
+      <form method="post" action="/reports/schedules/create" class="row g-2 align-items-end">
+        <div class="col-md-3"><label class="form-label fs-9 text-body-tertiary mb-1">{{ t('Report') }}</label>
+          <select name="report_key" class="form-select form-select-sm" required>
+            {% for k, label in reports %}<option value="{{ k }}">{{ label }}</option>{% endfor %}
+          </select></div>
+        <div class="col-md-2"><label class="form-label fs-9 text-body-tertiary mb-1">{{ t('Format') }}</label>
+          <select name="fmt" class="form-select form-select-sm"><option value="csv">CSV</option><option value="xlsx">Excel</option></select></div>
+        <div class="col-md-2"><label class="form-label fs-9 text-body-tertiary mb-1">{{ t('Frequency') }}</label>
+          <select name="frequency" class="form-select form-select-sm">{% for f in frequencies %}<option>{{ f }}</option>{% endfor %}</select></div>
+        <div class="col-md-4"><label class="form-label fs-9 text-body-tertiary mb-1">{{ t('Email recipients') }}</label>
+          <input name="recipients" class="form-control form-control-sm" placeholder="a@co.com, b@co.com"></div>
+        <div class="col-md-1"><button class="btn btn-primary btn-sm w-100">{{ t('Add') }}</button></div>
+      </form>
+    </div>
+  </div>
+
+  <div class="card border">
+    <div class="card-body p-0">
+      <table class="table table-hover mb-0">
+        <thead class="bg-body-highlight"><tr>
+          <th>{{ t('Report') }}</th><th>{{ t('Format') }}</th><th>{{ t('Frequency') }}</th>
+          <th>{{ t('Recipients') }}</th><th class="text-center">{{ t('Active') }}</th>
+          <th class="text-center">{{ t('Last Run') }}</th><th class="text-end">{{ t('Action') }}</th>
+        </tr></thead>
+        <tbody>
+          {% for s in schedules %}
+          <tr>
+            <td class="fw-bold">{{ s.report_label }}</td>
+            <td><span class="badge badge-phoenix badge-phoenix-secondary text-uppercase">{{ s.fmt }}</span></td>
+            <td>{{ s.frequency }}</td>
+            <td class="fs-9">{{ s.recipients or '—' }}</td>
+            <td class="text-center">
+              {% if s.is_active %}<span class="badge badge-phoenix badge-phoenix-success">Yes</span>
+              {% else %}<span class="badge badge-phoenix badge-phoenix-secondary">No</span>{% endif %}
+            </td>
+            <td class="text-center fs-9">{{ s.last_run_at or '—' }}</td>
+            <td class="text-end">
+              <a class="btn btn-sm btn-phoenix-primary" href="/reports/export/{{ s.report_key }}?format={{ s.fmt }}" title="Download now"><i class="bi bi-download"></i></a>
+              <form method="post" action="/reports/schedules/{{ s.id }}/toggle" class="d-inline"><button class="btn btn-sm btn-phoenix-secondary">{{ t('Toggle') }}</button></form>
+              <form method="post" action="/reports/schedules/{{ s.id }}/delete" class="d-inline"><button class="btn btn-sm btn-phoenix-danger">{{ t('Delete') }}</button></form>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="7" class="text-center text-body-tertiary py-4">{{ t('No schedules yet. Add one above.') }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <p class="text-body-tertiary small mt-2"><i class="bi bi-info-circle me-1"></i>{{ t('Download now works immediately. Recurring email delivery is sent by the scheduled worker (see deployment notes).') }}</p>
+</div>
+{% endblock %}

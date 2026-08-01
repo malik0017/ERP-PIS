@@ -1,0 +1,37 @@
+{% extends "layouts/base.html" %}
+{% block title %}Cash Flow | ISFC{% endblock %}
+{% block content %}
+{# Batch 67 — Cash Flow (simplified direct method) #}
+<div class="container-fluid py-3 isfc-page">
+
+  <div class="isfc-hero mb-4 p-4 rounded-4 text-white d-flex align-items-center justify-content-between flex-wrap gap-3"
+       style="background:linear-gradient(120deg,#0f766e 0%,#14b8a6 60%,#2dd4bf 100%);">
+    <div>
+      <h1 class="mb-1 fw-bolder"><i class="bi bi-cash-stack me-2"></i>{{ t('Cash Flow Statement') }}</h1>
+      <p class="mb-0 opacity-75">{{ t('Period') }}: <b>{{ from_date }}</b> → <b>{{ to_date }}</b></p>
+    </div>
+    <button class="btn btn-light btn-sm fw-bold" onclick="window.print()"><i class="bi bi-printer me-1"></i>{{ t('Print') }}</button>
+  </div>
+
+  {% include "finance/_stmt_filter.html" %}
+
+  <div class="card border shadow-none">
+    <div class="card-header bg-body p-3 border-bottom"><h5 class="mb-0 fw-bolder">{{ t('Operating Activities') }}</h5></div>
+    <div class="card-body p-0">
+      <table class="table table-hover mb-0">
+        <tbody>
+          {% for r in operating %}
+          <tr><td>{{ t(r.activity) }}</td><td class="text-end {{ 'text-success' if r.amount >= 0 else 'text-danger' }}">{{ '%.2f'|format(r.amount) }}</td></tr>
+          {% endfor %}
+          <tr class="fw-bolder table-active"><td class="text-end">{{ t('Net cash from operating activities') }}</td><td class="text-end {{ 'text-success' if totals.total_operating >= 0 else 'text-danger' }}">{{ '%.2f'|format(totals.total_operating) }}</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="card-footer p-3 border-top d-flex justify-content-between">
+      <span class="fw-bolder">{{ t('Net change in cash') }}</span>
+      <span class="fw-bolder fs-6 {{ 'text-success' if totals.net_change >= 0 else 'text-danger' }}">{{ '%.2f'|format(totals.net_change) }}</span>
+    </div>
+  </div>
+  <p class="text-body-tertiary fs-9 mt-2"><i class="bi bi-info-circle me-1"></i>{{ t('Investing and financing activities can be expanded as those transaction types are added.') }}</p>
+</div>
+{% endblock %}

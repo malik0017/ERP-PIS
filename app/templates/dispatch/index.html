@@ -203,9 +203,12 @@
             'Customer' }}</h4>
           <div class="text-muted">Dispatch No: {{ r.dispatch_no }} · Created {{ r.created_at }}</div>
         </div>
-        <div><span
+        <div class="d-flex align-items-center gap-2">
+          <a href="/dispatch/{{ r.id }}/delivery-note" target="_blank" class="btn btn-phoenix-primary btn-sm"><i class="bi bi-truck me-1"></i>Delivery Note</a>
+          <span
             class="pill {% if r.dispatch_status=='Delivered' %}ok{% elif r.dispatch_status in ['Rejected','Cancelled'] %}danger{% else %}warn{% endif %}">{{
-            r.dispatch_status }}</span></div>
+            r.dispatch_status }}</span>
+        </div>
       </div>
       <form method="post" action="/dispatch/{{ r.id }}/update">
         <div class="form-grid">

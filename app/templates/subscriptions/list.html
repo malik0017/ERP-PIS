@@ -1,0 +1,102 @@
+{% extends "layouts/base.html" %}
+{% block title %}Subscriptions{% endblock %}
+{% block content %}
+{# Batch 76 — Subscriptions / Recurring Orders dashboard #}
+<div class="container-fluid py-3 isfc-page">
+  <div class="isfc-hero mb-4 p-4 rounded-4 text-white d-flex align-items-center justify-content-between flex-wrap gap-3"
+       style="background:linear-gradient(135deg,#132947,#0c91a3)">
+    <div>
+      <h1 class="mb-1 fw-bold"><i class="bi bi-arrow-repeat me-2"></i>{{ t('Subscriptions') }}</h1>
+      <p class="mb-0 opacity-75">{{ t('Recurring customer orders — weekly or monthly deliveries generated automatically ahead of time.') }}</p>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+      <a class="btn btn-light btn-sm fw-bold" href="/subscriptions/new"><i class="bi bi-plus-circle me-1"></i>{{ t('New Subscription') }}</a>
+      <form method="post" action="/subscriptions/generate-due"
+            data-confirm="Generate every due order for all active subscriptions in the next 21 days (skipping anything inside the 48-hour cutoff or already generated)?"
+            data-confirm-title="Generate Due Orders" data-confirm-ok="Generate Now" data-confirm-variant="success">
+        <button class="btn btn-success btn-sm fw-bold"><i class="bi bi-play-circle me-1"></i>{{ t('Generate Due Orders Now') }}</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-lg-3">
+      <div class="card border h-100"><div class="card-body">
+        <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Active') }}</div>
+        <div class="fs-3 fw-bold text-success">{{ kpis.active }}</div>
+      </div></div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="card border h-100"><div class="card-body">
+        <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Paused') }}</div>
+        <div class="fs-3 fw-bold text-warning">{{ kpis.paused }}</div>
+      </div></div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="card border h-100"><div class="card-body">
+        <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Cancelled') }}</div>
+        <div class="fs-3 fw-bold text-secondary">{{ kpis.cancelled }}</div>
+      </div></div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="card border h-100"><div class="card-body">
+        <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Orders Generated This Month') }}</div>
+        <div class="fs-3 fw-bold text-primary">{{ kpis.orders_this_month }}</div>
+      </div></div>
+    </div>
+  </div>
+
+  <div class="card border mb-3">
+    <div class="card-body py-2 d-flex gap-2 flex-wrap align-items-center">
+      <span class="fw-bold fs-9 text-body-tertiary text-uppercase">{{ t('Filter') }}:</span>
+      <a class="btn btn-sm {% if not status_filter %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="/subscriptions">{{ t('All') }}</a>
+      <a class="btn btn-sm {% if status_filter=='Active' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="/subscriptions?status=Active">{{ t('Active') }}</a>
+      <a class="btn btn-sm {% if status_filter=='Paused' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="/subscriptions?status=Paused">{{ t('Paused') }}</a>
+      <a class="btn btn-sm {% if status_filter=='Cancelled' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="/subscriptions?status=Cancelled">{{ t('Cancelled') }}</a>
+      <span class="small-muted ms-auto">{{ t('Tip: schedule a daily hit to') }} <code>POST /subscriptions/generate-due</code> {{ t('(Windows Task Scheduler / cron) for full automation — it is safe to call more than once a day.') }}</span>
+    </div>
+  </div>
+
+  <div class="card border">
+    <div class="card-body p-0">
+      <table class="table table-hover align-middle mb-0">
+        <thead class="bg-body-highlight">
+          <tr>
+            <th>{{ t('Subscription') }}</th>
+            <th>{{ t('Customer') }}</th>
+            <th>{{ t('Cadence') }}</th>
+            <th class="text-center">{{ t('Recipes') }}</th>
+            <th>{{ t('Next Due') }}</th>
+            <th class="text-center">{{ t('Orders Generated') }}</th>
+            <th>{{ t('Status') }}</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in subs %}
+          <tr>
+            <td><a href="/subscriptions/{{ s.id }}" class="fw-bold text-decoration-none">{{ s.subscription_no }}</a>
+                {% if s.plan_name %}<br><span class="small-muted">{{ s.plan_name }}</span>{% endif %}</td>
+            <td>{{ s.customer_name }}{% if s.brand %}<br><span class="small-muted">{{ s.brand }}</span>{% endif %}</td>
+            <td>{{ s.frequency }}<br><span class="small-muted">{{ s.delivery_days }} · {{ s.delivery_time }}</span></td>
+            <td class="text-center">{{ s.line_count }}</td>
+            <td>{% if s.next_due %}{{ s.next_due }}{% else %}<span class="small-muted">—</span>{% endif %}</td>
+            <td class="text-center">{{ s.orders_generated }}</td>
+            <td>
+              {% if s.status == 'Active' %}<span class="badge badge-phoenix badge-phoenix-success">{{ t('Active') }}</span>
+              {% elif s.status == 'Paused' %}<span class="badge badge-phoenix badge-phoenix-warning">{{ t('Paused') }}</span>
+              {% else %}<span class="badge badge-phoenix badge-phoenix-secondary">{{ t('Cancelled') }}</span>{% endif %}
+            </td>
+            <td><a href="/subscriptions/{{ s.id }}" class="btn btn-sm btn-outline-primary">{{ t('Open') }}</a></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="8" class="text-center text-body-tertiary py-5">
+            {{ t('No subscriptions yet.') }} <a href="/subscriptions/new">{{ t('Create the first one') }}</a>.
+          </td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -92,4 +92,17 @@ def update_dispatch(
         else:
             order.status = "Packing Pending"
     db.commit()
+
+    # Batch 69: on delivery, auto-post COGS — Dr 5100 COGS / Cr 1130 Inventory,
+    # valued at the order's estimated food cost. Idempotent per order.
+    if order and dispatch_status == "Delivered":
+        try:
+            from app.core.gl_posting import post_dispatch_cogs_journal
+            post_dispatch_cogs_journal(
+                db, request, row.order_no,
+                float(getattr(order, "total_estimated_food_cost", 0) or 0),
+                customer=getattr(order, "customer_name", "") or "")
+        except Exception:
+            pass
+
     return RedirectResponse("/dispatch", status_code=HTTP_303_SEE_OTHER)

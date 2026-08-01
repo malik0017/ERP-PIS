@@ -1,0 +1,85 @@
+{% extends "layouts/base.html" %}
+{% block title %}My Subscriptions · ISFC{% endblock %}
+{% block content %}
+<div class="container-fluid py-3">
+  <div class="pis-hero mb-4" style="background:linear-gradient(135deg,#132947,#0c91a3);border-radius:22px;color:#fff;padding:26px 30px;">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
+      <div>
+        <span class="pis-chip mb-3" style="background:rgba(255,255,255,.15);color:#fff;border-radius:999px;padding:6px 12px;font-weight:800;font-size:12px;display:inline-flex;">{{ t('Customer Portal') }}</span>
+        <h2 class="mb-1 text-white">{{ t('My Subscriptions') }}</h2>
+        <p class="mb-0 opacity-75">{% if customer %}{{ t('Your recurring deliveries — pause or resume any time, at least 48 hours before the next delivery.') }}{% else %}{{ t('Account is not linked to a customer yet — ask your administrator.') }}{% endif %}</p>
+      </div>
+      {% if customer %}
+      <div class="d-flex gap-2 flex-wrap">
+        <a class="btn btn-light" href="/my"><i class="bi bi-house me-1"></i>{{ t('Portal Home') }}</a>
+        <a class="btn btn-phoenix-secondary" href="/my/orders">{{ t('Order History') }}</a>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if not customer %}
+  <div class="card border"><div class="card-body text-center py-5 text-body-tertiary">
+    {{ t('No customer account is linked to your login yet.') }}
+  </div></div>
+  {% else %}
+
+  <div class="row g-3">
+    {% for s in subs %}
+    <div class="col-lg-6">
+      <div class="card border h-100">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-start mb-2">
+            <div>
+              <div class="fw-bold fs-6">{{ s.plan_name or s.subscription_no }}</div>
+              <div class="small-muted">{{ s.frequency }} · {{ s.delivery_days }} · {{ s.delivery_time }}</div>
+            </div>
+            {% if s.status == 'Active' %}<span class="badge badge-phoenix badge-phoenix-success">{{ t('Active') }}</span>
+            {% elif s.status == 'Paused' %}<span class="badge badge-phoenix badge-phoenix-warning">{{ t('Paused') }}</span>
+            {% else %}<span class="badge badge-phoenix badge-phoenix-secondary">{{ t('Cancelled') }}</span>{% endif %}
+          </div>
+
+          <table class="table table-sm mb-3">
+            <tbody>
+              {% for l in s.lines %}
+              <tr><td>{{ l.recipe_name }}</td><td class="text-end">{{ l.portions|int }} {{ t('portions') }}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+
+          <div class="d-flex justify-content-between align-items-center small-muted mb-3">
+            <span>{{ t('Next delivery') }}: <strong>{{ s.next_due or '—' }}</strong></span>
+            <span>{{ t('Delivered so far') }}: <strong>{{ s.orders_generated }}</strong></span>
+          </div>
+
+          {% if s.status == 'Paused' and s.pause_reason %}
+          <div class="alert alert-warning py-2 small">{{ s.pause_reason }}</div>
+          {% endif %}
+
+          <div class="d-flex gap-2">
+            {% if s.status == 'Active' %}
+            <form method="post" action="/my/subscriptions/{{ s.id }}/pause" class="flex-grow-1"
+                  data-confirm="Pause this subscription? Any delivery already generated inside the next 48 hours will still arrive." 
+                  data-confirm-title="Pause Subscription" data-confirm-ok="Pause" data-confirm-variant="warning">
+              <button class="btn btn-outline-warning w-100 fw-bold"><i class="bi bi-pause-circle me-1"></i>{{ t('Pause') }}</button>
+            </form>
+            {% elif s.status == 'Paused' %}
+            <form method="post" action="/my/subscriptions/{{ s.id }}/resume" class="flex-grow-1">
+              <button class="btn btn-success w-100 fw-bold"><i class="bi bi-play-circle me-1"></i>{{ t('Resume') }}</button>
+            </form>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+    {% else %}
+    <div class="col-12">
+      <div class="card border"><div class="card-body text-center py-5 text-body-tertiary">
+        {{ t('You have no subscriptions yet. Ask us to set up a recurring delivery plan for you.') }}
+      </div></div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

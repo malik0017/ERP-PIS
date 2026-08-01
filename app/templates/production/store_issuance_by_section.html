@@ -7,6 +7,18 @@
 .si-tag{display:inline-block;border-radius:999px;padding:4px 12px;font-weight:800;font-size:12px}
 .si-pending{background:#fdf3e3;color:#92600a}.si-done{background:#e8f8ef;color:#11783f}
 .si-table th{background:#f4f8fc;font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:#152b49}
+/* UI fix: filters used to be one unbroken row that ran off-screen on
+   normal desktop widths. They now sit in clearly wrapped rows behind a
+   single toggle button, closed by default for a calmer first view. */
+.si-filter-toggle{border:1px solid #cbdbea;background:#fff;color:#152b49;border-radius:12px;padding:9px 16px;font-weight:800;display:inline-flex;align-items:center;gap:8px}
+.si-filter-toggle:hover{background:#edf5fb}
+.si-filter-body{display:none}
+.si-filter-body.show{display:block}
+.si-filter-row{display:flex;flex-wrap:wrap;gap:14px;margin-bottom:14px}
+.si-filter-row:last-child{margin-bottom:0}
+.si-filter-row > div{flex:1 1 200px;min-width:160px}
+.si-filter-row > div.si-filter-narrow{flex:0 1 150px;min-width:130px}
+.si-quick-issue{white-space:nowrap}
 </style>
 <div class="container-fluid py-3">
   <div class="si-hero mb-4 d-flex justify-content-between flex-wrap gap-3 align-items-center">
@@ -17,29 +29,61 @@
     <a class="btn btn-light fw-bold" href="/production/store-issuance"><i class="bi bi-arrow-left"></i> Back to Orders View</a>
   </div>
 
+  {% set filters_active = filters.section or filters.order or filters.customer or filters.date_from or filters.date_to or filters.show != 'pending' %}
   <div class="si-card p-3 mb-4">
-    <form class="row g-2 align-items-end" method="get">
-      <div class="col-md-3"><label class="form-label fw-bold">Section</label>
-        <select name="section" class="form-select">
-          <option value="">All sections</option>
-          {% for s in all_sections %}<option value="{{ s }}" {% if filters.section == s %}selected{% endif %}>{{ s }}</option>{% endfor %}
-        </select></div>
-      <div class="col-md-3"><label class="form-label fw-bold">Show</label>
-        <select name="show" class="form-select">
-          <option value="pending" {% if filters.show == 'pending' %}selected{% endif %}>Pending issuance only</option>
-          <option value="all" {% if filters.show == 'all' %}selected{% endif %}>All lines (incl. issued)</option>
-        </select></div>
-      <div class="col-md-2"><button class="btn btn-primary fw-bold w-100">Apply</button></div>
-    </form>
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+      <button type="button" class="si-filter-toggle" onclick="document.getElementById('siFilterBody').classList.toggle('show'); this.querySelector('.bi').classList.toggle('bi-chevron-down'); this.querySelector('.bi').classList.toggle('bi-chevron-up');">
+        <i class="bi bi-funnel"></i> Filters {% if filters_active %}<span class="badge bg-primary ms-1">Active</span>{% endif %}
+        <i class="bi bi-chevron-down"></i>
+      </button>
+      <div class="d-flex gap-2 flex-wrap">
+        <a class="btn btn-outline-secondary btn-sm fw-bold" href="/production/store-issuance/by-section/export?section={{ filters.section }}&show={{ filters.show }}&order={{ filters.order }}&customer={{ filters.customer }}&date_from={{ filters.date_from }}&date_to={{ filters.date_to }}">
+          <i class="bi bi-download"></i> Download CSV (current filters)</a>
+      </div>
+    </div>
+    <div class="si-filter-body {% if filters_active %}show{% endif %}" id="siFilterBody">
+      <form method="get" class="mt-3">
+        <div class="si-filter-row">
+          <div><label class="form-label fw-bold">Section</label>
+            <select name="section" class="form-select">
+              <option value="">All sections</option>
+              {% for s in all_sections %}<option value="{{ s }}" {% if filters.section == s %}selected{% endif %}>{{ s }}</option>{% endfor %}
+            </select></div>
+          <div><label class="form-label fw-bold">Show</label>
+            <select name="show" class="form-select">
+              <option value="pending" {% if filters.show == 'pending' %}selected{% endif %}>Pending only</option>
+              <option value="all" {% if filters.show == 'all' %}selected{% endif %}>All lines</option>
+            </select></div>
+          <div><label class="form-label fw-bold">Order</label>
+            <input type="text" name="order" value="{{ filters.order }}" class="form-control" placeholder="Order no"></div>
+          <div><label class="form-label fw-bold">Customer</label>
+            <input type="text" name="customer" value="{{ filters.customer }}" class="form-control" placeholder="Name"></div>
+        </div>
+        <div class="si-filter-row">
+          <div class="si-filter-narrow"><label class="form-label fw-bold">From</label>
+            <input type="date" name="date_from" value="{{ filters.date_from }}" class="form-control"></div>
+          <div class="si-filter-narrow"><label class="form-label fw-bold">To</label>
+            <input type="date" name="date_to" value="{{ filters.date_to }}" class="form-control"></div>
+          <div class="si-filter-narrow d-flex align-items-end">
+            <button class="btn btn-primary fw-bold w-100"><i class="bi bi-search"></i> Apply</button></div>
+          {% if filters_active %}
+          <div class="si-filter-narrow d-flex align-items-end">
+            <a class="btn btn-outline-secondary fw-bold w-100" href="/production/store-issuance/by-section">Reset</a></div>
+          {% endif %}
+        </div>
+      </form>
+    </div>
   </div>
 
   {% for g in groups %}
   <div class="si-card p-3 mb-4">
     <div class="si-sec-head d-flex justify-content-between flex-wrap gap-2 align-items-center mb-3">
       <h4 class="mb-0"><i class="bi bi-diagram-3 me-2"></i>{{ g.section }}</h4>
-      <div class="d-flex gap-2">
+      <div class="d-flex gap-2 flex-wrap align-items-center">
         <span class="si-tag si-pending">{{ g.pending }} pending line(s)</span>
         <span class="si-tag si-done">Required {{ '%.2f'|format(g.total_required) }} · Issued {{ '%.2f'|format(g.total_issued) }}</span>
+        <a class="btn btn-outline-secondary btn-sm" href="/production/store-issuance/by-section/export?section={{ g.section }}&show={{ filters.show }}" title="Download this section only">
+          <i class="bi bi-download"></i> Section CSV</a>
       </div>
     </div>
 
@@ -74,7 +118,19 @@
           <td class="text-end">{{ '%.3f'|format(l.required_qty or 0) }} {{ l.uom }}</td>
           <td class="text-end">{{ '%.3f'|format(l.issued_qty or 0) }}</td>
           <td>{% if l.finalized %}<span class="si-tag si-done">Locked / Issued</span>{% else %}<span class="si-tag si-pending">{{ l.issuance_status }}</span>{% endif %}</td>
-          <td><a class="btn btn-sm btn-outline-primary" href="/production/orders/{{ l.order_no }}/store-issuance">Open</a></td>
+          <td class="text-nowrap">
+            <div class="d-flex gap-1">
+              <a class="btn btn-sm btn-outline-primary" href="/production/orders/{{ l.order_no }}/store-issuance" title="Open the full order-level issuance form">Open</a>
+              {% if not l.finalized %}
+              <form method="post" action="/production/store-issuance/{{ l.id }}/quick-issue"
+                    data-confirm="Issue {{ '%.3f'|format(l.required_qty or 0) }} {{ l.uom }} of {{ l.ingredient_name }} to {{ g.section }} now?"
+                    data-confirm-title="Quick Issue" data-confirm-ok="Issue Full Qty" data-confirm-variant="success">
+                <button class="btn btn-sm btn-success si-quick-issue" title="Issue the full required quantity now, without leaving this page">
+                  <i class="bi bi-lightning-charge-fill"></i> Quick Issue</button>
+              </form>
+              {% endif %}
+            </div>
+          </td>
         </tr>
         {% endfor %}
         </tbody>

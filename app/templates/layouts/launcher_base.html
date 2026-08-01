@@ -6,10 +6,11 @@
   <title>{% block title %}ERP Modules | ISFC{% endblock %}</title>
 
   {# ==========================================================================
-     Batch 23 — STANDALONE (chrome-less) layout for the Module Launcher.
-     No header, no footer, no sidebar/navbar — as requested. It still loads the
-     theme CSS + ECharts so the cards and charts look and behave identically,
-     and it keeps dark mode + RTL working.
+     Batch 65 — Professional standalone layout for the Module Launcher.
+     Proper top header (brand + theme toggle + profile dropdown with avatar,
+     "My Profile" and "Sign out") and a real footer with dynamic signed-in
+     user. Still chrome-light (no full app sidebar) but no longer looks bare.
+     Dark mode + RTL preserved.
      ========================================================================== #}
   <link rel="shortcut icon" type="image/x-icon" href="{{ url_for('static', path='img/favicons/favicon.ico') }}">
   <link rel="preconnect" href="https://fonts.googleapis.com/">
@@ -21,6 +22,7 @@
   <link href="{{ url_for('static', path='css/user-rtl.min.css') }}" type="text/css" rel="stylesheet" id="user-style-rtl">
   <link href="{{ url_for('static', path='css/user.min.css') }}" type="text/css" rel="stylesheet" id="user-style-default">
   <link href="{{ url_for('static', path='css/isfc-dark.css') }}" rel="stylesheet">
+  <link href="{{ url_for('static', path='css/isfc-polish.css') }}" rel="stylesheet"><!-- Batch 73 -->
   <script src="{{ url_for('static', path='js/config.js') }}"></script>
   <script>
     var phoenixIsRTL = {{ 'true' if is_rtl|default(false) else 'false' }};
@@ -34,48 +36,107 @@
     }
   </script>
   <style>
-    /* Full-bleed page: no sidebar offset, no header padding. */
-    body.isfc-launcher-standalone { background: var(--phoenix-body-bg); min-height: 100vh; margin: 0; }
-    body.isfc-launcher-standalone .launcher-shell { max-width: 1600px; margin: 0 auto; padding: 24px 28px 48px; }
-    /* Minimal top strip: brand + theme toggle + sign out (no full navbar). */
-    .launcher-topstrip {
-      display: flex; align-items: center; justify-content: space-between;
-      max-width: 1600px; margin: 0 auto; padding: 16px 28px 0;
+    body.isfc-launcher-standalone {
+      background: var(--phoenix-body-bg); min-height: 100vh; margin: 0;
+      display: flex; flex-direction: column;
     }
-    .launcher-brand { display: flex; align-items: center; gap: 10px; font-weight: 900; font-size: 1.15rem;
-                      color: var(--phoenix-emphasis-color); text-decoration: none; }
-    .launcher-brand img { height: 30px; }
+    /* ---- Professional header ---- */
+    .lch-header {
+      position: sticky; top: 0; z-index: 40;
+      background: var(--phoenix-emphasis-bg);
+      border-bottom: 1px solid var(--phoenix-border-color);
+      backdrop-filter: saturate(1.1) blur(6px);
+    }
+    .lch-header-inner {
+      max-width: 1600px; margin: 0 auto; padding: 12px 28px;
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+    }
+    .lch-brand { display: flex; align-items: center; gap: 10px; text-decoration: none;
+                 font-weight: 900; font-size: 1.2rem; color: var(--phoenix-emphasis-color); letter-spacing: .3px; }
+    .lch-brand img { height: 30px; }
+    .lch-brand .dot { width: 10px; height: 10px; border-radius: 50%;
+                      background: linear-gradient(135deg,#2563eb,#3b82f6); box-shadow: 0 0 0 4px rgba(37,99,235,.15); }
+    .lch-actions { display: flex; align-items: center; gap: 8px; }
+    .lch-avatar { width: 34px; height: 34px; border-radius: 50%; object-fit: cover;
+                  border: 2px solid var(--phoenix-border-color); }
+    .lch-avatar-fallback {
+      width: 34px; height: 34px; border-radius: 50%; display: inline-flex;
+      align-items: center; justify-content: center; font-weight: 800; color: #fff;
+      background: linear-gradient(135deg,#1e3a8a,#3b82f6); font-size: .9rem;
+    }
+    .lch-shell { max-width: 1600px; width: 100%; margin: 0 auto; padding: 24px 28px 40px; flex: 1 0 auto; }
+    /* ---- Professional footer ---- */
+    .lch-footer {
+      flex-shrink: 0; border-top: 1px solid var(--phoenix-border-color);
+      background: var(--phoenix-emphasis-bg);
+    }
+    .lch-footer-inner {
+      max-width: 1600px; margin: 0 auto; padding: 16px 28px;
+      display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;
+      color: var(--phoenix-secondary-color); font-size: .85rem;
+    }
+    .lch-footer .who { font-weight: 700; color: var(--phoenix-emphasis-color); }
+    [data-bs-theme="dark"] .lch-header,
+    [data-bs-theme="dark"] .lch-footer { background: var(--isfc-bg-secondary, #0f1a2b); }
   </style>
   {% block extra_css %}{% endblock %}
 </head>
 <body class="isfc-launcher-standalone">
 
-  <div class="launcher-topstrip">
-    <a class="launcher-brand" href="/modules">
-      {% if company_logo %}<img src="{{ company_logo }}" alt="logo">{% endif %}
-      <span>{{ t('PIS') }}</span>
-    </a>
-    <div class="d-flex align-items-center gap-2">
-      <button class="btn btn-sm btn-phoenix-secondary" type="button" id="launcherThemeToggle" title="{{ t('Toggle theme') }}">
-        <i class="bi bi-circle-half"></i>
-      </button>
-      
-      <a class="btn btn-sm btn-phoenix-danger" href="/logout"><i class="bi bi-box-arrow-right me-1"></i>{{ t('Sign out') }}</a>
-    </div>
-  </div>
+  <header class="lch-header">
+    <div class="lch-header-inner">
+      <a class="lch-brand" href="/modules">
+        {% if company_logo %}<img src="{{ company_logo }}" alt="logo">{% else %}<span class="dot"></span>{% endif %}
+        <span>{{ session_company_name|default(request.session.get('header_title')) or 'PIS ERP' }}</span>
+      </a>
 
-  <div class="launcher-shell">
+      <div class="lch-actions">
+        <button class="btn btn-sm btn-phoenix-secondary" type="button" id="launcherThemeToggle" title="{{ t('Toggle theme') }}">
+          <i class="bi bi-circle-half"></i>
+        </button>
+
+        <div class="dropdown">
+          <a class="d-inline-flex align-items-center gap-2 text-decoration-none dropdown-toggle" href="#"
+             role="button" data-bs-toggle="dropdown" aria-expanded="false" style="color:var(--phoenix-emphasis-color)">
+            {% set _uname = request.session.get('username') or session_username or 'user' %}
+            {% if user_avatar %}
+              <img class="lch-avatar" src="{{ user_avatar }}" alt="{{ _uname }}">
+            {% else %}
+              <span class="lch-avatar-fallback">{{ _uname[0]|upper }}</span>
+            {% endif %}
+            <span class="d-none d-sm-inline fw-bold">{{ _uname }}</span>
+          </a>
+          <ul class="dropdown-menu dropdown-menu-end shadow" style="min-width:220px">
+            <li class="px-3 py-2 border-bottom">
+              <div class="fw-bold text-truncate">{{ _uname }}</div>
+              <div class="small text-body-tertiary text-uppercase">{{ user_role|default('user')|lower }}</div>
+            </li>
+            <li><a class="dropdown-item" href="/users/profile"><i class="bi bi-person me-2"></i>{{ t('My Profile') }}</a></li>
+            <li><a class="dropdown-item" href="/settings"><i class="bi bi-gear me-2"></i>{{ t('Settings') }}</a></li>
+            <li><hr class="dropdown-divider"></li>
+            <li><a class="dropdown-item text-danger" href="/logout"><i class="bi bi-box-arrow-right me-2"></i>{{ t('Sign out') }}</a></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="lch-shell">
     {% block content %}{% endblock %}
-    <span class="text-body-tertiary fs-9 d-none d-sm-inline float-end">{{ t('Signed in as') }}: {{ session_username|default('user') }}</span>
-  </div>
+  </main>
+
+  <footer class="lch-footer">
+    <div class="lch-footer-inner">
+      <span>{{ t('Thank you for using') }} <b>ISFC PIMS</b> &nbsp;·&nbsp; {{ '2026' }} © {{ t('Copyright PIS') }}</span>
+      <span>{{ t('Signed in as') }}: <span class="who">{{ request.session.get('username') or session_username or 'user' }}</span>
+        {% if user_role %}<span class="badge badge-phoenix badge-phoenix-primary ms-1">{{ user_role }}</span>{% endif %}
+      </span>
+    </div>
+  </footer>
 
   <script src="{{ url_for('static', path='vendors/popper/popper.min.js') }}"></script>
   <script src="{{ url_for('static', path='vendors/bootstrap/bootstrap.min.js') }}"></script>
-  <script src="{{ url_for('static', path='vendors/echarts/echarts.min.js') }}"></script>
-  <script src="{{ url_for('static', path='js/isfc-charts.js') }}"></script>
   <script>
-    // Simple dark/light toggle (persisted) — the full theme selector lives in
-    // the main app chrome, which this standalone page intentionally omits.
     (function () {
       var html = document.documentElement;
       var saved = localStorage.getItem('phoenixTheme');
@@ -85,23 +146,6 @@
         var next = html.getAttribute('data-bs-theme') === 'dark' ? 'light' : 'dark';
         html.setAttribute('data-bs-theme', next);
         localStorage.setItem('phoenixTheme', next);
-        setTimeout(function () {
-          if (!window.echarts) return;
-          document.querySelectorAll('[_echarts_instance_]').forEach(function (el) {
-            var i = window.echarts.getInstanceByDom(el); if (i) i.resize();
-          });
-        }, 80);
-      });
-      // Charts need a resize once layout settles (zero-width guard).
-      window.addEventListener('load', function () {
-        [120, 400, 900].forEach(function (ms) {
-          setTimeout(function () {
-            if (!window.echarts) return;
-            document.querySelectorAll('[_echarts_instance_]').forEach(function (el) {
-              var i = window.echarts.getInstanceByDom(el); if (i) i.resize();
-            });
-          }, ms);
-        });
       });
     })();
   </script>

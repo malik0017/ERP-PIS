@@ -320,6 +320,26 @@ async def create_order_form(
     if not lines:
         return redirect_with_error("/production/orders", "Please enter at least one recipe with portions greater than zero.")
 
+    # Batch 69: 48-hour rule — delivery must be at least 48 hours from now.
+    # Enforced server-side so it can't be bypassed by editing the form. Admins
+    # and internal staff placing back-dated/urgent orders can be exempted later
+    # via a permission if needed; for now the rule applies to all order entry.
+    _deliv = _parse_date(required_delivery_date)
+    if _deliv:
+        try:
+            _t = (required_delivery_time or "00:00")[:5]
+            _hh, _mm = (int(x) for x in _t.split(":")[:2])
+        except Exception:
+            _hh, _mm = 0, 0
+        _deliv_dt = datetime(_deliv.year, _deliv.month, _deliv.day, _hh, _mm)
+        if _deliv_dt < datetime.now() + timedelta(hours=48):
+            return redirect_with_error(
+                "/orders/portal",
+                "Orders must be placed at least 48 hours before the delivery date and time.")
+    else:
+        return redirect_with_error("/orders/portal",
+                                   "A delivery date is required.")
+
     payload = CustomerOrderCreate(
         customer_no=customer_no or None,
         customer_name=customer_name,
@@ -648,6 +668,24 @@ async def finalize_store(request: Request, order_no: str, db: Session = Depends(
     except ValueError as exc:
         return redirect_with_error(f"/production/orders/{order_no}/store-issuance", str(exc))
 
+    # Batch 69: auto-post store issuance to the GL — Dr 5100 WIP/COGS / Cr 1130
+    # Inventory, valued at issued-qty × ingredient standard cost. This is when
+    # inventory value becomes production cost. Idempotent per order; never blocks.
+    try:
+        from app.core.gl_posting import post_issuance_journal
+        val = db.execute(text("""
+            SELECT COALESCE(SUM(
+                COALESCE(s.issued_qty_standard, s.input_material_issued, 0) *
+                COALESCE(i.unit_cost_standard, 0)
+            ), 0)
+            FROM store_issuance_lines s
+            LEFT JOIN ingredients i ON i.ingredient_code = s.ingredient_code
+            WHERE s.order_no = :o
+        """), {"o": order_no}).scalar() or 0
+        post_issuance_journal(db, request, order_no, float(val))
+    except Exception:
+        pass
+
     return RedirectResponse(
         f"/production/store-issuance?toast=success&title=Store Issue Finalized&msg=Order {order_no}: selected lines locked and material sent to kitchen sections",
         status_code=HTTP_303_SEE_OTHER)
@@ -871,6 +909,55 @@ async def receive_tx(
     return RedirectResponse(request.headers.get("referer") or f"/production/section/{tx.current_section.replace('/', '-')}", status_code=HTTP_303_SEE_OTHER)
 
 
+@router.post("/section/{section_name}/orders/{order_no}/bulk-transfer")
+async def bulk_transfer_section_order(request: Request, section_name: str, order_no: str, db: Session = Depends(get_db)):
+    """UI fix: chefs can tick multiple already-Received lines and process +
+    transfer them together in one action, instead of one form per line.
+    Each selected line passes through at full received quantity with zero
+    waste/return (the common case); anyone who needs to record waste or a
+    partial transfer still uses the per-line 'Process & Transfer' panel."""
+    require_action(request, "kitchen", "edit")
+    section = _section_from_slug(section_name)
+    form = await request.form()
+    tx_ids = []
+    for raw in form.getlist("tx_ids"):
+        try:
+            tx_ids.append(int(raw))
+        except (TypeError, ValueError):
+            continue
+    next_section = (form.get("bulk_next_section") or "").strip()
+
+    if not tx_ids:
+        return redirect_with_error(
+            f"/production/section/{_section_slug(section)}/orders/{order_no}",
+            "Select at least one received line to process.")
+
+    user = current_user_name(request)
+    ok, failed = 0, 0
+    for tx_id in tx_ids:
+        tx = db.query(KitchenSectionTransaction).filter(KitchenSectionTransaction.id == tx_id).first()
+        if not tx:
+            failed += 1
+            continue
+        received_qty = float(tx.received_qty_standard or tx.issued_qty_standard or 0)
+        try:
+            transfer_transaction(
+                db, tx_id, received_qty, 0, 0, received_qty, user,
+                None, "Bulk processed & transferred", next_section or None,
+            )
+            ok += 1
+        except ValueError:
+            failed += 1
+
+    msg = f"{ok} line(s) processed and transferred"
+    if failed:
+        msg += f", {failed} skipped (already locked or not receivable)"
+    kind = "success" if ok else "warning"
+    return RedirectResponse(
+        f"/production/section/{_section_slug(section)}/orders/{order_no}?toast={kind}&title=Bulk+Process&msg={msg}",
+        status_code=HTTP_303_SEE_OTHER)
+
+
 @router.post("/tx/{tx_id}/transfer")
 async def transfer_tx(
     request: Request,
@@ -1047,11 +1134,19 @@ async def store_issuance_dashboard(request: Request, db: Session = Depends(get_d
 # (across every released order), sorted by delivery-date priority, and jump
 # straight to the owning order's issuance screen.
 # ============================================================================
-@router.get("/store-issuance/by-section")
-async def store_issuance_by_section(request: Request, db: Session = Depends(get_db)):
+@router.get("/store-issuance/by-section/export")
+async def store_issuance_by_section_export(request: Request, db: Session = Depends(get_db)):
+    """UI fix: let the store keeper download the section-grouped picking
+    list as CSV — either one section (?section=Cutting) or everything under
+    the current filters (order/customer/date range apply the same as the
+    on-screen view, giving an orderwise download by filtering to one order)."""
     require_area(request, "store_issuance")
     section_filter = (request.query_params.get("section") or "").strip()
-    show = (request.query_params.get("show") or "pending").strip()  # pending | all
+    show = (request.query_params.get("show") or "pending").strip()
+    order_filter = (request.query_params.get("order") or "").strip()
+    customer_filter = (request.query_params.get("customer") or "").strip()
+    date_from = (request.query_params.get("date_from") or "").strip()
+    date_to = (request.query_params.get("date_to") or "").strip()
 
     where = "1=1"
     params: dict = {}
@@ -1060,6 +1155,108 @@ async def store_issuance_by_section(request: Request, db: Session = Depends(get_
     if section_filter:
         where += " AND s.issue_to_section = :sec"
         params["sec"] = section_filter
+    if order_filter:
+        where += " AND s.order_no LIKE :ord"
+        params["ord"] = f"%{order_filter}%"
+    if customer_filter:
+        where += " AND COALESCE(co.customer_name,'') LIKE :cust"
+        params["cust"] = f"%{customer_filter}%"
+    if date_from:
+        where += " AND COALESCE(co.required_delivery_date,'') >= :df"
+        params["df"] = date_from
+    if date_to:
+        where += " AND COALESCE(co.required_delivery_date,'') <= :dt"
+        params["dt"] = date_to
+
+    rows = db.execute(text(f"""
+        SELECT s.issue_to_section AS section, s.order_no, co.customer_name,
+               s.recipe_no, s.recipe_name, s.ingredient_code, s.ingredient_name,
+               COALESCE(s.required_qty_with_waste_standard, s.required_qty_standard, 0) AS required_qty,
+               COALESCE(s.input_material_issued, 0) AS issued_qty,
+               COALESCE(s.standard_uom, 'Kg') AS uom,
+               COALESCE(s.issuance_status, 'Pending') AS issuance_status,
+               COALESCE(s.finalized, 0) AS finalized,
+               COALESCE(co.required_delivery_date, '') AS delivery_date
+        FROM store_issuance_lines s
+        LEFT JOIN customer_orders co ON co.order_no = s.order_no
+        WHERE {where}
+        ORDER BY (co.required_delivery_date IS NULL), co.required_delivery_date ASC,
+                 s.issue_to_section, s.ingredient_name
+        LIMIT 5000
+    """), params).mappings().all()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["Section", "Order", "Customer", "Delivery Date", "Recipe Code", "Recipe Name",
+                      "Ingredient Code", "Ingredient Name", "Required Qty", "Issued Qty", "UOM",
+                      "Status", "Finalized"])
+    for r in rows:
+        writer.writerow([r["section"], r["order_no"], r["customer_name"], r["delivery_date"],
+                          r["recipe_no"], r["recipe_name"], r["ingredient_code"], r["ingredient_name"],
+                          r["required_qty"], r["issued_qty"], r["uom"], r["issuance_status"], r["finalized"]])
+    output.seek(0)
+    fname = f"store-issuance_{section_filter or 'all-sections'}_{date.today().isoformat()}.csv".replace(" ", "-").replace("/", "-")
+    return StreamingResponse(iter(['\ufeff' + output.getvalue()]), media_type="text/csv",
+                             headers={"Content-Disposition": f"attachment; filename={fname}"})
+
+
+@router.post("/store-issuance/{line_id}/quick-issue")
+async def quick_issue_store_line(request: Request, line_id: int, db: Session = Depends(get_db)):
+    """UI fix: issue a line at its full required quantity directly from the
+    'Store Issuance — By Kitchen Section' grouped view, without navigating
+    to the order-level page first. Uses the exact same update path (and
+    audit trail) as the manual per-order issuance form."""
+    require_action(request, "store_issuance", "edit")
+    line = db.query(StoreIssuanceLine).filter(StoreIssuanceLine.id == line_id).first()
+    if not line:
+        return redirect_with_error("/production/store-issuance/by-section", "Store issuance line not found.")
+    full_qty = float(getattr(line, "required_qty_with_waste_standard", None)
+                      or getattr(line, "required_qty_standard", None) or 0)
+    uom = getattr(line, "standard_uom", None) or "Kg"
+    target_section = getattr(line, "issue_to_section", None) or ""
+
+    try:
+        update_store_issuance_line(db, line_id, full_qty, uom, target_section, "", "",
+                                   "Quick issued from Store Issuance by Section view")
+    except ValueError as exc:
+        return redirect_with_error("/production/store-issuance/by-section", str(exc))
+
+    ref = request.headers.get("referer") or "/production/store-issuance/by-section"
+    sep = "&" if "?" in ref else "?"
+    return RedirectResponse(f"{ref}{sep}toast=success&title=Issued&msg={line.ingredient_name}: quick-issued {full_qty} {uom}",
+                            status_code=HTTP_303_SEE_OTHER)
+
+
+@router.get("/store-issuance/by-section")
+async def store_issuance_by_section(request: Request, db: Session = Depends(get_db)):
+    require_area(request, "store_issuance")
+    section_filter = (request.query_params.get("section") or "").strip()
+    show = (request.query_params.get("show") or "pending").strip()  # pending | all
+    order_filter = (request.query_params.get("order") or "").strip()
+    customer_filter = (request.query_params.get("customer") or "").strip()
+    date_from = (request.query_params.get("date_from") or "").strip()
+    date_to = (request.query_params.get("date_to") or "").strip()
+
+    where = "1=1"
+    params: dict = {}
+    if show == "pending":
+        where += " AND COALESCE(s.finalized, 0) = 0"
+    if section_filter:
+        where += " AND s.issue_to_section = :sec"
+        params["sec"] = section_filter
+    # Batch 72: extra store-keeper filters (order / customer / delivery date range)
+    if order_filter:
+        where += " AND s.order_no LIKE :ord"
+        params["ord"] = f"%{order_filter}%"
+    if customer_filter:
+        where += " AND COALESCE(co.customer_name,'') LIKE :cust"
+        params["cust"] = f"%{customer_filter}%"
+    if date_from:
+        where += " AND COALESCE(co.required_delivery_date,'') >= :df"
+        params["df"] = date_from
+    if date_to:
+        where += " AND COALESCE(co.required_delivery_date,'') <= :dt"
+        params["dt"] = date_to
 
     rows = db.execute(text(f"""
         SELECT s.id, s.order_no, s.issue_to_section AS section,
@@ -1112,7 +1309,9 @@ async def store_issuance_by_section(request: Request, db: Session = Depends(get_
 
     return render(request, "production/store_issuance_by_section.html", {
         "groups": section_groups, "all_sections": all_sections,
-        "filters": {"section": section_filter, "show": show},
+        "filters": {"section": section_filter, "show": show,
+                    "order": order_filter, "customer": customer_filter,
+                    "date_from": date_from, "date_to": date_to},
         "page_title": "Store Issuance by Section",
     })
 

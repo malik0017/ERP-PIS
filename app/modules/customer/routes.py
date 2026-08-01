@@ -126,15 +126,54 @@ async def customer_dashboard(request: Request, db: Session = Depends(get_db)):
         # administrator" message.
         role = normalized_role(request)
         pick_list = []
+        statuses = []
+        # Batch 69: admin preview picker now lists ONLY customers who have placed
+        # orders, enriched with order count / last order / total value, and
+        # supports filters (search, status, delivery date range).
+        f = {
+            "q": (request.query_params.get("q") or "").strip(),
+            "status": (request.query_params.get("status") or "").strip(),
+            "from_date": (request.query_params.get("from_date") or "").strip(),
+            "to_date": (request.query_params.get("to_date") or "").strip(),
+        }
         if role in ADMIN_ROLES:
-            pick_list = [dict(r) for r in db.execute(text("""
-                SELECT customer_code, customer_name, COALESCE(brand,'') AS brand
-                FROM customers ORDER BY customer_name LIMIT 1000
-            """)).mappings().all()]
+            where = ["1=1"]
+            params: dict = {}
+            if f["status"]:
+                where.append("o.status = :st"); params["st"] = f["status"]
+            if f["from_date"]:
+                where.append("COALESCE(o.required_delivery_date,'') >= :fd"); params["fd"] = f["from_date"]
+            if f["to_date"]:
+                where.append("COALESCE(o.required_delivery_date,'') <= :td"); params["td"] = f["to_date"]
+            if f["q"]:
+                where.append("(c.customer_name LIKE :like OR c.customer_code LIKE :like)")
+                params["like"] = f"%{f['q']}%"
+            W = " AND ".join(where)
+            try:
+                pick_list = [dict(r) for r in db.execute(text(f"""
+                    SELECT c.customer_code, c.customer_name, COALESCE(c.brand,'') AS brand,
+                           COUNT(o.id) AS order_count,
+                           MAX(o.required_delivery_date) AS last_delivery,
+                           ROUND(COALESCE(SUM(o.total_estimated_selling_value),0),2) AS total_value
+                    FROM customers c
+                    JOIN customer_orders o
+                      ON (o.customer_name = c.customer_name OR o.customer_no = c.customer_code)
+                    WHERE {W}
+                    GROUP BY c.customer_code, c.customer_name, c.brand
+                    HAVING order_count > 0
+                    ORDER BY last_delivery DESC, c.customer_name ASC
+                    LIMIT 1000
+                """), params).mappings().all()]
+            except Exception:
+                pick_list = []
+            statuses = [r["s"] for r in db.execute(text(
+                "SELECT DISTINCT COALESCE(status,'') AS s FROM customer_orders ORDER BY 1"
+            )).mappings().all() if r["s"]]
         return render(request, "customer/dashboard.html", {
             "customer": None, "orders": [], "kpis": {}, "status_mix": [],
             "page_title": "Customer Portal", "accents": STATUS_ACCENTS,
-            "admin_pick_list": pick_list, "is_admin_preview": bool(pick_list),
+            "admin_pick_list": pick_list, "is_admin_preview": bool(role in ADMIN_ROLES),
+            "pick_filters": f, "pick_statuses": statuses,
         })
 
     orders = _orders_for(db, customer, limit=8)
@@ -246,10 +285,23 @@ async def customer_order_detail(request: Request, order_no: str, db: Session = D
         FROM packing_dispatch WHERE order_no = :o ORDER BY id DESC LIMIT 1
     """, {"o": order_no})
 
+    # Batch 71: whether the customer may still cancel (delivery ≥ 48h away).
+    can_cancel_48h = True
+    try:
+        _ds = str(order["delivery_date"])[:10]
+        if _ds:
+            _y, _m, _d = (int(x) for x in _ds.split("-")[:3])
+            _t = (str(order["delivery_time"]) or "00:00")[:5]
+            _hh, _mm = (int(x) for x in _t.split(":")[:2]) if ":" in _t else (0, 0)
+            can_cancel_48h = _dt(_y, _m, _d, _hh, _mm) >= _dt.now() + _td(hours=48)
+    except Exception:
+        can_cancel_48h = True
+
     return render(request, "customer/order_detail.html", {
         "customer": customer, "order": dict(order), "lines": lines,
         "timeline": timeline, "delivery": (delivery[0] if delivery else None),
-        "accents": STATUS_ACCENTS, "page_title": f"Order {order_no}",
+        "accents": STATUS_ACCENTS, "can_cancel_48h": can_cancel_48h,
+        "page_title": f"Order {order_no}",
     })
 
 
@@ -300,6 +352,7 @@ async def customer_statement(request: Request, db: Session = Depends(get_db)):
 from fastapi import Form
 from typing import List, Optional
 from datetime import datetime as _dt
+from datetime import timedelta as _td  # Batch 70: 48-hour rule
 
 from app.schemas.production import CustomerOrderCreate, OrderLineIn
 from app.services.production_service import create_order as _svc_create_order
@@ -378,7 +431,9 @@ async def customer_order_new(request: Request, db: Session = Depends(get_db)):
     return render(request, "customer/order_new.html", {
         "customer": customer,
         "recipes": _active_recipes_for(db, customer),
-        "min_date": _dt.now().strftime("%Y-%m-%d"),
+        # Batch 70: earliest selectable delivery date is 48 hours from now.
+        "min_date": (_dt.now() + _td(hours=48)).strftime("%Y-%m-%d"),
+        "min_datetime": (_dt.now() + _td(hours=48)).strftime("%Y-%m-%dT%H:%M"),
         "page_title": "New Order",
     })
 
@@ -427,11 +482,27 @@ async def customer_order_create(
     if not lines:
         return RedirectResponse("/my/orders/new?toast=danger&title=Missing lines&msg=Add at least one recipe with portions", status_code=303)
 
+    # Batch 70: 48-hour rule — the customer's chosen delivery date+time must be
+    # at least 48 hours from now. Enforced server-side so it can't be bypassed.
     def _pd(v):
         try:
             return _dt.strptime(v, "%Y-%m-%d").date() if v else None
         except Exception:
             return None
+
+    _dd = _pd(required_delivery_date)
+    if not _dd:
+        return RedirectResponse("/my/orders/new?toast=danger&title=Delivery date required&msg=Please choose a delivery date", status_code=303)
+    try:
+        _t = (required_delivery_time or "00:00")[:5]
+        _hh, _mm = (int(x) for x in _t.split(":")[:2])
+    except Exception:
+        _hh, _mm = 0, 0
+    _deliv_dt = _dt(_dd.year, _dd.month, _dd.day, _hh, _mm)
+    if _deliv_dt < _dt.now() + _td(hours=48):
+        return RedirectResponse(
+            "/my/orders/new?toast=danger&title=Too soon&msg=Orders must be placed at least 48 hours before delivery",
+            status_code=303)
 
     payload = CustomerOrderCreate(
         customer_no=customer.get("customer_code") or None,
@@ -469,7 +540,10 @@ CUSTOMER_EDITABLE_STATUSES = ("Submitted",)
 
 def _own_order(db: Session, customer: dict, order_no: str):
     return db.execute(text("""
-        SELECT order_no, status FROM customer_orders
+        SELECT order_no, status,
+               COALESCE(required_delivery_date,'') AS required_delivery_date,
+               COALESCE(required_delivery_time,'') AS required_delivery_time
+        FROM customer_orders
         WHERE order_no = :o AND (customer_name = :name OR customer_no = :code)
         LIMIT 1
     """), {"o": order_no, "name": customer["customer_name"],
@@ -517,6 +591,26 @@ async def customer_cancel_order(request: Request, order_no: str, db: Session = D
         return RedirectResponse(
             f"/my/orders/{order_no}?toast=warning&title=Order Locked&msg=Order is {order['status']} and can no longer be cancelled online. Contact your account manager.",
             status_code=303)
+
+    # Batch 71: 48-hour cancel lock. Once an order's delivery is less than 48
+    # hours away, the customer can no longer cancel it online (materials are
+    # committed / production is imminent). They must call their account manager.
+    _dd = order["required_delivery_date"]
+    _tt = order["required_delivery_time"]
+    if _dd:
+        try:
+            _ds = str(_dd)[:10]
+            _y, _m, _d = (int(x) for x in _ds.split("-")[:3])
+            _t = (str(_tt) or "00:00")[:5]
+            _hh, _mm = (int(x) for x in _t.split(":")[:2]) if ":" in _t else (0, 0)
+            _deliv = _dt(_y, _m, _d, _hh, _mm)
+            if _deliv < _dt.now() + _td(hours=48):
+                return RedirectResponse(
+                    f"/my/orders/{order_no}?toast=warning&title=Cannot Cancel&msg=Delivery is less than 48 hours away, so this order can no longer be cancelled online. Please contact your account manager.",
+                    status_code=303)
+        except Exception:
+            pass
+
     db.execute(text("UPDATE customer_orders SET status = 'Cancelled' WHERE order_no = :o"), {"o": order_no})
     db.commit()
     return RedirectResponse(f"/my/orders?toast=success&title=Order Cancelled&msg=Order {order_no} was cancelled", status_code=303)

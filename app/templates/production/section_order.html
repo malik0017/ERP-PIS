@@ -23,6 +23,19 @@
 tr.locked td{background:#f2f7f2!important;color:#5d7263}
 tr.locked .lock-note{color:#11783f;font-weight:800}
 .delivery-badge{background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.35);border-radius:12px;padding:8px 14px;font-weight:800}
+/* UI fix — collapse the Process & Transfer inputs behind a button by default
+   (they were always open, even before a line was received). The compact
+   summary row shows a one-click toggle; the full input row stays hidden
+   until the chef asks for it, same progressive-disclosure pattern used by
+   Generate PO elsewhere in the system. */
+.row-process-summary td{background:#f4fbf6;padding-top:10px;padding-bottom:10px}
+.row-process-pending td{color:#8a97a6;font-style:italic}
+.js-toggle-process{border:1px solid #cbdbea;background:#fff;color:#152b49;border-radius:10px;padding:5px 12px;font-weight:800;font-size:12.5px;display:inline-flex;align-items:center;gap:6px}
+.js-toggle-process:hover{background:#edf5fb}
+.row-process-expanded.d-none{display:none!important}
+.bulk-bar{background:#eef7f0;border:1px solid #cfe8d4;border-radius:14px;padding:10px 14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.bulk-bar .count{font-weight:900;color:#11783f}
+.line-select{width:17px;height:17px;margin-top:2px;cursor:pointer}
 </style>
 <div class="container-fluid py-3">
   <div class="pis-hero mb-4">
@@ -41,6 +54,7 @@ tr.locked .lock-note{color:#11783f;font-weight:800}
       </div>
       <div class="d-flex gap-2 flex-wrap">
         <a class="pis-btn pis-soft" href="/production/section/{{ section_slug }}">Back to {{ section }} Orders</a>
+        <a class="pis-btn" style="background:#fff;color:#132947;font-weight:800" href="/production/kitchen/{{ section_slug }}/{{ order_no }}"><i class="bi bi-fire"></i> Production View</a>
         <a class="pis-btn pis-soft" href="/production/section/{{ section_slug }}/orders/{{ order_no }}?export=csv"><i class="bi bi-download"></i> Download CSV</a>
       </div>
     </div>
@@ -113,6 +127,29 @@ tr.locked .lock-note{color:#11783f;font-weight:800}
         <input class="form-control form-control-sm" style="max-width:280px" id="lineSearch" placeholder="Search ingredient, recipe, status..." onkeyup="filterLines()">
       </div>
     </div>
+
+    {# UI fix: bulk process — tick several Received lines and transfer them
+       together instead of opening each line's panel one at a time. #}
+    <form id="bulkForm" method="post" action="/production/section/{{ section_slug }}/orders/{{ order_no }}/bulk-transfer"
+          data-confirm="Process and transfer every selected line at its full received quantity?"
+          data-confirm-title="Bulk Process &amp; Transfer" data-confirm-ok="Process Selected" data-confirm-variant="success">
+      <div class="bulk-bar">
+        <div class="form-check mb-0 d-flex align-items-center gap-2">
+          <input class="form-check-input line-select mt-0" type="checkbox" id="selectAllReceived" onclick="toggleSelectAllLines(this)">
+          <label class="form-check-label fw-bold" for="selectAllReceived">Select all ready-to-process lines</label>
+        </div>
+        <span class="small-muted"><span class="count" id="selectedCount">0</span> selected</span>
+        <select name="bulk_next_section" class="form-select form-select-sm" style="max-width:200px">
+          <option value="">Use each line's route</option>
+          {% for s in next_sections %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
+        </select>
+        <button type="submit" class="pis-btn pis-success" id="bulkSubmitBtn" disabled>
+          <i class="bi bi-check2-all"></i> Process &amp; Transfer Selected
+        </button>
+        <span class="small-muted">Passes each selected line through at full received quantity, zero waste. Use the per-line panel for waste/partial transfers.</span>
+      </div>
+    </form>
+
     <div class="table-responsive">
       <table class="table align-middle pis-table" id="linesTable">
         <thead>
@@ -130,10 +167,16 @@ tr.locked .lock-note{color:#11783f;font-weight:800}
           {% set st = (tx.transaction_status or '') %}
           {% set locked = st == 'Transferred' or st.upper().startswith('COMPLETED') %}
           {% set received = (tx.received_qty_standard or 0) > 0 %}
+          {% set line_status = 'transferred' if locked else 'received' if received else 'pending' %}
           <tr class="line-group row-receive {{ 'locked' if locked }}"
-              data-status="{{ 'transferred' if locked else 'received' if received else 'pending' }}"
-              data-recipe="{{ tx.recipe_no }}">
+              data-status="{{ line_status }}" data-recipe="{{ tx.recipe_no }}" data-tx-group="{{ tx.id }}">
             <td rowspan="2" style="vertical-align:top;padding-top:14px">
+              {% if received and not locked %}
+              {# UI fix: bulk-select checkbox — only on lines that are actually
+                 ready to process. Submits with #bulkForm via the form="" attribute
+                 even though it lives inside this row, not that form's markup. #}
+              <input type="checkbox" class="line-select mb-2" form="bulkForm" name="tx_ids" value="{{ tx.id }}" onclick="onLineCheck()" title="Select for bulk processing">
+              {% endif %}
               <span class="stage-tag stage-receive d-block mb-2">Receive</span>
               <span class="stage-tag stage-process d-block">Process</span>
             </td>
@@ -156,32 +199,47 @@ tr.locked .lock-note{color:#11783f;font-weight:800}
             </td>
             {% endif %}
           </tr>
-          {# ---------- ROW 2: PROCESS & TRANSFER ---------- #}
-          <tr class="row-process {{ 'locked' if locked }}"
-              data-status="{{ 'transferred' if locked else 'received' if received else 'pending' }}"
-              data-recipe="{{ tx.recipe_no }}">
+          {# ---------- ROW 2: PROCESS & TRANSFER (collapsed behind a button) ---------- #}
+          <tr class="row-process {{ 'locked' if locked }}" data-status="{{ line_status }}" data-recipe="{{ tx.recipe_no }}" data-tx-group="{{ tx.id }}">
             {% if locked %}
             <td colspan="6" class="small-muted">
               Processed {{ tx.processed_qty_standard or 0 }} · Waste {{ tx.waste_qty_standard or 0 }} · Return {{ tx.returned_qty_standard or 0 }} ·
               Transferred {{ tx.transferred_qty_standard or 0 }} {{ tx.standard_uom }} by {{ tx.transferred_by or '—' }}
               {% if tx.waste_reason %}· Reason: {{ tx.waste_reason }}{% endif %}
             </td>
+            {% elif not received %}
+            <td colspan="6" class="row-process-pending"><i class="bi bi-info-circle me-1"></i>Receive this line first — the Process &amp; Transfer panel unlocks once received.</td>
             {% else %}
-            <td style="width:110px"><label class="small-muted d-block">Processed</label><input form="txf{{ tx.id }}" class="pis-input tx-processed" data-tx="{{ tx.id }}" data-avail="{{ tx.received_qty_standard or tx.issued_qty_standard or 0 }}" type="number" step="0.0001" name="processed_qty_standard" value="{{ tx.received_qty_standard or tx.issued_qty_standard or 0 }}" {% if not received %}disabled{% endif %}></td>
-            <td style="width:95px"><label class="small-muted d-block">Waste</label><input form="txf{{ tx.id }}" class="pis-input tx-waste" data-tx="{{ tx.id }}" type="number" step="0.0001" min="0" name="waste_qty_standard" value="0" {% if not received %}disabled{% endif %}></td>
-            <td style="width:95px"><label class="small-muted d-block">Return</label><input form="txf{{ tx.id }}" class="pis-input tx-return" data-tx="{{ tx.id }}" type="number" step="0.0001" min="0" name="returned_qty_standard" value="0" {% if not received %}disabled{% endif %}></td>
-            <td style="width:110px"><label class="small-muted d-block">Transfer <span class="text-secondary" title="Auto = Received − Waste − Return">⟳</span></label><input form="txf{{ tx.id }}" class="pis-input tx-transfer" data-tx="{{ tx.id }}" type="number" step="0.0001" min="0" name="transferred_qty_standard" value="{{ tx.balance_qty_standard or tx.received_qty_standard or tx.issued_qty_standard or 0 }}" {% if not received %}disabled{% endif %}></td>
-            <td style="min-width:220px"><label class="small-muted d-block">Next Section / Reason</label>
-              <div class="d-flex gap-1">
-                <select form="txf{{ tx.id }}" class="pis-input" name="next_section" {% if not received %}disabled{% endif %}><option value="">Use route</option>{% for s in next_sections %}<option>{{ s }}</option>{% endfor %}</select>
-                <input form="txf{{ tx.id }}" class="pis-input" name="waste_reason" placeholder="Reason" {% if not received %}disabled{% endif %}>
+            <td colspan="6" class="p-0">
+              {# Compact default state: one line + a button, instead of 5 open inputs. #}
+              <div class="row-process-summary d-flex justify-content-between align-items-center flex-wrap gap-2 px-2 py-1" id="summary-{{ tx.id }}">
+                <span><i class="bi bi-check-circle-fill text-success me-1"></i>Received {{ tx.received_qty_standard or 0 }} {{ tx.standard_uom }} — ready to process.</span>
+                <button type="button" class="js-toggle-process" data-target="{{ tx.id }}"><i class="bi bi-sliders"></i> Process &amp; Transfer <i class="bi bi-chevron-down"></i></button>
               </div>
-            </td>
-            <td style="width:110px;vertical-align:bottom">
-              <form method="post" id="txf{{ tx.id }}" action="/production/tx/{{ tx.id }}/transfer"
-                    data-confirm="Transfer this line to the next section? It will lock after transfer."
-                    data-confirm-title="Confirm Transfer" data-confirm-ok="Transfer" data-confirm-variant="primary"></form>
-              <button form="txf{{ tx.id }}" class="pis-btn pis-primary w-100" {% if not received %}disabled title="Receive first"{% endif %}>Transfer</button>
+              {# Expanded state: the real inputs, hidden until requested. #}
+              <div class="row-process-expanded d-none px-2 pb-2" id="expand-{{ tx.id }}">
+                <div class="d-flex flex-wrap gap-2 align-items-end">
+                  <div style="width:110px"><label class="small-muted d-block">Processed</label><input form="txf{{ tx.id }}" class="pis-input tx-processed" data-tx="{{ tx.id }}" data-avail="{{ tx.received_qty_standard or tx.issued_qty_standard or 0 }}" type="number" step="0.0001" name="processed_qty_standard" value="{{ tx.received_qty_standard or tx.issued_qty_standard or 0 }}"></div>
+                  <div style="width:95px"><label class="small-muted d-block">Waste</label><input form="txf{{ tx.id }}" class="pis-input tx-waste" data-tx="{{ tx.id }}" type="number" step="0.0001" min="0" name="waste_qty_standard" value="0"></div>
+                  <div style="width:95px"><label class="small-muted d-block">Return</label><input form="txf{{ tx.id }}" class="pis-input tx-return" data-tx="{{ tx.id }}" type="number" step="0.0001" min="0" name="returned_qty_standard" value="0"></div>
+                  <div style="width:110px"><label class="small-muted d-block">Transfer <span class="text-secondary" title="Auto = Received − Waste − Return">⟳</span></label><input form="txf{{ tx.id }}" class="pis-input tx-transfer" data-tx="{{ tx.id }}" type="number" step="0.0001" min="0" name="transferred_qty_standard" value="{{ tx.balance_qty_standard or tx.received_qty_standard or tx.issued_qty_standard or 0 }}"></div>
+                  <div style="min-width:220px"><label class="small-muted d-block">Next Section / Reason</label>
+                    <div class="d-flex gap-1">
+                      <select form="txf{{ tx.id }}" class="pis-input" name="next_section"><option value="">Use route</option>{% for s in next_sections %}<option>{{ s }}</option>{% endfor %}</select>
+                      <input form="txf{{ tx.id }}" class="pis-input" name="waste_reason" placeholder="Reason">
+                    </div>
+                  </div>
+                  <div style="width:170px">
+                    <form method="post" id="txf{{ tx.id }}" action="/production/tx/{{ tx.id }}/transfer"
+                          data-confirm="Transfer this line to the next section? It will lock after transfer."
+                          data-confirm-title="Confirm Transfer" data-confirm-ok="Transfer" data-confirm-variant="primary"></form>
+                    <div class="d-flex gap-1">
+                      <button form="txf{{ tx.id }}" class="pis-btn pis-primary w-100">Transfer</button>
+                      <button type="button" class="js-toggle-process" data-target="{{ tx.id }}" title="Hide"><i class="bi bi-chevron-up"></i></button>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </td>
             {% endif %}
           </tr>
@@ -236,7 +294,48 @@ function filterLines(){
     if(q && !(a.innerText+' '+(b?b.innerText:'')).toLowerCase().includes(q)) show=false;
     a.style.display=show?'':'none';
     if(b) b.style.display=show?'':'none';
+    // a checkbox for a now-hidden line must not silently submit with the bulk form
+    if(!show){ const cb=a.querySelector('.line-select'); if(cb) cb.checked=false; }
   }
+  onLineCheck();
+}
+
+/* UI fix: collapse the Process & Transfer panel behind a button by default.
+   Click toggles between the compact "ready to process" summary and the
+   full input row for that one line. */
+document.addEventListener('click', function(e){
+  const btn = e.target.closest('.js-toggle-process');
+  if (!btn) return;
+  const id = btn.dataset.target;
+  const summary = document.getElementById('summary-' + id);
+  const expand = document.getElementById('expand-' + id);
+  if (!summary || !expand) return;
+  const opening = expand.classList.contains('d-none');
+  expand.classList.toggle('d-none', !opening);
+  summary.classList.toggle('d-none', opening);
+});
+
+/* UI fix: bulk selection — "select all ready lines" + live counter that
+   enables/disables the bulk submit button. */
+function onLineCheck(){
+  const boxes = document.querySelectorAll('#linesTable .line-select[name="tx_ids"]');
+  const checked = document.querySelectorAll('#linesTable .line-select[name="tx_ids"]:checked');
+  const countEl = document.getElementById('selectedCount');
+  const submitBtn = document.getElementById('bulkSubmitBtn');
+  const selectAll = document.getElementById('selectAllReceived');
+  if (countEl) countEl.textContent = checked.length;
+  if (submitBtn) submitBtn.disabled = checked.length === 0;
+  if (selectAll) {
+    const visibleBoxes = Array.from(boxes).filter(b => b.closest('tr').style.display !== 'none');
+    selectAll.checked = visibleBoxes.length > 0 && visibleBoxes.every(b => b.checked);
+  }
+}
+function toggleSelectAllLines(master){
+  document.querySelectorAll('#linesTable .line-select[name="tx_ids"]').forEach(function(cb){
+    const row = cb.closest('tr');
+    if (row.style.display !== 'none') cb.checked = master.checked;
+  });
+  onLineCheck();
 }
 </script>
 {% endblock %}

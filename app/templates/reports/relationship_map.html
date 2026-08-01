@@ -553,8 +553,6 @@
 
   <div class="rm-panel">
     <h2>Document Relationship Flow</h2>
-    <p>Each box is a business document, not only a
-      menu link. Green means completed, warning color means current/active, light red means pending.</p>
     {% if selected_order %}
     <div class="doc-summary">
       <div class="sum-box primary"><span>Selected Order</span><strong>{{ selected_order.order_no }}</strong>
@@ -575,17 +573,23 @@
         <a href="{{ n.url }}" class="sap-node {{ n.state }}">
           <div class="node-top"><i class="bi {{ n.icon }}"></i><span class="badge">{{ n.state|upper }}</span></div>
           <h4>{{ loop.index }}. {{ n.label }}</h4>
-          <div class="doc-type">{{ n.doc_type }}</div>
+          <!-- <div class="doc-type">{{ n.doc_type }}</div> -->
           <span class="doc-no">{{ n.doc_no }}</span>
-          <div class="metric"><span>{{ n.metric_label }}</span><b>{{ n.metric }}</b></div>
+          <div class="metric">
+            <!-- <span>{{ n.metric_label }}</span> -->
+            <!-- <b>{{ n.metric }}</b> -->
+          </div>
           {% if n.amount != '' %}<div class="amount">Value: {{ n.amount }}</div>{% endif %}
           {% if not loop.last %}<span class="arrow-head">›</span>{% endif %}
         </a>
         {% endfor %}
       </div>
     </div>
-    <div class="legend"><span class="done">Completed previous document</span><span class="active">Current active
-        stage</span><span class="pending">Waiting next action</span></div>
+    <div class="legend">
+      <span class="done">Completed previous document</span>
+      <span class="active">Current active
+        stage</span><span class="pending">Waiting next action</span>
+      </div>
   </div>
 
   <div class="rm-panel">
@@ -593,7 +597,7 @@
     <div class="master-rail">
       {% for m in master_nodes %}
       <a class="master-card" href="{{ m.url }}"><i class="bi {{ m.icon }}"></i><small>{{ m.title }}</small><strong>{{
-          m.metric }}</strong><span>Feeds: {{ m.feeds }}</span></a>
+          m.metric }}</strong></a>
       {% endfor %}
     </div>
   </div>
@@ -601,9 +605,6 @@
   <div class="rm-grid">
     <div class="rm-panel">
       <h3>Live Order Status Mix</h3>
-      <p>Operational pipeline distribution from the order table.</p>
-      {# Batch 10: professional theme multi-chart (H-Bar/Bar/Line/Pie/Donut
-         switcher via isfc-charts.js) replacing the plain CSS bars. #}
       {% if flows %}
       <div data-isfc-chart="hbar"
            data-types="hbar,bar,line,area,pie,donut"
@@ -614,7 +615,6 @@
     </div>
     <div class="rm-panel">
       <h3>Reports Connected to this Map</h3>
-      <p>Use these reports to verify each node in the document chain.</p>
       <div class="report-grid-style">
         {% for r in report_links %}<a class="report-chip" href="{{ r.url }}"><strong>{{ r.title }}</strong><span>{{
             r.desc }}</span></a>{% endfor %}

@@ -26,6 +26,7 @@ from app.core.rbac import require_area, require_action
 from app.database.session import get_db
 # Batch 23: shared, legacy-aware stock ledger writer (see app/core/stock_ledger.py)
 from app.core.stock_ledger import post_stock_movement
+from app.core.gl_posting import post_grn_journal  # Batch 69: GRN → GL
 
 router = APIRouter(prefix="/procurement", tags=["Procurement"])
 
@@ -241,6 +242,7 @@ async def po_receive(request: Request, po_no: str, db: Session = Depends(get_db)
     grn_no = _next_no(db, "grn_receipts", "grn_no", "GRN")
     cid = _cid(request)
     posted = 0
+    grn_value = 0.0  # Batch 69: accumulate received value for the GL journal
     ledger_failures: list[str] = []  # Batch 23: surface ledger problems, never hide them
 
     for i, lid in enumerate(line_ids):
@@ -287,6 +289,7 @@ async def po_receive(request: Request, po_no: str, db: Session = Depends(get_db)
         )
         if not ok:
             ledger_failures.append(line["inventory_code"])
+        grn_value += qty * float(line["unit_price"] or 0)  # Batch 69
         posted += 1
 
     if not posted:
@@ -305,6 +308,14 @@ async def po_receive(request: Request, po_no: str, db: Session = Depends(get_db)
     new_status = "Received" if int(open_lines) == 0 else "Partially Received"
     db.execute(text("UPDATE purchase_orders SET status = :s WHERE po_no = :p"), {"s": new_status, "p": po_no})
     db.commit()
+
+    # Batch 69: auto-post the GRN to the GL — Dr 1130 Inventory / Cr 2200 GR accrual.
+    # This is the inventory→GL bridge that was missing, so stock value now feeds
+    # the P&L/Balance Sheet. Idempotent per GRN; never blocks the receive.
+    try:
+        post_grn_journal(db, request, grn_no, grn_value, supplier=po["supplier_name"] or "")
+    except Exception:
+        pass
     # Batch 23: if any line failed to reach the stock ledger, SAY SO. Previously
     # this always reported success even when zero stock had actually moved.
     if ledger_failures:

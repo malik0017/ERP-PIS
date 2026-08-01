@@ -1,0 +1,15 @@
+{# app/templates/finance/_stmt_filter.html — Batch 67
+   Shared date-range filter bar for P&L / Cash Flow. Balance sheet uses as_of. #}
+<form method="get" class="card border shadow-none mb-3">
+  <div class="card-body p-3 d-flex align-items-end gap-3 flex-wrap">
+    <div>
+      <label class="form-label fs-9 text-body-tertiary mb-1">{{ t('From date') }}</label>
+      <input type="date" name="from_date" value="{{ from_date }}" class="form-control form-control-sm">
+    </div>
+    <div>
+      <label class="form-label fs-9 text-body-tertiary mb-1">{{ t('To date') }}</label>
+      <input type="date" name="to_date" value="{{ to_date }}" class="form-control form-control-sm">
+    </div>
+    <button class="btn btn-primary btn-sm fw-bold" type="submit"><i class="bi bi-funnel me-1"></i>{{ t('Apply') }}</button>
+  </div>
+</form>

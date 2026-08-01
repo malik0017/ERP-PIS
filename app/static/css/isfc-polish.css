@@ -1,0 +1,88 @@
+/* app/static/css/isfc-polish.css
+   ==========================================================================
+   Batch 73 — Global visual polish (P2)
+   Loaded last in base.html so it wins. Goals:
+     1. Remove "moving" micro-animations (hover lifts, scale, slide) — keep
+        only subtle colour/shadow feedback. Enterprise ERPs feel calm, not bouncy.
+     2. A restrained corporate palette (deep navy + slate + one blue accent).
+     3. Tighter, cleaner hero bars, cards, tables and badges across every screen.
+   All rules are additive and theme-variable based, so nothing breaks and dark
+   mode / RTL keep working.
+   ========================================================================== */
+
+:root {
+  --isfc-accent: #2563eb;
+  --isfc-accent-dark: #1e3a8a;
+  --isfc-ink: #0f172a;
+  --isfc-slate: #475569;
+  --isfc-line: #e6eaf0;
+}
+
+/* ---- 1. Kill micro-animations that move elements ---- */
+/* Keep colour/opacity transitions (calm), drop transform-based motion. */
+*,
+*::before,
+*::after {
+  animation-duration: 0.001ms !important;
+  animation-delay: 0ms !important;
+}
+/* .card:hover,
+.module-card:hover,
+[class*="-card"]:hover,
+.btn:hover,
+a:hover {
+  transform: none !important;
+} */
+/* Neutralise common "lift on hover" patterns */
+.card, .btn, .kpi-tile, .mod-card, .report-card, .module-card {
+  transition: border-color .15s ease, box-shadow .15s ease, background-color .15s ease, color .15s ease !important;
+}
+
+/* ---- 2. Corporate hero bars (the blue gradient headers) ---- */
+.isfc-hero,
+.pis-hero,
+.kp-hero,
+.acc-hero,
+.wf-hero {
+  background: linear-gradient(120deg, #0f172a 0%, #1e3a8a 60%, #2563eb 100%) !important;
+  box-shadow: none !important;
+  border-radius: 16px !important;
+}
+.isfc-hero h1, .pis-hero h1, .pis-hero h2 { letter-spacing: -0.01em; }
+
+/* ---- 3. Cards: flatter, cleaner ---- */
+.card {
+  border: 1px solid var(--phoenix-border-color) !important;
+  border-radius: 14px !important;
+  box-shadow: none !important;
+}
+.card:hover { box-shadow: 0 6px 18px rgba(15, 23, 42, 0.06) !important; }
+
+/* ---- 4. Buttons: solid, corporate ---- */
+.btn-primary {
+  background: var(--isfc-accent) !important;
+  border-color: var(--isfc-accent) !important;
+}
+.btn-primary:hover { background: var(--isfc-accent-dark) !important; border-color: var(--isfc-accent-dark) !important; }
+
+/* ---- 5. Tables: tighter, quieter zebra ---- */
+.table > :not(caption) > * > * { padding-top: .55rem; padding-bottom: .55rem; }
+.table thead th {
+  text-transform: uppercase; font-size: .68rem; letter-spacing: .04em;
+  color: var(--phoenix-secondary-color); font-weight: 700;
+}
+
+/* ---- 6. Badges: flat pills ---- */
+.badge { font-weight: 700; letter-spacing: .01em; }
+
+/* ---- 7. Trim oversized helper text globally ---- */
+.text-muted.small, .form-text { font-size: .78rem; }
+
+/* ---- 8. Dark-mode alignment ---- */
+[data-bs-theme="dark"] .card { border-color: var(--isfc-border, #2a3a55) !important; }
+[data-bs-theme="dark"] .card:hover { box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35) !important; }
+
+/* ---- 9. Respect users who ask for reduced motion ---- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; }
+}

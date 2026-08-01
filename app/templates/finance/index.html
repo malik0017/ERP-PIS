@@ -11,6 +11,15 @@
         <a class="btn btn-light" href="/finance/journal/new"><i class="bi bi-journal-plus me-1"></i>{{ t('New Journal') }}</a>
         <a class="btn btn-light" href="/finance/coa"><i class="bi bi-diagram-3 me-1"></i>{{ t('Chart of Accounts') }}</a>
         <a class="btn btn-light" href="/finance/gl"><i class="bi bi-journal-bookmark me-1"></i>{{ t('General Ledger') }}</a>
+        <a class="btn btn-light" href="/finance/periods"><i class="bi bi-lock me-1"></i>{{ t('Period Close') }}</a>
+        <a class="btn btn-light" href="/finance/cost-centers"><i class="bi bi-diagram-2 me-1"></i>{{ t('Cost Centers') }}</a>
+      </div>
+      <div class="d-flex gap-2 flex-wrap mt-2">
+        <a class="btn btn-phoenix-success btn-sm" href="/finance/statements/profit-loss"><i class="bi bi-graph-up-arrow me-1"></i>{{ t('Profit & Loss') }}</a>
+        <a class="btn btn-phoenix-primary btn-sm" href="/finance/statements/balance-sheet"><i class="bi bi-clipboard-data me-1"></i>{{ t('Balance Sheet') }}</a>
+        <a class="btn btn-phoenix-info btn-sm" href="/finance/statements/cash-flow"><i class="bi bi-cash-stack me-1"></i>{{ t('Cash Flow') }}</a>
+        <a class="btn btn-phoenix-warning btn-sm" href="/finance/reports/aging?report_type=ar"><i class="bi bi-hourglass-split me-1"></i>{{ t('AR Aging') }}</a>
+        <a class="btn btn-phoenix-warning btn-sm" href="/finance/reports/aging?report_type=ap"><i class="bi bi-hourglass-bottom me-1"></i>{{ t('AP Aging') }}</a>
       </div>
     </div>
     <p class="mb-0">{{ t('AR auto-draft after delivered orders, AP supplier invoice match with PO/GRN, payments and statements.') }}</p>

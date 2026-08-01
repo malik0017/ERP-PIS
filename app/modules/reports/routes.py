@@ -440,6 +440,15 @@ def reports_center(request: Request, db: Session = Depends(get_db)):
         ORDER BY total DESC, label ASC
     """)
 
+    # Batch 68: live financial-report KPIs so the Reports Center links into the
+    # completed Finance engine (statements from Batch 67).
+    fin = {
+        "revenue": _one(db, "SELECT COALESCE(SUM(amount),0) FROM ar_invoices WHERE COALESCE(status,'') <> 'Cancelled'"),
+        "ar_open": _one(db, "SELECT COALESCE(SUM(amount-COALESCE(paid_amount,0)),0) FROM ar_invoices WHERE COALESCE(status,'') NOT IN ('Paid','Cancelled')"),
+        "ap_open": _one(db, "SELECT COALESCE(SUM(amount-COALESCE(paid_amount,0)),0) FROM ap_invoices WHERE COALESCE(status,'') NOT IN ('Paid','Cancelled')"),
+        "journals": _one(db, "SELECT COUNT(*) FROM gl_journals"),
+    }
+
     return render(request, "reports/index.html", {
         "cards": cards,
         "kpis": kpis,
@@ -447,6 +456,7 @@ def reports_center(request: Request, db: Session = Depends(get_db)):
         "bom_section": bom_section,
         "bom_category": bom_category,
         "order_status": order_status,
+        "fin": fin,
         "page_title": "Reports Center",
     })
 

@@ -3,9 +3,16 @@
 {% block content %}
 <div class="container-fluid py-3 isfc-page">
 
-  <div class="isfc-hero mb-3">
-    <h1 class="mb-1">{{ t('System Settings') }}</h1>
-    <p class="mb-0">{{ t('Manage company profile, branding, logo, security policy, language, currency and formatting.') }}</p>
+  <div class="isfc-hero mb-3 d-flex align-items-center justify-content-between flex-wrap gap-3">
+    <div>
+      <h1 class="mb-1">{{ t('System Settings') }}</h1>
+      <p class="mb-0">{{ t('Manage company profile, branding, logo, security policy, language, currency and formatting.') }}</p>
+    </div>
+    {% if user_role in ['ADMIN','SUPER_ADMIN','SUPERADMIN','ADMINISTRATOR'] %}
+    <a href="/settings/modules" class="btn btn-primary fw-bold">
+      <i class="bi bi-toggles2 me-1"></i>{{ t('Module Visibility') }}
+    </a>
+    {% endif %}
   </div>
 
   <!-- ============ COMPANY LOGO (separate form: multipart upload) ============ -->

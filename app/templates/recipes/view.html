@@ -50,7 +50,6 @@
     <div class="card-header p-4 border-bottom bg-body d-flex justify-content-between align-items-start gap-2 flex-wrap">
       <div>
         <h4 class="mb-1 text-body">Recipe Lines</h4>
-        <p class="mb-0 text-body-tertiary">Ingredient, UOM, quantity and cost calculation for the selected recipe version.</p>
       </div>
     </div>
     <div class="card-body p-0 py-2">
@@ -58,7 +57,18 @@
         <table class="table table-sm fs-9 mb-0 overflow-hidden" data-isfc-search="false">
           <thead class="text-body">
             <tr>
-              <th>#</th><th>Type</th><th>Sub Recipe</th><th>Item Code</th><th>Item Name</th><th>UOM</th><th class="text-end">Qty/Batch</th><th class="text-end">Portions</th><th class="text-end">Qty/Portion</th><th class="text-end">Cost/UOM</th><th class="text-end">Line Cost</th><th>Remark</th>
+              <th>#</th>
+              <th>Type</th>
+              <th>Sub Recipe</th>
+              <th>Item Code</th>
+              <th>Item Name</th>
+              <th>UOM</th>
+              <th class="text-end">Qty/Batch</th>
+              <th class="text-end">Portions</th>
+              <th class="text-end">Qty/Portion</th>
+              <th class="text-end">Cost/UOM</th>
+              <th class="text-end">Line Cost</th>
+              <th>Remark</th>
             </tr>
           </thead>
           <tbody>
@@ -70,12 +80,12 @@
               <td class="fw-bold text-primary">{{ line.inventory_code or "None" }}</td>
               <td>{{ line.item_name }}</td>
               <td>{{ line.uom or "" }}</td>
-              <td class="text-end">{{ "%.4f"|format(line.qty_batch or 0) }}</td>
-              <td class="text-end">{{ "%.4f"|format(line.portions or 0) }}</td>
-              <td class="text-end">{{ "%.6f"|format(line.qty_per_portion or 0) }}</td>
-              <td class="text-end">{{ "%.6f"|format(line.cost_uom or 0) }}</td>
-              <td class="text-end fw-bold text-success">{{ "%.4f"|format(line.line_cost or 0) }}</td>
-              <td>{{ line.remark or "" }}</td>
+              <td class="text-end">{{ "%.2f"|format(line.qty_batch or 0) }}</td>
+              <td class="text-end">{{ "%.2f"|format(line.portions or 0) }}</td>
+              <td class="text-end">{{ "%.2f"|format(line.qty_per_portion or 0) }}</td>
+              <td class="text-end">{{ "%.2f"|format(line.cost_uom or 0) }}</td>
+              <td class="text-end fw-bold text-success">{{ "%.2f"|format(line.line_cost or 0) }}</td>
+              <td>{{ line.remark or "—" }}</td>
             </tr>
           {% else %}
             <tr><td colspan="12" class="text-center text-body-tertiary py-4">No recipe lines found.</td></tr>

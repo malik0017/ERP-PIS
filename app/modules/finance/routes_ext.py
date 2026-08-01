@@ -236,11 +236,18 @@ def create_ar_invoice(
 
     # If posted, create the balanced receivable journal immediately.
     if post_now:
+        # Batch 67: VAT split — Dr 1120 AR / Cr 4100 Revenue (net) + Cr 2300 VAT.
+        vat_rate = 0.15
+        net = round(amount / (1 + vat_rate), 2)
+        vat = round(amount - net, 2)
+        ar_lines = [("1120", amount, 0.0, customer_name),
+                    ("4100", 0.0, net, customer_name)]
+        if vat > 0:
+            ar_lines.append(("2300", 0.0, vat, customer_name))
         post_journal(
             db, request, "AR_INVOICE", inv_no,
             f"A/R Invoice {inv_no} - {customer_name}",
-            [("1200", amount, 0.0, customer_name),   # Dr Accounts Receivable
-             ("4000", 0.0, amount, customer_name)],  # Cr Sales Revenue
+            ar_lines,
         )
     return RedirectResponse(
         f"/finance?success=A/R invoice {inv_no} created ({status})", status_code=303)

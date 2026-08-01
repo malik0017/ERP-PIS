@@ -1,0 +1,56 @@
+{% extends "layouts/base.html" %}
+{% block title %}Period Close | Finance{% endblock %}
+{% block content %}
+{# Batch 73 — Finance period close #}
+<div class="container-fluid py-3 isfc-page">
+  <div class="isfc-hero mb-4 p-4 rounded-4 text-white d-flex align-items-center justify-content-between flex-wrap gap-3">
+    <div>
+      <h1 class="mb-1 fw-bold"><i class="bi bi-lock me-2"></i>{{ t('Period Close') }}</h1>
+      <p class="mb-0 opacity-75">{{ t('Lock a fiscal period so no new journals can be dated inside it.') }}</p>
+    </div>
+    <a href="/finance" class="btn btn-light btn-sm fw-bold">{{ t('Finance') }}</a>
+  </div>
+
+  <div class="card border">
+    <div class="card-body p-0">
+      <table class="table table-hover mb-0">
+        <thead class="bg-body-highlight">
+          <tr><th>{{ t('Period') }}</th><th class="text-center">{{ t('Journals') }}</th>
+              <th class="text-end">{{ t('Debit') }}</th><th class="text-end">{{ t('Credit') }}</th>
+              <th class="text-center">{{ t('Status') }}</th><th class="text-end">{{ t('Action') }}</th></tr>
+        </thead>
+        <tbody>
+          {% for r in rows %}
+          <tr>
+            <td class="fw-bold">{{ r.month_name }} {{ r.fy_year }}</td>
+            <td class="text-center">{{ r.journals }}</td>
+            <td class="text-end">{{ '%.2f'|format(r.total_debit or 0) }}</td>
+            <td class="text-end">{{ '%.2f'|format(r.total_credit or 0) }}</td>
+            <td class="text-center">
+              {% if r.status == 'CLOSED' %}<span class="badge badge-phoenix badge-phoenix-danger">Closed</span>
+              {% else %}<span class="badge badge-phoenix badge-phoenix-success">Open</span>{% endif %}
+            </td>
+            <td class="text-end">
+              <form method="post" action="/finance/periods/set" class="d-inline">
+                <input type="hidden" name="fy_year" value="{{ r.fy_year }}">
+                <input type="hidden" name="fy_month" value="{{ r.fy_month }}">
+                {% if r.status == 'CLOSED' %}
+                <input type="hidden" name="status" value="OPEN">
+                <button class="btn btn-sm btn-phoenix-secondary">{{ t('Reopen') }}</button>
+                {% else %}
+                <input type="hidden" name="status" value="CLOSED">
+                <button class="btn btn-sm btn-phoenix-danger">{{ t('Close') }}</button>
+                {% endif %}
+              </form>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="6" class="text-center text-body-tertiary py-4">{{ t('No posted journals yet.') }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <p class="text-body-tertiary small mt-2"><i class="bi bi-info-circle me-1"></i>{{ t('Closing a period prevents new postings dated in that month. Reopen to allow adjustments.') }}</p>
+</div>
+{% endblock %}

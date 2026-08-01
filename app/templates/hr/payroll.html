@@ -1,0 +1,90 @@
+{% extends "layouts/base.html" %}
+{% block title %}Payroll | HCM{% endblock %}
+{% block content %}
+{# Batch 74 — HCM payroll runs + payslips #}
+<div class="container-fluid py-3 isfc-page">
+  <div class="isfc-hero mb-4 p-4 rounded-4 text-white d-flex align-items-center justify-content-between flex-wrap gap-3">
+    <div>
+      <h1 class="mb-1 fw-bold"><i class="bi bi-cash-stack me-2"></i>{{ t('Payroll') }}</h1>
+      <p class="mb-0 opacity-75">{{ t('Generate monthly payroll from salary structure and attendance.') }}</p>
+    </div>
+    <div class="d-flex gap-2">
+      <a class="btn btn-light btn-sm fw-bold" href="/hr/leave">{{ t('Leave') }}</a>
+      <a class="btn btn-light btn-sm fw-bold" href="/hr/shifts">{{ t('Shifts') }}</a>
+    </div>
+  </div>
+
+  <div class="card border mb-3">
+    <div class="card-body">
+      <form method="post" action="/hr/payroll/run" class="row g-2 align-items-end">
+        <div class="col-auto"><label class="form-label fs-9 text-body-tertiary mb-1">{{ t('Year') }}</label>
+          <input type="number" name="fy_year" value="{{ cur_year }}" class="form-control form-control-sm" style="width:110px"></div>
+        <div class="col-auto"><label class="form-label fs-9 text-body-tertiary mb-1">{{ t('Month') }}</label>
+          <select name="fy_month" class="form-select form-select-sm" style="width:150px">
+            {% for i in range(1,13) %}<option value="{{ i }}" {% if i==cur_month %}selected{% endif %}>{{ months[i] }}</option>{% endfor %}
+          </select></div>
+        <div class="col-auto"><button class="btn btn-primary btn-sm"><i class="bi bi-play-circle me-1"></i>{{ t('Generate Payroll') }}</button></div>
+        <div class="col-auto text-body-tertiary fs-9 pb-1">{{ t('Prorated by attendance + approved paid leave. Friday is the weekly off.') }}</div>
+      </form>
+    </div>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-lg-4">
+      <div class="card border">
+        <div class="card-body p-0">
+          <table class="table table-hover mb-0">
+            <thead class="bg-body-highlight"><tr><th>{{ t('Run') }}</th><th class="text-center">{{ t('Slips') }}</th><th class="text-end">{{ t('Net') }}</th></tr></thead>
+            <tbody>
+              {% for r in runs %}
+              <tr>
+                <td><a href="/hr/payroll?run_id={{ r.id }}" class="fw-bold text-decoration-none">{{ r.month_name }} {{ r.fy_year }}</a>
+                    {% if r.status=='Finalized' %}<span class="badge badge-phoenix badge-phoenix-success ms-1">✓</span>{% endif %}</td>
+                <td class="text-center">{{ r.payslips }}</td>
+                <td class="text-end">{{ '%.0f'|format(r.total_net or 0) }}</td>
+              </tr>
+              {% else %}<tr><td colspan="3" class="text-center text-body-tertiary py-4">{{ t('No payroll runs yet.') }}</td></tr>{% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-8">
+      <div class="card border">
+        <div class="card-body p-0">
+          {% if sel_run %}
+          <div class="d-flex justify-content-between align-items-center p-3 border-bottom">
+            <h5 class="fw-bold mb-0">{{ sel_run.month_name }} {{ sel_run.fy_year }} — {{ t('Payslips') }}</h5>
+            {% if sel_run.status != 'Finalized' %}
+            <form method="post" action="/hr/payroll/{{ sel_run.id }}/finalize"><button class="btn btn-sm btn-phoenix-success">{{ t('Finalize') }}</button></form>
+            {% else %}<span class="badge badge-phoenix badge-phoenix-success">{{ t('Finalized') }}</span>{% endif %}
+          </div>
+          <table class="table table-sm mb-0">
+            <thead class="bg-body-highlight"><tr>
+              <th>{{ t('Employee') }}</th><th class="text-center">{{ t('Days') }}</th>
+              <th class="text-end">{{ t('Basic') }}</th><th class="text-end">{{ t('Allow.') }}</th>
+              <th class="text-end">{{ t('Deduct.') }}</th><th class="text-end">{{ t('Net') }}</th>
+            </tr></thead>
+            <tbody>
+              {% for p in payslips %}
+              <tr>
+                <td class="fw-bold">{{ p.employee_name }}</td>
+                <td class="text-center fs-9">{{ p.paid_days }}/{{ p.working_days }}</td>
+                <td class="text-end">{{ '%.2f'|format(p.basic) }}</td>
+                <td class="text-end">{{ '%.2f'|format(p.allowances) }}</td>
+                <td class="text-end">{{ '%.2f'|format(p.deductions) }}</td>
+                <td class="text-end fw-bold">{{ '%.2f'|format(p.net) }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          {% else %}
+          <div class="text-center text-body-tertiary py-5"><i class="bi bi-arrow-left me-1"></i>{{ t('Select a payroll run to view payslips, or generate one above.') }}</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

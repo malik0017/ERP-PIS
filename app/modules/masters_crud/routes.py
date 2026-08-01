@@ -130,7 +130,7 @@ MASTER_FORMS: dict[str, dict] = {
             ("status", "Status", "select:ACTIVE|INACTIVE", False),
         ],
     },
-    "revenue-streams": {
+    "revenue_streams": {
         "table": "revenue_streams", "title": "Revenue Stream", "list_url": "/revenue-streams",
         "code_col": "stream_code", "code_pfx": "REV", "name_col": "stream_name",
         "fields": [
@@ -141,7 +141,7 @@ MASTER_FORMS: dict[str, dict] = {
             ("status", "Status", "select:ACTIVE|INACTIVE", False),
         ],
     },
-    "kitchen-sections": {
+    "kitchen_sections": {
         "table": "kitchen_sections", "title": "Kitchen Section", "list_url": "/kitchen-sections",
         "code_col": "section_code", "code_pfx": "KS", "name_col": "section_name",
         "fields": [
@@ -154,7 +154,7 @@ MASTER_FORMS: dict[str, dict] = {
             ("status", "Status", "select:ACTIVE|INACTIVE", False),
         ],
     },
-    "kitchen-locations": {
+    "kitchen_locations": {
         "table": "kitchen_locations", "title": "Kitchen Location", "list_url": "/kitchen-locations",
         "code_col": "kitchen_code", "code_pfx": "KL", "name_col": "kitchen_name",
         "fields": [

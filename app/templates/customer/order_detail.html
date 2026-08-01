@@ -79,12 +79,17 @@
             <div class="col-5"><input type="time" class="form-control form-control-sm" name="required_delivery_time" value="{{ order.delivery_time }}"></div>
             <div class="col-12"><button class="btn btn-sm btn-primary w-100">{{ t('Update Delivery Date/Time') }}</button></div>
           </form>
+          {% if can_cancel_48h %}
           <form method="post" action="/my/orders/{{ order.order_no }}/cancel" class="mt-2"
                 data-confirm="Cancel order {{ order.order_no }}? This cannot be undone."
                 data-confirm-title="Cancel Order" data-confirm-ok="Yes, cancel it" data-confirm-variant="danger">
             <button class="btn btn-sm btn-outline-danger w-100">{{ t('Cancel Order') }}</button>
           </form>
-          <p class="small text-body-tertiary mt-2 mb-0">{{ t('You can change or cancel this order only until the Head Chef approves it. After that it is locked.') }}</p>
+          <p class="small text-body-tertiary mt-2 mb-0">{{ t('You can change or cancel this order only until the Head Chef approves it, and up to 48 hours before delivery.') }}</p>
+          {% else %}
+          <div class="alert alert-warning py-2 px-3 small mt-2 mb-0"><i class="bi bi-clock-history me-1"></i>
+            {{ t('Delivery is less than 48 hours away — this order can no longer be cancelled online. Contact your account manager.') }}</div>
+          {% endif %}
           {% elif order.status not in ('Cancelled', 'Closed') %}
           <hr>
           <div class="alert alert-secondary py-2 px-3 small mb-0"><i class="bi bi-lock-fill me-1"></i>

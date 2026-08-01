@@ -1,0 +1,80 @@
+{% extends "layouts/base.html" %}
+{% block title %}Shifts | HCM{% endblock %}
+{% block content %}
+{# Batch 74 — HCM shifts + assignments #}
+<div class="container-fluid py-3 isfc-page">
+  <div class="isfc-hero mb-4 p-4 rounded-4 text-white d-flex align-items-center justify-content-between flex-wrap gap-3">
+    <div>
+      <h1 class="mb-1 fw-bold"><i class="bi bi-clock-history me-2"></i>{{ t('Shifts') }}</h1>
+      <p class="mb-0 opacity-75">{{ t('Define shifts and assign staff to work dates.') }}</p>
+    </div>
+    <div class="d-flex gap-2">
+      <a class="btn btn-light btn-sm fw-bold" href="/hr/employees">{{ t('Employees') }}</a>
+      <a class="btn btn-light btn-sm fw-bold" href="/hr/leave">{{ t('Leave') }}</a>
+    </div>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-lg-5">
+      <div class="card border">
+        <div class="card-body">
+          <h5 class="fw-bold mb-3">{{ t('Define a Shift') }}</h5>
+          <form method="post" action="/hr/shifts/create" class="row g-2 align-items-end mb-2">
+            <div class="col-3"><label class="form-label fs-9 text-body-tertiary mb-1">{{ t('Code') }}</label>
+              <input name="shift_code" class="form-control form-control-sm" placeholder="AM" required></div>
+            <div class="col-4"><label class="form-label fs-9 text-body-tertiary mb-1">{{ t('Name') }}</label>
+              <input name="shift_name" class="form-control form-control-sm" placeholder="Morning" required></div>
+            <div class="col-2"><label class="form-label fs-9 text-body-tertiary mb-1">{{ t('Start') }}</label>
+              <input name="start_time" type="time" class="form-control form-control-sm"></div>
+            <div class="col-2"><label class="form-label fs-9 text-body-tertiary mb-1">{{ t('End') }}</label>
+              <input name="end_time" type="time" class="form-control form-control-sm"></div>
+            <div class="col-1"><button class="btn btn-primary btn-sm w-100">+</button></div>
+          </form>
+          <table class="table table-sm mb-0">
+            <thead><tr><th>{{ t('Code') }}</th><th>{{ t('Name') }}</th><th>{{ t('Time') }}</th></tr></thead>
+            <tbody>
+              {% for s in shifts %}
+              <tr><td class="font-monospace">{{ s.shift_code }}</td><td>{{ s.shift_name }}</td><td class="fs-9">{{ s.start_time or '—' }} – {{ s.end_time or '—' }}</td></tr>
+              {% else %}<tr><td colspan="3" class="text-center text-body-tertiary py-3">{{ t('No shifts defined.') }}</td></tr>{% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card border mt-3">
+        <div class="card-body">
+          <h6 class="fw-bold mb-2">{{ t('Assign Staff to Shift') }}</h6>
+          <form method="post" action="/hr/shifts/assign" class="row g-2 align-items-end">
+            <div class="col-5"><label class="form-label fs-9 text-body-tertiary mb-1">{{ t('Employee') }}</label>
+              <select name="employee_code" class="form-select form-select-sm" required>
+                {% for e in employees %}<option value="{{ e.employee_code }}">{{ e.full_name }}</option>{% endfor %}
+              </select></div>
+            <div class="col-3"><label class="form-label fs-9 text-body-tertiary mb-1">{{ t('Shift') }}</label>
+              <select name="shift_code" class="form-select form-select-sm" required>
+                {% for s in shifts %}<option value="{{ s.shift_code }}">{{ s.shift_code }}</option>{% endfor %}
+              </select></div>
+            <div class="col-3"><label class="form-label fs-9 text-body-tertiary mb-1">{{ t('Date') }}</label>
+              <input name="work_date" type="date" class="form-control form-control-sm" required></div>
+            <div class="col-1"><button class="btn btn-primary btn-sm w-100">+</button></div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-7">
+      <div class="card border">
+        <div class="card-body p-0">
+          <table class="table table-hover mb-0">
+            <thead class="bg-body-highlight"><tr><th>{{ t('Date') }}</th><th>{{ t('Employee') }}</th><th>{{ t('Shift') }}</th><th>{{ t('Time') }}</th></tr></thead>
+            <tbody>
+              {% for a in assignments %}
+              <tr><td>{{ a.work_date }}</td><td class="fw-bold">{{ a.full_name or a.employee_code }}</td><td>{{ a.shift_name or a.shift_code }}</td><td class="fs-9">{{ a.start_time or '—' }} – {{ a.end_time or '—' }}</td></tr>
+              {% else %}<tr><td colspan="4" class="text-center text-body-tertiary py-4">{{ t('No shift assignments yet.') }}</td></tr>{% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

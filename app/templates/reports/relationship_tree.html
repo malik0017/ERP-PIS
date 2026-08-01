@@ -2,93 +2,192 @@
 {% block title %}Relationship Tree | ISFC{% endblock %}
 {% block content %}
 {# ============================================================================
-   Batch 12 — SAP B1-style Relationship TREE
-   Roots = core modules. Click any node to lazily expand its linked documents
-   from /reports/api/relationship-node. Uses only Phoenix + isfc-* classes so
-   dark mode and RTL work with no extra styling.
+   Batch 69 FIX — the graph + explorer were blank because the inline script ran
+   inside {% block content %}, i.e. BEFORE base.html loads echarts.min.js at the
+   end of <body>. echarts was undefined, echarts.init threw, and the whole IIFE
+   (including the explorer click handler) never ran. Fix: all JS moved to
+   {% block extra_js %}, which base.html renders AFTER echarts. Roots are passed
+   via a JSON <script> tag rather than inlined into executable JS.
    ============================================================================ #}
 <style>
-  .isfc-tree { list-style: none; padding-left: 0; margin: 0; }
-  .isfc-tree ul { list-style: none; padding-left: 1.6rem; margin: .15rem 0 0 0; border-inline-start: 1px dashed var(--isfc-border, #d3dce6); }
-  .isfc-tree li { margin: .15rem 0; }
-  .isfc-node { display: flex; align-items: center; gap: .5rem; padding: .4rem .6rem; border-radius: .5rem; cursor: pointer; }
-  .isfc-node:hover { background: rgba(56, 116, 255, 0.08); }
-  .isfc-node .caret { width: 1rem; text-align: center; transition: transform .15s; color: var(--isfc-text-tertiary, #6b8096); }
-  .isfc-node.open > .caret { transform: rotate(90deg); }
-  .isfc-node.leaf .caret { visibility: hidden; }
-  .isfc-node .lbl { flex: 1; }
-  html[dir="rtl"] .isfc-node .caret { transform: rotate(180deg); }
-  html[dir="rtl"] .isfc-node.open > .caret { transform: rotate(90deg); }
+  .rt-wrap { display:grid; grid-template-columns:1fr 430px; gap:16px; }
+  @media (max-width:1200px){ .rt-wrap { grid-template-columns:1fr; } }
+  #rtGraph { width:100%; height:640px; }
+  .rt-panel { max-height:660px; overflow:auto; }
+  .rt-tree, .rt-tree ul { list-style:none; margin:0; padding-inline-start:0; }
+  .rt-tree ul { padding-inline-start:1.1rem; border-inline-start:1px dashed var(--phoenix-border-color); margin:.2rem 0 .2rem .35rem; }
+  .rt-row { display:flex; align-items:center; gap:.45rem; padding:.4rem .5rem; border-radius:.5rem; cursor:pointer; }
+  .rt-row:hover { background:rgba(56,116,255,.08); }
+  .rt-row .caret { width:.9rem; text-align:center; color:var(--phoenix-secondary-color); transition:transform .15s; flex:0 0 .9rem; }
+  .rt-row.open > .caret { transform:rotate(90deg); }
+  .rt-row.leaf .caret { visibility:hidden; }
+  .rt-row .lbl { flex:1; }
+  html[dir="rtl"] .rt-row .caret { transform:rotate(180deg); }
+  html[dir="rtl"] .rt-row.open > .caret { transform:rotate(90deg); }
+  .sap-card { flex:1; border:1px solid var(--phoenix-border-color); border-radius:6px; overflow:hidden; background:var(--phoenix-emphasis-bg); min-width:0; }
+  .sap-card .hd { font-size:.72rem; font-weight:800; padding:3px 8px; color:#1e293b; background:linear-gradient(180deg,#dbe6f5,#c3d4ec); border-bottom:1px solid #a9c0de; display:flex; justify-content:space-between; align-items:center; }
+  .sap-card .bd { padding:5px 8px; }
+  .sap-card .no { font-weight:700; font-size:.82rem; color:var(--phoenix-emphasis-color); }
+  .sap-card .dt { font-size:.72rem; color:var(--phoenix-secondary-color); }
+  .sap-card .val { font-size:.8rem; font-weight:700; color:#0f766e; margin-top:2px; }
+  .sap-card .st { font-size:.66rem; text-transform:uppercase; letter-spacing:.03em; }
+  .sap-open { font-size:.68rem; padding:1px 7px; border-radius:5px; text-decoration:none; background:var(--phoenix-primary); color:#fff; white-space:nowrap; }
+  .sap-card.t-sales{border-top:3px solid #2563eb;} .sap-card.t-po{border-top:3px solid #b45309;}
+  .sap-card.t-grn{border-top:3px solid #0f766e;} .sap-card.t-ar{border-top:3px solid #16a34a;}
+  .sap-card.t-ap{border-top:3px solid #dc2626;} .sap-card.t-prod{border-top:3px solid #7c3aed;}
+  [data-bs-theme="dark"] .sap-card .hd { color:#0b1220; }
 </style>
 
 <div class="container-fluid py-3 isfc-page">
-  <div class="isfc-hero mb-4 p-4 d-flex align-items-center justify-content-between flex-wrap gap-3">
+  <div class="isfc-hero mb-4 p-4 rounded-4 d-flex align-items-center justify-content-between flex-wrap gap-3 text-white"
+       style="background:linear-gradient(120deg,#1f2937 0%,#334155 60%,#475569 100%);">
     <div>
-      <h1 class="mb-1">{{ t('Relationship Tree') }}</h1>
-      <p class="mb-0">{{ t('SAP-style linked-document explorer: expand any module down to document and line level.') }}</p>
+      <h1 class="mb-1 fw-bolder"><i class="bi bi-diagram-3 me-2"></i>{{ t('Relationship Tree') }}</h1>
     </div>
     <div class="d-flex gap-2">
-      <a class="btn btn-phoenix-secondary" href="/relationship-map">{{ t('Classic Map') }}</a>
-      <a class="btn btn-phoenix-secondary" href="/reports">{{ t('Reports Center') }}</a>
+      <a class="btn btn-light btn-sm fw-bold" href="/relationship-map">{{ t('Classic Map') }}</a>
+      <a class="btn btn-light btn-sm fw-bold" href="/reports">{{ t('Reports Center') }}</a>
     </div>
   </div>
 
-  <div class="card">
-    <div class="card-body">
-      <ul class="isfc-tree" id="relTree">
-        {% for r in roots %}
-        <li>
-          <div class="isfc-node fw-bold" data-type="{{ r.type }}" data-key="">
-            <span class="caret">&#9656;</span>
-            <span data-feather="{{ r.icon }}"></span>
-            <span class="lbl">{{ t(r.label) }}</span>
-            <span class="badge badge-phoenix badge-phoenix-primary">{{ r.badge }}</span>
+  <div class="card border shadow-none">
+    <div class="card-body p-3">
+      <div class="rt-wrap">
+        <div>
+          <div id="rtGraph"></div>
+          <div class="text-body-tertiary fs-9 text-center mt-1">
+            <i class="bi bi-hand-index me-1"></i>{{ t('Click a node to expand · drag to reposition · scroll to zoom') }}
           </div>
-        </li>
-        {% endfor %}
-      </ul>
+        </div>
+        <div class="rt-panel border-start ps-3">
+          <h6 class="fw-bold text-uppercase text-body-tertiary mb-2">{{ t('Document Explorer') }}</h6>
+          <ul class="rt-tree" id="rtList">
+            {% for r in roots %}
+            <li>
+              <div class="rt-row fw-bold" data-type="{{ r.type }}" data-key="">
+                <span class="caret">&#9656;</span>
+                <span class="lbl">{{ t(r.label) }}</span>
+                <span class="badge badge-phoenix badge-phoenix-primary">{{ r.badge }}</span>
+              </div>
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
     </div>
   </div>
 </div>
 
+{# roots as data, not executable JS #}
+<script id="rtRoots" type="application/json">{{ roots|tojson }}</script>
+<span id="rtOpenLabel" hidden>{{ t('open') }}</span>
+{% endblock %}
+
+{% block extra_js %}
+{# Runs AFTER base.html has loaded echarts.min.js (end of <body>). #}
 <script>
 (function () {
-  const tree = document.getElementById('relTree');
+  function boot() {
+    if (!window.echarts) { return setTimeout(boot, 60); }   // wait for echarts
 
-  function nodeHtml(c) {
-    const leaf = c.leaf ? ' leaf' : '';
-    const badge = (c.badge !== undefined && c.badge !== '') ?
-      '<span class="badge badge-phoenix badge-phoenix-secondary">' + String(c.badge) + '</span>' : '';
-    const link = c.url ?
-      '<a class="btn btn-sm btn-phoenix-primary py-0 px-2 ms-1" href="' + c.url + '" onclick="event.stopPropagation()">open</a>' : '';
-    return '<li><div class="isfc-node' + leaf + '" data-type="' + c.type + '" data-key="' +
-      String(c.key || '').replace(/"/g, '&quot;') + '">' +
-      '<span class="caret">&#9656;</span><span class="lbl">' + c.label + '</span>' + badge + link + '</div></li>';
-  }
+    var roots = [];
+    try { roots = JSON.parse(document.getElementById('rtRoots').textContent || '[]'); } catch (e) { roots = []; }
+    var OPEN = (document.getElementById('rtOpenLabel') || {}).textContent || 'open';
+    var API = '/reports/api/tree-node';
+    var COLORS = ['#1e3a8a','#b45309','#0f766e','#7c3aed','#be123c','#334155'];
 
-  tree.addEventListener('click', async function (e) {
-    const node = e.target.closest('.isfc-node');
-    if (!node || node.classList.contains('leaf')) return;
-
-    // collapse if already open
-    const li = node.parentElement;
-    const existing = li.querySelector(':scope > ul');
-    if (existing) { existing.remove(); node.classList.remove('open'); return; }
-
-    node.classList.add('open');
-    const ul = document.createElement('ul');
-    ul.innerHTML = '<li><div class="isfc-node leaf"><span class="caret"></span><span class="lbl text-body-tertiary">Loading…</span></div></li>';
-    li.appendChild(ul);
-    try {
-      const q = new URLSearchParams({ type: node.dataset.type, key: node.dataset.key || '' });
-      const res = await fetch('/reports/api/relationship-node?' + q.toString());
-      const data = await res.json();
-      ul.innerHTML = (data.children || []).map(nodeHtml).join('') ||
-        '<li><div class="isfc-node leaf"><span class="caret"></span><span class="lbl text-body-tertiary">No linked documents</span></div></li>';
-    } catch (err) {
-      ul.innerHTML = '<li><div class="isfc-node leaf"><span class="caret"></span><span class="lbl text-danger">Failed to load</span></div></li>';
+    var el = document.getElementById('rtGraph');
+    if (!el) return;
+    var chart = echarts.init(el);
+    var nodes = [{ id:'hub', name:'ISFC ERP', symbolSize:56, itemStyle:{color:'#0b1220'},
+                   label:{color:'#fff',fontWeight:900}, fixed:true, x:0, y:0 }];
+    var links = [];
+    roots.forEach(function (r, i) {
+      var id = 'root_' + i;
+      nodes.push({ id:id, name:r.label+' ('+r.badge+')',
+        symbolSize:30 + Math.min(26, Math.log((+r.badge||1)+1)*8),
+        itemStyle:{color:COLORS[i%COLORS.length]}, _type:r.type, _key:'' });
+      links.push({ source:'hub', target:id, lineStyle:{color:COLORS[i%COLORS.length], width:2, opacity:.5, curveness:.12} });
+    });
+    var expanded = {};
+    function opt(){ return {
+      tooltip:{confine:true, formatter:function(p){return p.dataType==='node'?p.data.name:'';}},
+      animationDurationUpdate:350,
+      series:[{ type:'graph', layout:'force', roam:true, draggable:true,
+        force:{repulsion:300, edgeLength:[80,180], gravity:.08},
+        label:{show:true, position:'right', fontSize:11, formatter:function(p){return p.data.name;}},
+        emphasis:{focus:'adjacency', lineStyle:{width:3}},
+        lineStyle:{color:'source', curveness:.1}, data:nodes, links:links }] };
     }
-  });
+    chart.setOption(opt());
+    chart.on('click', function (p) {
+      if (p.dataType!=='node' || !p.data._type) return;
+      var pid = p.data.id; if (expanded[pid]) return; expanded[pid]=true;
+      var q = new URLSearchParams({type:p.data._type, key:p.data._key||''});
+      fetch(API+'?'+q).then(function(r){return r.json();}).then(function(d){
+        (d.children||[]).slice(0,20).forEach(function(c,j){
+          var cid = pid+'_'+j;
+          var nm = c.card ? (c.doc_type+' '+c.doc_no) : (c.label||'');
+          nodes.push({ id:cid, name:nm, symbolSize:c.leaf?9:16,
+            itemStyle:{color:c.leaf?'#94a3b8':(p.data.itemStyle?p.data.itemStyle.color:'#64748b')},
+            _type:c.type, _key:c.key||'', label:{fontSize:10} });
+          links.push({source:pid, target:cid, lineStyle:{opacity:.35, curveness:.15}});
+        });
+        chart.setOption({series:[{data:nodes, links:links}]});
+      }).catch(function(){ expanded[pid]=false; });
+    });
+    window.addEventListener('resize', function(){chart.resize();});
+    [150,500,1000].forEach(function(ms){setTimeout(function(){chart.resize();},ms);});
+
+    // ---- side Document Explorer ----
+    function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(m){return({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[m];}); }
+    var TYPE_CLASS = { 'Sales Order':'t-sales','Purchase Order':'t-po','Goods Receipt':'t-grn',
+      'A/R Invoice':'t-ar','A/P Invoice':'t-ap','Production BOM':'t-prod' };
+    function cardHtml(c){
+      var cls = TYPE_CLASS[c.doc_type] || 't-sales';
+      var open = c.url ? '<a class="sap-open" href="'+esc(c.url)+'" onclick="event.stopPropagation()">'+esc(OPEN)+'</a>' : '';
+      var val = (c.doc_value!==undefined) ? '<div class="val">'+esc(c.doc_value)+'</div>' : '';
+      var dt  = c.doc_date ? '<span class="dt">'+esc(c.doc_date)+'</span>' : '';
+      var st  = c.status ? '<span class="st text-body-tertiary">'+esc(c.status)+'</span>' : '';
+      return '<li><div class="rt-row '+(c.leaf?'leaf':'')+'" data-type="'+esc(c.type)+'" data-key="'+esc(c.key)+'">'+
+        '<span class="caret">&#9656;</span><div class="sap-card '+cls+'">'+
+        '<div class="hd"><span>'+esc(c.doc_type)+'</span>'+open+'</div>'+
+        '<div class="bd"><div class="no">'+esc(c.doc_no)+'</div>'+
+        '<div class="d-flex justify-content-between align-items-center">'+dt+st+'</div>'+val+'</div>'+
+        '</div></div></li>';
+    }
+    function rowHtml(c){
+      var badge = (c.badge!=='' && c.badge!=null) ? '<span class="badge badge-phoenix badge-phoenix-secondary">'+esc(c.badge)+'</span>' : '';
+      var open = c.url ? '<a class="sap-open" href="'+esc(c.url)+'" onclick="event.stopPropagation()">'+esc(OPEN)+'</a>' : '';
+      return '<li><div class="rt-row '+(c.leaf?'leaf':'')+'" data-type="'+esc(c.type)+'" data-key="'+esc(c.key)+'">'+
+        '<span class="caret">&#9656;</span><span class="lbl">'+esc(c.label)+'</span>'+badge+open+'</div></li>';
+    }
+    function render(c){ return c.card ? cardHtml(c) : rowHtml(c); }
+
+    var list = document.getElementById('rtList');
+    if (list) list.addEventListener('click', async function(e){
+      if (e.target.closest('.sap-open')) return;
+      var row = e.target.closest('.rt-row');
+      if (!row || row.classList.contains('leaf')) return;
+      var li = row.parentElement;
+      var ex = li.querySelector(':scope > ul');
+      if (ex){ ex.remove(); row.classList.remove('open'); return; }
+      row.classList.add('open');
+      var ul = document.createElement('ul');
+      ul.innerHTML = '<li><div class="rt-row leaf"><span class="caret"></span><span class="lbl text-body-tertiary">{{ t("Loading…") }}</span></div></li>';
+      li.appendChild(ul);
+      try {
+        var q = new URLSearchParams({type:row.dataset.type, key:row.dataset.key||''});
+        var res = await fetch(API+'?'+q); var d = await res.json();
+        ul.innerHTML = (d.children||[]).map(render).join('') ||
+          '<li><div class="rt-row leaf"><span class="caret"></span><span class="lbl text-body-tertiary">{{ t("No linked documents") }}</span></div></li>';
+      } catch(err) {
+        ul.innerHTML = '<li><div class="rt-row leaf"><span class="caret"></span><span class="lbl text-danger">{{ t("Failed to load") }}</span></div></li>';
+      }
+    });
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
 })();
 </script>
 {% endblock %}

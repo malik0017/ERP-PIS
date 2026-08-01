@@ -6,7 +6,6 @@
 
 <div class="pis-card pis-title">
   <h1>{% if mode == 'edit' %}Edit Recipe{% else %}Prepare Manual Recipe{% endif %}</h1>
-  <p>Customer, brand and ingredients are linked with master data.</p>
 </div>
 
 <form method="post" action="{% if mode == 'edit' %}/recipes/{{ recipe.id }}/edit{% else %}/recipes/prepare{% endif %}">
@@ -29,7 +28,6 @@
     <div class="line-toolbar">
       <div>
         <h2 class="mb-1">Ingredients / Packaging Lines</h2>
-        <p class="muted">Professional recipe BOM builder. Select inventory code or item name; UOM and cost are filled from Inventory Master.</p>
       </div>
       <div>
         <button type="button" class="btn btn-primary" onclick="addLine()"><i class="bi bi-plus-circle"></i> Add Line</button>

@@ -1,0 +1,97 @@
+{% extends "layouts/base.html" %}
+{% block title %}Leave | HCM{% endblock %}
+{% block content %}
+{# Batch 74 — HCM leave management #}
+<div class="container-fluid py-3 isfc-page">
+  <div class="isfc-hero mb-4 p-4 rounded-4 text-white d-flex align-items-center justify-content-between flex-wrap gap-3">
+    <div>
+      <h1 class="mb-1 fw-bold"><i class="bi bi-calendar-check me-2"></i>{{ t('Leave') }}</h1>
+      <p class="mb-0 opacity-75">{{ t('Apply, approve and track leave balances.') }}</p>
+    </div>
+    <div class="d-flex gap-2">
+      <a class="btn btn-light btn-sm fw-bold" href="/hr/employees">{{ t('Employees') }}</a>
+      <a class="btn btn-light btn-sm fw-bold" href="/hr/payroll">{{ t('Payroll') }}</a>
+    </div>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-lg-4">
+      <div class="card border">
+        <div class="card-body">
+          <h5 class="fw-bold mb-3">{{ t('Apply for Leave') }}</h5>
+          <form method="post" action="/hr/leave/apply">
+            <div class="mb-2"><label class="form-label fs-9 text-body-tertiary mb-1">{{ t('Employee') }}</label>
+              <select name="employee_code" class="form-select form-select-sm" required>
+                {% for e in employees %}<option value="{{ e.employee_code }}">{{ e.full_name }} ({{ e.balance }}d left)</option>{% endfor %}
+              </select></div>
+            <div class="mb-2"><label class="form-label fs-9 text-body-tertiary mb-1">{{ t('Type') }}</label>
+              <select name="leave_type" class="form-select form-select-sm">
+                <option>Annual</option><option>Sick</option><option>Unpaid</option>
+              </select></div>
+            <div class="row g-2 mb-2">
+              <div class="col-6"><label class="form-label fs-9 text-body-tertiary mb-1">{{ t('From') }}</label>
+                <input type="date" name="date_from" class="form-control form-control-sm" required></div>
+              <div class="col-6"><label class="form-label fs-9 text-body-tertiary mb-1">{{ t('To') }}</label>
+                <input type="date" name="date_to" class="form-control form-control-sm" required></div>
+            </div>
+            <div class="mb-3"><label class="form-label fs-9 text-body-tertiary mb-1">{{ t('Reason') }}</label>
+              <input type="text" name="reason" class="form-control form-control-sm" placeholder="Optional"></div>
+            <button class="btn btn-primary btn-sm w-100">{{ t('Submit Request') }}</button>
+          </form>
+        </div>
+      </div>
+
+      <div class="card border mt-3">
+        <div class="card-body">
+          <h6 class="fw-bold mb-2">{{ t('Leave Balances') }}</h6>
+          <table class="table table-sm mb-0"><tbody>
+            {% for e in employees %}
+            <tr><td>{{ e.full_name }}</td><td class="text-end"><span class="badge badge-phoenix {% if e.balance > 5 %}badge-phoenix-success{% elif e.balance > 0 %}badge-phoenix-warning{% else %}badge-phoenix-danger{% endif %}">{{ e.balance }}d</span></td></tr>
+            {% endfor %}
+          </tbody></table>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-8">
+      <div class="card border">
+        <div class="card-body p-0">
+          <table class="table table-hover mb-0">
+            <thead class="bg-body-highlight"><tr>
+              <th>{{ t('Employee') }}</th><th>{{ t('Type') }}</th><th>{{ t('Dates') }}</th>
+              <th class="text-center">{{ t('Days') }}</th><th class="text-center">{{ t('Status') }}</th><th class="text-end">{{ t('Action') }}</th>
+            </tr></thead>
+            <tbody>
+              {% for r in requests %}
+              <tr>
+                <td class="fw-bold">{{ r.full_name or r.employee_code }}</td>
+                <td>{{ r.leave_type }}</td>
+                <td class="fs-9">{{ r.date_from }} → {{ r.date_to }}</td>
+                <td class="text-center">{{ r.days }}</td>
+                <td class="text-center">
+                  {% if r.status == 'Approved' %}<span class="badge badge-phoenix badge-phoenix-success">{{ r.status }}</span>
+                  {% elif r.status == 'Rejected' %}<span class="badge badge-phoenix badge-phoenix-danger">{{ r.status }}</span>
+                  {% else %}<span class="badge badge-phoenix badge-phoenix-warning">{{ r.status }}</span>{% endif %}
+                </td>
+                <td class="text-end">
+                  {% if r.status == 'Pending' %}
+                  <form method="post" action="/hr/leave/{{ r.id }}/decide" class="d-inline">
+                    <input type="hidden" name="decision" value="approve"><button class="btn btn-sm btn-phoenix-success">{{ t('Approve') }}</button>
+                  </form>
+                  <form method="post" action="/hr/leave/{{ r.id }}/decide" class="d-inline">
+                    <input type="hidden" name="decision" value="reject"><button class="btn btn-sm btn-phoenix-danger">{{ t('Reject') }}</button>
+                  </form>
+                  {% else %}<span class="text-body-tertiary fs-9">{{ r.decided_by }}</span>{% endif %}
+                </td>
+              </tr>
+              {% else %}
+              <tr><td colspan="6" class="text-center text-body-tertiary py-4">{{ t('No leave requests yet.') }}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

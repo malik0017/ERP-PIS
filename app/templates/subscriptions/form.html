@@ -1,0 +1,181 @@
+{% extends "layouts/base.html" %}
+{% block title %}New Subscription{% endblock %}
+{% block content %}
+<div class="container-fluid py-3 isfc-page">
+  <div class="isfc-hero mb-4 p-4 rounded-4 text-white d-flex align-items-center justify-content-between flex-wrap gap-3"
+       style="background:linear-gradient(135deg,#132947,#0c91a3)">
+    <div>
+      <h1 class="mb-1 fw-bold"><i class="bi bi-arrow-repeat me-2"></i>{{ t('New Subscription') }}</h1>
+      <p class="mb-0 opacity-75">{{ t('Set up a recurring delivery — orders are generated automatically 48+ hours ahead of each due date.') }}</p>
+    </div>
+    <a class="btn btn-light btn-sm fw-bold" href="/subscriptions"><i class="bi bi-arrow-left me-1"></i>{{ t('Back to Subscriptions') }}</a>
+  </div>
+
+  {% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+
+  <form method="post" action="/subscriptions/new" id="subForm">
+    <div class="card border mb-3">
+      <div class="card-header bg-body-highlight fw-bold">{{ t('Customer & Delivery') }}</div>
+      <div class="card-body">
+        <div class="row g-3">
+          <div class="col-md-4">
+            <label class="form-label fw-bold">{{ t('Customer') }} *</label>
+            <input class="form-control" list="customerList" name="customer_name" id="customerName" required
+                   placeholder="{{ t('Type to search') }}...">
+            <datalist id="customerList">
+              {% for c in customers %}<option data-code="{{ c.customer_code }}" data-brand="{{ c.brand }}" value="{{ c.customer_name }}"></option>{% endfor %}
+            </datalist>
+            <input type="hidden" name="customer_no" id="customerNo">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label fw-bold">{{ t('Brand') }}</label>
+            <input class="form-control" name="brand" id="customerBrand" placeholder="{{ t('Optional') }}">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label fw-bold">{{ t('Channel') }}</label>
+            <input class="form-control" name="channel" placeholder="{{ t('Optional') }}">
+          </div>
+          <div class="col-md-2">
+            <label class="form-label fw-bold">{{ t('Kitchen') }}</label>
+            <input class="form-control" name="kitchen" placeholder="{{ t('Optional') }}">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fw-bold">{{ t('Plan Name') }}</label>
+            <input class="form-control" name="plan_name" placeholder="e.g. Weekday Lunch Plan">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fw-bold">{{ t('Start Date') }} *</label>
+            <input type="date" class="form-control" name="start_date" required value="{{ '' }}">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fw-bold">{{ t('End Date') }} <span class="small-muted fw-normal">({{ t('optional — leave blank for ongoing') }})</span></label>
+            <input type="date" class="form-control" name="end_date">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card border mb-3">
+      <div class="card-header bg-body-highlight fw-bold">{{ t('Cadence') }}</div>
+      <div class="card-body">
+        <div class="row g-3 mb-3">
+          <div class="col-md-4">
+            <label class="form-label fw-bold">{{ t('Frequency') }}</label>
+            <select class="form-select" name="frequency" id="freqSelect" onchange="toggleCadence()">
+              {% for f in frequencies %}<option value="{{ f }}">{{ f }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fw-bold">{{ t('Delivery Time') }}</label>
+            <input type="time" class="form-control" name="delivery_time" value="09:00">
+          </div>
+        </div>
+
+        <div id="weeklyPicker">
+          <label class="form-label fw-bold">{{ t('Delivery Days') }} *</label>
+          <div class="d-flex gap-3 flex-wrap">
+            {% for w in weekdays %}
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" name="weekday" value="{{ w }}" id="wd-{{ w }}">
+              <label class="form-check-label" for="wd-{{ w }}">{{ w }}</label>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+        <div id="monthlyPicker" class="d-none">
+          <label class="form-label fw-bold">{{ t('Day(s) of Month') }} * <span class="small-muted fw-normal">({{ t('a day past the month end (e.g. 31 in Feb) falls back to the last day') }})</span></label>
+          <div class="d-flex flex-wrap gap-2" style="max-width:520px">
+            {% for d in range(1, 29) %}
+            <div class="form-check" style="width:44px">
+              <input class="form-check-input" type="checkbox" name="month_day" value="{{ d }}" id="md-{{ d }}">
+              <label class="form-check-label small" for="md-{{ d }}">{{ d }}</label>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card border mb-3">
+      <div class="card-header bg-body-highlight d-flex justify-content-between align-items-center">
+        <span class="fw-bold">{{ t('Recipes & Portions') }}</span>
+        <button type="button" class="btn btn-sm btn-outline-primary" onclick="addRecipeRow()"><i class="bi bi-plus-lg"></i> {{ t('Add Line') }}</button>
+      </div>
+      <div class="card-body p-0">
+        <table class="table mb-0" id="recipeTable">
+          <thead class="bg-body-highlight">
+            <tr>
+              <th style="min-width:260px">{{ t('Recipe') }}</th>
+              <th style="width:140px">{{ t('Portions') }}</th>
+              <th style="width:160px">{{ t('Price / Portion') }}</th>
+              <th style="width:60px"></th>
+            </tr>
+          </thead>
+          <tbody id="recipeTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <datalist id="recipeList">
+      {% for r in recipes %}<option data-code="{{ r.recipe_code }}" data-price="{{ r.price }}" value="{{ r.recipe_name }}"></option>{% endfor %}
+    </datalist>
+
+    <button type="submit" class="btn btn-primary fw-bold px-4"><i class="bi bi-check2-circle me-1"></i>{{ t('Create Subscription') }}</button>
+  </form>
+</div>
+
+<script>
+function toggleCadence(){
+  var weekly = document.getElementById('freqSelect').value === 'Weekly';
+  document.getElementById('weeklyPicker').classList.toggle('d-none', !weekly);
+  document.getElementById('monthlyPicker').classList.toggle('d-none', weekly);
+}
+toggleCadence();
+
+document.getElementById('customerName').addEventListener('input', function(e){
+  var opt = document.querySelector('#customerList option[value="' + CSS.escape(e.target.value) + '"]');
+  document.getElementById('customerNo').value = opt ? (opt.dataset.code || '') : '';
+  if (opt && opt.dataset.brand) document.getElementById('customerBrand').value = opt.dataset.brand;
+});
+
+var rowN = 0;
+function addRecipeRow(){
+  rowN++;
+  var tr = document.createElement('tr');
+  tr.innerHTML =
+    '<td><input class="form-control form-control-sm recipe-name-input" list="recipeList" placeholder="' + 'Search recipe...' + '"></td>' +
+    '<td><input type="number" step="1" min="0" class="form-control form-control-sm" name="portions"></td>' +
+    '<td><input type="number" step="0.01" min="0" class="form-control form-control-sm" name="selling_price_per_portion"></td>' +
+    '<td><button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest(\'tr\').remove()"><i class="bi bi-trash"></i></button></td>';
+  document.getElementById('recipeTableBody').appendChild(tr);
+
+  var nameInput = tr.querySelector('.recipe-name-input');
+  var hiddenCode = document.createElement('input');
+  hiddenCode.type = 'hidden'; hiddenCode.name = 'recipe_no';
+  var hiddenName = document.createElement('input');
+  hiddenName.type = 'hidden'; hiddenName.name = 'recipe_name';
+  tr.appendChild(hiddenCode); tr.appendChild(hiddenName);
+
+  nameInput.addEventListener('input', function(){
+    var opt = document.querySelector('#recipeList option[value="' + CSS.escape(nameInput.value) + '"]');
+    hiddenCode.value = opt ? (opt.dataset.code || '') : '';
+    hiddenName.value = nameInput.value;
+    var priceInput = tr.querySelector('[name="selling_price_per_portion"]');
+    if (opt && opt.dataset.price && !priceInput.value) priceInput.value = opt.dataset.price;
+  });
+}
+addRecipeRow();
+
+document.getElementById('subForm').addEventListener('submit', function(e){
+  var weekly = document.getElementById('freqSelect').value === 'Weekly';
+  var picked = weekly
+    ? document.querySelectorAll('input[name="weekday"]:checked').length
+    : document.querySelectorAll('input[name="month_day"]:checked').length;
+  if (!picked) {
+    e.preventDefault();
+    if (window.showToast) showToast('Choose at least one delivery day', 'warning', 'Cadence required');
+    else alert('Choose at least one delivery day');
+  }
+});
+</script>
+{% endblock %}

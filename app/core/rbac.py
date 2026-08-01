@@ -31,7 +31,7 @@ PAGE_AREAS = {
     "module_home", "dashboard", "relationship", "reports", "masters", "recipes",
     "orders", "head_chef", "bom", "store", "kitchen", "qc", "packing", "dispatch",
     "settings", "users", "audit", "procurement", "inventory_valuation", "finance",
-    "customer_portal", "hr",
+    "customer_portal", "hr", "subscriptions",
 
     # Granular pages
     "master_upload", "master_data", "recipe_list", "recipe_prepare", "recipe_missing",
@@ -89,6 +89,7 @@ ROLE_PERMISSIONS = {
         "dashboard": True, "orders": True, "recipes": True, "kitchen": True,
         "qc": True, "dispatch": True, "procurement": True,
         "inventory_valuation": True, "project_management": True, "reports": True,
+        "subscriptions": True,
     },
 
     "SUPERVISOR": {
@@ -98,7 +99,7 @@ ROLE_PERMISSIONS = {
 
     "HEAD_CHEF": {
         "dashboard": True, "head_chef": True, "kitchen": True,
-        "bom": True, "recipes": True,
+        "bom": True, "recipes": True, "subscriptions": True,
     },
 
     "HEAD_CHEF_PLANNING": {
@@ -185,9 +186,26 @@ def can_access(request: Request, area: str) -> bool:
     """
     Check if user can access a module/page area.
 
-    Order: admin bypass -> UI matrix (session) -> role defaults -> parent area.
+    Batch 65: a COMPANY-level module-visibility gate now runs FIRST. If the
+    company has switched a module OFF (it hasn't bought/enabled it yet), the
+    area is hidden for everyone — including admins — because the module simply
+    isn't part of the product for that company. RBAC then decides per-user
+    access among the modules that ARE enabled.
+
+    Order:
+      0. Module visibility (company bought/enabled the module?)   [Batch 65]
+      1. Admin / superadmin / administrator -> full access to enabled modules
+      2. UI matrix (session)  ->  3. role defaults  ->  4. parent area
     """
-    # 1. Admin / superadmin / administrator: everything, always.
+    # 0. Company-level module gate (fail-open on infra errors).
+    try:
+        from app.core.module_visibility import area_enabled
+        if not area_enabled(request, area):
+            return False
+    except Exception:
+        pass
+
+    # 1. Admin / superadmin / administrator: everything among enabled modules.
     if is_admin(request):
         return True
 

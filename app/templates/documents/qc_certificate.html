@@ -1,0 +1,91 @@
+{% extends "layouts/base.html" %}
+{% block title %}QC Certificate — {{ order_no }}{% endblock %}
+{% block content %}
+{# Batch 70 — printable QC / HACCP certificate. Phoenix theme, print-friendly. #}
+<style>
+  @media print {
+    .no-print { display:none !important; }
+    .qc-doc { box-shadow:none !important; border:none !important; }
+    aside, nav, .navbar, header, footer { display:none !important; }
+  }
+  .qc-doc { max-width:900px; margin:0 auto; background:#fff; color:#111;
+            border:1px solid var(--phoenix-border-color); border-radius:12px; }
+  [data-bs-theme="dark"] .qc-doc { background:#0f1a2b; color:var(--phoenix-emphasis-color); }
+  .qc-head { padding:22px 26px; border-bottom:2px solid #0f766e; display:flex; justify-content:space-between; align-items:flex-start; }
+  .qc-title { font-size:1.6rem; font-weight:900; color:#0f766e; margin:0; }
+  .qc-verdict { font-size:1.1rem; font-weight:900; padding:6px 16px; border-radius:8px; }
+  .v-PASSED { background:#dcfce7; color:#166534; }
+  .v-REJECTED { background:#fee2e2; color:#991b1b; }
+  .v-ON.HOLD, .v-ON { background:#fef9c3; color:#854d0e; }
+  .qc-meta { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; padding:18px 26px; }
+  .qc-meta .lbl { font-size:.68rem; text-transform:uppercase; letter-spacing:.05em; color:#64748b; }
+  .qc-meta .val { font-weight:700; }
+  table.qc-tbl { width:100%; border-collapse:collapse; }
+  table.qc-tbl th, table.qc-tbl td { border:1px solid var(--phoenix-border-color); padding:7px 9px; font-size:.82rem; }
+  table.qc-tbl th { background:#f1f5f9; text-transform:uppercase; font-size:.66rem; letter-spacing:.03em; }
+  [data-bs-theme="dark"] table.qc-tbl th { background:#1e293b; }
+  .st-Passed { color:#16a34a; font-weight:800; } .st-Rejected { color:#dc2626; font-weight:800; } .st-Hold { color:#d97706; font-weight:800; }
+  .qc-sign { display:grid; grid-template-columns:1fr 1fr; gap:40px; padding:34px 26px 24px; }
+  .qc-sign .line { border-top:1px solid #333; padding-top:6px; font-size:.8rem; color:#64748b; }
+</style>
+
+<div class="container-fluid py-3">
+  <div class="d-flex justify-content-end gap-2 mb-3 no-print" style="max-width:900px;margin:0 auto;">
+    <a href="/qc/orders/{{ order_no }}" class="btn btn-phoenix-secondary btn-sm">{{ t('Back to QC') }}</a>
+    <button class="btn btn-primary btn-sm" onclick="window.print()"><i class="bi bi-printer me-1"></i>{{ t('Print') }}</button>
+  </div>
+
+  <div class="qc-doc">
+    <div class="qc-head">
+      <div>
+        <h1 class="qc-title"><i class="bi bi-patch-check-fill me-2"></i>Quality Control Certificate</h1>
+        <div class="text-body-tertiary">Order {{ order_no }}{% if order %} · {{ order.customer_name }}{% if order.brand %} · {{ order.brand }}{% endif %}{% endif %}</div>
+      </div>
+      <span class="qc-verdict v-{{ summary.verdict.replace(' ','.') }}">{{ summary.verdict }}</span>
+    </div>
+
+    <div class="qc-meta">
+      <div><div class="lbl">Customer</div><div class="val">{{ order.customer_name if order else '—' }}</div></div>
+      <div><div class="lbl">Delivery</div><div class="val">{{ order.delivery_date if order else '—' }} {{ order.delivery_time if order else '' }}</div></div>
+      <div><div class="lbl">Checks</div><div class="val">{{ summary.total }} ({{ summary.passed }} passed / {{ summary.rejected }} rejected / {{ summary.hold }} hold)</div></div>
+      <div><div class="lbl">Avg Score</div><div class="val">{{ summary.avg_score }}</div></div>
+    </div>
+
+    <div style="padding:0 26px 8px">
+      <table class="qc-tbl">
+        <thead>
+          <tr>
+            <th>QC No</th><th>Recipe</th><th>Section</th><th>Type</th><th>Temp °C</th>
+            <th>Appear.</th><th>Taste</th><th>Weight</th><th>Pack.</th><th>Hygiene</th>
+            <th>Overall</th><th>Status</th><th>Checked By</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for c in checks %}
+          <tr>
+            <td>{{ c.qc_no }}</td><td>{{ c.recipe }}</td><td>{{ c.section }}</td><td>{{ c.check_type }}</td>
+            <td>{{ '%.1f'|format(c.temperature_c) if c.temperature_c is not none else '—' }}</td>
+            <td>{{ c.appearance }}</td><td>{{ c.taste }}</td><td>{{ c.portion_weight }}</td>
+            <td>{{ c.packaging }}</td><td>{{ c.hygiene }}</td><td><b>{{ c.overall }}</b></td>
+            <td class="st-{{ c.qc_status }}">{{ c.qc_status }}</td><td>{{ c.checked_by }}</td>
+          </tr>
+          {% if c.issue_found or c.corrective_action %}
+          <tr><td colspan="13" style="font-size:.75rem;color:#64748b">
+            {% if c.issue_found %}<b>Issue:</b> {{ c.issue_found }}. {% endif %}
+            {% if c.corrective_action %}<b>Action:</b> {{ c.corrective_action }}.{% endif %}
+          </td></tr>
+          {% endif %}
+          {% else %}
+          <tr><td colspan="13" class="text-center text-body-tertiary py-3">No QC checks recorded for this order.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="qc-sign">
+      <div class="line">Quality Controller — signature & date</div>
+      <div class="line">Head Chef / Plant Manager — signature & date</div>
+    </div>
+  </div>
+</div>
+{% endblock %}

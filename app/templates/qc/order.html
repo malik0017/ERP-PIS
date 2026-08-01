@@ -146,9 +146,15 @@
 {% block content %}
 <div class="qc-page container-fluid">
   <div class="hero">
-    <h1>QC Checklist · {{ order.order_no }}</h1>
-    <p>{{ order.customer_name }} · {{ order.brand }} · Delivery {{ order.required_delivery_date or '—' }} {{
-      order.required_delivery_time or '' }}</p>
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+      <div>
+        <h1>QC Checklist · {{ order.order_no }}</h1>
+        <p>{{ order.customer_name }} · {{ order.brand }} · Delivery {{ order.required_delivery_date or '—' }} {{
+          order.required_delivery_time or '' }}</p>
+      </div>
+      <a href="/qc/orders/{{ order.order_no }}/certificate" target="_blank"
+         class="btn btn-light btn-sm fw-bold"><i class="bi bi-patch-check me-1"></i>QC Certificate</a>
+    </div>
   </div>
   {% set active_step = 'QC' %}{% include 'partials/process_status_row.html' %}
   {% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}

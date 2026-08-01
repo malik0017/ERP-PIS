@@ -27,6 +27,17 @@ def _inject_common_context(context: dict[str, Any] | None) -> dict[str, Any]:
         data.setdefault("user_role", normalized_role(request))
         data.setdefault("can_access", lambda area: can_access(request, area))
         data.setdefault("can_action", lambda area, action="view": can_action(request, area, action))
+        # Batch 65: company-level module gate, available in every template.
+        try:
+            from app.core.module_visibility import module_enabled as _mod_enabled
+            data.setdefault("module_enabled", lambda key: _mod_enabled(request, key))
+        except Exception:
+            data.setdefault("module_enabled", lambda key: True)
+        # Expose username/role for the launcher header/footer.
+        try:
+            data.setdefault("session_username", request.session.get("username"))
+        except Exception:
+            data.setdefault("session_username", None)
         # Per-company branding: static/uploads/logos/company_<id>.png (if uploaded)
         try:
             import os as _os
@@ -44,6 +55,8 @@ def _inject_common_context(context: dict[str, Any] | None) -> dict[str, Any]:
         data.setdefault("user_role", "GUEST")
         data.setdefault("can_access", lambda area: False)
         data.setdefault("can_action", lambda area, action="view": False)
+        data.setdefault("module_enabled", lambda key: True)
+        data.setdefault("session_username", None)
         data.setdefault("lang", "en")
         data.setdefault("is_rtl", False)
         data.setdefault("t", lambda key: key)
@@ -84,6 +97,22 @@ templates = ISFCTemplates(directory=str(TEMPLATE_DIR))
 
 # Also expose helpers as Jinja globals for templates that need direct checks.
 templates.env.globals["can_access_area"] = can_access
+
+
+# Batch 65: parse a JSON string in-template (used by launcher sparklines).
+def _from_json(value):
+    import json as _json
+    if value is None or value == "":
+        return []
+    if isinstance(value, (list, dict)):
+        return value
+    try:
+        return _json.loads(value)
+    except Exception:
+        return []
+
+
+templates.env.filters["from_json"] = _from_json
 
 
 def render(request: Request, template_name: str, context: dict | None = None, status_code: int = 200):

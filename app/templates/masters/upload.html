@@ -164,15 +164,15 @@
   <div class="isfc-hero">
     <h1>{{ page_title or "Upload Master Data" }}</h1>
     {% if scoped_master_upload %}
-    <p>Secure scoped upload for <b>{{ selected_master_label }}</b> only. This page has no master-type dropdown and cannot upload other master data.</p>
+    <p>Secure scoped upload for <b>{{ selected_master_label }}</b> only.</p>
     {% else %}
-    <p>Select the master type, download the exact Excel template, fill it, and upload using the same fields. Recipes can also be uploaded here or from Recipes & Costing.</p>
+   
     {% endif %}
   </div>
   <div class="isfc-grid">
     <div class="isfc-card">
       <h2>Master Upload</h2>
-      <p>{% if scoped_master_upload %}Upload Excel rows for <b>{{ selected_master_label }}</b> only. Use the template below to avoid field mismatch.{% else %}Choose one master type at a time. For the original workbook containing many sheets, select <b>All Master Data Workbook</b>.{% endif %}</p>
+      <p>{% if scoped_master_upload %}Upload Excel rows for <b>{{ selected_master_label }}</b> only. {% else %}</b>{% endif %}</p>
       <form method="post" action="/masters/upload-master-excel" enctype="multipart/form-data" id="masterUploadForm">
         {% if scoped_master_upload %}
         <label class="isfc-form-label">Master Type</label>

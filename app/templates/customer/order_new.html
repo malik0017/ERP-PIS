@@ -23,11 +23,12 @@
           <div class="card-body">
             <div class="mb-3">
               <label class="form-label fw-bold">{{ t('Required Delivery Date') }} *</label>
-              <input type="date" class="form-control" name="required_delivery_date" min="{{ min_date }}" required>
+              <input type="date" class="form-control" name="required_delivery_date" id="deliveryDate" min="{{ min_date }}" required>
+              <small class="text-body-tertiary">{{ t('Orders must be placed at least 48 hours before delivery.') }}</small>
             </div>
             <div class="mb-3">
               <label class="form-label fw-bold">{{ t('Delivery Time') }}</label>
-              <input type="time" class="form-control" name="required_delivery_time">
+              <input type="time" class="form-control" name="required_delivery_time" id="deliveryTime">
             </div>
             <div class="mb-3">
               <label class="form-label fw-bold">{{ t('Channel') }}</label>
@@ -49,7 +50,7 @@
             <button class="btn btn-sm btn-phoenix-primary" type="button" id="addLine">
               <span data-feather="plus"></span> {{ t('Add Line') }}</button>
           </div>
-          <div class="card-body p-0">
+          <div class="card-body p-4">
             <div class="table-responsive">
               <table class="table table-sm mb-0" id="linesTable">
                 <thead><tr class="text-uppercase text-body-tertiary fs-10">
@@ -121,6 +122,22 @@
   body.addEventListener('click', function (e) {
     if (e.target.classList.contains('rm')) { e.target.closest('tr').remove(); recalc(); }
   });
+
+  // Batch 70: 48-hour rule — block submit if delivery is under 48h from now.
+  var frm = document.getElementById('portalOrderForm');
+  if (frm) frm.addEventListener('submit', function (e) {
+    var d = document.getElementById('deliveryDate');
+    var t = document.getElementById('deliveryTime');
+    if (d && d.value) {
+      var time = (t && t.value) ? t.value : '00:00';
+      var deliv = new Date(d.value + 'T' + time);
+      if (deliv < new Date(Date.now() + 48 * 3600 * 1000)) {
+        e.preventDefault();
+        alert('Orders must be placed at least 48 hours before the delivery date and time.');
+      }
+    }
+  });
+
   addRow(); addRow();
 })();
 </script>

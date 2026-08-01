@@ -1,0 +1,156 @@
+{% extends "layouts/base.html" %}
+{% block title %}{{ section }} Production — {{ order_no }}{% endblock %}
+{% block content %}
+{# ============================================================================
+   Batch 72 — Kitchen production workstation (product-level state machine).
+   Per recipe: PENDING → RECEIVED → PRODUCED → TRANSFERRED. "Receive All" pulls
+   every ingredient in; "Produce Final Product" records one finished product;
+   "Transfer" moves it to the next section. Dark-mode + RTL safe.
+   ============================================================================ #}
+<style>
+  .kp-hero{background:linear-gradient(120deg,#0b1220 0%,#1e3a8a 55%,#2563eb 100%);color:#fff;border-radius:18px;padding:22px 26px;margin-bottom:18px;}
+  /* Fix: heading was inheriting a dark theme color that blended into the
+     gradient and became unreadable. Force white explicitly, at higher
+     specificity than any global h1 rule, regardless of light/dark mode. */
+  .kp-hero h1, .kp-hero h1 i{color:#fff !important;font-size:1.5rem;font-weight:900;margin:0;text-shadow:0 1px 2px rgba(0,0,0,.15);}
+  .kp-hero .sub{color:rgba(255,255,255,.85) !important;opacity:1;margin-top:4px;}
+  .kp-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px;}
+  @media(max-width:700px){.kp-stats{grid-template-columns:1fr 1fr;}}
+  .kp-stat{border:1px solid var(--phoenix-border-color);border-radius:12px;padding:14px 16px;background:var(--phoenix-emphasis-bg);}
+  .kp-stat .n{font-size:1.4rem;font-weight:900;color:var(--phoenix-emphasis-color);}
+  .kp-stat .l{font-size:.7rem;text-transform:uppercase;letter-spacing:.05em;color:var(--phoenix-secondary-color);}
+  .kp-card{border:1px solid var(--phoenix-border-color);border-radius:16px;background:var(--phoenix-emphasis-bg);margin-bottom:14px;overflow:hidden;}
+  .kp-card .top{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 18px;border-bottom:1px solid var(--phoenix-border-color);flex-wrap:wrap;}
+  .kp-card .rn{font-weight:800;color:var(--phoenix-emphasis-color);}
+  .kp-card .meta{font-size:.8rem;color:var(--phoenix-secondary-color);}
+  .kp-body{padding:14px 18px;}
+  .kp-steps{display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap;}
+  .kp-step{font-size:.68rem;font-weight:800;padding:3px 10px;border-radius:20px;background:var(--phoenix-body-highlight,#eef2f7);color:#64748b;}
+  .kp-step.on{background:#dbeafe;color:#1e40af;}
+  .kp-step.done{background:#dcfce7;color:#166534;}
+  .kp-arrow{color:#94a3b8;font-size:.7rem;}
+  .state-badge{font-size:.7rem;font-weight:800;padding:4px 12px;border-radius:8px;}
+  .s-PENDING{background:#fef9c3;color:#854d0e;} .s-RECEIVED{background:#dbeafe;color:#1e40af;}
+  .s-PRODUCED{background:#e9d5ff;color:#6b21a8;} .s-TRANSFERRED{background:#dcfce7;color:#166534;}
+  [data-bs-theme="dark"] .kp-card,[data-bs-theme="dark"] .kp-stat{background:var(--isfc-bg-secondary,#111c2e);}
+  /* Fix: Produce button rendered a different height than the sibling
+     form-control-sm inputs in the same row. Force identical height/radius. */
+  .produce-form .form-control-sm,.produce-form .produce-btn{height:31px;border-radius:.375rem;}
+  .produce-form .produce-btn{display:inline-flex;align-items:center;justify-content:center;}
+</style>
+
+<div class="container-fluid py-3 isfc-page">
+  <div class="kp-hero d-flex justify-content-between align-items-start flex-wrap gap-3">
+    <div>
+      <h1><i class="bi bi-fire me-2"></i>{{ section }} Production</h1>
+      <div class="sub">{{ order_no }}{% if order %} · {{ order.customer_name }}{% if order.brand %} · {{ order.brand }}{% endif %} · Delivery {{ order.delivery_date }} {{ order.delivery_time }}{% endif %}</div>
+    </div>
+    <div class="d-flex gap-2">
+      <a href="/production/section/{{ section_slug }}" class="btn btn-light btn-sm fw-bold"><i class="bi bi-arrow-left me-1"></i>Back to {{ section }}</a>
+      <form method="post" action="/production/kitchen/{{ section_slug }}/{{ order_no }}/receive-all">
+        <button class="btn btn-light btn-sm fw-bold"><i class="bi bi-box-arrow-in-down me-1"></i>Receive All Ingredients</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="kp-stats">
+    <div class="kp-stat"><div class="n">{{ summary.total }}</div><div class="l">Recipes</div></div>
+    <div class="kp-stat"><div class="n">{{ summary.received }}</div><div class="l">Received</div></div>
+    <div class="kp-stat"><div class="n">{{ summary.produced }}</div><div class="l">Produced</div></div>
+    <div class="kp-stat"><div class="n">{{ summary.transferred }}</div><div class="l">Transferred</div></div>
+  </div>
+
+  {% for r in recipes %}
+  <div class="kp-card">
+    <div class="top">
+      <div>
+        <div class="rn">{{ r.recipe_name }} <span class="meta">({{ r.recipe_no }})</span></div>
+        <div class="meta">{{ r.ing_received }}/{{ r.ing_lines }} ingredients received · issued {{ '%.2f'|format(r.issued) }}</div>
+      </div>
+      <span class="state-badge s-{{ r.status }}">{{ r.status }}</span>
+    </div>
+    <div class="kp-body">
+      <div class="kp-steps">
+        <span class="kp-step {{ 'done' if r.status in ['RECEIVED','PRODUCED','TRANSFERRED'] else 'on' }}">1 · Receive</span>
+        <span class="kp-arrow">→</span>
+        <span class="kp-step {{ 'done' if r.status in ['PRODUCED','TRANSFERRED'] else ('on' if r.status=='RECEIVED' else '') }}">2 · Produce final product</span>
+        <span class="kp-arrow">→</span>
+        <span class="kp-step {{ 'done' if r.status=='TRANSFERRED' else ('on' if r.status=='PRODUCED' else '') }}">3 · Transfer</span>
+      </div>
+
+      {% if r.status == 'PENDING' %}
+        <div class="text-body-tertiary small"><i class="bi bi-info-circle me-1"></i>Receive the ingredients first (use "Receive All Ingredients" above).</div>
+      {% elif r.status == 'RECEIVED' %}
+        {% set received_whole = r.received|round(0, 'floor')|int %}
+        <form method="post" action="/production/kitchen/{{ section_slug }}/{{ order_no }}/produce" class="row g-2 align-items-end produce-form" data-received="{{ received_whole }}">
+          <input type="hidden" name="recipe_no" value="{{ r.recipe_no }}">
+          <div class="col-6 col-md-3">
+            <label class="form-label fs-9 text-body-tertiary mb-1">Produced portions <span class="text-body-tertiary" title="Whole portions only">(whole)</span></label>
+            <input type="number" step="1" min="0" inputmode="numeric" class="form-control form-control-sm js-produced" name="produced_portions" value="{{ received_whole }}">
+          </div>
+          <div class="col-6 col-md-3">
+            <label class="form-label fs-9 text-body-tertiary mb-1">Waste portions <span class="text-body-tertiary" title="Auto = Received − Produced, editable">(auto)</span></label>
+            <input type="number" step="1" min="0" inputmode="numeric" class="form-control form-control-sm js-waste" name="waste_portions" value="0">
+          </div>
+          <div class="col-12 col-md-4">
+            <label class="form-label fs-9 text-body-tertiary mb-1">Remarks</label>
+            <input type="text" class="form-control form-control-sm" name="remarks" placeholder="Optional">
+          </div>
+          <div class="col-12 col-md-2">
+            <label class="form-label fs-9 mb-1 d-none d-md-block">&nbsp;</label>
+            <button class="btn btn-primary btn-sm w-100 fw-bold produce-btn"><i class="bi bi-check2-circle me-1"></i>Produce</button>
+          </div>
+        </form>
+      {% elif r.status == 'PRODUCED' %}
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <div class="small text-body-tertiary">
+            <i class="bi bi-check-circle-fill text-success me-1"></i>
+            Produced {{ '%.2f'|format(r.produced_portions) }}{% if r.waste_portions %} · waste {{ '%.2f'|format(r.waste_portions) }}{% endif %}{% if r.produced_by %} · by {{ r.produced_by }}{% endif %}
+          </div>
+          <form method="post" action="/production/kitchen/{{ section_slug }}/{{ order_no }}/transfer" class="d-flex gap-2 align-items-center">
+            <input type="hidden" name="recipe_no" value="{{ r.recipe_no }}">
+            <select name="to_section" class="form-select form-select-sm" style="width:auto">
+              {% for s in route_options %}
+              <option value="{{ s }}" {% if s == r.next_section %}selected{% endif %}>{{ s }}</option>
+              {% endfor %}
+            </select>
+            <button class="btn btn-phoenix-success btn-sm fw-bold"><i class="bi bi-arrow-right-circle me-1"></i>Transfer</button>
+          </form>
+        </div>
+      {% else %}
+        <div class="small text-success"><i class="bi bi-check-all me-1"></i>Transferred to <b>{{ r.next_section }}</b>. This recipe is done in {{ section }}.</div>
+      {% endif %}
+    </div>
+  </div>
+  {% else %}
+  <div class="alert alert-secondary">No recipes are currently at the {{ section }} section for this order.</div>
+  {% endfor %}
+</div>
+<script>
+/* Batch 74.6 UI fix — Produce final product:
+   1) Portions are whole numbers only (no fractional portions).
+   2) Waste auto-calculates as Received − Produced, but stays editable so
+      the chef can override it (e.g. spillage beyond the simple subtraction). */
+(function () {
+  function whole(v) {
+    var n = Math.round(parseFloat(v));
+    return isNaN(n) || n < 0 ? 0 : n;
+  }
+  document.querySelectorAll('.produce-form').forEach(function (form) {
+    var received = whole(form.dataset.received);
+    var produced = form.querySelector('.js-produced');
+    var waste = form.querySelector('.js-waste');
+    if (!produced || !waste) return;
+    var wasteTouched = false;
+    function recalcWaste() {
+      var p = whole(produced.value);
+      if (p > received) { p = received; produced.value = p; }
+      if (!wasteTouched) waste.value = Math.max(0, received - p);
+    }
+    produced.addEventListener('input', function () { produced.value = whole(produced.value); recalcWaste(); });
+    waste.addEventListener('input', function () { wasteTouched = true; waste.value = whole(waste.value); });
+    recalcWaste();
+  });
+})();
+</script>
+{% endblock %}

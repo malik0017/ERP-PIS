@@ -1,0 +1,83 @@
+{% extends "layouts/base.html" %}
+{% block title %}Cost Centers | Finance{% endblock %}
+{% block content %}
+{# Batch 73 — Finance cost centers + per-center P&L #}
+<div class="container-fluid py-3 isfc-page">
+  <div class="isfc-hero mb-4 p-4 rounded-4 text-white d-flex align-items-center justify-content-between flex-wrap gap-3">
+    <div>
+      <h1 class="mb-1 fw-bold"><i class="bi bi-diagram-2 me-2"></i>{{ t('Cost Centers') }}</h1>
+      <p class="mb-0 opacity-75">{{ t('Group revenue and cost by business unit and see per-center margins.') }}</p>
+    </div>
+    <a href="/finance" class="btn btn-light btn-sm fw-bold">{{ t('Finance') }}</a>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-lg-5">
+      <div class="card border">
+        <div class="card-body">
+          <h5 class="fw-bold mb-3">{{ t('Cost Centers') }}</h5>
+          <form method="post" action="/finance/cost-centers/create" class="row g-2 align-items-end mb-3">
+            <div class="col-4">
+              <label class="form-label fs-9 text-body-tertiary mb-1">{{ t('Code') }}</label>
+              <input name="cc_code" class="form-control form-control-sm" placeholder="CC01" required>
+            </div>
+            <div class="col-5">
+              <label class="form-label fs-9 text-body-tertiary mb-1">{{ t('Name') }}</label>
+              <input name="cc_name" class="form-control form-control-sm" placeholder="Central Kitchen" required>
+            </div>
+            <div class="col-3">
+              <button class="btn btn-primary btn-sm w-100">{{ t('Add') }}</button>
+            </div>
+          </form>
+          <table class="table table-sm align-middle mb-0">
+            <thead><tr><th>{{ t('Code') }}</th><th>{{ t('Name') }}</th><th class="text-center">{{ t('Active') }}</th><th></th></tr></thead>
+            <tbody>
+              {% for c in centers %}
+              <tr>
+                <td class="font-monospace">{{ c.cc_code }}</td>
+                <td>{{ c.cc_name }}</td>
+                <td class="text-center">
+                  {% if c.is_active %}<span class="badge badge-phoenix badge-phoenix-success">Yes</span>
+                  {% else %}<span class="badge badge-phoenix badge-phoenix-secondary">No</span>{% endif %}
+                </td>
+                <td class="text-end">
+                  <form method="post" action="/finance/cost-centers/{{ c.cc_code }}/toggle" class="d-inline">
+                    <button class="btn btn-sm btn-phoenix-secondary">{{ t('Toggle') }}</button>
+                  </form>
+                </td>
+              </tr>
+              {% else %}
+              <tr><td colspan="4" class="text-center text-body-tertiary py-3">{{ t('No cost centers yet.') }}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-7">
+      <div class="card border">
+        <div class="card-body">
+          <h5 class="fw-bold mb-3">{{ t('Per-Center P&L (from GL)') }}</h5>
+          <table class="table table-sm align-middle mb-0">
+            <thead><tr><th>{{ t('Center') }}</th><th class="text-end">{{ t('Revenue') }}</th><th class="text-end">{{ t('Cost') }}</th><th class="text-end">{{ t('Margin') }}</th></tr></thead>
+            <tbody>
+              {% for r in pnl %}
+              <tr>
+                <td class="fw-bold">{{ r.center }}</td>
+                <td class="text-end">{{ '%.2f'|format(r.revenue or 0) }}</td>
+                <td class="text-end">{{ '%.2f'|format(r.cost or 0) }}</td>
+                <td class="text-end {% if (r.margin or 0) >= 0 %}text-success{% else %}text-danger{% endif %}">{{ '%.2f'|format(r.margin or 0) }}</td>
+              </tr>
+              {% else %}
+              <tr><td colspan="4" class="text-center text-body-tertiary py-3">{{ t('No revenue or cost posted yet.') }}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          <p class="text-body-tertiary small mt-2 mb-0"><i class="bi bi-info-circle me-1"></i>{{ t('Center is taken from the party tag on GL lines. Unassigned postings appear under "(unassigned)".') }}</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

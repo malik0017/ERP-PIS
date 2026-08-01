@@ -1,0 +1,89 @@
+{% extends "layouts/base.html" %}
+{% block title %}Delivery Note — {{ d.dispatch_no if d else '' }}{% endblock %}
+{% block content %}
+{# Batch 70 — printable delivery note / proof of delivery. Print-friendly. #}
+<style>
+  @media print {
+    .no-print { display:none !important; }
+    .dn-doc { box-shadow:none !important; border:none !important; }
+    aside, nav, .navbar, header, footer { display:none !important; }
+  }
+  .dn-doc { max-width:900px; margin:0 auto; background:#fff; color:#111;
+            border:1px solid var(--phoenix-border-color); border-radius:12px; }
+  [data-bs-theme="dark"] .dn-doc { background:#0f1a2b; color:var(--phoenix-emphasis-color); }
+  .dn-head { padding:22px 26px; border-bottom:2px solid #2563eb; display:flex; justify-content:space-between; align-items:flex-start; }
+  .dn-title { font-size:1.6rem; font-weight:900; color:#2563eb; margin:0; }
+  .dn-no { text-align:right; }
+  .dn-no .n { font-size:1.1rem; font-weight:900; }
+  .dn-meta { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; padding:18px 26px; }
+  .dn-meta .lbl { font-size:.68rem; text-transform:uppercase; letter-spacing:.05em; color:#64748b; }
+  .dn-meta .val { font-weight:700; }
+  table.dn-tbl { width:100%; border-collapse:collapse; }
+  table.dn-tbl th, table.dn-tbl td { border:1px solid var(--phoenix-border-color); padding:8px 10px; font-size:.85rem; }
+  table.dn-tbl th { background:#f1f5f9; text-transform:uppercase; font-size:.68rem; }
+  [data-bs-theme="dark"] table.dn-tbl th { background:#1e293b; }
+  .dn-sign { display:grid; grid-template-columns:1fr 1fr; gap:40px; padding:38px 26px 24px; }
+  .dn-sign .line { border-top:1px solid #333; padding-top:6px; font-size:.8rem; color:#64748b; }
+  .dn-badge { font-size:.72rem; font-weight:800; padding:4px 12px; border-radius:6px; background:#dbeafe; color:#1e40af; }
+</style>
+
+<div class="container-fluid py-3">
+  {% if d %}
+  <div class="d-flex justify-content-end gap-2 mb-3 no-print" style="max-width:900px;margin:0 auto;">
+    <a href="/dispatch" class="btn btn-phoenix-secondary btn-sm">{{ t('Back to Dispatch') }}</a>
+    <button class="btn btn-primary btn-sm" onclick="window.print()"><i class="bi bi-printer me-1"></i>{{ t('Print') }}</button>
+  </div>
+
+  <div class="dn-doc">
+    <div class="dn-head">
+      <div>
+        <h1 class="dn-title"><i class="bi bi-truck me-2"></i>Delivery Note</h1>
+        <div class="text-body-tertiary">Proof of Delivery</div>
+      </div>
+      <div class="dn-no">
+        <div class="n">{{ d.dispatch_no }}</div>
+        <div class="text-body-tertiary">Order {{ d.order_no }}</div>
+        <span class="dn-badge">{{ d.dispatch_status }}</span>
+      </div>
+    </div>
+
+    <div class="dn-meta">
+      <div><div class="lbl">Deliver To</div><div class="val">{{ d.customer_name or (order.customer_name if order else '—') }}</div></div>
+      <div><div class="lbl">Brand</div><div class="val">{{ order.brand if order else '—' }}</div></div>
+      <div><div class="lbl">Dispatch Date</div><div class="val">{{ d.dispatch_date or '—' }}</div></div>
+      <div><div class="lbl">Delivery Date</div><div class="val">{{ order.delivery_date if order else '—' }} {{ order.delivery_time if order else '' }}</div></div>
+      <div><div class="lbl">Vehicle</div><div class="val">{{ d.vehicle_no or '—' }}</div></div>
+      <div><div class="lbl">Driver</div><div class="val">{{ d.driver_name or '—' }}</div></div>
+      <div><div class="lbl">Packed Portions</div><div class="val">{{ '%.0f'|format(d.packed_portions) }}</div></div>
+      <div><div class="lbl">Rejected</div><div class="val">{{ '%.0f'|format(d.rejected_portions) }}</div></div>
+      <div><div class="lbl">Delivery Temp °C</div><div class="val">{{ '%.1f'|format(d.delivery_temperature_c) if d.delivery_temperature_c is not none else '—' }}</div></div>
+    </div>
+
+    <div style="padding:0 26px 8px">
+      <table class="dn-tbl">
+        <thead><tr><th style="width:60px">#</th><th>Recipe</th><th class="text-end">Portions</th></tr></thead>
+        <tbody>
+          {% for l in lines %}
+          <tr><td>{{ loop.index }}</td><td>{{ l.recipe }}</td><td class="text-end">{{ '%.2f'|format(l.portions or 0) }}</td></tr>
+          {% else %}
+          <tr><td colspan="3" class="text-center text-body-tertiary py-3">No order lines found.</td></tr>
+          {% endfor %}
+        </tbody>
+        {% if order %}
+        <tfoot><tr><th colspan="2" class="text-end">Total Portions</th><th class="text-end">{{ '%.2f'|format(order.total_portions or 0) }}</th></tr></tfoot>
+        {% endif %}
+      </table>
+    </div>
+
+    {% if d.remarks %}<div style="padding:6px 26px;font-size:.82rem;color:#64748b"><b>Remarks:</b> {{ d.remarks }}</div>{% endif %}
+
+    <div class="dn-sign">
+      <div class="line">Driver — signature</div>
+      <div class="line">Received by (Customer) — name, signature & date</div>
+    </div>
+  </div>
+  {% else %}
+  <div class="alert alert-warning" style="max-width:900px;margin:0 auto;">Dispatch record not found.</div>
+  {% endif %}
+</div>
+{% endblock %}

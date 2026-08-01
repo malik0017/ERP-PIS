@@ -305,8 +305,10 @@
     <h1>ISFC PIS Reports Center</h1>
   </div>
   <div class="quick-actions"><a href="/reports" class="active"><i class="bi bi-bar-chart-line"></i> Reports Center</a><a
-      href="/relationship-map"><i class="bi bi-diagram-3-fill"></i> Relationship Map</a><a
-      href="/reports/yield-wastage"><i class="bi bi-graph-down-arrow"></i> Yield & Wastage</a><a href="/dashboard"><i
+      href="/reports/relationship-tree"><i class="bi bi-diagram-3"></i> Relationship Tree</a><a
+      href="/reports/workflow"><i class="bi bi-diagram-2"></i> Data Flow</a><a
+      href="/reports/yield-wastage"><i class="bi bi-graph-down-arrow"></i> Yield & Wastage</a><a
+      href="/reports/schedules"><i class="bi bi-calendar-event"></i> Scheduled Exports</a><a href="/dashboard"><i
         class="bi bi-speedometer2"></i> Dashboard</a></div>
 
   <div class="kpi-row">
@@ -331,6 +333,39 @@
           </div>
       </div>
       {% endfor %}
+    </div>
+  </div>
+
+  <div class="panel">
+    <h3><i class="bi bi-cash-coin me-2"></i>Financial Reports</h3>
+    <p>Statements built from the general ledger — every operational transaction (GRN, issuance, delivery, AR/AP, payments) posts here automatically.</p>
+    <div class="kpi-row" style="margin-bottom:14px">
+      <div class="rep-kpi"><span>Invoiced Revenue</span><strong>{{ '%.0f'|format(fin.revenue) }}</strong></div>
+      <div class="rep-kpi"><span>AR Outstanding</span><strong>{{ '%.0f'|format(fin.ar_open) }}</strong></div>
+      <div class="rep-kpi"><span>AP Outstanding</span><strong>{{ '%.0f'|format(fin.ap_open) }}</strong></div>
+      <div class="rep-kpi"><span>GL Journals</span><strong>{{ fin.journals }}</strong></div>
+    </div>
+    <div class="report-catalog">
+      <div class="report-card">
+        <div class="top"><i class="bi bi-graph-up-arrow"></i><span class="group">Finance</span></div>
+        <h4>Profit &amp; Loss</h4><p>Revenue, COGS and expenses with net income for any period.</p>
+        <div class="report-actions"><a class="primary" href="/finance/statements/profit-loss">Open</a></div>
+      </div>
+      <div class="report-card">
+        <div class="top"><i class="bi bi-clipboard-data"></i><span class="group">Finance</span></div>
+        <h4>Balance Sheet</h4><p>Assets, liabilities and equity as of a chosen date — auto-balanced.</p>
+        <div class="report-actions"><a class="primary" href="/finance/statements/balance-sheet">Open</a></div>
+      </div>
+      <div class="report-card">
+        <div class="top"><i class="bi bi-cash-stack"></i><span class="group">Finance</span></div>
+        <h4>Cash Flow</h4><p>Operating cash movement derived from bank, AR, AP and inventory.</p>
+        <div class="report-actions"><a class="primary" href="/finance/statements/cash-flow">Open</a></div>
+      </div>
+      <div class="report-card">
+        <div class="top"><i class="bi bi-hourglass-split"></i><span class="group">Finance</span></div>
+        <h4>AR / AP Aging</h4><p>Outstanding receivables and payables bucketed by age.</p>
+        <div class="report-actions"><a class="primary" href="/finance/reports/aging?report_type=ar">AR Aging</a><a href="/finance/reports/aging?report_type=ap">AP Aging</a></div>
+      </div>
     </div>
   </div>
 

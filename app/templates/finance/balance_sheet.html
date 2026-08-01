@@ -1,0 +1,73 @@
+{% extends "layouts/base.html" %}
+{% block title %}Balance Sheet | ISFC{% endblock %}
+{% block content %}
+{# Batch 67 — Balance Sheet (Phoenix theme, dark/RTL safe) #}
+<div class="container-fluid py-3 isfc-page">
+
+  <div class="isfc-hero mb-4 p-4 rounded-4 text-white d-flex align-items-center justify-content-between flex-wrap gap-3"
+       style="background:linear-gradient(120deg,#1e3a8a 0%,#2563eb 60%,#3b82f6 100%);">
+    <div>
+      <h1 class="mb-1 fw-bolder"><i class="bi bi-clipboard-data me-2"></i>{{ t('Balance Sheet') }}</h1>
+      <p class="mb-0 opacity-75">{{ t('As of') }}: <b>{{ as_of }}</b></p>
+    </div>
+    <div class="d-flex gap-2">
+      <button class="btn btn-light btn-sm fw-bold" onclick="window.print()"><i class="bi bi-printer me-1"></i>{{ t('Print') }}</button>
+      <a class="btn btn-light btn-sm fw-bold" href="/finance/gl">{{ t('General Ledger') }}</a>
+    </div>
+  </div>
+
+  <form method="get" class="card border shadow-none mb-3">
+    <div class="card-body p-3 d-flex align-items-end gap-3 flex-wrap">
+      <div>
+        <label class="form-label fs-9 text-body-tertiary mb-1">{{ t('As of date') }}</label>
+        <input type="date" name="as_of_date" value="{{ as_of }}" class="form-control form-control-sm">
+      </div>
+      <button class="btn btn-primary btn-sm fw-bold" type="submit"><i class="bi bi-funnel me-1"></i>{{ t('Apply') }}</button>
+    </div>
+  </form>
+
+  <div class="alert {{ 'alert-subtle-success' if totals.balanced else 'alert-subtle-danger' }} d-flex align-items-center gap-2 mb-3">
+    <i class="bi {{ 'bi-check-circle-fill' if totals.balanced else 'bi-exclamation-triangle-fill' }}"></i>
+    {{ t('Assets') }} <b>{{ '%.2f'|format(totals.total_assets) }}</b>
+    {{ '=' if totals.balanced else '≠' }}
+    {{ t('Liabilities + Equity') }} <b>{{ '%.2f'|format(totals.total_liab_equity) }}</b>
+    {% if not totals.balanced %}<span class="ms-2">({{ t('difference') }}: {{ '%.2f'|format(totals.difference) }})</span>{% endif %}
+  </div>
+
+  <div class="row g-3">
+    <div class="col-lg-6">
+      <div class="card border shadow-none h-100">
+        <div class="card-header bg-body p-3 border-bottom"><h5 class="mb-0 fw-bolder">{{ t('Assets') }}</h5></div>
+        <div class="card-body p-0">
+          <table class="table table-hover mb-0">
+            <tbody>
+              {% for r in assets %}<tr><td class="font-monospace">{{ r.account_code }}</td><td>{{ r.account_name }}</td><td class="text-end">{{ '%.2f'|format(r.balance) }}</td></tr>{% else %}<tr><td colspan="3" class="text-center text-body-tertiary">{{ t('No asset balances') }}</td></tr>{% endfor %}
+              <tr class="fw-bolder table-active"><td colspan="2" class="text-end">{{ t('Total Assets') }}</td><td class="text-end text-primary">{{ '%.2f'|format(totals.total_assets) }}</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-6">
+      <div class="card border shadow-none h-100">
+        <div class="card-header bg-body p-3 border-bottom"><h5 class="mb-0 fw-bolder">{{ t('Liabilities & Equity') }}</h5></div>
+        <div class="card-body p-0">
+          <table class="table table-hover mb-0">
+            <tbody>
+              <tr class="table-active"><td colspan="3" class="fw-bold text-warning">{{ t('Liabilities') }}</td></tr>
+              {% for r in liabilities %}<tr><td class="font-monospace">{{ r.account_code }}</td><td>{{ r.account_name }}</td><td class="text-end">{{ '%.2f'|format(r.balance) }}</td></tr>{% else %}<tr><td colspan="3" class="text-center text-body-tertiary">{{ t('No liabilities') }}</td></tr>{% endfor %}
+              <tr class="fw-bold"><td colspan="2" class="text-end">{{ t('Total Liabilities') }}</td><td class="text-end text-warning">{{ '%.2f'|format(totals.total_liabilities) }}</td></tr>
+
+              <tr class="table-active"><td colspan="3" class="fw-bold text-info">{{ t('Equity') }}</td></tr>
+              {% for r in equity %}<tr><td class="font-monospace">{{ r.account_code }}</td><td>{{ r.account_name }}</td><td class="text-end">{{ '%.2f'|format(r.balance) }}</td></tr>{% else %}<tr><td colspan="3" class="text-center text-body-tertiary">{{ t('No equity') }}</td></tr>{% endfor %}
+              <tr class="fw-bold"><td colspan="2" class="text-end">{{ t('Total Equity') }}</td><td class="text-end text-info">{{ '%.2f'|format(totals.total_equity) }}</td></tr>
+
+              <tr class="fw-bolder table-active"><td colspan="2" class="text-end">{{ t('Total Liabilities + Equity') }}</td><td class="text-end text-primary">{{ '%.2f'|format(totals.total_liab_equity) }}</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

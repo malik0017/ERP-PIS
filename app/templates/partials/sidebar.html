@@ -1192,8 +1192,11 @@
                         <li class="nav-item"><a class="nav-link px-3 d-block" href="/users/profile"><span
                               class="me-2 text-body align-bottom" data-feather="user"></span><span>My Profile</span></a>
                         </li>
-                        <li class="nav-item"><a class="nav-link px-3 d-block" href="/dashboard"><span
-                              class="me-2 text-body align-bottom" data-feather="pie-chart"></span>Dashboard</a></li>
+                        <li class="nav-item">
+                          <a class="nav-link px-3 d-block" href="/dashboard">
+                            <span class="me-2 text-body align-bottom" data-feather="pie-chart"></span>
+                              Dashboard
+                          </a></li>
                         {% if can_access('settings') %}<li class="nav-item"><a class="nav-link px-3 d-block"
                             href="/settings"><span class="me-2 text-body align-bottom"
                               data-feather="settings"></span>Settings</a></li>{% endif %}
