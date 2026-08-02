@@ -15,7 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from app.config import APP_NAME, COMPANY_NAME, SECRET_KEY
+from app.config import APP_NAME, COMPANY_NAME, SECRET_KEY, DEBUG
 from app.core.templates import render
 from app.modules.auth.routes import router as auth_router
 from app.modules.auth.routes_register import router as self_register_router  # Batch 71
@@ -47,6 +47,7 @@ from app.modules.hr.routes import router as hr_router
 from app.modules.hr.routes_payroll import router as hr_payroll_router  # Batch 74
 from app.modules.subscriptions.routes import router as subscriptions_router  # Batch 76
 from app.modules.subscriptions.routes_portal import router as subscriptions_portal_router  # Batch 76
+from app.modules.printforms.routes import router as printforms_router  # Batch 77: was built, never wired in
 # Batch 10: config-driven per-module dashboards (/module/{key}/dashboard)
 from app.modules.module_dash.routes import router as module_dash_router
 
@@ -126,12 +127,17 @@ async def lifespan(app: FastAPI):
 
 
 # ===== INITIALIZE FASTAPI =====
+# Batch 77: /docs, /redoc and the raw OpenAPI schema handed the full route
+# map (paths + parameter names) to anyone, logged in or not. RBAC still
+# protects each route individually, but there's no reason to publish the
+# blueprint. Only expose them when DEBUG=True (local development).
 app = FastAPI(
     title=APP_NAME,
     description=f"{APP_NAME} - Production & Inventory Management System",
     version="1.0.0",
-    docs_url="/docs",
-    redoc_url="/redoc",
+    docs_url="/docs" if DEBUG else None,
+    redoc_url="/redoc" if DEBUG else None,
+    openapi_url="/openapi.json" if DEBUG else None,
     lifespan=lifespan,
 )
 
@@ -214,6 +220,9 @@ app.include_router(hr_router)
 app.include_router(hr_payroll_router)
 app.include_router(subscriptions_router)
 app.include_router(subscriptions_portal_router)
+# Batch 77: was fully built (all 6 print documents + templates) but never
+# registered — wiring it in is the only change needed to make it reachable.
+app.include_router(printforms_router)
 app.include_router(module_dash_router)
 
 # Batch 22: register new/extended routers.
@@ -340,11 +349,16 @@ async def not_found_handler(request: Request, exc):
 @app.exception_handler(500)
 async def server_error_handler(request: Request, exc):
     logger.error(f"500 Server Error: {exc}")
+    # Batch 77: the full exception string (which can include table/column
+    # names or SQL fragments) used to render straight to the browser for
+    # anyone who triggered a 500. Full detail still goes to the server log
+    # above; the page itself only shows it when DEBUG=True.
+    error_detail = str(exc) if DEBUG else "Something went wrong. The team has been notified."
     try:
         return render(
             request,
             "errors/500.html",
-            {"error": str(exc)},
+            {"error": error_detail},
             status_code=500,
         )
     except Exception as template_error:

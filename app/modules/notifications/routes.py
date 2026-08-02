@@ -1,25 +1,40 @@
 # app/modules/notifications/routes.py
 """Notification Center.
 
-Computes live "pending work" counts across the production chain:
-  - Head Chef approval pending  (orders in Submitted)
-  - Store issuance pending      (orders BOM Generated / Store Pending)
-  - QC pending                  (orders in production, no passed QC yet)
-  - Dispatch pending            (orders Packed, not yet dispatched)
+Two independent feeds, shown together on this page and in the header bell:
 
-Two endpoints:
-  GET /notifications/summary  -> JSON (used by the header bell in toast.html)
-  GET /notifications          -> full page listing each pending document
+1. LIVE "pending work" queue (unchanged from before) — computed fresh on
+   every request from current order/kitchen state:
+     - Head Chef approval pending  (orders in Submitted)
+     - Store issuance pending      (orders BOM Generated / Store Pending)
+     - QC pending                  (orders in production, no passed QC yet)
+     - Dispatch pending            (orders Packed, not yet dispatched)
+   There is nothing to "mark as read" here — it isn't a discrete event, it's
+   a live count that changes the moment the underlying order moves.
+
+2. REAL, persisted notifications (Batch 78) — actual events written once via
+   app/core/notifications.py::create_notification() from elsewhere in the
+   app (order submitted, QC failed, payroll finalized, ...), targeted at
+   either a specific user or a role. These CAN be marked read, individually
+   or all at once.
+
+Endpoints:
+  GET  /notifications/summary        -> JSON for the header bell (both feeds)
+  GET  /notifications                -> full page, both feeds
+  POST /notifications/{id}/read      -> mark one real notification read
+  POST /notifications/mark-all-read  -> mark every real notification read
 """
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy import text
 from sqlalchemy.orm import Session
+from starlette.status import HTTP_303_SEE_OTHER
 
 from app.core.templates import render
 from app.core.rbac import can_access
+from app.core.notifications import ensure_notifications_schema
 from app.database.session import get_db
 
 router = APIRouter(prefix="/notifications", tags=["Notifications"])
@@ -31,6 +46,24 @@ def _safe_rows(db: Session, sql: str, params: dict | None = None) -> list:
         return list(db.execute(text(sql), params or {}).mappings().all())
     except Exception:
         return []
+
+
+def _real_notifications(db: Session, request: Request, limit: int = 30) -> list[dict]:
+    """This user's own real notifications, plus any broadcast to their role
+    — read and unread both (the page needs both; the badge count filters)."""
+    user_id = request.session.get("user_id")
+    role = request.session.get("user_role")
+    if not user_id:
+        return []
+    ensure_notifications_schema(db)
+    rows = _safe_rows(db, """
+        SELECT id, title, message, url, category, is_read, created_at
+        FROM notifications
+        WHERE user_id = :uid OR (role = :role AND role IS NOT NULL)
+        ORDER BY is_read ASC, created_at DESC
+        LIMIT :lim
+    """, {"uid": user_id, "role": role, "lim": limit})
+    return [dict(r) for r in rows]
 
 
 def _collect(db: Session) -> dict:
@@ -130,11 +163,56 @@ async def notifications_summary(request: Request, db: Session = Depends(get_db))
             "count": int(ks["pending_lines"]),
             "url": f"/production/section/{slug}",
         })
+    work_items = [i for i in items if i["count"] > 0]
+
+    # Batch 78: real, per-user notifications alongside the live work queue.
+    real = _real_notifications(db, request, limit=10)
+    unread_real = [n for n in real if not n["is_read"]]
+    notif_items = [{
+        "key": f"notif_{n['id']}", "label": n["title"], "count": 1,
+        "url": n["url"] or "/notifications", "id": n["id"], "message": n.get("message"),
+        "created_at": str(n.get("created_at") or ""),
+    } for n in unread_real]
+
     return JSONResponse({
-        "total": sum(counts.values()),
+        "total": sum(counts.values()) + len(unread_real),
         "counts": counts,
-        "items": [i for i in items if i["count"] > 0],
+        "items": work_items,
+        "notifications": notif_items,
+        "unread_notifications": len(unread_real),
     })
+
+
+@router.post("/{notification_id}/read")
+async def mark_notification_read(request: Request, notification_id: int, db: Session = Depends(get_db)):
+    ensure_notifications_schema(db)
+    user_id = request.session.get("user_id")
+    role = request.session.get("user_role")
+    if not user_id:
+        return RedirectResponse("/login", status_code=HTTP_303_SEE_OTHER)
+    db.execute(text("""
+        UPDATE notifications SET is_read = 1, read_at = NOW()
+        WHERE id = :id AND (user_id = :uid OR role = :role)
+    """), {"id": notification_id, "uid": user_id, "role": role})
+    db.commit()
+    ref = request.headers.get("referer") or "/notifications"
+    return RedirectResponse(ref, status_code=HTTP_303_SEE_OTHER)
+
+
+@router.post("/mark-all-read")
+async def mark_all_notifications_read(request: Request, db: Session = Depends(get_db)):
+    ensure_notifications_schema(db)
+    user_id = request.session.get("user_id")
+    role = request.session.get("user_role")
+    if not user_id:
+        return RedirectResponse("/login", status_code=HTTP_303_SEE_OTHER)
+    db.execute(text("""
+        UPDATE notifications SET is_read = 1, read_at = NOW()
+        WHERE (user_id = :uid OR role = :role) AND is_read = 0
+    """), {"uid": user_id, "role": role})
+    db.commit()
+    ref = request.headers.get("referer") or "/notifications"
+    return RedirectResponse(ref, status_code=HTTP_303_SEE_OTHER)
 
 
 @router.get("")
@@ -155,8 +233,12 @@ async def notifications_page(request: Request, db: Session = Depends(get_db)):
          "url": "/dispatch", "rows": data["dispatch"], "accent": "success"},
     ]
     total = sum(len(g["rows"]) for g in groups)
+    real = _real_notifications(db, request, limit=100)
+    unread_count = len([n for n in real if not n["is_read"]])
     return render(request, "notifications/index.html", {
         "groups": groups,
         "total": total,
+        "notifications": real,
+        "unread_count": unread_count,
         "page_title": "Notification Center",
     })

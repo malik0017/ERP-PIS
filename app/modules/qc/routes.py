@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from starlette.status import HTTP_303_SEE_OTHER
 
 from app.core.templates import render
+from app.core.notifications import notify_role
 from app.database.session import get_db
 from app.models.production import CustomerOrder, KitchenSectionTransaction, PackingDispatch, QCCheck
 
@@ -250,4 +251,17 @@ def qc_submit(
         order.status = "QC Hold"
 
     db.commit()
+
+    # Batch 78: real notification — a QC failure/hold needs someone's
+    # attention right away; a pass just flows on to packing automatically
+    # and doesn't need one.
+    if status in ("Rejected", "Hold"):
+        notify_role(
+            db, company_id=getattr(order, "company_id", None) or int(request.session.get("company_id") or 1),
+            role="HEAD_CHEF",
+            title=f"QC {status.lower()} on order {order_no}",
+            message=(issue_found or corrective_action or f"Overall score {overall_score}")[:200],
+            url=f"/qc/orders/{order_no}",
+            category="qc_" + status.lower(),
+        )
     return RedirectResponse("/qc", status_code=HTTP_303_SEE_OTHER)

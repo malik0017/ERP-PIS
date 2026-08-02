@@ -20,6 +20,7 @@ from app.models.production import (
 )
 from app.models.recipe import Recipe, RecipeIngredient
 from app.schemas.production import CustomerOrderCreate
+from app.core.notifications import notify_role
 
 
 def _num(value: Any) -> float:
@@ -213,6 +214,18 @@ def create_order(db: Session, payload: CustomerOrderCreate, created_by: str = "s
     order.total_estimated_margin = total_sales - total_food
     db.commit()
     db.refresh(order)
+
+    # Batch 78: real notification — every order creation path (manual entry,
+    # customer portal, subscriptions) funnels through this one function, so
+    # hooking it here covers all of them at once. Best-effort: never blocks
+    # or fails the order itself if the notification write has a problem.
+    notify_role(
+        db, company_id=company_id, role="HEAD_CHEF",
+        title=f"New order {order_no} submitted",
+        message=f"{payload.customer_name} · {total_portions:.0f} portions — awaiting Head Chef approval.",
+        url=f"/production/orders/{order_no}",
+        category="order_submitted",
+    )
     return order
 
 

@@ -29,6 +29,7 @@ from sqlalchemy.orm import Session
 
 from app.core.templates import render
 from app.core.rbac import require_area, require_action
+from app.core.notifications import notify_role
 from app.database.session import get_db
 
 router = APIRouter(prefix="/hr", tags=["HCM"])
@@ -375,8 +376,18 @@ async def payroll_run(request: Request, fy_year: int = Form(...), fy_month: int 
 async def payroll_finalize(request: Request, run_id: int, db: Session = Depends(get_db)):
     require_action(request, "hr", "edit")
     ensure_schema(db)
+    run = db.execute(text("SELECT * FROM hr_payroll_runs WHERE id=:i"), {"i": run_id}).mappings().first()
     db.execute(text("UPDATE hr_payroll_runs SET status='Finalized' WHERE id=:i"), {"i": run_id})
     db.commit()
+    if run:
+        month_name = MONTHS[int(run["fy_month"])] if 0 < int(run["fy_month"]) < len(MONTHS) else str(run["fy_month"])
+        notify_role(
+            db, company_id=run.get("company_id"), role="ADMIN",
+            title=f"Payroll finalized — {month_name} {run['fy_year']}",
+            message="This run is now locked and ready for payment processing.",
+            url=f"/hr/payroll?run_id={run_id}",
+            category="payroll_finalized",
+        )
     return RedirectResponse(f"/hr/payroll?run_id={run_id}&toast=success&title=Finalized&msg=Payroll run finalized", status_code=303)
 
 

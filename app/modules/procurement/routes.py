@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 
 from app.core.templates import render
 from app.core.rbac import require_area, require_action
+from app.core.company import get_current_company_id
 from app.database.session import get_db
 # Batch 23: shared, legacy-aware stock ledger writer (see app/core/stock_ledger.py)
 from app.core.stock_ledger import post_stock_movement
@@ -32,7 +33,7 @@ router = APIRouter(prefix="/procurement", tags=["Procurement"])
 
 
 def _cid(request: Request):
-    return request.session.get("company_id")
+    return get_current_company_id(request)
 
 
 def _user(request: Request) -> str:
@@ -127,6 +128,12 @@ async def po_register(request: Request, db: Session = Depends(get_db)):
     status_f = (q.get("status") or "").strip()
     search = (q.get("search") or "").strip()
     extra, params = "", {}
+    # Batch 78 fix: purchase_orders has a company_id column that was stamped
+    # on every insert but never actually filtered on read — every company's
+    # POs showed up together on this register.
+    cid = _cid(request)
+    extra += " AND (po.company_id = :cid OR po.company_id IS NULL)"
+    params["cid"] = cid
     if status_f:
         extra += " AND po.status = :status_f"; params["status_f"] = status_f
     if search:
@@ -209,7 +216,9 @@ async def create_po(
 async def po_detail(request: Request, po_no: str, db: Session = Depends(get_db)):
     require_area(request, "procurement")
     _ensure_procurement_schema(db)
-    po = db.execute(text("SELECT * FROM purchase_orders WHERE po_no = :p"), {"p": po_no}).mappings().first()
+    po = db.execute(text(
+        "SELECT * FROM purchase_orders WHERE po_no = :p AND (company_id = :cid OR company_id IS NULL)"
+    ), {"p": po_no, "cid": _cid(request)}).mappings().first()
     if not po:
         return RedirectResponse("/procurement?error=PO not found", status_code=303)
     lines = db.execute(text("SELECT * FROM purchase_order_lines WHERE po_no = :p ORDER BY line_no"),
@@ -233,7 +242,9 @@ async def po_receive(request: Request, po_no: str, db: Session = Depends(get_db)
     require_action(request, "procurement", "edit")
     _ensure_procurement_schema(db)
     form = await request.form()
-    po = db.execute(text("SELECT * FROM purchase_orders WHERE po_no = :p"), {"p": po_no}).mappings().first()
+    po = db.execute(text(
+        "SELECT * FROM purchase_orders WHERE po_no = :p AND (company_id = :cid OR company_id IS NULL)"
+    ), {"p": po_no, "cid": _cid(request)}).mappings().first()
     if not po or po["status"] not in ("Open", "Partially Received"):
         return RedirectResponse(f"/procurement/po/{po_no}?error=PO is not open for receiving", status_code=303)
 
@@ -364,8 +375,9 @@ async def set_po_status(request: Request, po_no: str, db: Session = Depends(get_
             f"/procurement/po/{po_no}?error=Invalid status '{new_status}'",
             status_code=303)
 
-    po = db.execute(text("SELECT * FROM purchase_orders WHERE po_no = :p"),
-                    {"p": po_no}).mappings().first()
+    po = db.execute(text(
+                        "SELECT * FROM purchase_orders WHERE po_no = :p AND (company_id = :cid OR company_id IS NULL)"
+                    ), {"p": po_no, "cid": _cid(request)}).mappings().first()
     if not po:
         return RedirectResponse("/procurement?error=PO not found", status_code=303)
 

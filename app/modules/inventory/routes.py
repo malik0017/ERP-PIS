@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.core.templates import render
 from app.core.rbac import require_area, require_action
+from app.core.company import get_current_company_id
 from app.database.session import get_db
 
 router = APIRouter(prefix="/inventory", tags=["Inventory"])
@@ -171,11 +172,16 @@ def stock_valuation(request: Request, db: Session = Depends(get_db)):
         db.rollback()
     q = request.query_params
     search = (q.get("search") or "").strip()
+    # Batch 78 fix: inventory_transactions HAS a company_id column that was
+    # never actually filtered on here — every company's stock movements
+    # were aggregated into one shared valuation view. NULL-tolerant to
+    # match the same transition-safe behavior used everywhere else.
+    cid = get_current_company_id(request)
 
-    params = {}
-    extra = ""
+    params = {"cid": cid}
+    extra = "AND (t.company_id = :cid OR t.company_id IS NULL)"
     if search:
-        extra = "AND (t.inventory_code LIKE :like OR COALESCE(t.item_name,'') LIKE :like)"
+        extra += " AND (t.inventory_code LIKE :like OR COALESCE(t.item_name,'') LIKE :like)"
         params["like"] = f"%{search}%"
 
     if not _table_exists(db, "inventory_transactions"):
@@ -227,12 +233,14 @@ def stock_valuation(request: Request, db: Session = Depends(get_db)):
 def item_ledger(request: Request, inventory_code: str, db: Session = Depends(get_db)):
     require_area(request, "inventory_valuation")
     _ensure_inventory_ledger(db)
+    cid = get_current_company_id(request)
     rows = [dict(r) for r in db.execute(text("""
         SELECT t.*, COALESCE(t.txn_date, t.transaction_date, t.created_at) AS movement_date
         FROM inventory_transactions t
         WHERE t.inventory_code = :c
+          AND (t.company_id = :cid OR t.company_id IS NULL)
         ORDER BY t.id DESC LIMIT 500
-    """), {"c": inventory_code}).mappings().all()]
+    """), {"c": inventory_code, "cid": cid}).mappings().all()]
 
     # ------------------------------------------------------------------
     # Batch 24 FIX — 500 error: "'running' is undefined".
@@ -281,6 +289,7 @@ def ledger_verification(request: Request, db: Session = Depends(get_db)):
         db.rollback()
 
     rows = []
+    cid = get_current_company_id(request)
     try:
         rows = db.execute(text("""
             SELECT i.ingredient_code AS inventory_code,
@@ -296,11 +305,12 @@ def ledger_verification(request: Request, db: Session = Depends(get_db)):
                        SUM(COALESCE(qty_in, 0)) AS ledger_in,
                        SUM(COALESCE(qty_out, 0)) AS ledger_out
                 FROM inventory_transactions
+                WHERE (company_id = :cid OR company_id IS NULL)
                 GROUP BY inventory_code
             ) t ON t.inventory_code = i.ingredient_code
             ORDER BY ABS(COALESCE(i.current_stock, 0) - (COALESCE(t.ledger_in, 0) - COALESCE(t.ledger_out, 0))) DESC
             LIMIT 1000
-        """)).mappings().all()
+        """), {"cid": cid}).mappings().all()
     except Exception:
         rows = []
 
@@ -324,11 +334,13 @@ def align_master_to_ledger(request: Request, inventory_code: str, db: Session = 
     """Adopt the ledger balance as the master current_stock for ONE item —
     the ledger (documents) is the source of truth."""
     require_action(request, "inventory_valuation", "edit")
+    cid = get_current_company_id(request)
     try:
         bal = db.execute(text("""
             SELECT COALESCE(SUM(COALESCE(qty_in,0)) - SUM(COALESCE(qty_out,0)), 0)
-            FROM inventory_transactions WHERE inventory_code = :c
-        """), {"c": inventory_code}).scalar() or 0
+            FROM inventory_transactions
+            WHERE inventory_code = :c AND (company_id = :cid OR company_id IS NULL)
+        """), {"c": inventory_code, "cid": cid}).scalar() or 0
         db.execute(text("""
             UPDATE ingredients SET current_stock = :b WHERE ingredient_code = :c
         """), {"b": float(bal), "c": inventory_code})

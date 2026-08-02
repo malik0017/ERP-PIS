@@ -15,6 +15,7 @@ from app.database import get_db
 from app.core.auth import get_current_user
 from app.core.templates import render
 from app.core.rbac import require_area, can_access, normalized_role
+from app.core.company import get_current_company_id, scope
 from app.models.chef import Chef
 from app.models.customer import Customer
 from app.models.ingredient import Ingredient
@@ -330,8 +331,11 @@ def master_archive(
         config = MASTER_LIST_CONFIG[archive_type]
         model = config["model"]
         q_live = db.query(model)
+        # Batch 77 fix: this used to hardcode company_id == 1, so any
+        # company other than #1 saw either nothing or another company's
+        # data here. scope() reads the real active company from the session.
         if hasattr(model, "company_id"):
-            q_live = q_live.filter(model.company_id == 1)
+            q_live = scope(q_live, model, get_current_company_id(request))
         if hasattr(model, "status"):
             if status and status != "ALL":
                 q_live = q_live.filter(getattr(model, "status") == status)
@@ -389,8 +393,10 @@ def _render_master_list(master_type: str, request: Request, db: Session, search:
     config = MASTER_LIST_CONFIG[master_type]
     model = config["model"]
     q = db.query(model)
+    # Batch 77 fix: same hardcode as master_archive() above — now uses the
+    # logged-in user's actual active company instead of a fixed "1".
     if hasattr(model, "company_id"):
-        q = q.filter(model.company_id == 1)
+        q = scope(q, model, get_current_company_id(request))
     q = _status_filter(q, model, status)
     q = _search_filter(q, config["search_fields"], search)
     rows = q.order_by(model.id.desc()).limit(1000).all()
@@ -467,7 +473,15 @@ def master_detail(master_type: str, row_id: int, request: Request, db: Session =
         config = MASTER_LIST_CONFIG.get(master_type)
         if not config:
             raise HTTPException(status_code=404, detail="Unknown master type")
-        row = db.query(config["model"]).filter(config["model"].id == row_id).first()
+        model = config["model"]
+        q = db.query(model).filter(model.id == row_id)
+        # Batch 77 fix: this had NO company filter at all — any logged-in
+        # user could view any other company's master record just by
+        # guessing/incrementing the row id in the URL. Scope it like every
+        # other master-data query in this file.
+        if hasattr(model, "company_id"):
+            q = scope(q, model, get_current_company_id(request))
+        row = q.first()
         raw_data = None
     if not row:
         raise HTTPException(status_code=404, detail="Record not found")

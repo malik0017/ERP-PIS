@@ -288,8 +288,18 @@ async def create_master(mtype: str, request: Request, db: Session = Depends(get_
 def edit_master_form(mtype: str, row_id: int, request: Request, db: Session = Depends(get_db)):
     require_area(request, "master_data")
     cfg = _cfg(mtype)
+    # Batch 77 fix: this had no company scoping at all — any logged-in user
+    # could open any other company's record by changing row_id in the URL.
+    # NULL-tolerant (OR company_id IS NULL) to match core.company.scope()'s
+    # transition-safe behavior for rows written before this was stamped.
+    cols_available = _table_columns(db, cfg["table"])
+    params: dict = {"i": row_id}
+    where_scope = ""
+    if "company_id" in cols_available:
+        where_scope = " AND (company_id = :cid OR company_id IS NULL)"
+        params["cid"] = _cid(request)
     row = db.execute(
-        text(f"SELECT * FROM {cfg['table']} WHERE id = :i"), {"i": row_id}
+        text(f"SELECT * FROM {cfg['table']} WHERE id = :i{where_scope}"), params
     ).mappings().first()
     if not row:
         raise HTTPException(status_code=404, detail="Record not found")
@@ -322,11 +332,23 @@ async def update_master(mtype: str, row_id: int, request: Request, db: Session =
     if "updated_at" in cols_available:
         sets["updated_at"] = datetime.utcnow()
 
-    assignments = ", ".join(f"{k} = :{k}" for k in sets.keys())
+    # Batch 77 fix: same missing scoping as the GET form above — the UPDATE
+    # itself was not restricted to the caller's own company either.
+    where_scope = "WHERE id = :_id"
+    if "company_id" in cols_available:
+        where_scope += " AND (company_id = :_cid OR company_id IS NULL)"
+        sets["_cid"] = _cid(request)
+
+    assignments = ", ".join(f"{k} = :{k}" for k in sets.keys() if k not in ("_cid",))
     sets["_id"] = row_id
     try:
-        db.execute(text(f"UPDATE {cfg['table']} SET {assignments} WHERE id = :_id"), sets)
+        result = db.execute(text(f"UPDATE {cfg['table']} SET {assignments} {where_scope}"), sets)
+        if result.rowcount == 0:
+            db.rollback()
+            raise HTTPException(status_code=404, detail="Record not found")
         db.commit()
+    except HTTPException:
+        raise
     except Exception as e:
         db.rollback()
         return RedirectResponse(

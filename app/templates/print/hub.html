@@ -5,7 +5,7 @@
   <div class="pis-hero mb-4" style="background:linear-gradient(135deg,#132947,#0c91a3);border-radius:22px;color:#fff;padding:26px 30px;">
     <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
       <div>
-        <span class="pis-chip mb-3" style="background:rgba(255,255,255,.15);color:#fff;border-radius:999px;padding:6px 12px;font-weight:800;font-size:12px;display:inline-flex;">Printable Forms</span>
+        <span class="pis-chip mb-3" style="background:rgba(255,255,255,.15);color:#fff;border-radius:999px;padding:6px 12px;font-weight:800;font-size:12px;display:inline-flex;">{{ t('Printable Forms') }}</span>
         <h2 class="mb-1 text-white">{{ order_no }}</h2>
         <p class="mb-0 opacity-75">{{ order.customer_name }} · {{ order.brand or '-' }} · Delivery {{ order.required_delivery_date or '-' }} · Status: {{ order.status }}</p>
       </div>
@@ -19,9 +19,9 @@
         <div class="card-body p-4 d-flex gap-3">
           <span class="uil {{ f.icon }} fs-4 text-primary"></span>
           <div class="flex-1">
-            <h5 class="mb-1">{{ f.title }}</h5>
+            <h5 class="mb-1">{{ t(f.title) }}</h5>
             <p class="text-body-tertiary fs-9 mb-3">{{ f.desc }}</p>
-            <a class="btn btn-sm btn-primary" target="_blank" href="/print/{{ order_no }}/{{ f.key }}">Open &amp; Print</a>
+            <a class="btn btn-sm btn-primary" target="_blank" href="/print/{{ order_no }}/{{ f.key }}">{{ t('Open & Print') }}</a>
           </div>
         </div>
       </div>

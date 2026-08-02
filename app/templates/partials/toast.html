@@ -159,33 +159,71 @@
 
   /* ---------------------------------------------------------------
      4. Notification bell - polls /notifications/summary
-        Attaches a red badge to the header bell if present, and keeps
-        working silently if the endpoint is not available.
+        Attaches a red badge to EVERY header bell if present (the Phoenix
+        theme renders several alternate navbar layouts in the same page —
+        vertical / combo / dual / slim — and CSS shows only one at a time;
+        querySelector() alone only ever updated the FIRST one in the DOM,
+        which meant the badge silently landed on a hidden layout variant
+        whenever the active theme wasn't the first one in the markup.
+        querySelectorAll() + forEach fixes that regardless of which layout
+        is currently visible. Also renders real notification items into
+        the dropdown, which used to be a static "No new notifications"
+        placeholder with its real loop commented out.
   ----------------------------------------------------------------*/
+  function timeAgo(iso) {
+    if (!iso) return '';
+    var then = new Date(iso.replace(' ', 'T'));
+    var diffMin = Math.round((Date.now() - then.getTime()) / 60000);
+    if (diffMin < 1) return 'just now';
+    if (diffMin < 60) return diffMin + 'm ago';
+    var diffHr = Math.round(diffMin / 60);
+    if (diffHr < 24) return diffHr + 'h ago';
+    return Math.round(diffHr / 24) + 'd ago';
+  }
+
+  function renderDropdownItems(data) {
+    var notifItems = (data.notifications || []);
+    var workItems = (data.items || []);
+    var html = '';
+    notifItems.concat(workItems).slice(0, 8).forEach(function (n) {
+      var isReal = !!n.id;
+      html += '<div class="px-3 py-2 border-bottom">' +
+        '<a href="' + n.url + '" class="d-block text-decoration-none">' +
+        '<div class="fs-9 text-body-emphasis fw-bold">' + n.label + '</div>' +
+        (n.message ? '<div class="fs-9 text-body-tertiary">' + n.message + '</div>' : '') +
+        (isReal && n.created_at ? '<div class="fs-10 text-body-quaternary">' + timeAgo(n.created_at) + '</div>' : '') +
+        '</a></div>';
+    });
+    if (!html) html = '<div class="text-center py-5 text-body-tertiary fs-9">No new notifications</div>';
+    document.querySelectorAll('.notification-dropdown-menu .scrollbar-overlay').forEach(function (el) {
+      el.innerHTML = html;
+    });
+  }
+
   function refreshNotifications() {
     fetch('/notifications/summary', { headers: { 'Accept': 'application/json' } })
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (data) {
         if (!data) return;
         var total = data.total || 0;
-        var bell = document.querySelector('[data-notification-bell]') ||
-                   document.querySelector('.uil-bell') ||
-                   document.querySelector('[data-feather="bell"]');
-        if (!bell) return;
-        var host = bell.closest('a, button') || bell.parentElement;
-        if (!host) return;
-        host.style.position = 'relative';
-        if (!host.getAttribute('href') && host.tagName === 'A') host.setAttribute('href', '/notifications');
-        var badge = host.querySelector('.isfc-notif-badge');
-        if (total > 0) {
-          if (!badge) {
-            badge = document.createElement('span');
-            badge.className = 'isfc-notif-badge badge rounded-pill bg-danger position-absolute';
-            badge.style.cssText = 'top:2px;right:0;font-size:10px;';
-            host.appendChild(badge);
-          }
-          badge.textContent = total > 99 ? '99+' : total;
-        } else if (badge) { badge.remove(); }
+        renderDropdownItems(data);
+        var bells = document.querySelectorAll('[data-notification-bell], .uil-bell, [data-feather="bell"]');
+        bells.forEach(function (bell) {
+          var host = bell.closest('a, button') || bell.parentElement;
+          if (!host) return;
+          host.style.position = 'relative';
+          if (!host.getAttribute('href') && host.tagName === 'A') host.setAttribute('href', '/notifications');
+          var badge = host.querySelector('.isfc-notif-badge');
+          if (total > 0) {
+            if (!badge) {
+              badge = document.createElement('span');
+              badge.className = 'isfc-notif-badge badge rounded-pill bg-danger position-absolute';
+              badge.style.cssText = 'top:2px;right:0;font-size:10px;';
+              host.appendChild(badge);
+            }
+            badge.textContent = total > 99 ? '99+' : total;
+          } else if (badge) { badge.remove(); }
+        });
       })
       .catch(function () { /* silent */ });
   }
@@ -194,6 +232,19 @@
     flashFromQuery();
     refreshNotifications();
     setInterval(refreshNotifications, 60000);
+  });
+
+  // "Mark all as read" lives inside every layout-variant copy of the
+  // notification dropdown (Phoenix renders several alternates - vertical,
+  // combo, dual, slim - and shows one via CSS). Event delegation on a
+  // single document-level listener reaches all of them without needing
+  // to duplicate a click handler 7 times across sidebar.html.
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest('.notification-dropdown-menu button');
+    if (!btn || btn.textContent.trim().toLowerCase() !== 'mark all as read') return;
+    fetch('/notifications/mark-all-read', { method: 'POST' })
+      .then(function () { refreshNotifications(); })
+      .catch(function () { /* silent */ });
   });
 })();
 </script>
