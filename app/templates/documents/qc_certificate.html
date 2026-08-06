@@ -8,7 +8,14 @@
     .qc-doc { box-shadow:none !important; border:none !important; }
     aside, nav, .navbar, header, footer { display:none !important; }
   }
-  .qc-doc { max-width:900px; margin:0 auto; background:#fff; color:#111;
+  /* Batch 80 fix: this table has 13 columns and was stuck in the same
+     900px-max-width container as the simpler documents (delivery note,
+     order sheet), which don't need nearly that much horizontal room. It
+     visibly overflowed the card and the printed page. Given this table
+     specifically, widen the certificate's container and let the table
+     scroll horizontally as a safety net on narrow screens, with tighter
+     column padding so it fits without scrolling at normal desktop widths. */
+  .qc-doc { max-width:1280px; margin:0 auto; background:#fff; color:#111;
             border:1px solid var(--phoenix-border-color); border-radius:12px; }
   [data-bs-theme="dark"] .qc-doc { background:#0f1a2b; color:var(--phoenix-emphasis-color); }
   .qc-head { padding:22px 26px; border-bottom:2px solid #0f766e; display:flex; justify-content:space-between; align-items:flex-start; }
@@ -20,17 +27,23 @@
   .qc-meta { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; padding:18px 26px; }
   .qc-meta .lbl { font-size:.68rem; text-transform:uppercase; letter-spacing:.05em; color:#64748b; }
   .qc-meta .val { font-weight:700; }
-  table.qc-tbl { width:100%; border-collapse:collapse; }
-  table.qc-tbl th, table.qc-tbl td { border:1px solid var(--phoenix-border-color); padding:7px 9px; font-size:.82rem; }
-  table.qc-tbl th { background:#f1f5f9; text-transform:uppercase; font-size:.66rem; letter-spacing:.03em; }
+  .qc-tbl-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+  table.qc-tbl { width:100%; min-width:920px; border-collapse:collapse; table-layout:auto; }
+  table.qc-tbl th, table.qc-tbl td { border:1px solid var(--phoenix-border-color); padding:5px 6px; font-size:.74rem; white-space:nowrap; }
+  table.qc-tbl td:nth-child(2) { white-space:normal; min-width:110px; }
+  table.qc-tbl th { background:#f1f5f9; text-transform:uppercase; font-size:.6rem; letter-spacing:.02em; }
   [data-bs-theme="dark"] table.qc-tbl th { background:#1e293b; }
+  @media print {
+    table.qc-tbl { min-width:0; }
+    table.qc-tbl th, table.qc-tbl td { white-space:normal; }
+  }
   .st-Passed { color:#16a34a; font-weight:800; } .st-Rejected { color:#dc2626; font-weight:800; } .st-Hold { color:#d97706; font-weight:800; }
   .qc-sign { display:grid; grid-template-columns:1fr 1fr; gap:40px; padding:34px 26px 24px; }
   .qc-sign .line { border-top:1px solid #333; padding-top:6px; font-size:.8rem; color:#64748b; }
 </style>
 
 <div class="container-fluid py-3">
-  <div class="d-flex justify-content-end gap-2 mb-3 no-print" style="max-width:900px;margin:0 auto;">
+  <div class="d-flex justify-content-end gap-2 mb-3 no-print" style="max-width:1280px;margin:0 auto;">
     <a href="/qc/orders/{{ order_no }}" class="btn btn-phoenix-secondary btn-sm">{{ t('Back to QC') }}</a>
     <button class="btn btn-primary btn-sm" onclick="window.print()"><i class="bi bi-printer me-1"></i>{{ t('Print') }}</button>
   </div>
@@ -52,6 +65,7 @@
     </div>
 
     <div style="padding:0 26px 8px">
+      <div class="qc-tbl-wrap">
       <table class="qc-tbl">
         <thead>
           <tr>
@@ -80,6 +94,7 @@
           {% endfor %}
         </tbody>
       </table>
+      </div>
     </div>
 
     <div class="qc-sign">

@@ -157,13 +157,11 @@
   }
 </style>
 {% endblock %} {% block content %}
-<div class="rep-page">
+<div class="container-fluid py-3">
+  <div class="rep-page">
   <div class="rep-hero mb-3">
     <h1>Trayline / Packing Control</h1>
-    <p>
-      Receives QC-passed orders, packs final portions, records rejection, and
-      releases orders to Dispatch / Delivery.
-    </p>
+    
   </div>
   {% set active_step = 'Packing' %}{% include 'partials/process_status_row.html'
   %} {% set status_options = ['Packing Pending','Packing In Progress','Packed']
@@ -188,10 +186,6 @@
   </div>
   <div class="panel">
     <h3 class="mb-2">Packing Queue</h3>
-    <p class="text-secondary">
-      Only orders passed by QC should arrive here. After packing, Dispatch /
-      Delivery can load the vehicle and close delivery.
-    </p>
     <div class="table-responsive">
       <table class="table-pro">
         <thead>
@@ -245,4 +239,6 @@
     </div>
   </div>
 </div>
+</div>
+
 {% endblock %}

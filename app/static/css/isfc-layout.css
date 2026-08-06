@@ -390,7 +390,7 @@ html[data-navigation-type="dual"] .content > .container-fluid:first-child {
     gap: 6px;
     flex-wrap: wrap;
     margin: 8px 0 0 0;
-    padding: 0 125px;
+    /* padding: 0 125px; */
   }
 
 html[data-navigation-type="horizontal"] .pis-process-row,
@@ -399,7 +399,7 @@ html[data-navigation-type="dual"] .pis-process-row  {
     gap: 8px;
     flex-wrap: wrap;
     margin: 8px 0 0 0;
-    padding: 0 125px;
+    /* padding: 0 125px; */
   }
 
 html[data-navigation-type="default"] .pis-process-row, 

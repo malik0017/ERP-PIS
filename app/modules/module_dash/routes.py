@@ -59,11 +59,28 @@ MODULE_DASHBOARDS: dict[str, dict] = {
         "title": "Inventory & Valuation Dashboard",
         "subtitle": "Stock on hand, GRN movements, issue movements, item ledger and valuation.",
         "icon": "box",
+        # Batch 87 fix: every KPI/chart in this cockpit that referenced
+        # ingredients.current_stock or ingredients.unit_cost was silently
+        # returning 0/empty — those columns don't exist on the Ingredient
+        # model at all (confirmed against app/models/ingredient.py). This
+        # system's real source of truth for stock and cost has always been
+        # the inventory_transactions ledger (exactly what the actual Stock
+        # page under Inventory already computes from) — these queries now
+        # match that, using the same avg-cost-weighted formula.
         "kpis": [
             ("Inventory Items", "SELECT COUNT(*) FROM ingredients", "materials in inventory master"),
-            ("Stock Value", "SELECT COALESCE(SUM(COALESCE(current_stock,0)*COALESCE(unit_cost,0)),0) FROM ingredients", "on-hand valuation"),
+            ("Stock Value", """
+                SELECT COALESCE(SUM(bal * avg_cost), 0) FROM (
+                  SELECT inventory_code,
+                         SUM(COALESCE(qty_in,0)) - SUM(COALESCE(qty_out,0)) AS bal,
+                         CASE WHEN SUM(COALESCE(qty_in,0)) > 0
+                              THEN SUM(COALESCE(qty_in,0)*COALESCE(unit_cost,0)) / SUM(COALESCE(qty_in,0))
+                              ELSE 0 END AS avg_cost
+                  FROM inventory_transactions GROUP BY inventory_code
+                ) x
+             """, "on-hand valuation"),
             ("GRN Movements", "SELECT COUNT(*) FROM grn_lines", "goods receipt lines"),
-            ("Issue Movements", "SELECT COUNT(*) FROM store_issue_lines", "store issue lines"),
+            ("Issue Movements", "SELECT COUNT(*) FROM store_issuance_lines", "store issue lines"),
         ],
         "links": [
             ("Inventory Valuation", "/inventory", "inventory_valuation", "box"),
@@ -74,23 +91,47 @@ MODULE_DASHBOARDS: dict[str, dict] = {
         ],
         "charts": [
             {"title": "Stock Value by Main Category",
-             "sql": "SELECT COALESCE(main_category,'Uncategorized') AS label, "
-                    "SUM(COALESCE(current_stock,0)*COALESCE(unit_cost,0)) AS value "
-                    "FROM ingredients GROUP BY COALESCE(main_category,'Uncategorized') "
-                    "ORDER BY value DESC LIMIT 10", "default": "donut"},
+             "sql": """
+                SELECT COALESCE(i.main_category,'Uncategorized') AS label, SUM(x.bal * x.avg_cost) AS value
+                FROM (
+                  SELECT inventory_code,
+                         SUM(COALESCE(qty_in,0)) - SUM(COALESCE(qty_out,0)) AS bal,
+                         CASE WHEN SUM(COALESCE(qty_in,0)) > 0
+                              THEN SUM(COALESCE(qty_in,0)*COALESCE(unit_cost,0)) / SUM(COALESCE(qty_in,0))
+                              ELSE 0 END AS avg_cost
+                  FROM inventory_transactions GROUP BY inventory_code
+                ) x
+                LEFT JOIN ingredients i ON i.ingredient_code = x.inventory_code
+                GROUP BY COALESCE(i.main_category,'Uncategorized') ORDER BY value DESC LIMIT 10
+             """, "default": "donut"},
             {"title": "Top 10 Items by Stock Value",
-             "sql": "SELECT COALESCE(item_name, ingredient_name, inventory_code) AS label, "
-                    "COALESCE(current_stock,0)*COALESCE(unit_cost,0) AS value FROM ingredients "
-                    "ORDER BY value DESC LIMIT 10", "default": "hbar"},
+             "sql": """
+                SELECT COALESCE(i.name, x.inventory_code) AS label, (x.bal * x.avg_cost) AS value
+                FROM (
+                  SELECT inventory_code,
+                         SUM(COALESCE(qty_in,0)) - SUM(COALESCE(qty_out,0)) AS bal,
+                         CASE WHEN SUM(COALESCE(qty_in,0)) > 0
+                              THEN SUM(COALESCE(qty_in,0)*COALESCE(unit_cost,0)) / SUM(COALESCE(qty_in,0))
+                              ELSE 0 END AS avg_cost
+                  FROM inventory_transactions GROUP BY inventory_code
+                ) x
+                LEFT JOIN ingredients i ON i.ingredient_code = x.inventory_code
+                ORDER BY value DESC LIMIT 10
+             """, "default": "hbar"},
             {"title": "Ledger Movements by Type",
-             "sql": "SELECT COALESCE(txn_type,'Other') AS label, COUNT(*) AS value "
+             "sql": "SELECT COALESCE(movement_type,'Other') AS label, COUNT(*) AS value "
                     "FROM inventory_transactions WHERE 1=1 {range} "
-                    "GROUP BY COALESCE(txn_type,'Other') ORDER BY value DESC",
+                    "GROUP BY COALESCE(movement_type,'Other') ORDER BY value DESC",
              "range_col": "COALESCE(txn_date, transaction_date, created_at)", "default": "bar"},
             {"title": "Negative / Zero / Positive Stock",
-             "sql": "SELECT CASE WHEN COALESCE(current_stock,0) < 0 THEN 'Negative' "
-                    "WHEN COALESCE(current_stock,0) = 0 THEN 'Zero' ELSE 'Positive' END AS label, "
-                    "COUNT(*) AS value FROM ingredients GROUP BY 1", "default": "pie"},
+             "sql": """
+                SELECT CASE WHEN bal < 0 THEN 'Negative' WHEN bal = 0 THEN 'Zero' ELSE 'Positive' END AS label,
+                       COUNT(*) AS value
+                FROM (
+                  SELECT inventory_code, SUM(COALESCE(qty_in,0)) - SUM(COALESCE(qty_out,0)) AS bal
+                  FROM inventory_transactions GROUP BY inventory_code
+                ) x GROUP BY 1
+             """, "default": "pie"},
         ],
     },
     "procurement": {
@@ -101,7 +142,10 @@ MODULE_DASHBOARDS: dict[str, dict] = {
         "kpis": [
             ("Open POs", "SELECT COUNT(*) FROM purchase_orders WHERE COALESCE(status,'') NOT IN ('Closed','Cancelled')", ""),
             ("Total POs", "SELECT COUNT(*) FROM purchase_orders", ""),
-            ("GRNs", "SELECT COUNT(*) FROM grns", ""),
+            # Batch 87 fix: "grns" isn't a real table (the real one is
+            # grn_receipts) — this silently returned 0 the same way the
+            # Inventory cockpit's broken queries did.
+            ("GRNs", "SELECT COUNT(*) FROM grn_receipts", ""),
             ("Suppliers", "SELECT COUNT(*) FROM suppliers", ""),
         ],
         "links": [
@@ -293,7 +337,7 @@ MODULE_DASHBOARDS: dict[str, dict] = {
     "production": {
         "area": "dashboard",
         "title": "Production Intelligence Dashboard",
-        "subtitle": "Orders, head chef planning, BOM, store issuance, kitchen, QC, packing and dispatch.",
+        "subtitle": "",
         "icon": "activity",
         "kpis": [
             ("Open Orders", "SELECT COUNT(*) FROM customer_orders WHERE COALESCE(status,'') NOT IN ('Delivered','Closed','Cancelled')", "in the pipeline"),

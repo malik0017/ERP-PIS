@@ -1,0 +1,181 @@
+
+:root {
+  --isfc-d-radius: 12px;
+  --isfc-d-radius-sm: 8px;
+  --isfc-zoom: 0.8;
+}
+
+@media screen {
+  html { zoom: var(--isfc-zoom); }
+
+  /* Batch 84 fix: the blank gap below the sidebar/footer, for real this
+     time. Root cause, confirmed by reading the actual Phoenix vendor
+     rules in theme.min.css rather than guessing: the sidebar is NOT sized
+     with a simple "height: 100vh" — it's `position: fixed` with SIX
+     different breakpoint-specific rules like:
+       html:not(.navbar-vertical-collapsed) .navbar-vertical.navbar-expand-xxl
+         { height: calc(100vh - var(--phoenix-navbar-top-height)); }
+     Each of those needed the SAME zoom compensation, using the EXACT
+     same selector (so specificity matches and there's no cascade fight),
+     for every one of the xxl/xl/lg/md/sm/xs breakpoints — a generic
+     `.navbar-vertical-content { ... }` rule (what was tried before)
+     is a much lower-specificity selector than these, so it silently lost
+     every time regardless of !important. */
+  html, body {
+    min-height: calc(100vh / var(--isfc-zoom)) !important;
+  }
+  .vh-100, .min-vh-100 {
+    min-height: calc(100vh / var(--isfc-zoom)) !important;
+  }
+
+  html:not(.navbar-vertical-collapsed) .navbar-vertical .navbar-vertical-content {
+    height: calc(100vh / var(--isfc-zoom) - var(--phoenix-navbar-top-height)) !important;
+  }
+  @media (min-width: 1540px) {
+    html:not(.navbar-vertical-collapsed) .navbar-vertical.navbar-expand-xxl {
+      height: calc(100vh / var(--isfc-zoom) - var(--phoenix-navbar-top-height)) !important;
+    }
+    html:not(.navbar-vertical-collapsed) .navbar-vertical.navbar-expand-xxl .navbar-vertical-content {
+      height: calc(100vh / var(--isfc-zoom) - var(--phoenix-navbar-top-height) - 4rem) !important;
+    }
+  }
+  @media (min-width: 1200px) {
+    html:not(.navbar-vertical-collapsed) .navbar-vertical.navbar-expand-xl {
+      height: calc(100vh / var(--isfc-zoom) - var(--phoenix-navbar-top-height)) !important;
+    }
+    html:not(.navbar-vertical-collapsed) .navbar-vertical.navbar-expand-xl .navbar-vertical-content {
+      height: calc(100vh / var(--isfc-zoom) - var(--phoenix-navbar-top-height) - 4rem) !important;
+    }
+  }
+  @media (min-width: 992px) {
+    html:not(.navbar-vertical-collapsed) .navbar-vertical.navbar-expand-lg {
+      height: calc(100vh / var(--isfc-zoom) - var(--phoenix-navbar-top-height)) !important;
+    }
+    /* the vendor file itself already overrides -lg .navbar-vertical-content
+       to "height: auto" (visible directly in theme.min.css) — left alone
+       here on purpose, changing it would fight that intentional override. */
+  }
+  @media (min-width: 768px) {
+    html:not(.navbar-vertical-collapsed) .navbar-vertical.navbar-expand-md {
+      height: calc(100vh / var(--isfc-zoom) - var(--phoenix-navbar-top-height)) !important;
+    }
+    html:not(.navbar-vertical-collapsed) .navbar-vertical.navbar-expand-md .navbar-vertical-content {
+      height: calc(100vh / var(--isfc-zoom) - var(--phoenix-navbar-top-height) - 4rem) !important;
+    }
+  }
+  @media (min-width: 576px) {
+    html:not(.navbar-vertical-collapsed) .navbar-vertical.navbar-expand-sm {
+      height: calc(100vh / var(--isfc-zoom) - var(--phoenix-navbar-top-height)) !important;
+    }
+    html:not(.navbar-vertical-collapsed) .navbar-vertical.navbar-expand-sm .navbar-vertical-content {
+      height: calc(100vh / var(--isfc-zoom) - var(--phoenix-navbar-top-height) - 4rem) !important;
+    }
+  }
+  html:not(.navbar-vertical-collapsed) .navbar-vertical.navbar-expand-xs {
+    height: calc(100vh / var(--isfc-zoom) - var(--phoenix-navbar-top-height)) !important;
+  }
+  html:not(.navbar-vertical-collapsed) .navbar-vertical.navbar-expand-xs .navbar-vertical-content {
+    height: calc(100vh / var(--isfc-zoom) - var(--phoenix-navbar-top-height) - 4rem) !important;
+  }
+
+  /* Safety net: even if some other layout variant/selector combination
+     still leaves a sliver of gap somewhere I haven't traced, make sure
+     it's the same colour as the page instead of a jarring blank/grey
+     rectangle — a visual band-aid, not a substitute for the real fix
+     above, but cheap insurance against the next screenshot. */
+  html, body { background: var(--phoenix-body-bg, #f9fafd) !important; }
+
+  /* Batch 86 fix: the "Post Goods Receipt" confirm dialog (and every
+     other Bootstrap modal) showed its dark backdrop only covering part
+     of the screen, looking like a two-toned split rather than a proper
+     overlay. Same root cause as the sidebar gap, on a different element:
+     Bootstrap's .modal-backdrop is `position: fixed; width: 100vw;
+     height: 100vh`, and 100vw/100vh inside the zoomed <html> renders
+     smaller than the real screen for exactly the reason explained above
+     — so it needs the same compensation. */
+  .modal-backdrop {
+    width: calc(100vw / var(--isfc-zoom)) !important;
+    height: calc(100vh / var(--isfc-zoom)) !important;
+  }
+  .modal {
+    width: calc(100vw / var(--isfc-zoom)) !important;
+    height: calc(100vh / var(--isfc-zoom)) !important;
+  }
+}
+@media print {
+  html { zoom: 1 !important; }
+}
+.card, .cardx, .sap-card, .mockup, .module-card {
+  border-radius: var(--isfc-d-radius) !important;
+}
+.isfc-hero, .pis-hero, .kp-hero, .acc-hero, .wf-hero {
+  border-radius: var(--isfc-d-radius) !important;
+}
+.row.g-4 { --bs-gutter-x: .85rem !important; --bs-gutter-y: .85rem !important; }
+
+
+.isfc-filter-toggle {
+  border: 1px solid var(--phoenix-border-color, #cbdbea);
+  background: var(--phoenix-body-bg, #fff);
+  color: var(--phoenix-emphasis-color, #152b49);
+  border-radius: 10px !important;
+  padding: 7px 14px !important;
+  font-weight: 700 !important;
+  font-size: .82rem !important;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.isfc-filter-toggle:hover { background: var(--phoenix-tertiary-bg, #edf5fb); }
+.isfc-filter-toggle[aria-expanded="true"] .bi-chevron-down { transform: rotate(180deg); }
+.isfc-filter-toggle .bi-chevron-down { transition: transform .15s ease; }
+
+/* Batch 86 fix: this block was accidentally dropped during the Batch 84
+   isfc-density.css rewrite (the file was replaced wholesale to fix the
+   zoom-height bug, and this section wasn't carried over). Without it,
+   every <a class="isfc-kpi-link"> — the clickable KPI cards on Head Chef
+   Planning, Recipes, etc. — rendered as a plain, unstyled anchor tag
+   (default `display: inline`) wrapping a block-level `.hc-card` div.
+   Browsers don't handle an inline element wrapping block content
+   predictably; the stray vertical-bar artifacts in the screenshot are
+   exactly that kind of broken box rendering. Restoring `display: block`
+   here is the actual fix — everything else here is cosmetic on top. */
+a.isfc-kpi-link {
+  text-decoration: none !important;
+  color: inherit !important;
+  display: block;
+  cursor: pointer;
+  transition: transform .12s ease, box-shadow .12s ease;
+}
+/* a.isfc-kpi-link:hover { transform: translateY(-2px); }
+.isfc-kpi-link-active, a.isfc-kpi-link.isfc-kpi-link-active > * {
+  box-shadow: inset 0 0 0 2px var(--phoenix-primary, #2563eb) !important;
+}
+.isfc-kpi-link-active::after {
+  content: "\2713"; position: absolute; top: 8px; right: 10px; font-size: 13px; font-weight: 800;
+  color: var(--phoenix-primary, #2563eb);
+} */
+.module-card { padding: 12px !important; }
+
+/* Batch 90: promoted from the Requisitions form's inline <style> to here
+   so any page can use the same searchable-dropdown pattern (now also
+   used on the PO Supplier field) without redefining it locally.
+   Batch 91 fix: on the PO detail page this rendered as a full-height
+   inline list instead of a floating overlay — something on that page
+   was winning the specificity fight against the plain, unqualified
+   rules below and knocking out the positioning. Hardened with
+   !important on every property the overlay behavior actually depends
+   on, so it can't be silently overridden again. */
+.isfc-combo { position: relative !important; }
+.isfc-combo-panel {
+  display: none !important; position: absolute !important; z-index: 1050 !important;
+  top: 100% !important; left: 0 !important; right: 0 !important;
+  max-height: 260px !important; overflow-y: auto !important; margin-top: 4px !important;
+  background: var(--phoenix-body-bg, #fff); border: 1px solid var(--phoenix-border-color, #dfe7f0);
+  border-radius: 10px; box-shadow: 0 12px 28px -8px rgba(16,28,51,.25);
+}
+.isfc-combo.open .isfc-combo-panel { display: block !important; }
+.isfc-combo-item { padding: 8px 12px; cursor: pointer; font-size: .85rem; }
+.isfc-combo-item:hover, .isfc-combo-item.hl { background: var(--phoenix-tertiary-bg, #eef3fb); }
+.isfc-combo-empty { padding: 10px 12px; color: var(--phoenix-tertiary-color, #97a2b5); font-size: .82rem; font-style: italic; }
+

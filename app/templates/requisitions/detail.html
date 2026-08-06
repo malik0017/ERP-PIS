@@ -1,0 +1,128 @@
+{% extends "layouts/base.html" %}
+{% block title %}{{ req.requisition_no }}{% endblock %}
+{% block content %}
+<div class="container-fluid py-3 isfc-page">
+  <div class="isfc-hero mb-4 p-4 rounded-4 text-white d-flex align-items-center justify-content-between flex-wrap gap-3"
+       style="background:linear-gradient(135deg,#132947,#0c91a3)">
+    <div>
+      <h1 class="mb-1 fw-bold"><i class="bi bi-file-earmark-check me-2"></i>{{ req.requisition_no }}</h1>
+      <p class="mb-0 opacity-75">{{ req.customer_name or 'Internal' }} · {{ req.department or '—' }} · {{ t('Requested by') }} {{ req.requested_by }}</p>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+      <a class="btn btn-light btn-sm fw-bold" href="/requisitions"><i class="bi bi-arrow-left me-1"></i>{{ t('Back') }}</a>
+      {% if req.order_no %}<a class="btn btn-light btn-sm fw-bold" href="/production/orders/{{ req.order_no }}"><i class="bi bi-box-arrow-up-right me-1"></i>{{ t('View Order') }} {{ req.order_no }}</a>{% endif %}
+    </div>
+  </div>
+
+  <div class="row g-3 mb-3">
+    <div class="col-md-3"><div class="card border h-100"><div class="card-body">
+      <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Status') }}</div>
+      {% if req.status == 'Pending' %}<span class="badge badge-phoenix badge-phoenix-warning fs-8">{{ t('Pending') }}</span>
+      {% elif req.status == 'Approved' %}<span class="badge badge-phoenix badge-phoenix-primary fs-8">{{ t('Approved') }}</span>
+      {% elif req.status == 'Converted' %}<span class="badge badge-phoenix badge-phoenix-success fs-8">{{ t('Converted') }}</span>
+      {% else %}<span class="badge badge-phoenix badge-phoenix-secondary fs-8">{{ t('Rejected') }}</span>{% endif %}
+    </div></div></div>
+    <div class="col-md-3"><div class="card border h-100"><div class="card-body">
+      <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Required Date') }}</div>
+      <div class="fw-bold">{{ req.required_date or '—' }}</div>
+    </div></div></div>
+    <div class="col-md-3"><div class="card border h-100"><div class="card-body">
+      <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Decided By') }}</div>
+      <div class="fw-bold">{{ req.approved_by or '—' }}</div>
+    </div></div></div>
+    <div class="col-md-3"><div class="card border h-100"><div class="card-body">
+      <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Submitted') }}</div>
+      <div class="fw-bold">{{ req.created_at }}</div>
+    </div></div></div>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-lg-8">
+      <div class="card border mb-3">
+        <div class="card-header bg-body-highlight fw-bold">{{ t('Justification') }}</div>
+        <div class="card-body">{{ req.justification }}</div>
+      </div>
+      {% if req.status == 'Rejected' and req.rejection_reason %}
+      <div class="alert alert-danger"><strong>{{ t('Rejection reason') }}:</strong> {{ req.rejection_reason }}</div>
+      {% endif %}
+      <div class="card border">
+        <div class="card-header bg-body-highlight fw-bold">{{ t('Recipes & Portions') }}</div>
+        <div class="card-body p-0">
+          <table class="table mb-0">
+            <thead class="bg-body-highlight"><tr><th>{{ t('Recipe') }}</th><th class="text-end">{{ t('Portions') }}</th></tr></thead>
+            <tbody>
+              {% for l in lines %}
+              <tr>
+                <td>{{ l.recipe_name or l.recipe_no }}
+                  {% if l.recipe_no and l.recipe_no.startswith('MANUAL-') %}
+                  <span class="badge badge-phoenix badge-phoenix-warning ms-1" title="Typed freely — not linked to a recipe in the master data yet">{{ t('Not in recipe master') }}</span>
+                  {% endif %}
+                </td>
+                <td class="text-end">{{ l.portions|int }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-4">
+      <div class="card border">
+        <div class="card-header bg-body-highlight fw-bold">{{ t('Actions') }}</div>
+        <div class="card-body d-flex flex-column gap-2">
+          {% if req.status == 'Pending' %}
+          <form method="post" action="/requisitions/{{ req.id }}/approve"
+                data-confirm="Approve this requisition? It can then be converted into a real order."
+                data-confirm-title="Approve Requisition" data-confirm-ok="Approve" data-confirm-variant="success">
+            <button class="btn btn-success w-100 fw-bold"><i class="bi bi-check2-circle me-1"></i>{{ t('Approve') }}</button>
+          </form>
+          <button type="button" class="btn btn-outline-danger w-100 fw-bold" data-bs-toggle="modal" data-bs-target="#rejectModal">
+            <i class="bi bi-x-circle me-1"></i>{{ t('Reject') }}</button>
+          {% elif req.status == 'Approved' %}
+          {% set manual_lines = [] %}
+          {% for l in lines %}{% if l.recipe_no and l.recipe_no.startswith('MANUAL-') %}{% set _ = manual_lines.append(l) %}{% endif %}{% endfor %}
+          {% if manual_lines %}
+          <div class="alert alert-warning py-2 small mb-2">
+            <i class="bi bi-exclamation-triangle-fill me-1"></i>
+            {{ manual_lines|length }} line(s) here were typed freely and aren't linked to a real recipe yet.
+            The order will still be created, but those lines won't have a material list (BOM) until a matching
+            recipe exists in Recipes &amp; Costing — add it there first if this needs to flow through Store/Kitchen normally.
+          </div>
+          {% endif %}
+          <form method="post" action="/requisitions/{{ req.id }}/convert-to-order"
+                data-confirm="Convert this requisition into a real order? It will then enter the normal Head Chef approval pipeline."
+                data-confirm-title="Convert to Order" data-confirm-ok="Create Order" data-confirm-variant="primary">
+            <button class="btn btn-primary w-100 fw-bold"><i class="bi bi-arrow-right-circle me-1"></i>{{ t('Convert to Order') }}</button>
+          </form>
+          <div class="small-muted">{{ t('This is the only step that creates a real order — everything before this was just the approval request.') }}</div>
+          {% elif req.status == 'Converted' %}
+          <div class="alert alert-success mb-0"><i class="bi bi-check2-circle me-1"></i>{{ t('Already converted to') }} <a href="/production/orders/{{ req.order_no }}">{{ req.order_no }}</a></div>
+          {% else %}
+          <div class="alert alert-secondary mb-0">{{ t('This requisition was rejected.') }}</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% if req.status == 'Pending' %}
+<div class="modal fade" id="rejectModal" tabindex="-1">
+  <div class="modal-dialog">
+    <form method="post" action="/requisitions/{{ req.id }}/reject" class="modal-content">
+      <div class="modal-header"><h5 class="modal-title">{{ t('Reject Requisition') }}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <label class="form-label fw-bold">{{ t('Reason') }}</label>
+        <textarea class="form-control" name="rejection_reason" rows="3" placeholder="{{ t('Optional but helpful for the requester') }}"></textarea>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">{{ t('Close') }}</button>
+        <button type="submit" class="btn btn-danger fw-bold">{{ t('Reject Requisition') }}</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

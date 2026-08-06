@@ -93,9 +93,16 @@ def _next_emp_code(db: Session) -> str:
 def employees(request: Request, db: Session = Depends(get_db)):
     require_area(request, "hr")
     _ensure_hr_schema(db)
+    # Batch 91 fix: this list, and every KPI below it, had zero company
+    # scoping — employee names, positions, and attendance status were
+    # mixing across every company sharing this database. The CREATE route
+    # already stamped company_id correctly on insert; the read side just
+    # never filtered by it, the same pattern found in several other
+    # modules during this engagement's ongoing multi-company audit.
+    cid = int(request.session.get("company_id") or 1)
     q = (request.query_params.get("q") or "").strip()
     section = (request.query_params.get("section") or "").strip()
-    where, params = ["1=1"], {}
+    where, params = ["(company_id = :cid OR company_id IS NULL)"], {"cid": cid}
     if q:
         where.append("(employee_code LIKE :q OR full_name LIKE :q OR COALESCE(full_name_ar,'') LIKE :q)")
         params["q"] = f"%{q}%"
@@ -113,10 +120,10 @@ def employees(request: Request, db: Session = Depends(get_db)):
     """, params)
     today = date.today().isoformat()
     kpis = {
-        "total": len(_rows(db, "SELECT id FROM hr_employees")),
-        "active": len(_rows(db, "SELECT id FROM hr_employees WHERE status='Active'")),
-        "present_today": len(_rows(db, "SELECT id FROM hr_attendance WHERE att_date=:d AND status='Present'", {"d": today})),
-        "absent_today": len(_rows(db, "SELECT id FROM hr_attendance WHERE att_date=:d AND status IN ('Absent','Sick','Leave')", {"d": today})),
+        "total": len(_rows(db, "SELECT id FROM hr_employees WHERE (company_id = :cid OR company_id IS NULL)", {"cid": cid})),
+        "active": len(_rows(db, "SELECT id FROM hr_employees WHERE status='Active' AND (company_id = :cid OR company_id IS NULL)", {"cid": cid})),
+        "present_today": len(_rows(db, "SELECT id FROM hr_attendance WHERE att_date=:d AND status='Present' AND (company_id = :cid OR company_id IS NULL)", {"d": today, "cid": cid})),
+        "absent_today": len(_rows(db, "SELECT id FROM hr_attendance WHERE att_date=:d AND status IN ('Absent','Sick','Leave') AND (company_id = :cid OR company_id IS NULL)", {"d": today, "cid": cid})),
     }
     users = _rows(db, "SELECT username FROM users ORDER BY username LIMIT 500")
     return render(request, "hr/employees.html", {
@@ -195,7 +202,8 @@ def attendance(request: Request, db: Session = Depends(get_db)):
     att_date = (request.query_params.get("att_date") or date.today().isoformat()).strip()
     section = (request.query_params.get("section") or "").strip()
 
-    where, params = ["e.status = 'Active'"], {"d": att_date}
+    cid = int(request.session.get("company_id") or 1)
+    where, params = ["e.status = 'Active'", "(e.company_id = :cid OR e.company_id IS NULL)"], {"d": att_date, "cid": cid}
     if section:
         where.append("COALESCE(e.section,'') = :sec")
         params["sec"] = section

@@ -1,0 +1,233 @@
+{% extends "layouts/base.html" %}
+{% block title %}New Requisition{% endblock %}
+{% block content %}
+<div class="container-fluid py-3 isfc-page">
+  <div class="isfc-hero mb-4 p-4 rounded-4 text-white d-flex align-items-center justify-content-between flex-wrap gap-3"
+       style="background:linear-gradient(135deg,#132947,#0c91a3)">
+    <div>
+      <h1 class="mb-1 fw-bold"><i class="bi bi-file-earmark-check me-2"></i>{{ t('New Requisition') }}</h1>
+      <p class="mb-0 opacity-75">{{ t('Request approval before an order is created — nothing is committed until this is approved and converted.') }}</p>
+    </div>
+    <a class="btn btn-light btn-sm fw-bold" href="/requisitions"><i class="bi bi-arrow-left me-1"></i>{{ t('Back') }}</a>
+  </div>
+
+  {% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+
+  <form method="post" action="/requisitions/new" id="reqForm">
+    <div class="card border mb-3">
+      <div class="card-header bg-body-highlight fw-bold">{{ t('Request Details') }}</div>
+      <div class="card-body">
+        <div class="row g-3">
+          <div class="col-md-4">
+            <label class="form-label fw-bold">{{ t('Customer') }} <span class="small-muted fw-normal">({{ t('optional — leave blank for internal use') }})</span></label>
+            <div class="isfc-combo" data-target="customer">
+              <input class="form-control isfc-combo-input" id="customer_name" name="customer_name" autocomplete="off"
+                     placeholder="{{ t('Click to browse, or type to search') }}...">
+              <div class="isfc-combo-panel">
+                {% for c in customers %}
+                <div class="isfc-combo-item" data-code="{{ c.customer_code }}" data-brand="{{ c.brand }}" data-value="{{ c.customer_name }}">
+                  <strong>{{ c.customer_name }}</strong>
+                  {% if c.brand %}<span class="small-muted"> · {{ c.brand }}</span>{% endif %}
+                </div>
+                {% else %}
+                <div class="isfc-combo-empty">{{ t('No customers found') }}</div>
+                {% endfor %}
+              </div>
+            </div>
+            <input type="hidden" name="customer_no" id="customer_no">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label fw-bold">{{ t('Brand') }}</label>
+            <select class="form-select" name="brand" id="brandSelect">
+              <option value="">{{ t('Select brand') }}...</option>
+              {% for b in brands %}<option value="{{ b.brand_name }}">{{ b.brand_name }} ({{ b.brand_code }})</option>{% endfor %}
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label fw-bold">{{ t('Department') }}</label>
+            <select class="form-select" id="deptSelect">
+              <option value="">{{ t('Select department') }}...</option>
+              {% for d in departments %}<option value="{{ d }}">{{ t(d) }}</option>{% endfor %}
+            </select>
+            <input class="form-control mt-1 d-none" id="deptOther" placeholder="{{ t('Type department name') }}">
+            <input type="hidden" name="department" id="deptHidden">
+          </div>
+          <div class="col-md-2">
+            <label class="form-label fw-bold">{{ t('Required Date') }}</label>
+            <input type="date" class="form-control" name="required_date">
+          </div>
+          <div class="col-12">
+            <label class="form-label fw-bold">{{ t('Justification') }} *</label>
+            <textarea class="form-control" name="justification" rows="2" required placeholder="Why is this needed? Give the approver enough context to make a fast decision."></textarea>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card border mb-3">
+      <div class="card-header bg-body-highlight d-flex justify-content-between align-items-center">
+        <div>
+          <span class="fw-bold">{{ t('Recipes & Portions') }}</span>
+          <div class="small-muted fw-normal">{{ t('Click a field to browse every recipe, or type to search. If it is not in the list yet, just type the name — that works too.') }}</div>
+        </div>
+        <button type="button" class="btn btn-sm btn-outline-primary" onclick="addRecipeRow()"><i class="bi bi-plus-lg"></i> {{ t('Add Line') }}</button>
+      </div>
+      <div class="card-body p-0">
+        <table class="table mb-0" id="recipeTable">
+          <thead class="bg-body-highlight">
+            <tr>
+              <th style="min-width:300px">{{ t('Recipe') }}</th>
+              <th style="width:160px">{{ t('Portions') }}</th>
+              <th style="width:60px"></th>
+            </tr>
+          </thead>
+          <tbody id="recipeTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <button type="submit" class="btn btn-primary fw-bold px-4"><i class="bi bi-send-check me-1"></i>{{ t('Submit for Approval') }}</button>
+  </form>
+</div>
+
+<style>
+.isfc-combo { position: relative; }
+.isfc-combo-panel {
+  display: none; position: absolute; z-index: 40; top: 100%; left: 0; right: 0;
+  max-height: 260px; overflow-y: auto; margin-top: 4px;
+  background: var(--phoenix-body-bg, #fff); border: 1px solid var(--phoenix-border-color, #dfe7f0);
+  border-radius: 10px; box-shadow: 0 12px 28px -8px rgba(16,28,51,.25);
+}
+.isfc-combo.open .isfc-combo-panel { display: block; }
+.isfc-combo-item { padding: 8px 12px; cursor: pointer; font-size: .85rem; }
+.isfc-combo-item:hover, .isfc-combo-item.hl { background: var(--phoenix-tertiary-bg, #eef3fb); }
+.isfc-combo-empty { padding: 10px 12px; color: var(--phoenix-tertiary-color, #97a2b5); font-size: .82rem; font-style: italic; }
+</style>
+
+<script>
+var RECIPE_OPTIONS = [
+  {% for r in recipes %}{code: {{ r.recipe_code|tojson }}, name: {{ r.recipe_name|tojson }}},{% endfor %}
+];
+
+function wireCombo(root, getItems, onPick) {
+  var input = root.querySelector('.isfc-combo-input');
+  var panel = root.querySelector('.isfc-combo-panel');
+
+  function render(filter) {
+    var items = getItems();
+    var f = (filter || '').toLowerCase();
+    var matches = items.filter(function (it) { return !f || it.label.toLowerCase().indexOf(f) !== -1; });
+    panel.innerHTML = '';
+    if (!matches.length) {
+      var empty = document.createElement('div');
+      empty.className = 'isfc-combo-empty';
+      empty.textContent = filter ? 'No match — you can still type this in freely' : 'No options';
+      panel.appendChild(empty);
+      return;
+    }
+    matches.slice(0, 200).forEach(function (it) {
+      var div = document.createElement('div');
+      div.className = 'isfc-combo-item';
+      div.innerHTML = it.html || it.label;
+      div.addEventListener('mousedown', function (e) {
+        e.preventDefault();
+        input.value = it.label;
+        root.classList.remove('open');
+        onPick(it);
+      });
+      panel.appendChild(div);
+    });
+  }
+
+  input.addEventListener('focus', function () { root.classList.add('open'); render(input.value); });
+  input.addEventListener('input', function () { root.classList.add('open'); render(input.value); onPick(null); });
+  input.addEventListener('blur', function () { setTimeout(function () { root.classList.remove('open'); }, 150); });
+}
+
+(function () {
+  var root = document.querySelector('.isfc-combo[data-target="customer"]');
+  var input = root.querySelector('.isfc-combo-input');
+  var items = Array.prototype.slice.call(root.querySelectorAll('.isfc-combo-item'));
+  function filter() {
+    var f = input.value.toLowerCase();
+    items.forEach(function (el) {
+      el.style.display = (!f || el.dataset.value.toLowerCase().indexOf(f) !== -1) ? '' : 'none';
+    });
+  }
+  input.addEventListener('focus', function () { root.classList.add('open'); filter(); });
+  input.addEventListener('input', function () {
+    root.classList.add('open'); filter();
+    document.getElementById('customer_no').value = '';
+  });
+  input.addEventListener('blur', function () { setTimeout(function () { root.classList.remove('open'); }, 150); });
+  items.forEach(function (el) {
+    el.addEventListener('mousedown', function (e) {
+      e.preventDefault();
+      input.value = el.dataset.value;
+      document.getElementById('customer_no').value = el.dataset.code || '';
+      if (el.dataset.brand) {
+        var bs = document.getElementById('brandSelect');
+        for (var i = 0; i < bs.options.length; i++) { if (bs.options[i].value === el.dataset.brand) { bs.selectedIndex = i; break; } }
+      }
+      root.classList.remove('open');
+    });
+  });
+})();
+
+(function () {
+  var sel = document.getElementById('deptSelect');
+  var other = document.getElementById('deptOther');
+  var hidden = document.getElementById('deptHidden');
+  function sync() {
+    if (sel.value === 'Other') {
+      other.classList.remove('d-none');
+      hidden.value = other.value;
+    } else {
+      other.classList.add('d-none');
+      hidden.value = sel.value;
+    }
+  }
+  sel.addEventListener('change', sync);
+  other.addEventListener('input', function () { hidden.value = other.value; });
+  sync();
+})();
+
+var rowN = 0;
+function addRecipeRow(){
+  rowN++;
+  var rid = 'recipeRow' + rowN;
+  var tr = document.createElement('tr');
+  tr.innerHTML =
+    '<td>' +
+      '<div class="isfc-combo" id="' + rid + '">' +
+        '<input class="form-control form-control-sm isfc-combo-input" placeholder="Click to browse, or type to search...">' +
+        '<div class="isfc-combo-panel"></div>' +
+      '</div>' +
+      '<input type="hidden" name="recipe_no">' +
+      '<input type="hidden" name="recipe_name">' +
+    '</td>' +
+    '<td><input type="number" step="1" min="0" class="form-control form-control-sm" name="portions"></td>' +
+    '<td><button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest(\'tr\').remove()"><i class="bi bi-trash"></i></button></td>';
+  document.getElementById('recipeTableBody').appendChild(tr);
+
+  var root = tr.querySelector('.isfc-combo');
+  var hiddenCode = tr.querySelector('[name="recipe_no"]');
+  var hiddenName = tr.querySelector('[name="recipe_name"]');
+
+  wireCombo(root, function () {
+    return RECIPE_OPTIONS.map(function (r) {
+      return { value: r.code, label: r.name, html: '<strong>' + r.name + '</strong> <span class="small-muted">' + r.code + '</span>' };
+    });
+  }, function (picked) {
+    if (picked) {
+      hiddenCode.value = picked.value;
+      hiddenName.value = picked.label;
+    } else {
+      hiddenCode.value = '';
+      hiddenName.value = root.querySelector('.isfc-combo-input').value;
+    }
+  });
+}
+addRecipeRow();
+</script>
+{% endblock %}

@@ -10,6 +10,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.templates import render
+from app.core.rbac import require_area
 from app.database.session import get_db
 
 router = APIRouter(tags=["Reports"])
@@ -204,6 +205,7 @@ def relationship_map(
     order_no: str | None = Query(default=None),
     db: Session = Depends(get_db),
 ):
+    require_area(request, "relationship")
     """SAP B1-style document relationship map.
 
     This page intentionally behaves like SAP B1 Relationship Map: a selected
@@ -365,16 +367,17 @@ def relationship_map(
 
 @router.get("/reports")
 def reports_center(request: Request, db: Session = Depends(get_db)):
+    require_area(request, "reports")
     cards = [
-        {"group": "Master Data", "title": "Recipe Master & Version Report", "desc": "Active/inactive recipe versions, approval status, cost, sale price and missing data.", "url": "/recipes?status=ALL", "export": "/reports/export/recipe-master", "metric": _one(db, "SELECT COUNT(*) FROM recipes"), "icon": "bi-journal-text"},
-        {"group": "Master Data", "title": "Recipe Ingredients / BOM Master", "desc": "Recipe-wise ingredients, linked inventory code, UOM and cost.", "url": "/recipes/ingredients?status=ACTIVE", "export": "/reports/export/recipe-bom", "metric": _one(db, "SELECT COUNT(*) FROM recipe_ingredients"), "icon": "bi-diagram-3"},
-        {"group": "Order Flow", "title": "Customer Order Register", "desc": "Customer, brand, channel, delivery date/time, portions, selling value and margin.", "url": "/production/orders", "export": "/reports/export/order-register", "metric": _one(db, "SELECT COUNT(*) FROM customer_orders"), "icon": "bi-cart-check"},
-        {"group": "Production", "title": "BOM by Customer / Brand / Category / Section", "desc": "SAP-style production BOM with all grouping options required by client.", "url": "/production/orders", "export": "/reports/export/bom-lines", "metric": _one(db, "SELECT COUNT(*) FROM bom_lines"), "icon": "bi-boxes"},
-        {"group": "Store", "title": "Store Issuance Variance", "desc": "Required quantity vs actual issued quantity, short issue and finalized status.", "url": "/production/store-issuance", "export": "/reports/export/store-issuance", "metric": _one(db, "SELECT COUNT(*) FROM store_issuance_lines"), "icon": "bi-box-arrow-up"},
-        {"group": "Kitchen", "title": "Section Yield & Wastage", "desc": "Input, processed output, waste, return and transfer by section/order/recipe.", "url": "/reports/yield-wastage", "export": "/reports/export/yield-wastage", "metric": _one(db, "SELECT COUNT(*) FROM kitchen_section_transactions"), "icon": "bi-graph-down-arrow"},
-        {"group": "Quality", "title": "QC Checklist Report", "desc": "QC status, score, issue found and corrective action.", "url": "/qc", "export": "/reports/export/qc-checks", "metric": _one(db, "SELECT COUNT(*) FROM qc_checks"), "icon": "bi-patch-check"},
-        {"group": "Logistics", "title": "Trayline / Packing Report", "desc": "Packed portions, rejected portions and packing status by order.", "url": "/packing", "export": "/reports/export/packing", "metric": _one(db, "SELECT COUNT(*) FROM packing_dispatch"), "icon": "bi-box-seam"},
-        {"group": "Logistics", "title": "Dispatch & Delivery Report", "desc": "Vehicle, driver, delivery temperature and delivered/closed orders.", "url": "/dispatch", "export": "/reports/export/dispatch", "metric": _one(db, "SELECT COUNT(*) FROM packing_dispatch WHERE dispatch_status IN ('Packed','Out for Delivery','Delivered','Dispatched','Closed')"), "icon": "bi-truck"},
+        {"group": "Master Data", "title": "Recipe Master & Version Report", "url": "/recipes?status=ALL", "export": "/reports/export/recipe-master", "metric": _one(db, "SELECT COUNT(*) FROM recipes"), "icon": "bi-journal-text"},
+        {"group": "Master Data", "title": "Recipe Ingredients / BOM Master", "url": "/recipes/ingredients?status=ACTIVE", "export": "/reports/export/recipe-bom", "metric": _one(db, "SELECT COUNT(*) FROM recipe_ingredients"), "icon": "bi-diagram-3"},
+        {"group": "Order Flow", "title": "Customer Order Register",  "url": "/production/orders", "export": "/reports/export/order-register", "metric": _one(db, "SELECT COUNT(*) FROM customer_orders"), "icon": "bi-cart-check"},
+        {"group": "Production", "title": "BOM by Customer / Brand / Category / Section", "url": "/production/orders", "export": "/reports/export/bom-lines", "metric": _one(db, "SELECT COUNT(*) FROM bom_lines"), "icon": "bi-boxes"},
+        {"group": "Store", "title": "Store Issuance Variance", "url": "/production/store-issuance", "export": "/reports/export/store-issuance", "metric": _one(db, "SELECT COUNT(*) FROM store_issuance_lines"), "icon": "bi-box-arrow-up"},
+        {"group": "Kitchen", "title": "Section Yield & Wastage", "url": "/reports/yield-wastage", "export": "/reports/export/yield-wastage", "metric": _one(db, "SELECT COUNT(*) FROM kitchen_section_transactions"), "icon": "bi-graph-down-arrow"},
+        {"group": "Quality", "title": "QC Checklist Report", "url": "/qc", "export": "/reports/export/qc-checks", "metric": _one(db, "SELECT COUNT(*) FROM qc_checks"), "icon": "bi-patch-check"},
+        {"group": "Logistics", "title": "Trayline / Packing Report", "url": "/packing", "export": "/reports/export/packing", "metric": _one(db, "SELECT COUNT(*) FROM packing_dispatch"), "icon": "bi-box-seam"},
+        {"group": "Logistics", "title": "Dispatch & Delivery Report", "url": "/dispatch", "export": "/reports/export/dispatch", "metric": _one(db, "SELECT COUNT(*) FROM packing_dispatch WHERE dispatch_status IN ('Packed','Out for Delivery','Delivered','Dispatched','Closed')"), "icon": "bi-truck"},
     ]
 
     kpis = {
@@ -463,6 +466,7 @@ def reports_center(request: Request, db: Session = Depends(get_db)):
 
 @router.get("/reports/yield-wastage")
 def yield_wastage(request: Request, db: Session = Depends(get_db)):
+    require_area(request, "reports")
     """Batch 17: professional filters (order / section / status / date range),
     section summary, and CSV export that respects the active filters."""
     q = request.query_params
@@ -564,7 +568,8 @@ def yield_wastage(request: Request, db: Session = Depends(get_db)):
 
 
 @router.get("/reports/export/{report_key}")
-def export_report(report_key: str, format: str = Query(default="csv"), db: Session = Depends(get_db)):
+def export_report(request: Request, report_key: str, format: str = Query(default="csv"), db: Session = Depends(get_db)):
+    require_area(request, "reports")
     sql = EXPORTS.get(report_key)
     if not sql:
         sql = EXPORTS["order-register"]
@@ -591,6 +596,7 @@ def export_report(report_key: str, format: str = Query(default="csv"), db: Sessi
 
 @router.get("/reports/printable/{form_type}/{order_no}", response_class=HTMLResponse)
 def printable_form(form_type: str, order_no: str, request: Request, db: Session = Depends(get_db)):
+    require_area(request, "reports")
     """Six professional printable documents, one route.
 
     order-sheet | bom-sheet | store-issue-slip | qc-certificate | packing-slip | delivery-note
@@ -712,6 +718,7 @@ def _tree_count(db, sql, params=None):
 
 @router.get("/reports/relationship-tree")
 def relationship_tree(request: Request, db: Session = Depends(get_db)):
+    require_area(request, "relationship")
     """SAP B1-style relationship tree page. Roots show core module coverage;
     every node expands to its linked documents down to line level."""
     roots = [
@@ -738,6 +745,7 @@ def relationship_node(request: Request,
                       node_type: str = Query(alias="type", default=""),
                       key: str = Query(default=""),
                       db: Session = Depends(get_db)):
+    require_area(request, "relationship")
     """Children of one tree node. Read-only, safe fallbacks everywhere."""
     t_, k = node_type, key
     out: list[dict] = []

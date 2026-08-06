@@ -62,16 +62,27 @@ router = APIRouter(tags=["Finance (Extended)"])
 def chart_of_accounts(request: Request, db: Session = Depends(get_db)):
     require_area(request, "finance")
     _ensure_gl_schema(db)
+    # Batch 86 fix: this had zero company scoping on either side of the
+    # join — gl_accounts AND gl_journal_lines. Standard chart-of-accounts
+    # codes (e.g. "1000 Cash", "4000 Revenue") are typically reused
+    # identically across companies, so without scoping, one company's
+    # account balance here was actually the SUM of every company sharing
+    # that code — a real cross-company financial data leak, not just a
+    # visibility gap. Both sides of the join now filter by company.
+    cid = _cid(request)
     accounts = db.execute(text("""
         SELECT a.id, a.account_code, a.account_name, a.account_type,
                ROUND(COALESCE(SUM(l.debit),0),2)  AS total_debit,
                ROUND(COALESCE(SUM(l.credit),0),2) AS total_credit,
                ROUND(COALESCE(SUM(l.debit),0) - COALESCE(SUM(l.credit),0),2) AS balance
         FROM gl_accounts a
-        LEFT JOIN gl_journal_lines l ON l.account_code = a.account_code
+        LEFT JOIN gl_journal_lines l
+               ON l.account_code = a.account_code
+              AND (l.company_id = :cid OR l.company_id IS NULL)
+        WHERE (a.company_id = :cid OR a.company_id IS NULL)
         GROUP BY a.id, a.account_code, a.account_name, a.account_type
         ORDER BY a.account_code
-    """)).mappings().all()
+    """), {"cid": cid}).mappings().all()
     return render(request, "finance/coa.html", {
         "accounts": accounts, "page_title": "Chart of Accounts",
     })
@@ -90,9 +101,15 @@ def create_account(
     code = account_code.strip()
     if not code:
         return RedirectResponse("/finance/coa?error=Account code is required", status_code=303)
+    cid = _cid(request)
     try:
+        # Batch 86 fix: this used to check for a duplicate account_code
+        # across ALL companies, so Company B could never create "1000 Cash"
+        # if Company A already had it — a false collision on completely
+        # normal, commonly-reused chart-of-accounts codes.
         exists = db.execute(
-            text("SELECT COUNT(*) FROM gl_accounts WHERE account_code = :c"), {"c": code}
+            text("SELECT COUNT(*) FROM gl_accounts WHERE account_code = :c AND (company_id = :cid OR company_id IS NULL)"),
+            {"c": code, "cid": cid}
         ).scalar()
         if exists:
             return RedirectResponse(
@@ -100,7 +117,7 @@ def create_account(
         db.execute(text("""
             INSERT INTO gl_accounts (company_id, account_code, account_name, account_type)
             VALUES (:cid, :c, :n, :t)
-        """), {"cid": _cid(request), "c": code, "n": account_name.strip(), "t": account_type})
+        """), {"cid": cid, "c": code, "n": account_name.strip(), "t": account_type})
         db.commit()
     except Exception as e:
         db.rollback()
@@ -115,10 +132,13 @@ def create_account(
 def journal_form(request: Request, db: Session = Depends(get_db)):
     require_area(request, "finance")
     _ensure_gl_schema(db)
+    # Batch 86 fix: was showing every company's chart of accounts mixed
+    # together in this dropdown, risking a journal entry posted against
+    # the wrong company's account code.
     accounts = db.execute(text("""
         SELECT account_code, account_name, account_type
-        FROM gl_accounts ORDER BY account_code
-    """)).mappings().all()
+        FROM gl_accounts WHERE (company_id = :cid OR company_id IS NULL) ORDER BY account_code
+    """), {"cid": _cid(request)}).mappings().all()
     return render(request, "finance/journal_form.html", {
         "accounts": accounts, "page_title": "New Journal Entry",
     })
@@ -192,9 +212,11 @@ def ar_form(request: Request, db: Session = Depends(get_db)):
     _ensure_finance_schema(db)
     customers = []
     try:
+        # Batch 86 fix: was showing every company's customers mixed
+        # together in this dropdown.
         customers = db.execute(text(
-            "SELECT customer_name FROM customers ORDER BY customer_name LIMIT 1000"
-        )).mappings().all()
+            "SELECT customer_name FROM customers WHERE (company_id = :cid OR company_id IS NULL) ORDER BY customer_name LIMIT 1000"
+        ), {"cid": _cid(request)}).mappings().all()
     except Exception:
         pass
     return render(request, "finance/ar_form.html", {

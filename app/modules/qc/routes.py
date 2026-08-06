@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from starlette.status import HTTP_303_SEE_OTHER
 
 from app.core.templates import render
+from app.core.rbac import require_area, require_action
 from app.core.notifications import notify_role
 from app.database.session import get_db
 from app.models.production import CustomerOrder, KitchenSectionTransaction, PackingDispatch, QCCheck
@@ -68,6 +69,7 @@ def _qc_orders(db: Session, search: str = "", from_date: str = "", to_date: str 
 
 @router.get("", response_class=HTMLResponse)
 def qc_dashboard(request: Request, db: Session = Depends(get_db)):
+    require_area(request, "qc")
     q = request.query_params
     search = (q.get("search") or "").strip()
     from_date = (q.get("from_date") or "").strip()
@@ -103,6 +105,7 @@ def qc_dashboard(request: Request, db: Session = Depends(get_db)):
 
 @router.get("/orders/{order_no}", response_class=HTMLResponse)
 def qc_order(request: Request, order_no: str, db: Session = Depends(get_db)):
+    require_area(request, "qc")
     order = db.query(CustomerOrder).filter(CustomerOrder.order_no == order_no).first()
     if not order:
         raise HTTPException(404, "Order not found")
@@ -129,6 +132,7 @@ def qc_order(request: Request, order_no: str, db: Session = Depends(get_db)):
 
 @router.post("/orders/{order_no}/receive-all")
 def qc_receive_all(request: Request, order_no: str, db: Session = Depends(get_db)):
+    require_action(request, "qc", "edit")
     txs = db.query(KitchenSectionTransaction).filter(
         KitchenSectionTransaction.order_no == order_no,
         KitchenSectionTransaction.current_section == "QC",
@@ -168,6 +172,7 @@ def qc_submit(
     corrective_action: str = Form(""),
     db: Session = Depends(get_db),
 ):
+    require_action(request, "qc", "edit")
     order = db.query(CustomerOrder).filter(CustomerOrder.order_no == order_no).first()
     if not order:
         return _redirect_with_error("/qc", "Order not found.")
@@ -177,6 +182,21 @@ def qc_submit(
     ).all()
     if not txs:
         return _redirect_with_error("/qc", "No QC lines found for this order.")
+
+    # Batch 80 fix: this used to silently backfill received_qty_standard to
+    # the full issued quantity for any line still at 0 right here, meaning a
+    # QC officer could submit a Pass/Hold/Reject decision — with real scores —
+    # against product that was never actually confirmed received. That's a
+    # genuine food-safety process gap, not just a data-entry inconvenience.
+    # Receiving is now a hard prerequisite: submit is refused, with the exact
+    # line count still pending, until every line has been received via
+    # "Receive All QC Lines" (or individually) first.
+    not_received = [t for t in txs if float(t.received_qty_standard or 0) <= 0]
+    if not_received:
+        return _redirect_with_error(
+            f"/qc/orders/{order_no}",
+            f"{len(not_received)} of {len(txs)} line(s) still show 0 received qty. "
+            f"Use 'Receive All QC Lines' (or receive each line) before submitting a QC decision.")
 
     scores = [appearance_score, taste_score, portion_weight_score, packaging_score, hygiene_score]
     overall_score = round(sum(float(s or 0) for s in scores) / len(scores), 2)
@@ -208,12 +228,8 @@ def qc_submit(
     db.add(qc)
 
     for tx in txs:
-        if float(tx.received_qty_standard or 0) <= 0:
-            qty = float(tx.issued_qty_standard or tx.balance_qty_standard or 0)
-            tx.received_qty_standard = qty
-            tx.balance_qty_standard = qty
-            tx.received_by = tx.received_by or _user(request)
-            tx.received_at = tx.received_at or now
+        # (No auto-receive fallback here anymore — the gate above guarantees
+        # every line already has a real received_qty_standard by this point.)
         tx.processed_by = _user(request)
         tx.processed_at = now
         tx.section_remarks = corrective_action or issue_found or tx.section_remarks

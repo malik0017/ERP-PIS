@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session, selectinload
 from sqlalchemy import func, text
 
 from app.database.session import get_db
+from app.core.rbac import require_area, require_action
 from app.models.recipe import Recipe, RecipeIngredient
 from app.models.customer import Customer
 from app.models.ingredient import Ingredient
@@ -96,6 +97,7 @@ def recipe_list(
     fallback that displays the records present in MySQL even if the session
     company value is not available.
     """
+    require_area(request, "recipe_list")
     company_id = _company_id(current_user)
     selected_status = (status or "ACTIVE").strip().upper()
 
@@ -109,6 +111,32 @@ def recipe_list(
     scope_sql = "company_id = :company_id" if company_rows else "1 = 1"
     scope_params = {"company_id": company_id}
 
+    where_parts = [scope_sql]
+    params: dict[str, object] = dict(scope_params)
+
+    # Batch 81 fix: the 4 KPI cards (Total/Active/Pending/Inactive) used to
+    # always reflect the FULL unfiltered recipe set, even while Category,
+    # Customer, or Search were actively narrowing the table below them —
+    # so the cards and the table told two different stories. They now
+    # share the same Category/Customer/Search filters as the table. They
+    # deliberately do NOT also apply the Status filter itself, since their
+    # whole purpose is to show the Active/Pending/Inactive breakdown WITHIN
+    # whatever's currently filtered — filtering them by status too would
+    # collapse 3 of the 4 cards to zero.
+    stats_where_parts = [scope_sql]
+    stats_params: dict[str, object] = dict(scope_params)
+
+    if category and category != "All Categories":
+        stats_where_parts.append("COALESCE(category,'') = :category")
+        stats_params["category"] = category
+    if customer and customer != "All Customers":
+        stats_where_parts.append("COALESCE(customer_name,'') = :customer")
+        stats_params["customer"] = customer
+    if search:
+        stats_where_parts.append("(recipe_code LIKE :search OR recipe_name LIKE :search OR COALESCE(customer_name,'') LIKE :search OR COALESCE(category,'') LIKE :search)")
+        stats_params["search"] = f"%{search}%"
+    stats_where_sql = " AND ".join(stats_where_parts)
+
     stats_row = db.execute(
         text(f"""
             SELECT
@@ -117,9 +145,9 @@ def recipe_list(
                 SUM(CASE WHEN UPPER(TRIM(COALESCE(status,''))) = 'PENDING' THEN 1 ELSE 0 END) AS pending,
                 SUM(CASE WHEN UPPER(TRIM(COALESCE(status,''))) = 'INACTIVE' THEN 1 ELSE 0 END) AS inactive
             FROM recipes
-            WHERE {scope_sql}
+            WHERE {stats_where_sql}
         """),
-        scope_params,
+        stats_params,
     ).mappings().first()
 
     stats = {
@@ -128,9 +156,7 @@ def recipe_list(
         "pending": int(stats_row["pending"] or 0) if stats_row else 0,
         "inactive": int(stats_row["inactive"] or 0) if stats_row else 0,
     }
-
-    where_parts = [scope_sql]
-    params: dict[str, object] = dict(scope_params)
+    filters_active = bool(category and category != "All Categories") or bool(customer and customer != "All Customers") or bool(search)
 
     if selected_status and selected_status != "ALL":
         where_parts.append("UPPER(TRIM(COALESCE(status,''))) = :status")
@@ -235,16 +261,19 @@ def recipe_list(
             "selected_customer": customer or "All Customers",
             "company_id": company_id,
             "company_scope_rows": company_rows,
+            "filters_active": filters_active,
         },
     )
 
 
 @router.post("/upload-excel")
 async def upload_recipe_excel(
+    request: Request,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
+    require_action(request, "recipe_list", "add")
     filename = file.filename or ""
 
     if not filename.lower().endswith((".xlsx", ".xlsm")):
@@ -278,6 +307,7 @@ def prepare_recipe_form(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
+    require_area(request, "recipe_prepare")
     return templates.TemplateResponse(
         "recipes/form.html",
         _recipe_form_context(request, db, current_user, recipe=None, mode="create"),
@@ -290,6 +320,7 @@ async def save_manual_recipe(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
+    require_action(request, "recipe_prepare", "add")
     form = await request.form()
 
     recipe = Recipe(
@@ -362,6 +393,7 @@ def missing_recipe_data(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
+    require_area(request, "recipe_missing")
     lines = (
         db.query(RecipeIngredient)
         .join(Recipe)
@@ -388,6 +420,7 @@ def pending_recipes(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
+    require_area(request, "recipe_approvals")
     company_id = _company_id(current_user)
     recipes = (
         db.query(Recipe)
@@ -413,6 +446,7 @@ def pending_recipes(
 
 @router.post("/approve-all-pending")
 def approve_all_pending_recipes(
+    request: Request,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
@@ -421,6 +455,7 @@ def approve_all_pending_recipes(
     This repair is intentionally defensive. It normalizes status text, approves
     the latest pending record per recipe code, and supersedes all older versions.
     """
+    require_action(request, "recipe_approvals", "edit")
     company_id = _company_id(current_user)
     user_id = getattr(current_user, "id", None)
     now = datetime.utcnow()
@@ -480,6 +515,7 @@ def approve_all_pending_recipes(
 
 @router.post("/repair-active-status")
 def repair_active_recipe_status(
+    request: Request,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
@@ -488,15 +524,18 @@ def repair_active_recipe_status(
     This handles the common beginner scenario where recipe master was uploaded,
     then ingredient upload created pending V2 versions, so the ACTIVE list becomes empty.
     """
+    require_action(request, "recipe_approvals", "edit")
     return approve_all_pending_recipes(db=db, current_user=current_user)
 
 
 @router.post("/{recipe_id}/approve")
 def approve_recipe_version(
     recipe_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
+    require_action(request, "recipe_approvals", "edit")
     recipe = (
         db.query(Recipe)
         .filter(Recipe.id == recipe_id, Recipe.company_id == _company_id(current_user))
@@ -528,9 +567,11 @@ def approve_recipe_version(
 @router.post("/{recipe_id}/reject")
 def reject_recipe_version(
     recipe_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
+    require_action(request, "recipe_approvals", "edit")
     recipe = (
         db.query(Recipe)
         .filter(Recipe.id == recipe_id, Recipe.company_id == _company_id(current_user))
@@ -555,6 +596,7 @@ def recipe_ingredients_master(
     current_user=Depends(get_current_user),
 ):
     """Recipe Ingredient / BOM master list."""
+    require_area(request, "recipe_list")
     company_id = _company_id(current_user)
     selected_status = (status or "ACTIVE").strip().upper()
 
@@ -641,6 +683,7 @@ def view_recipe(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
+    require_area(request, "recipe_list")
     recipe = (
         db.query(Recipe)
         .options(selectinload(Recipe.lines))
@@ -670,6 +713,7 @@ def edit_recipe_form(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
+    require_area(request, "recipe_list")
     recipe = (
         db.query(Recipe)
         .options(selectinload(Recipe.lines))
@@ -695,6 +739,7 @@ async def update_recipe(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
+    require_action(request, "recipe_list", "edit")
     form = await request.form()
 
     recipe = (
@@ -779,9 +824,11 @@ async def update_recipe(
 @router.post("/{recipe_id}/deactivate")
 def deactivate_recipe(
     recipe_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
+    require_action(request, "recipe_list", "edit")
     recipe = (
         db.query(Recipe)
         .filter(
@@ -812,10 +859,12 @@ import io
 @router.post("/{recipe_id}/activate")
 def activate_recipe(
     recipe_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
     """Mirror of deactivate: bring an INACTIVE recipe back into use."""
+    require_action(request, "recipe_list", "edit")
     recipe = (
         db.query(Recipe)
         .filter(Recipe.id == recipe_id, Recipe.company_id == _company_id(current_user))
@@ -844,9 +893,11 @@ def _recipe_for_export(recipe_id: int, db: Session, current_user):
 @router.get("/{recipe_id}/download-excel")
 def download_recipe_excel(
     recipe_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
+    require_area(request, "recipe_list")
     recipe = _recipe_for_export(recipe_id, db, current_user)
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill, Alignment
@@ -903,6 +954,7 @@ def download_recipe_pdf(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
+    require_area(request, "recipe_list")
     recipe = _recipe_for_export(recipe_id, db, current_user)
     try:
         from reportlab.lib.pagesizes import A4

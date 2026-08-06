@@ -2,7 +2,8 @@
 {% block title %}Users & Access{% endblock %}
 {% block content %}
 <div class="container-fluid py-4">
-  <div class="pis-hero mb-3"><h1 class="mb-1">Users, Roles & Security</h1><p class="mb-0">Admin center for user profiles, screen access, lock/unlock, reset password, 2FA and audit control.</p></div>
+  <div class="pis-hero mb-3"><h1 class="mb-1">Users, Roles & Security</h1>
+  </div>
 
   <div class="row g-3 mb-3">
     <div class="col-md-3"><div class="pis-card p-3"><small class="text-secondary fw-bold">TOTAL USERS</small><h2>{{ users|length }}</h2></div></div>
@@ -12,7 +13,8 @@
   </div>
 
   <div class="pis-card p-4 mb-3">
-    <div class="d-flex justify-content-between align-items-center mb-3"><div><h4 class="mb-1">Create New User</h4><small class="text-secondary">Create role-based users for Head Chef, Store Keeper, Section Chef, QC, Packing, Dispatch and Admin.</small></div><a href="/admin/audit-logs" class="btn btn-outline-secondary">Audit Logs</a></div>
+    <div class="d-flex justify-content-between align-items-center mb-3"><div><h4 class="mb-1">Create New User</h4>
+    </div><a href="/admin/audit-logs" class="btn btn-outline-secondary">Audit Logs</a></div>
     <form method="post" action="/admin/users/create" class="row g-2 align-items-end">
       <div class="col-md-2"><label class="form-label">Username</label><input name="username" class="form-control" required></div>
       <div class="col-md-3"><label class="form-label">Email</label><input name="email" type="email" class="form-control" required></div>
@@ -24,7 +26,8 @@
   </div>
 
   <div class="pis-card p-4">
-    <div class="d-flex justify-content-between align-items-center mb-3"><div><h4 class="mb-0">User List</h4><small class="text-secondary">Reset sets a temporary password and forces password change. Unlock clears failed attempts and lock time.</small></div><input id="userSearch" class="form-control w-auto" placeholder="Search users..." oninput="filterUserRows()"></div>
+    <div class="d-flex justify-content-between align-items-center mb-3"><div><h4 class="mb-0">User List</h4>
+    </div><input id="userSearch" class="form-control w-auto" placeholder="Search users..." oninput="filterUserRows()"></div>
     <div class="table-responsive">
       <table class="table table-sm align-middle" id="usersTable">
         <thead><tr><th>ID</th><th>User</th><th>Email</th><th>Role</th><th>Active</th><th>Locked Until</th><th>Attempts</th><th>2FA</th><th>Last Login</th><th>Actions</th></tr></thead>

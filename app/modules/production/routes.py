@@ -6,12 +6,13 @@ import io
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import RedirectResponse, StreamingResponse
-from sqlalchemy import func, text
+from sqlalchemy import bindparam, func, text
 from sqlalchemy.orm import Session
 from starlette.status import HTTP_303_SEE_OTHER
 
 from app.core.templates import render
 from app.core.rbac import require_area, require_action
+from app.core.notifications import notify_role
 from app.database.session import get_db
 from app.models.production import (
     BOMLine,
@@ -31,12 +32,145 @@ from app.services.production_service import (
     create_order,
     finalize_store_issuance,
     generate_bom_for_order,
+    preview_bom_shortages,
     receive_transaction,
     transfer_transaction,
     update_store_issuance_line,
 )
 
 router = APIRouter(prefix="/production", tags=["Production"])
+
+
+def _ensure_sales_review_schema(db: Session) -> None:
+    """Batch 88 — adds the Sales review checkpoint columns to
+    customer_orders if they're not there yet. New column's DB-level
+    DEFAULT is 'Approved' so every order that already existed before this
+    migration is backfilled automatically and isn't newly blocked; the
+    ORM model's own default ('Pending') takes over for every order
+    created going forward, which is what actually makes the gate apply.
+    """
+    try:
+        exists = db.execute(text("""
+            SELECT COUNT(*) FROM information_schema.columns
+            WHERE table_schema = DATABASE() AND table_name = 'customer_orders' AND column_name = 'sales_review_status'
+        """)).scalar()
+        if not exists:
+            db.execute(text("""
+                ALTER TABLE customer_orders
+                ADD COLUMN sales_review_status VARCHAR(20) DEFAULT 'Approved',
+                ADD COLUMN sales_reviewed_by VARCHAR(255) NULL,
+                ADD COLUMN sales_reviewed_at DATETIME NULL,
+                ADD COLUMN sales_review_reason TEXT NULL
+            """))
+            db.commit()
+    except Exception:
+        db.rollback()
+
+
+@router.post("/orders/{order_no}/sales-approve")
+async def sales_approve_order(request: Request, order_no: str, db: Session = Depends(get_db)):
+    """Batch 88 — the Sale Requisition approval screen: an explicit
+    check on the raw order itself before it's ever visible to the Head
+    Chef, distinct from the Head Chef's own scheduling approval later.
+    """
+    require_action(request, "production_orders", "edit")
+    _ensure_sales_review_schema(db)
+    order = db.query(CustomerOrder).filter(CustomerOrder.order_no == order_no).first()
+    if not order:
+        raise HTTPException(404, "Order not found")
+    if order.sales_review_status == "Pending":
+        order.sales_review_status = "Approved"
+        order.sales_reviewed_by = current_user_name(request)
+        order.sales_reviewed_at = datetime.utcnow()
+        db.commit()
+        notify_role(db, company_id=order.company_id, role="HEAD_CHEF",
+                    title=f"Order {order_no} approved for planning",
+                    message=f"{order.customer_name} — approved by {current_user_name(request)}, ready for Head Chef review.",
+                    url=f"/production/orders/{order_no}", category="sales_review_approved")
+    return RedirectResponse(f"/production/head-chef?toast=success&title=Approved&msg=Order {order_no} approved — now visible to the Head Chef for scheduling", status_code=303)
+
+
+@router.post("/orders/{order_no}/sales-reject")
+async def sales_reject_order(request: Request, order_no: str, db: Session = Depends(get_db)):
+    require_action(request, "production_orders", "edit")
+    _ensure_sales_review_schema(db)
+    form = await request.form()
+    reason = (form.get("reason") or "").strip()
+    order = db.query(CustomerOrder).filter(CustomerOrder.order_no == order_no).first()
+    if not order:
+        raise HTTPException(404, "Order not found")
+    if order.sales_review_status == "Pending":
+        order.sales_review_status = "Rejected"
+        order.sales_reviewed_by = current_user_name(request)
+        order.sales_reviewed_at = datetime.utcnow()
+        order.sales_review_reason = reason or None
+        db.commit()
+    return RedirectResponse(f"/production/orders/{order_no}?toast=warning&title=Rejected&msg=Order rejected — it will not proceed to Head Chef", status_code=303)
+
+# Batch 86: reused directly from Procurement rather than duplicating the
+# PO-numbering/schema-creation logic — same PO that a human would create
+# by hand from the Procurement screen, just pre-filled from a real
+# ingredient shortage instead of typed in manually.
+from app.modules.procurement.routes import _cid as _proc_cid, _next_no as _proc_next_no, _ensure_procurement_schema
+
+
+@router.post("/orders/{order_no}/generate-shortage-po")
+async def generate_shortage_po(request: Request, order_no: str, db: Session = Depends(get_db)):
+    """Batch 86 — the "check inventory, generate a PO if it's short"
+    gate asked for: turns the advisory shortage warning (Batch 80) into
+    a real, one-click action. Groups every short ingredient by its
+    default supplier and creates one real Purchase Order per supplier,
+    quantities set to exactly the shortfall — the same purchase_orders /
+    purchase_order_lines tables and PO-numbering Procurement itself uses,
+    so these POs behave completely normally from here on (GRN, receiving,
+    everything). This does not auto-approve or auto-order anything on its
+    own — it lands as a normal Open PO for Procurement to review, same as
+    every other PO in the system.
+    """
+    require_action(request, "production_orders", "edit")
+    _ensure_procurement_schema(db)
+    shortages = preview_bom_shortages(db, order_no)
+    if not shortages:
+        return RedirectResponse(f"/production/orders/{order_no}?toast=warning&title=No Shortage&msg=No ingredient shortage found for this order right now.", status_code=303)
+
+    cid = _proc_cid(request)
+    supplier_rows = db.execute(text("""
+        SELECT ingredient_code, COALESCE(default_supplier, '') AS supplier
+        FROM ingredients WHERE ingredient_code IN :codes
+    """).bindparams(bindparam("codes", expanding=True)),
+        {"codes": [s["ingredient_code"] for s in shortages]}).mappings().all()
+    supplier_by_code = {r["ingredient_code"]: (r["supplier"] or "").strip() for r in supplier_rows}
+
+    groups: dict[str, list[dict]] = {}
+    for s in shortages:
+        supplier = supplier_by_code.get(s["ingredient_code"]) or "Unassigned Supplier"
+        groups.setdefault(supplier, []).append(s)
+
+    created_pos = []
+    for supplier, items in groups.items():
+        po_no = _proc_next_no(db, "purchase_orders", "po_no", "PO")
+        total = 0.0
+        db.execute(text("""
+            INSERT INTO purchase_orders (company_id, po_no, po_date, supplier_code, supplier_name,
+                                         expected_date, status, total_value, remarks, created_by)
+            VALUES (:cid, :po_no, :po_date, :sc, :sn, :ed, 'Open', 0, :rm, :cb)
+        """), {"cid": cid, "po_no": po_no, "po_date": date.today(), "sc": "", "sn": supplier,
+               "ed": (date.today() + timedelta(days=3)).isoformat(),
+               "rm": f"Auto-generated from shortage check on order {order_no}", "cb": current_user_name(request)})
+        for i, s in enumerate(items, start=1):
+            db.execute(text("""
+                INSERT INTO purchase_order_lines (company_id, po_no, line_no, inventory_code, item_name,
+                                                  ordered_qty, uom, unit_price, line_value)
+                VALUES (:cid, :po_no, :ln, :code, :name, :qty, :uom, 0, 0)
+            """), {"cid": cid, "po_no": po_no, "ln": i, "code": s["ingredient_code"],
+                   "name": s["ingredient_name"], "qty": s["shortfall"], "uom": s["standard_uom"]})
+        db.commit()
+        created_pos.append(po_no)
+
+    po_list = ", ".join(created_pos)
+    return RedirectResponse(
+        f"/production/orders/{order_no}?toast=success&title=Purchase Order(s) Created&msg=Created {len(created_pos)} PO(s) for the shortage: {po_list}. Set unit prices and confirm supplier details in Procurement before sending.",
+        status_code=303)
 
 
 def current_user_name(request: Request) -> str:
@@ -242,21 +376,15 @@ def master_dropdown_context(db: Session, company_id: int = 1) -> dict:
 
 @router.get("/orders")
 async def orders_page(request: Request, db: Session = Depends(get_db)):
-    require_area(request, "production_orders")
-    q, filters = _filtered_orders_query(db, request, date_column="order_date")
-    orders = q.order_by(CustomerOrder.id.desc()).limit(200).all()
-    context = master_dropdown_context(db, _company_id_from_session(request))
-    context.update(
-        {
-            "orders": orders,
-            "stats": _order_stats(db),
-            "filters": filters,
-            "page_title": "Production Orders",
-            "error": request.query_params.get("error"),
-            "created": request.query_params.get("created"),
-        }
-    )
-    return render(request, "production/orders.html", context)
+    # Batch 91: Production Orders and Head Chef Planning showed the same
+    # underlying list of orders — consolidated into one screen as asked.
+    # This route now redirects rather than rendering its own page, so the
+    # ~10 existing internal links that still point here (Back to Orders
+    # buttons, breadcrumbs, etc.) land on the right place automatically
+    # instead of needing every one of them individually updated.
+    qs = str(request.url.query)
+    target = "/production/head-chef" + (f"?{qs}" if qs else "")
+    return RedirectResponse(target, status_code=307)
 
 
 @router.post("/orders/create")
@@ -282,6 +410,7 @@ async def create_order_form(
     required_portions: List[float] = Form([]),
     db: Session = Depends(get_db),
 ):
+    _ensure_sales_review_schema(db)
     customer_name = (customer_name or customer_display or "").strip()
     brand = (brand or brand_display or "").strip()
     channel = (channel or channel_display or "").strip()
@@ -318,7 +447,14 @@ async def create_order_form(
         )
 
     if not lines:
-        return redirect_with_error("/production/orders", "Please enter at least one recipe with portions greater than zero.")
+        # Batch 91 fix: this always redirected to /production/orders
+        # regardless of which form the user actually submitted from —
+        # someone filling out the Sale Requisition form (/orders/portal)
+        # got bounced to a completely different screen on a validation
+        # error. Now returns to wherever the request actually came from,
+        # with a safe fallback if that can't be determined.
+        origin = request.headers.get("referer") or "/orders/portal"
+        return redirect_with_error(origin, "Please enter at least one recipe with portions greater than zero.")
 
     # Batch 69: 48-hour rule — delivery must be at least 48 hours from now.
     # Enforced server-side so it can't be bypassed by editing the form. Admins
@@ -367,6 +503,7 @@ async def create_order_form(
 @router.get("/orders/{order_no}")
 async def order_detail(request: Request, order_no: str, db: Session = Depends(get_db)):
     require_area(request, "production_orders")
+    _ensure_sales_review_schema(db)
     order = db.query(CustomerOrder).filter(CustomerOrder.order_no == order_no).first()
     if not order:
         raise HTTPException(404, "Order not found")
@@ -382,6 +519,11 @@ async def order_detail(request: Request, order_no: str, db: Session = Depends(ge
         recipes = db.query(Recipe).filter(Recipe.recipe_code.in_(recipe_codes), func.upper(func.trim(Recipe.status)) == "ACTIVE", Recipe.is_active == True).all()
         recipe_meta = {r.recipe_code: r for r in recipes}
 
+    # Batch 80: stock shortage preview — only worth computing before the BOM
+    # is generated (once BOM/store issuance exist, those are the authoritative
+    # numbers). Advisory only; does not block approval.
+    shortages = preview_bom_shortages(db, order_no) if not bom else []
+
     return render(
         request,
         "production/order_detail.html",
@@ -393,6 +535,7 @@ async def order_detail(request: Request, order_no: str, db: Session = Depends(ge
             "issuance": issuance,
             "txs": txs,
             "recipe_meta": recipe_meta,
+            "shortages": shortages,
             "flow_status": _order_flow_status(db, order_no),
             "page_title": order_no,
             "error": request.query_params.get("error"),
@@ -1079,6 +1222,7 @@ async def process_bakery_recipe(
 
 @router.get("/head-chef")
 async def head_chef_dashboard(request: Request, db: Session = Depends(get_db)):
+    _ensure_sales_review_schema(db)
     require_area(request, "head_chef")
     q, filters = _filtered_orders_query(db, request, date_column="delivery")
     # Batch 17: planning order = SOONEST delivery first (was newest-first),
@@ -1105,16 +1249,27 @@ async def head_chef_dashboard(request: Request, db: Session = Depends(get_db)):
         else:
             urgency[o.order_no] = ""
     stats = _order_stats(db)
+    # Batch 81 fix: these 3 operational KPIs (Awaiting/Scheduled/BOM Ready)
+    # used to always count every order in the system, completely ignoring
+    # the Today/This Week/This Month/Pending/All view and the Delivery
+    # From/To/Status filter above — so the cards told a different story
+    # than the table right below them. They now count within the SAME
+    # filtered date range as the table (re-using `q` before .limit() is
+    # applied), while still breaking out by their own specific status so
+    # all 3 cards stay meaningful together rather than collapsing to the
+    # same number.
     stats.update({
-        "awaiting_head_chef": db.query(CustomerOrder).filter(CustomerOrder.status == "Submitted").count(),
-        "scheduled": db.query(CustomerOrder).filter(CustomerOrder.cooking_date.isnot(None)).count(),
-        "bom_ready": db.query(CustomerOrder).filter(CustomerOrder.status == "Head Chef Approved").count(),
+        "awaiting_head_chef": q.filter(CustomerOrder.status == "Submitted", func.coalesce(CustomerOrder.sales_review_status, "Approved") != "Pending").count(),
+        "scheduled": q.filter(CustomerOrder.cooking_date.isnot(None)).count(),
+        "bom_ready": q.filter(CustomerOrder.status == "Head Chef Approved").count(),
+        "filtered_total": q.count(),
     })
     return render(request, "production/head_chef.html", {"orders": orders, "stats": stats, "filters": filters, "urgency": urgency, "page_title": "Head Chef Planning", "error": request.query_params.get("error")})
 
 
 @router.get("/store-issuance")
 async def store_issuance_dashboard(request: Request, db: Session = Depends(get_db)):
+    _ensure_sales_review_schema(db)
     require_area(request, "store_issuance")
     orders, line_map, filters = _store_order_summary(db, request)
     stats = {
@@ -1332,9 +1487,28 @@ async def kitchen_summary(request: Request, db: Session = Depends(get_db)):
     """All Section Summary - one row per kitchen section with live workload.
 
     Fixes the sidebar 404: /production/kitchen-summary now exists.
+    Batch 81: added date-range + order-number filtering — this page
+    previously had no filter at all, so "today's workload" vs. "everything
+    ever processed" were impossible to tell apart.
     """
     require_area(request, "kitchen_summary")
-    rows = db.execute(text("""
+    date_from = (request.query_params.get("date_from") or "").strip()
+    date_to = (request.query_params.get("date_to") or "").strip()
+    order_search = (request.query_params.get("search") or "").strip()
+
+    where = "1=1"
+    params: dict = {}
+    if date_from:
+        where += " AND DATE(k.updated_at) >= :df"
+        params["df"] = date_from
+    if date_to:
+        where += " AND DATE(k.updated_at) <= :dt"
+        params["dt"] = date_to
+    if order_search:
+        where += " AND k.order_no LIKE :s"
+        params["s"] = f"%{order_search}%"
+
+    rows = db.execute(text(f"""
         SELECT
             k.current_section AS section,
             COUNT(DISTINCT k.order_no) AS orders,
@@ -1347,9 +1521,10 @@ async def kitchen_summary(request: Request, db: Session = Depends(get_db)):
             ROUND(SUM(COALESCE(k.balance_qty_standard,0)), 2) AS balance_qty,
             MAX(k.updated_at) AS last_activity
         FROM kitchen_section_transactions k
+        WHERE {where}
         GROUP BY k.current_section
         ORDER BY FIELD(k.current_section, 'Cutting','Butchery','Hot Kitchen','Cold Kitchen','Bakery/Pastry','QC','Trayline / Packing'), k.current_section
-    """)).mappings().all()
+    """), params).mappings().all()
 
     totals = {
         "orders": sum(int(r.get("orders") or 0) for r in rows),
@@ -1361,6 +1536,7 @@ async def kitchen_summary(request: Request, db: Session = Depends(get_db)):
         "rows": rows,
         "totals": totals,
         "section_slugs": {s: _section_slug(s) for s in CANONICAL_SECTIONS},
+        "filters": {"date_from": date_from, "date_to": date_to, "search": order_search},
         "page_title": "All Section Summary",
     })
 

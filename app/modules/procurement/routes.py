@@ -212,6 +212,61 @@ async def create_po(
     return RedirectResponse(f"/procurement/po/{po_no}?success=Purchase order {po_no} created", status_code=303)
 
 
+@router.post("/po/{po_no}/edit")
+async def edit_po(request: Request, po_no: str, db: Session = Depends(get_db)):
+    """Batch 88 — the PO edit capability that was missing entirely.
+    Auto-generated POs (from the shortage-PO feature, or any manual PO
+    where details weren't final yet) could show "Unassigned Supplier"
+    and zero unit prices with no way to fix them short of starting over.
+    Supplier name and, per line, ordered quantity + unit price can now
+    be corrected here. Lines that already have SOME received_qty are
+    left alone — editing a quantity or price after stock has already
+    been received against it would silently corrupt what's already
+    posted to the ledger and GL, so those lines are protected.
+    """
+    require_action(request, "procurement", "edit")
+    _ensure_procurement_schema(db)
+    cid = _cid(request)
+    po = db.execute(text(
+        "SELECT * FROM purchase_orders WHERE po_no = :p AND (company_id = :cid OR company_id IS NULL)"
+    ), {"p": po_no, "cid": cid}).mappings().first()
+    if not po or po["status"] not in ("Open", "Partially Received"):
+        return RedirectResponse(f"/procurement/po/{po_no}?error=PO is not open for editing", status_code=303)
+
+    form = await request.form()
+    supplier_name = (form.get("supplier_name") or "").strip()
+    supplier_code = (form.get("supplier_code") or "").strip()
+    if supplier_name:
+        db.execute(text("UPDATE purchase_orders SET supplier_name = :sn, supplier_code = :sc WHERE po_no = :p"),
+                  {"sn": supplier_name, "sc": supplier_code or None, "p": po_no})
+
+    line_ids = form.getlist("edit_line_id")
+    qtys = form.getlist("edit_ordered_qty")
+    prices = form.getlist("edit_unit_price")
+    for i, lid in enumerate(line_ids):
+        line = db.execute(text("SELECT * FROM purchase_order_lines WHERE id = :i"), {"i": int(lid)}).mappings().first()
+        if not line or float(line["received_qty"] or 0) > 0:
+            continue  # protected: something has already been received against this line
+        try:
+            new_qty = float(qtys[i]) if i < len(qtys) and qtys[i] != "" else float(line["ordered_qty"] or 0)
+        except ValueError:
+            new_qty = float(line["ordered_qty"] or 0)
+        try:
+            new_price = float(prices[i]) if i < len(prices) and prices[i] != "" else float(line["unit_price"] or 0)
+        except ValueError:
+            new_price = float(line["unit_price"] or 0)
+        db.execute(text("""
+            UPDATE purchase_order_lines
+            SET ordered_qty = :q, unit_price = :pr, line_value = :q * :pr
+            WHERE id = :i
+        """), {"q": new_qty, "pr": new_price, "i": int(lid)})
+
+    new_total = db.execute(text("SELECT COALESCE(SUM(line_value),0) FROM purchase_order_lines WHERE po_no = :p"), {"p": po_no}).scalar() or 0
+    db.execute(text("UPDATE purchase_orders SET total_value = :tv WHERE po_no = :p"), {"tv": new_total, "p": po_no})
+    db.commit()
+    return RedirectResponse(f"/procurement/po/{po_no}?toast=success&title=Updated&msg=Purchase order details updated", status_code=303)
+
+
 @router.get("/po/{po_no}")
 async def po_detail(request: Request, po_no: str, db: Session = Depends(get_db)):
     require_area(request, "procurement")
@@ -231,8 +286,14 @@ async def po_detail(request: Request, po_no: str, db: Session = Depends(get_db))
         GROUP BY g.grn_no, g.received_date, g.received_by, g.remarks
         ORDER BY MAX(g.id) DESC
     """), {"p": po_no}).mappings().all()
+    # Batch 90 fix: Supplier used to be a plain free-text box, not linked
+    # to anything. Now a real searchable dropdown of the actual supplier
+    # master, same pattern used for Customer/Recipe elsewhere.
+    suppliers = db.execute(text(
+        "SELECT supplier_code, supplier_name FROM suppliers WHERE (company_id = :cid OR company_id IS NULL) ORDER BY supplier_name LIMIT 1000"
+    ), {"cid": _cid(request)}).mappings().all()
     return render(request, "procurement/po_detail.html", {
-        "po": po, "lines": lines, "grns": grns, "page_title": f"PO {po_no}",
+        "po": po, "lines": lines, "grns": grns, "suppliers": suppliers, "page_title": f"PO {po_no}",
     })
 
 
@@ -250,6 +311,7 @@ async def po_receive(request: Request, po_no: str, db: Session = Depends(get_db)
 
     line_ids = form.getlist("line_id")
     recv_qtys = form.getlist("receive_qty")
+    recv_prices = form.getlist("receive_price")  # Batch 88: optional price override at receiving
     grn_no = _next_no(db, "grn_receipts", "grn_no", "GRN")
     cid = _cid(request)
     posted = 0
@@ -266,16 +328,29 @@ async def po_receive(request: Request, po_no: str, db: Session = Depends(get_db)
         line = db.execute(text("SELECT * FROM purchase_order_lines WHERE id = :i"), {"i": int(lid)}).mappings().first()
         if not line:
             continue
+        # Batch 88: if the person receiving typed a different price (the
+        # actual supplier invoice, which can genuinely differ from what
+        # the PO originally estimated), that becomes the real cost —
+        # for this GRN, for the stock ledger, and for the PO line itself
+        # going forward — rather than silently keeping the stale estimate.
+        po_price = float(line["unit_price"] or 0)
+        actual_price = po_price
+        if i < len(recv_prices) and recv_prices[i] not in ("", None):
+            try:
+                actual_price = float(recv_prices[i])
+            except ValueError:
+                actual_price = po_price
         db.execute(text("""
             INSERT INTO grn_lines (company_id, grn_no, po_no, inventory_code, item_name, uom,
                                    received_qty, unit_price, lot_no)
             VALUES (:cid, :grn, :po, :code, :name, :uom, :qty, :price, :lot)
         """), {"cid": cid, "grn": grn_no, "po": po_no, "code": line["inventory_code"],
                "name": line["item_name"], "uom": line["uom"], "qty": qty,
-               "price": line["unit_price"], "lot": form.get("lot_no") or ""})
+               "price": actual_price, "lot": form.get("lot_no") or ""})
         db.execute(text(
-            "UPDATE purchase_order_lines SET received_qty = COALESCE(received_qty,0) + :q WHERE id = :i"
-        ), {"q": qty, "i": int(lid)})
+            "UPDATE purchase_order_lines SET received_qty = COALESCE(received_qty,0) + :q, "
+            "unit_price = :pr, line_value = ordered_qty * :pr WHERE id = :i"
+        ), {"q": qty, "pr": actual_price, "i": int(lid)})
         # ---- THE REAL STOCK MOVEMENT (GRN_IN in the ledger) ----
         # Batch 23 FIX: this used to INSERT only the NEW column names inside a
         # bare `except: pass`. On databases where inventory_transactions still
@@ -292,7 +367,7 @@ async def po_receive(request: Request, po_no: str, db: Session = Depends(get_db)
             qty=qty,
             movement_type="GRN_IN",
             reference_no=grn_no,
-            unit_cost=float(line["unit_price"] or 0),
+            unit_cost=actual_price,
             remarks=f"GRN against {po_no}",
             created_by=_user(request),
             lot_no=form.get("lot_no") or "",
@@ -300,11 +375,55 @@ async def po_receive(request: Request, po_no: str, db: Session = Depends(get_db)
         )
         if not ok:
             ledger_failures.append(line["inventory_code"])
-        grn_value += qty * float(line["unit_price"] or 0)  # Batch 69
+        grn_value += qty * actual_price  # Batch 69
         posted += 1
 
+    # Batch 88: "the supplier sent something not on the PO at all" — an
+    # optional extra line, added and received in this same GRN. Creates a
+    # real purchase_order_lines row (ordered_qty=0, so it never shows up
+    # as "outstanding" against the original plan) purely so the GRN and
+    # stock ledger have somewhere consistent to point back to, exactly
+    # like every other line.
+    extra_code = (form.get("extra_inventory_code") or "").strip()
+    extra_qty_raw = form.get("extra_qty") or ""
+    if extra_code and extra_qty_raw:
+        try:
+            extra_qty = float(extra_qty_raw)
+        except ValueError:
+            extra_qty = 0
+        if extra_qty > 0:
+            try:
+                extra_price = float(form.get("extra_price") or 0)
+            except ValueError:
+                extra_price = 0
+            extra_name = (form.get("extra_item_name") or extra_code).strip()
+            extra_uom = (form.get("extra_uom") or "Kg").strip()
+            next_line_no = int(db.execute(text("SELECT COALESCE(MAX(line_no),0)+1 FROM purchase_order_lines WHERE po_no = :p"), {"p": po_no}).scalar() or 1)
+            new_line_id = db.execute(text("""
+                INSERT INTO purchase_order_lines (company_id, po_no, line_no, inventory_code, item_name,
+                                                  ordered_qty, received_qty, uom, unit_price, line_value)
+                VALUES (:cid, :po, :ln, :code, :name, 0, :qty, :uom, :price, :val)
+            """), {"cid": cid, "po": po_no, "ln": next_line_no, "code": extra_code, "name": extra_name,
+                   "qty": extra_qty, "uom": extra_uom, "price": extra_price, "val": extra_qty * extra_price}).lastrowid
+            db.execute(text("""
+                INSERT INTO grn_lines (company_id, grn_no, po_no, inventory_code, item_name, uom,
+                                       received_qty, unit_price, lot_no, remarks)
+                VALUES (:cid, :grn, :po, :code, :name, :uom, :qty, :price, :lot, 'Not on original PO — added at receiving')
+            """), {"cid": cid, "grn": grn_no, "po": po_no, "code": extra_code, "name": extra_name,
+                   "uom": extra_uom, "qty": extra_qty, "price": extra_price, "lot": form.get("lot_no") or ""})
+            ok = post_stock_movement(
+                db, company_id=cid, inventory_code=extra_code, item_name=extra_name, uom=extra_uom,
+                qty=extra_qty, movement_type="GRN_IN", reference_no=grn_no, unit_cost=extra_price,
+                remarks=f"GRN against {po_no} — not on original PO", created_by=_user(request),
+                lot_no=form.get("lot_no") or "", to_location="Main Store",
+            )
+            if not ok:
+                ledger_failures.append(extra_code)
+            grn_value += extra_qty * extra_price
+            posted += 1
+
     if not posted:
-        return RedirectResponse(f"/procurement/po/{po_no}?error=Enter a receive qty on at least one line", status_code=303)
+        return RedirectResponse(f"/procurement/po/{po_no}?error=Enter a receive qty on at least one line, or add an unlisted item received", status_code=303)
 
     db.execute(text("""
         INSERT INTO grn_receipts (company_id, grn_no, po_no, supplier_name, received_date, status, received_by, remarks)
@@ -327,6 +446,26 @@ async def po_receive(request: Request, po_no: str, db: Session = Depends(get_db)
         post_grn_journal(db, request, grn_no, grn_value, supplier=po["supplier_name"] or "")
     except Exception:
         pass
+
+    # Batch 92 fix: this was the actual reason AP Aging always showed
+    # "no open items" no matter how much had genuinely been received —
+    # a GRN posted stock and the GL journal, but never created the AP
+    # invoice that represents actually owing the supplier for it. There
+    # was never any data for AP Aging to show, not a bug in that report
+    # itself. Auto-creates a real, Open AP invoice for this GRN's value,
+    # using the exact same logic (and account postings) the manual "New
+    # A/R Invoice"-style AP form already used correctly.
+    try:
+        if grn_value and float(grn_value) > 0 and po["supplier_name"] and po["supplier_name"] != "Unassigned Supplier":
+            from app.modules.finance.routes import create_ap_invoice_core
+            create_ap_invoice_core(
+                db, request, cid, _user(request),
+                supplier_name=po["supplier_name"], po_no=po_no, grn_no=grn_no,
+                amount=float(grn_value), remarks=f"Auto-created on GRN {grn_no}",
+            )
+    except Exception:
+        pass  # never block a successful goods receipt over the AP-invoice step
+
     # Batch 23: if any line failed to reach the stock ledger, SAY SO. Previously
     # this always reported success even when zero stock had actually moved.
     if ledger_failures:

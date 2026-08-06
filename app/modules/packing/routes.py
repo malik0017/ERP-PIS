@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from starlette.status import HTTP_303_SEE_OTHER
 
 from app.core.templates import render
+from app.core.rbac import require_area, require_action
 from app.database.session import get_db
 from app.models.production import CustomerOrder, PackingDispatch
 
@@ -29,6 +30,7 @@ def _redirect_with_error(url: str, message: str) -> RedirectResponse:
 
 @router.get("", response_class=HTMLResponse)
 def packing_dashboard(request: Request, db: Session = Depends(get_db)):
+    require_area(request, "packing")
     q = request.query_params
     search = (q.get("search") or "").strip()
     from_date = (q.get("from_date") or "").strip()
@@ -80,6 +82,7 @@ def packing_dashboard(request: Request, db: Session = Depends(get_db)):
 
 @router.get("/{packing_id}", response_class=HTMLResponse)
 def packing_order(request: Request, packing_id: int, db: Session = Depends(get_db)):
+    require_area(request, "packing")
     row = db.query(PackingDispatch).filter(PackingDispatch.id == packing_id).first()
     if not row:
         return _redirect_with_error("/packing", "Packing record not found.")
@@ -105,6 +108,7 @@ def update_packing(
     remarks: str = Form(""),
     db: Session = Depends(get_db),
 ):
+    require_action(request, "packing", "edit")
     row = db.query(PackingDispatch).filter(PackingDispatch.id == packing_id).first()
     if not row:
         return _redirect_with_error("/packing", "Packing record not found.")

@@ -1,12 +1,15 @@
 {% extends "layouts/base.html" %}
 {% block content %}
 <div class="container-fluid py-3">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <div>
-            <h3>Recipe Missing Data</h3>
-            <p class="text-muted">Lines with missing inventory code or zero cost.</p>
-        </div><a href="/recipes" class="btn btn-outline-secondary btn-sm">Back</a>
+    
+     <div class="pis-hero mb-4" style="background:linear-gradient(135deg,#132947,#0c91a3);border-radius:22px;color:#fff;padding:26px 30px;">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
+      <div>
+        <h2 class="mb-1 text-white">Recipe Missing Data</h2>
+      </div>
+      <a href="/recipes" class="btn btn-phoenix-secondary">Back</a>
     </div>
+  </div>
     <div class="card p-4">
         <div class="card-body table-responsive">
             <table class="table table-sm table-bordered">

@@ -59,12 +59,12 @@
 
   {# key | access | href | icon | color(hex) | title | tag #}
   {% set catalog = [
-    ('production', can_access('dashboard') or can_access('production_orders') or can_access('kitchen_summary'),
-      '/module/production/dashboard', 'activity', '#3b82f6', 'Production', 'Orders · Kitchen · QC'),
-    ('inventory', can_access('inventory_valuation'),
-      '/module/inventory/dashboard', 'box-seam', '#06b6d4', 'Inventory', 'Stock · Valuation'),
     ('procurement', can_access('procurement'),
       '/module/procurement/dashboard', 'bag', '#f59e0b', 'Procurement', 'PO · GRN · AP'),
+    ('inventory', can_access('inventory_valuation'),
+      '/module/inventory/dashboard', 'box-seam', '#06b6d4', 'Inventory', 'Stock · Valuation'),
+    ('production', can_access('dashboard') or can_access('production_orders') or can_access('kitchen_summary'),
+      '/module/production/dashboard', 'activity', '#3b82f6', 'Production', 'Orders · Kitchen · QC'),
     ('recipes', can_access('recipe_list') or can_access('recipes'),
       '/recipes', 'journal-text', '#6366f1', 'Recipes & BOM', 'Library · Yields'),
     ('projects', can_access('project_management'),

@@ -1,6 +1,24 @@
 {% extends "layouts/base.html" %}
 {% block content %}
-{% set active_step = 'BOM' %}{% include 'partials/process_status_row.html' %}
+{# Batch 90 fix: this was hardcoded to 'BOM' unconditionally, so the top
+   step row always highlighted "3 BOM" regardless of the order's actual
+   stage — confirmed exactly reproducing the screenshots (an order still
+   at "Submitted"/Head Chef review showing BOM as active). Computed now
+   from the same signals the second, correctly-working stage tracker
+   further down this page already uses (bom/issuance/txs existence +
+   order.status), instead of a fixed string. #}
+{% set _ostatus = (order.status or '')|trim|lower %}
+{% if flow_status.packing_count %}{% set active_step = 'Packing' %}
+{% elif _ostatus in ['out for delivery','dispatched','delivered'] %}{% set active_step = 'Dispatch' %}
+{% elif flow_status.qc_count %}{% set active_step = 'QC' %}
+{% elif txs %}{% set active_step = 'Kitchen' %}
+{% elif issuance %}{% set active_step = 'Store' %}
+{% elif bom %}{% set active_step = 'BOM' %}
+{% elif _ostatus == 'head chef approved' %}{% set active_step = 'BOM' %}
+{% elif _ostatus == 'submitted' %}{% set active_step = 'Head Chef' %}
+{% else %}{% set active_step = 'Order' %}
+{% endif %}
+{% include 'partials/process_status_row.html' %}
 <style>
   .od-hero {
     background: linear-gradient(135deg, #132947, #0d8da0);
@@ -185,10 +203,94 @@
      screen and the BOM screen are now two separate stages.
      ================================================================== #}
   {% set is_approved = order.status != 'Submitted' %}
+  {% set sales_pending = order.sales_review_status == 'Pending' %}
+  {% set sales_rejected = order.sales_review_status == 'Rejected' %}
 
   <div class="od-card">
     <div class="flow-msg mb-3"><strong>Current status:</strong> {{ order.status }} </div>
 
+    {% if sales_pending or sales_rejected %}
+    {# Batch 88: the Sale Requisition approval screen — a check on the
+       raw order itself, before it's ever visible to the Head Chef.
+       Distinct from the Head Chef's own scheduling approval further
+       down, which stays hidden until this passes. #}
+    <div class="{{ 'sales-review-card rejected' if sales_rejected else 'sales-review-card' }} mb-3">
+      <style>
+        .sales-review-card {
+          background: #eef6f7; border: 1px solid #cfe4e6; border-left: 4px solid #0c91a3;
+          border-radius: 12px; padding: 18px 22px; color: #16333a;
+        }
+        .sales-review-card.rejected { background: #fbeeee; border-color: #f0d3d3; border-left-color: #c0392b; color: #4a1f1f; }
+        [data-bs-theme="dark"] .sales-review-card { background: #12242a; border-color: #1e3a3f; color: #cfe6e9; }
+        [data-bs-theme="dark"] .sales-review-card.rejected { background: #2a1616; border-color: #4a2323; color: #e9cfcf; }
+      </style>
+      <div class="d-flex align-items-center gap-2 mb-2">
+        <i class="bi {{ 'bi-x-circle-fill' if sales_rejected else 'bi-clipboard-check' }} fs-5"></i>
+        <strong>
+          {% if sales_rejected %}This order was rejected at sales review{% else %}Sales review required before this order goes to the Head Chef{% endif %}
+        </strong>
+      </div>
+      {% if sales_rejected %}
+      <p class="mb-0 small">Rejected by {{ order.sales_reviewed_by or 'a reviewer' }} on {{ order.sales_reviewed_at }}.
+        {% if order.sales_review_reason %}<br><strong>Reason:</strong> {{ order.sales_review_reason }}{% endif %}</p>
+      {% else %}
+      <p class="small text-body-tertiary mb-3">Confirm this order should actually proceed — customer, quantities, delivery date — before it commits any kitchen planning or material.</p>
+      <div class="d-flex gap-2">
+        <form method="post" action="/production/orders/{{ order.order_no }}/sales-approve"
+              data-confirm="Approve this order for Head Chef planning?" data-confirm-title="Approve Order"
+              data-confirm-ok="Approve" data-confirm-variant="success">
+          <button class="btn btn-sm btn-success fw-bold"><i class="bi bi-check2-circle me-1"></i>Approve Order</button>
+        </form>
+        <button type="button" class="btn btn-sm btn-outline-danger fw-bold" data-bs-toggle="modal" data-bs-target="#salesRejectModal">
+          <i class="bi bi-x-circle me-1"></i>Reject
+        </button>
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    {% if shortages %}
+    {# Batch 80: stock shortage preview — computed from the same recipe
+       explosion the real BOM will use, before it's generated.
+       Batch 92 fix: this used to be hidden while the order was still
+       pending Sales Review, but the whole point of showing it here is
+       to inform an approve/reject decision — someone reviewing a Sale
+       Requisition needs to see the shortage (and be able to raise a PO
+       for it) as PART of that decision, not only after they've already
+       approved it. Now shown regardless of sales-review state, as long
+       as the order hasn't reached BOM yet. Still advisory either way —
+       doesn't block approval, whoever's reviewing decides. #}
+    <div class="alert alert-warning mb-3">
+      <div class="d-flex align-items-center gap-2 mb-2">
+        <i class="bi bi-exclamation-triangle-fill fs-5"></i>
+        <strong>{{ shortages|length }} ingredient(s) would be short of stock for this order</strong>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-sm mb-0" style="font-size:.82rem">
+          <thead><tr><th>Ingredient</th><th class="text-end">Required</th><th class="text-end">In Stock</th><th class="text-end">Shortfall</th><th>Used In</th></tr></thead>
+          <tbody>
+            {% for s in shortages %}
+            <tr>
+              <td>{{ s.ingredient_name }} <span class="text-body-tertiary">({{ s.ingredient_code }})</span></td>
+              <td class="text-end">{{ '%.2f'|format(s.required_qty) }} {{ s.standard_uom }}</td>
+              <td class="text-end">{{ '%.2f'|format(s.available_qty) }} {{ s.standard_uom }}</td>
+              <td class="text-end text-danger fw-bold">{{ '%.2f'|format(s.shortfall) }} {{ s.standard_uom }}</td>
+              <td class="text-body-tertiary">{{ s.recipes|join(', ') }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="mt-2 small text-body-tertiary">This is advisory — the order can still be approved either way. Use the button below to raise a purchase order for exactly the shortfall shown, or confirm stock with Procurement first.</div>
+      <form method="post" action="/production/orders/{{ order.order_no }}/generate-shortage-po"
+            data-confirm="Create a purchase order for the {{ shortages|length }} short ingredient(s) shown above, grouped by supplier? You'll still confirm prices and supplier details in Procurement afterward."
+            data-confirm-title="Generate Purchase Order" data-confirm-ok="Create PO(s)" data-confirm-variant="primary" class="mt-2">
+        <button class="btn btn-sm btn-primary fw-bold"><i class="bi bi-cart-plus me-1"></i>Generate Purchase Order for Shortage</button>
+      </form>
+    </div>
+    {% endif %}
+
+    {% if not sales_pending and not sales_rejected %}
     {% if not is_approved %}
     <h5>Head Chef Cooking & Material Schedule Approval</h5>
     <div class="flow-msg mb-3"><strong>Order details:</strong> {{ order.customer_name }} · {{ order.brand or '-' }} · {{ order.channel or '-' }} · Customer Delivery: {{ order.required_delivery_date or '-' }} {{ order.required_delivery_time or '' }}</div>
@@ -229,6 +331,7 @@
       </form><a class="od-btn od-soft" href="/production/orders/{{ order.order_no }}/store-issuance">4. Open Store
         Issuance</a>
     </div>
+    {% endif %}
     {% endif %}
   </div>
 
@@ -296,4 +399,23 @@
     {% endif %}
   </div>
 </div>
+
+{% if sales_pending %}
+<div class="modal fade" id="salesRejectModal" tabindex="-1">
+  <div class="modal-dialog">
+    <form method="post" action="/production/orders/{{ order.order_no }}/sales-reject" class="modal-content">
+      <div class="modal-header"><h5 class="modal-title">Reject Order</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <label class="form-label fw-bold">Reason</label>
+        <textarea class="form-control" name="reason" rows="3" placeholder="Optional but helpful for whoever submitted this order"></textarea>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+        <button type="submit" class="btn btn-danger fw-bold">Reject Order</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
 {% endblock %}

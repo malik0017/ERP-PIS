@@ -140,13 +140,6 @@
     color: #102542
   }
 
-  .report-card p {
-    font-size: 13px;
-    line-height: 1.4;
-    margin: 0;
-    min-height: 54px
-  }
-
   .report-card .metric {
     font-weight: 950;
     color: #3874ff;
@@ -325,7 +318,6 @@
       <div class="report-card">
         <div class="top"><i class="bi {{ r.icon }}"></i><span class="group">{{ r.group }}</span></div>
         <h4>{{ r.title }}</h4>
-        <p>{{ r.desc }}</p>
         <div class="metric">{{ r.metric }}</div>
         <div class="report-actions">
           <a class="primary" href="{{ r.url }}">Open</a>
@@ -338,7 +330,6 @@
 
   <div class="panel">
     <h3><i class="bi bi-cash-coin me-2"></i>Financial Reports</h3>
-    <p>Statements built from the general ledger — every operational transaction (GRN, issuance, delivery, AR/AP, payments) posts here automatically.</p>
     <div class="kpi-row" style="margin-bottom:14px">
       <div class="rep-kpi"><span>Invoiced Revenue</span><strong>{{ '%.0f'|format(fin.revenue) }}</strong></div>
       <div class="rep-kpi"><span>AR Outstanding</span><strong>{{ '%.0f'|format(fin.ar_open) }}</strong></div>
@@ -348,22 +339,22 @@
     <div class="report-catalog">
       <div class="report-card">
         <div class="top"><i class="bi bi-graph-up-arrow"></i><span class="group">Finance</span></div>
-        <h4>Profit &amp; Loss</h4><p>Revenue, COGS and expenses with net income for any period.</p>
+        <h4>Profit &amp; Loss</h4>
         <div class="report-actions"><a class="primary" href="/finance/statements/profit-loss">Open</a></div>
       </div>
       <div class="report-card">
         <div class="top"><i class="bi bi-clipboard-data"></i><span class="group">Finance</span></div>
-        <h4>Balance Sheet</h4><p>Assets, liabilities and equity as of a chosen date — auto-balanced.</p>
+        <h4>Balance Sheet</h4>
         <div class="report-actions"><a class="primary" href="/finance/statements/balance-sheet">Open</a></div>
       </div>
       <div class="report-card">
         <div class="top"><i class="bi bi-cash-stack"></i><span class="group">Finance</span></div>
-        <h4>Cash Flow</h4><p>Operating cash movement derived from bank, AR, AP and inventory.</p>
+        <h4>Cash Flow</h4>
         <div class="report-actions"><a class="primary" href="/finance/statements/cash-flow">Open</a></div>
       </div>
       <div class="report-card">
         <div class="top"><i class="bi bi-hourglass-split"></i><span class="group">Finance</span></div>
-        <h4>AR / AP Aging</h4><p>Outstanding receivables and payables bucketed by age.</p>
+        <h4>AR / AP Aging</h4>
         <div class="report-actions"><a class="primary" href="/finance/reports/aging?report_type=ar">AR Aging</a><a href="/finance/reports/aging?report_type=ap">AP Aging</a></div>
       </div>
     </div>
@@ -372,13 +363,11 @@
   <div class="analytics-grid">
     <div class="panel">
       <h3>ERP Operations Trend</h3>
-      <p>Visual Phoenix ECharts view for the same report center.</p>
       <div class="erp-chart" data-chart="bar" data-labels="BOM,Store,QC,Dispatch"
         data-values="{{ kpis.bom_lines }},{{ kpis.orders }},{{ kpis.active_recipes }},{{ kpis.reports }}"></div>
     </div>
     <div class="panel">
       <h3>Module Readiness</h3>
-      <p>Production is live; Inventory, Finance and HR continue in future phases.</p>
       <div class="erp-chart" data-chart="donut" data-labels="Production,Inventory,Finance,HR" data-values="70,15,10,5">
       </div>
     </div>
@@ -387,7 +376,6 @@
   <div class="analytics-grid">
     <div class="panel">
       <h3>BOM Cost by Issue Section</h3>
-      <p>Material cost concentration by kitchen/section.</p>
       {% set max_section = (bom_section | map(attribute='cost') | max) if bom_section else 1 %}
       {% for row in bom_section %}
       <div class="bar-row">
@@ -401,7 +389,6 @@
     </div>
     <div class="panel">
       <h3>BOM Cost by Main Category</h3>
-      <p>Material cost split by Inventory Master main category.</p>
       {% set max_cat = (bom_category | map(attribute='cost') | max) if bom_category else 1 %}
       {% for row in bom_category %}
       <div class="bar-row">
@@ -418,7 +405,6 @@
   <div class="analytics-grid">
     <div class="panel">
       <h3>Section Yield / Wastage Summary</h3>
-      <p>Shows whether sections are losing material during processing.</p>
       <table class="table-pro">
         <thead>
           <tr>
@@ -442,7 +428,6 @@
     </div>
     <div class="panel">
       <h3>Order Pipeline Status</h3>
-      <p>Live order distribution.</p>
       {# Batch 10: theme-based multi-chart with type switcher. #}
       {% if order_status %}
       <div data-isfc-chart="hbar"
@@ -453,19 +438,6 @@
       {% else %}<div class="empty">No orders found.</div>{% endif %}
     </div>
   </div>
-
-  <div class="panel">
-    <h3>Next Reporting Phase</h3>
-    <div class="roadmap">
-      <div class="step"><b>1. Printable Forms</b><span>Order sheet, BOM sheet, Store issue slip, QC certificate, packing
-          slip, delivery note.</span></div>
-      <div class="step"><b>2. Management Pack</b><span>Daily production dashboard, order margin, recipe profitability,
-          yield/wastage.</span></div>
-      <div class="step"><b>3. Drill-down Reports</b><span>Click any chart/category/status and open the underlying
-          documents.</span></div>
-      <div class="step"><b>4. Excel/PDF Export</b><span>Convert current CSV exports into formatted Excel and PDF
-          reports.</span></div>
-    </div>
-  </div>
+ 
 </div>
 {% endblock %}

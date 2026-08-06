@@ -35,7 +35,7 @@ PAGE_AREAS = {
 
     # Granular pages
     "master_upload", "master_data", "recipe_list", "recipe_prepare", "recipe_missing",
-    "recipe_approvals", "order_portal", "production_orders", "store_issuance",
+    "recipe_approvals", "master_approvals", "order_portal", "production_orders", "store_issuance",
     "kitchen_summary",
 
     # Kitchen sections
@@ -50,6 +50,7 @@ PAGE_AREAS = {
 AREA_PARENTS = {
     "master_upload": "masters",
     "master_data": "masters",
+    "master_approvals": "masters",
     "recipe_list": "recipes",
     "recipe_prepare": "recipes",
     "recipe_missing": "recipes",
@@ -108,6 +109,19 @@ ROLE_PERMISSIONS = {
 
     "DEFAULT": {
         "dashboard": True, "reports": True,
+    },
+
+    # Batch 83 fix: CUSTOMER had no explicit entry here, so it fell back to
+    # DEFAULT — which grants "dashboard" and "reports". That's exactly what
+    # a customer account should never see: the internal admin Dashboard and
+    # cross-customer business Reports, not their own order history. A
+    # customer now gets exactly one area: their own portal. Recipe/brand/
+    # channel browsing while placing an order still works — the customer
+    # portal's own order-placement pages look those up through their own
+    # scoped internal queries, not the general /recipes or /master admin
+    # modules, so nothing else needs to be granted for that to keep working.
+    "CUSTOMER": {
+        "customer_portal": True,
     },
 }
 

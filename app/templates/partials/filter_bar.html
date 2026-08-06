@@ -1,37 +1,53 @@
 {# ==========================================================================
-   Shared filter bar — same style as Store Issuance / Production Orders.
+   Shared filter bar — same style and position on every screen that uses it
+   (Store Issuance, Production Orders, QC, Packing, Dispatch, Procurement,
+   Inventory, Customer Orders).
    Usage: {% include 'partials/filter_bar.html' with context %}
    Expects: `filters` dict {search, from_date, to_date, status}
    Optional: `status_options` list of statuses for the dropdown.
+
+   Batch 80: collapsed behind a single "Filters" button by default (matches
+   every other filter bar in the density pass) so it doesn't eat permanent
+   vertical space — auto-opens if a filter is already active on load, so
+   nobody loses track of an applied filter.
    ========================================================================== #}
-<form method="get" class="card shadow-none border mb-3">
-  <div class="card-body p-3">
-    <div class="row g-2 align-items-end">
-      <div class="col-6 col-md-2">
-        <label class="form-label fs-10 text-uppercase fw-bold text-body-tertiary mb-1">From Date</label>
-        <input class="form-control form-control-sm" type="date" name="from_date" value="{{ filters.from_date if filters else '' }}">
-      </div>
-      <div class="col-6 col-md-2">
-        <label class="form-label fs-10 text-uppercase fw-bold text-body-tertiary mb-1">To Date</label>
-        <input class="form-control form-control-sm" type="date" name="to_date" value="{{ filters.to_date if filters else '' }}">
-      </div>
-      <div class="col-6 col-md-2">
-        <label class="form-label fs-10 text-uppercase fw-bold text-body-tertiary mb-1">Status</label>
-        <select class="form-select form-select-sm" name="status">
-          <option value="">All Status</option>
-          {% for s in status_options|default([]) %}
-          <option value="{{ s }}" {% if filters and filters.status == s %}selected{% endif %}>{{ s }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="col-12 col-md-4">
-        <label class="form-label fs-10 text-uppercase fw-bold text-body-tertiary mb-1">Quick Search</label>
-        <input class="form-control form-control-sm" type="search" name="search" placeholder="Search order, customer, brand..." value="{{ filters.search if filters else '' }}">
-      </div>
-      <div class="col-12 col-md-2 d-flex gap-2">
-        <button class="btn btn-primary btn-sm flex-1" type="submit">Filter</button>
-        <a class="btn btn-phoenix-secondary btn-sm" href="{{ request.url.path }}">Reset</a>
+{% set _fb_active = filters and (filters.from_date or filters.to_date or filters.status or filters.search) %}
+<div class="mb-3">
+  <button type="button" class="isfc-filter-toggle" data-bs-toggle="collapse" data-bs-target="#sharedFilterBody"
+          aria-expanded="{{ 'true' if _fb_active else 'false' }}" aria-controls="sharedFilterBody">
+    <i class="bi bi-funnel"></i> {{ t('Filters') }}
+    {% if _fb_active %}<span class="badge bg-primary ms-1">Active</span>{% endif %}
+    <i class="bi bi-chevron-down ms-1"></i>
+  </button>
+  <form method="get" class="card shadow-none border mt-2 collapse {{ 'show' if _fb_active }}" id="sharedFilterBody">
+    <div class="card-body p-3">
+      <div class="row g-2 align-items-end">
+        <div class="col-6 col-md-2">
+          <label class="form-label fs-10 text-uppercase fw-bold text-body-tertiary mb-1">{{ t('From') }}</label>
+          <input class="form-control form-control-sm" type="date" name="from_date" value="{{ filters.from_date if filters else '' }}">
+        </div>
+        <div class="col-6 col-md-2">
+          <label class="form-label fs-10 text-uppercase fw-bold text-body-tertiary mb-1">{{ t('To') }}</label>
+          <input class="form-control form-control-sm" type="date" name="to_date" value="{{ filters.to_date if filters else '' }}">
+        </div>
+        <div class="col-6 col-md-2">
+          <label class="form-label fs-10 text-uppercase fw-bold text-body-tertiary mb-1">{{ t('Status') }}</label>
+          <select class="form-select form-select-sm" name="status">
+            <option value="">{{ t('All Status') }}</option>
+            {% for s in status_options|default([]) %}
+            <option value="{{ s }}" {% if filters and filters.status == s %}selected{% endif %}>{{ s }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-12 col-md-4">
+          <label class="form-label fs-10 text-uppercase fw-bold text-body-tertiary mb-1">{{ t('Quick Search') }}</label>
+          <input class="form-control form-control-sm" type="search" name="search" placeholder="Search order, customer, brand..." value="{{ filters.search if filters else '' }}">
+        </div>
+        <div class="col-12 col-md-2 d-flex gap-2">
+          <button class="btn btn-primary btn-sm flex-1" type="submit">{{ t('Filter') }}</button>
+          <a class="btn btn-phoenix-secondary btn-sm" href="{{ request.url.path }}">{{ t('Reset') }}</a>
+        </div>
       </div>
     </div>
-  </div>
-</form>
+  </form>
+</div>

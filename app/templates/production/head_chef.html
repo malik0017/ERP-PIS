@@ -126,50 +126,76 @@
 <div class="rep-page container-fluid py-3">
   <div class="rep-hero mb-3">
     <h2 class="mb-1">Head Chef Planning & Schedule Approval</h2>
-    <p class="mb-0 opacity-75">Head Chef confirms cooking date/time and material receiving date/time. Customer requested
-      delivery is visible but fixed.</p>
+
   </div>
   {% if error %}<div class="alert alert-warning">{{ error }}</div>{% endif %}
+  {% set _active_filter = filters.view != 'all' or filters.status or filters.date_from or filters.date_to %}
+  {% set _qs = '&date_from=' + filters.date_from|string if filters.date_from else '' %}
+  {% set _qs = _qs + '&date_to=' + filters.date_to|string if filters.date_to else _qs %}
   <div class="row g-3 mb-3">
     <div class="col-md-3">
-      <div class="hc-card hc-kpi"><span>Total Orders</span><b>{{ stats.total_orders }}</b></div>
+      <a href="/production/head-chef?view=all" class="hc-card hc-kpi isfc-kpi-link {{ 'isfc-kpi-link-active' if filters.view == 'all' and not filters.status }}" style="position:relative;">
+        <span>Total Orders{% if _active_filter %} (filtered){% endif %}</span><b>{{ stats.filtered_total }}</b>
+      </a>
     </div>
     <div class="col-md-3">
-      <div class="hc-card hc-kpi"><span>Awaiting Head Chef</span><b>{{ stats.awaiting_head_chef }}</b></div>
+      <a href="/production/head-chef?status=Submitted{{ _qs }}" class="hc-card hc-kpi isfc-kpi-link {{ 'isfc-kpi-link-active' if filters.status == 'Submitted' }}" style="position:relative;">
+        <span>Awaiting Head Chef</span><b>{{ stats.awaiting_head_chef }}</b>
+      </a>
     </div>
     <div class="col-md-3">
       <div class="hc-card hc-kpi"><span>Scheduled Orders</span><b>{{ stats.scheduled }}</b></div>
     </div>
     <div class="col-md-3">
-      <div class="hc-card hc-kpi"><span>BOM Ready</span><b>{{ stats.bom_ready }}</b></div>
+      <a href="/production/head-chef?status=Head Chef Approved{{ _qs }}" class="hc-card hc-kpi isfc-kpi-link {{ 'isfc-kpi-link-active' if filters.status == 'Head Chef Approved' }}" style="position:relative;">
+        <span>BOM Ready</span><b>{{ stats.bom_ready }}</b>
+      </a>
     </div>
   </div>
   <div class="hc-card">
     <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
       <div>
         <h4 class="mb-1">Head Chef Order Queue</h4>
-        <div class="text-muted">Use quick filters for today, this week, this month, pending and process orders.</div>
-      </div><a href="/production/orders" class="hc-btn hc-soft">Production Orders</a>
+      </div>
     </div>
-    <div class="d-flex gap-2 flex-wrap mb-3">
-      {% for v,label in [('today','Today'),('week','This Week'),('month','This
-      Month'),('pending','Pending'),('all','All')] %}<a class="chip {% if filters.view==v %}active{% endif %}"
-        href="/production/head-chef?view={{ v }}">{{ label }}</a>{% endfor %}
+
+    {# Batch 81 fix: the quick-view chips (Today/Week/...) and the manual
+       Delivery From/To/Status form used to look and behave like two
+       different, competing filter systems, even though they always wrote
+       to the same underlying query params. Now one collapsible "Filters"
+       panel, same toggle style as every other filter bar in the app —
+       the chips are inside it as one-click shortcuts that fill in the
+       date fields below them, not a separate mechanism. #}
+    <button type="button" class="isfc-filter-toggle mb-2" data-bs-toggle="collapse" data-bs-target="#hcFilterBody"
+            aria-expanded="{{ 'true' if _active_filter else 'false' }}">
+      <i class="bi bi-funnel"></i> Filters
+      {% if _active_filter %}<span class="badge bg-primary ms-1">Active</span>{% endif %}
+      <i class="bi bi-chevron-down ms-1"></i>
+    </button>
+    <div class="collapse {{ 'show' if _active_filter }}" id="hcFilterBody">
+      <div class="d-flex gap-2 flex-wrap mb-3">
+        {% for v,label in [('today','Today'),('week','This Week'),('month','This Month'),('pending','Pending'),('all','All')] %}
+        <a class="chip {% if filters.view==v %}active{% endif %}" href="/production/head-chef?view={{ v }}">{{ label }}</a>
+        {% endfor %}
+      </div>
+      <form method="get" class="row g-2 align-items-end mb-3">
+        <div class="col-md-3"><label class="hc-label">Delivery From</label><input type="date" class="hc-input"
+            name="date_from" value="{{ filters.date_from or '' }}"></div>
+        <div class="col-md-3"><label class="hc-label">Delivery To</label><input type="date" class="hc-input"
+            name="date_to" value="{{ filters.date_to or '' }}"></div>
+        <div class="col-md-3"><label class="hc-label">Status</label><select class="hc-input" name="status">
+            <option value="">All Status</option>{% for st in ['Submitted','Head Chef Approved','BOM Generated','Store
+            Pending','In Production','Packing Pending','Packed'] %}<option value="{{ st }}" {% if filters.status==st
+              %}selected{% endif %}>{{ st }}</option>{% endfor %}<option value="pending" {% if filters.status=='pending'
+              %}selected{% endif %}>Pending Group</option>
+            <option value="process" {% if filters.status=='process' %}selected{% endif %}>In Process Group</option>
+          </select></div>
+        <div class="col-md-2 d-flex gap-2">
+          <button class="hc-btn hc-primary w-100">Filter</button>
+          {% if _active_filter %}<a class="hc-btn hc-soft" href="/production/head-chef">Reset</a>{% endif %}
+        </div>
+      </form>
     </div>
-    <form method="get" class="row g-2 align-items-end mb-3">
-      <div class="col-md-3"><label class="hc-label">Delivery From</label><input type="date" class="hc-input"
-          name="date_from" value="{{ filters.date_from or '' }}"></div>
-      <div class="col-md-3"><label class="hc-label">Delivery To</label><input type="date" class="hc-input"
-          name="date_to" value="{{ filters.date_to or '' }}"></div>
-      <div class="col-md-3"><label class="hc-label">Status</label><select class="hc-input" name="status">
-          <option value="">All Status</option>{% for st in ['Submitted','Head Chef Approved','BOM Generated','Store
-          Pending','In Production','Packing Pending','Packed'] %}<option value="{{ st }}" {% if filters.status==st
-            %}selected{% endif %}>{{ st }}</option>{% endfor %}<option value="pending" {% if filters.status=='pending'
-            %}selected{% endif %}>Pending Group</option>
-          <option value="process" {% if filters.status=='process' %}selected{% endif %}>In Process Group</option>
-        </select></div>
-      <div class="col-md-2"><button class="hc-btn hc-primary w-100">Filter</button></div>
-    </form>
     <input class="hc-input mb-2" id="hcSearch" placeholder="Quick search order, customer, brand, channel, status..."
       onkeyup="filterHeadChef()">
     <div class="table-responsive">

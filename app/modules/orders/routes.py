@@ -98,7 +98,7 @@ def order_portal(request: Request, db: Session = Depends(get_db)):
     require_area(request, "order_portal")
     company_id = _company_id_from_session(request)
     context = _master_dropdown_context(db, company_id)
-    context.update({"page_title": "Customer / Internal Order Portal"})
+    context.update({"page_title": "Sale Requisitions"})
     return render(request, "orders/portal.html", context)
 
 

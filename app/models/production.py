@@ -31,6 +31,21 @@ class CustomerOrder(Base):
     total_estimated_food_cost = Column(Float, default=0)
     total_estimated_selling_value = Column(Float, default=0)
     total_estimated_margin = Column(Float, default=0)
+    # Batch 88: an explicit Sales review checkpoint on the order itself —
+    # before it's even visible to the Head Chef, someone with sales
+    # authority confirms it should proceed at all. Deliberately a NEW,
+    # separate field rather than repurposing `status` — the existing
+    # status machine (Submitted/Head Chef Approved/BOM Generated/...) is
+    # read by many other pages, and overloading it here would risk
+    # breaking those. New orders default to Pending (the gate applies);
+    # orders that already existed before this batch are backfilled to
+    # Approved at the database level when the column is first added (see
+    # the ALTER TABLE in production/routes.py), so nothing already in
+    # flight gets newly blocked.
+    sales_review_status = Column(String(20), default="Pending", nullable=True)
+    sales_reviewed_by = Column(String(255), nullable=True)
+    sales_reviewed_at = Column(DateTime, nullable=True)
+    sales_review_reason = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -234,4 +249,12 @@ class PackingDispatch(Base):
     delivery_temperature_c = Column(Float, nullable=True)
     dispatch_status = Column(String(50), default="Pending", index=True)
     remarks = Column(Text, nullable=True)
+    # Batch 80: proof-of-delivery — added defensively via ALTER TABLE in
+    # dispatch/routes.py::_ensure_delivery_confirmation_schema() on a fresh
+    # DB copy that predates this column; declared here too so the ORM
+    # actually exposes them as row attributes in templates/routes.
+    delivery_otp = Column(String(10), nullable=True)
+    delivery_otp_generated_at = Column(DateTime, nullable=True)
+    delivery_confirmed_by = Column(String(20), nullable=True)
+    pod_photo_path = Column(String(300), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)

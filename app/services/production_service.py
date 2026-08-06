@@ -6,7 +6,7 @@ from datetime import date, datetime
 from typing import Any
 
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, text
 
 from app.models.ingredient import Ingredient
 from app.models.inventory import InventoryTransaction, StockLot
@@ -330,6 +330,104 @@ def generate_bom_for_order(db: Session, order_no: str, approved_by: str | None =
     order.total_estimated_margin = _num(order.total_estimated_selling_value) - total_cost
     db.commit()
     return db.query(BOMLine).filter(BOMLine.order_no == order_no).all()
+
+
+def preview_bom_shortages(db: Session, order_no: str) -> list[dict[str, Any]]:
+    """Batch 80 — read-only BOM preview for the Head Chef approval screen.
+
+    Runs the exact same recipe -> ingredient explosion as
+    generate_bom_for_order() (portions-adjusted quantity + waste %), but
+    never writes a BOMLine row — this is meant to be safe to call on every
+    page load of the order detail screen, before the Head Chef has approved
+    anything. For each resulting ingredient, compares the required quantity
+    against current stock on hand (computed the same way Inventory does:
+    SUM(qty_in) - SUM(qty_out) from the ledger, company-scoped) and returns
+    only the ones that would come up short.
+
+    This is advisory, not a hard block — the Head Chef sees exactly which
+    ingredients and by how much, and still decides whether to proceed
+    (e.g. a purchase is already in transit), same as they would today,
+    just no longer flying blind until Store discovers the shortage later.
+    """
+    order = db.query(CustomerOrder).filter(CustomerOrder.order_no == order_no).first()
+    if not order:
+        return []
+
+    cid = getattr(order, "company_id", None)
+    lines = db.query(OrderLine).filter(OrderLine.order_no == order_no).order_by(OrderLine.line_no).all()
+    required: dict[str, dict[str, Any]] = {}
+
+    for ol in lines:
+        recipe = (
+            db.query(Recipe)
+            .filter(Recipe.recipe_code == ol.recipe_no,
+                    func.upper(func.trim(Recipe.status)) == "ACTIVE",
+                    Recipe.is_active == True)
+            .order_by(Recipe.version.desc(), Recipe.id.desc())
+            .first()
+        )
+        if not recipe:
+            continue
+        std_portions = max(_num(recipe.standard_portions), 1)
+        order_portions = _num(ol.required_portions)
+        waste_pct_raw = _num(recipe.target_wastage_pct)
+        waste_pct = waste_pct_raw * 100 if waste_pct_raw < 1 else waste_pct_raw
+
+        recipe_items = (
+            db.query(RecipeIngredient)
+            .filter(RecipeIngredient.recipe_id == recipe.id)
+            .order_by(RecipeIngredient.line_no)
+            .all()
+        )
+        for ri in recipe_items:
+            ingredient_code = ri.inventory_code or f"NO-CODE-{ri.id}"
+            ingredient = db.query(Ingredient).filter(Ingredient.ingredient_code == ingredient_code).first()
+            recipe_uom = ri.uom or (ingredient.recipe_uom if ingredient else "Kg")
+            standard_uom = ingredient.standard_uom if ingredient else recipe_uom
+            conv = ingredient.conversion_to_standard if ingredient else 1
+
+            qty_per_portion = _num(ri.qty_per_portion)
+            if qty_per_portion <= 0 and _num(ri.qty_batch) > 0:
+                qty_per_portion = _num(ri.qty_batch) / std_portions
+            required_recipe_qty = qty_per_portion * order_portions
+            required_std = convert_to_standard(required_recipe_qty, recipe_uom, standard_uom, conv)
+            required_std += required_std * waste_pct / 100
+
+            key = ingredient_code
+            if key not in required:
+                required[key] = {
+                    "ingredient_code": ingredient_code, "ingredient_name": ri.item_name,
+                    "standard_uom": standard_uom, "required_qty": 0.0, "recipes": set(),
+                }
+            required[key]["required_qty"] += required_std
+            required[key]["recipes"].add(recipe.recipe_name)
+
+    if not required:
+        return []
+
+    codes = list(required.keys())
+    placeholders = ",".join(f":c{i}" for i in range(len(codes)))
+    params = {f"c{i}": c for i, c in enumerate(codes)}
+    params["cid"] = cid
+    stock_rows = db.execute(text(f"""
+        SELECT inventory_code, COALESCE(SUM(COALESCE(qty_in,0)) - SUM(COALESCE(qty_out,0)), 0) AS on_hand
+        FROM inventory_transactions
+        WHERE inventory_code IN ({placeholders}) AND (company_id = :cid OR company_id IS NULL)
+        GROUP BY inventory_code
+    """), params).mappings().all()
+    on_hand = {r["inventory_code"]: float(r["on_hand"] or 0) for r in stock_rows}
+
+    shortages = []
+    for key, r in required.items():
+        available = on_hand.get(key, 0.0)
+        if r["required_qty"] > available + 0.0001:
+            shortages.append({
+                "ingredient_code": r["ingredient_code"], "ingredient_name": r["ingredient_name"],
+                "standard_uom": r["standard_uom"], "required_qty": round(r["required_qty"], 3),
+                "available_qty": round(available, 3), "shortfall": round(r["required_qty"] - available, 3),
+                "recipes": sorted(r["recipes"]),
+            })
+    return sorted(shortages, key=lambda x: -x["shortfall"])
 
 
 def consolidated_bom(db: Session, order_no: str | None = None, order_nos: list[str] | None = None) -> list[dict[str, Any]]:

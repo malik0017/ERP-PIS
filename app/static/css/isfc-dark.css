@@ -412,8 +412,6 @@ html[data-bs-theme="dark"] p {
 }
 
 
-/* Page titles OUTSIDE heroes (Recipes & Costing, Prepare Manual Recipe,
-   Customer / Internal Order Portal) — these used fixed navy text. */
 html[data-bs-theme="dark"] .content h1,
 html[data-bs-theme="dark"] .content h2,
 html[data-bs-theme="dark"] .content h3:not(.text-white) {

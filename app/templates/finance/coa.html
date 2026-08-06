@@ -11,14 +11,14 @@
   <div class="alert alert-danger"><i class="bi bi-exclamation-triangle me-2"></i>{{ request.query_params.get('error') }}</div>
   {% endif %}
 
-  <div class="d-flex justify-content-between align-items-center mb-3">
+   <div class="isfc-hero mb-4 p-4 rounded-4 text-white d-flex align-items-center justify-content-between flex-wrap gap-3"
+       style="background:linear-gradient(120deg,#065f46 0%,#059669 60%,#10b981 100%);">
     <div>
-      <h3 class="mb-0 fw-bolder"><i class="bi bi-diagram-3 me-2"></i>{{ t('Chart of Accounts') }}</h3>
-      <p class="text-body-tertiary mb-0">{{ t('The general ledger accounts every journal posts to.') }}</p>
+      <h1 class="mb-0 fw-bolder"><i class="bi bi-diagram-3 me-2"></i>{{ t('Chart of Accounts') }}</h1>
     </div>
     <div class="d-flex gap-2">
       <a href="/finance/gl" class="btn btn-phoenix-secondary btn-sm"><i class="bi bi-journal-text me-1"></i>{{ t('General Ledger') }}</a>
-      <button class="btn btn-primary btn-sm" type="button" onclick="document.getElementById('coaForm').classList.toggle('d-none')">
+      <button class="btn btn-phoenix-secondary btn-sm" type="button" onclick="document.getElementById('coaForm').classList.toggle('d-none')">
         <i class="bi bi-plus-lg me-1"></i>{{ t('New Account') }}
       </button>
     </div>

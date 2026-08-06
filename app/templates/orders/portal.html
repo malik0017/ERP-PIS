@@ -112,7 +112,13 @@
   }
 </style>
 <div class="container-fluid py-3">
-  <h3 class="sap-title">Customer / Internal Order Portal</h3>
+  <div class="isfc-hero mb-4 p-4 rounded-4 text-white d-flex align-items-center justify-content-between flex-wrap gap-3"
+       style="background:linear-gradient(135deg,#132947,#0c91a3)">
+    <div>
+      <h1 class="mb-1 fw-bold text-white"><i class="bi bi-cart-plus me-2"></i>{{ t('Sale Requisitions') }}</h1>
+      <p class="mb-0 opacity-75">{{ t('Place a new order on behalf of a customer, or for internal production — the same 48-hour delivery rule applies here as everywhere else.') }}</p>
+    </div>
+  </div>
 
   <div class="sap-card">
     <form method="post" action="/production/orders/create" id="orderForm">
@@ -297,11 +303,11 @@
     line.querySelector(".recipe-name").value =
       opt?.dataset.name || parts[1] || input.value;
     const info = line.querySelector(".recipe-info");
-    info.textContent = opt
-      ? `Food/portion: ${opt.dataset.food || 0} | Sale/portion: ${
-          opt.dataset.sale || 0
-        } | BOM lines: ${opt.dataset.bom || 0}`
-      : "";
+    // Batch 92 fix: this used to show "Food/portion: X | Sale/portion: Y
+    // | BOM lines: Z" under every recipe line — extra detail that wasn't
+    // needed here, removed per request. Left the element itself in place
+    // (now always empty) rather than restructure the surrounding markup.
+    info.textContent = "";
   }
   function removeLine(btn) {
     const rows = document.querySelectorAll(".order-line");
@@ -330,6 +336,21 @@
       bindRecipeLine(e.target.closest(".order-line"));
   });
   document.getElementById("orderForm").addEventListener("submit", (e) => {
+    // Batch 91 fix: "at least one recipe with portions > 0" used to only
+    // be checked server-side, after a full round-trip that landed the
+    // user on a completely different screen with the error. Checked here
+    // first so a zero-portion submission never leaves this page at all.
+    var hasPortions = Array.prototype.some.call(
+      document.querySelectorAll('input[name="required_portions"]'),
+      function (el) { return parseFloat(el.value) > 0; }
+    );
+    if (!hasPortions) {
+      e.preventDefault();
+      if (window.showToast) { showToast("Enter at least one recipe with portions greater than zero before submitting.", "warning", "Check Portions"); }
+      else { alert("Enter at least one recipe with portions greater than zero before submitting."); }
+      return;
+    }
+
     // Batch 69: 48-hour rule. Delivery date+time must be >= now + 48h.
     var dEl = document.getElementById("deliveryDate");
     var tEl = document.getElementById("deliveryTime");
@@ -339,7 +360,8 @@
       var minAllowed = new Date(Date.now() + 48 * 3600 * 1000);
       if (deliv < minAllowed) {
         e.preventDefault();
-        alert("Orders must be placed at least 48 hours before the delivery date and time.");
+        if (window.showToast) { showToast("Orders must be placed at least 48 hours before the delivery date and time.", "warning", "48-Hour Rule"); }
+        else { alert("Orders must be placed at least 48 hours before the delivery date and time."); }
         return;
       }
     }

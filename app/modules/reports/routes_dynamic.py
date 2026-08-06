@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, Request, Query
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 from app.core.templates import render
+from app.core.rbac import require_area
 from app.database.session import get_db
 import logging
 
@@ -53,6 +54,7 @@ async def dynamic_ar_report(
     customer: str = Query(None),  # Can be comma-separated list
     db: Session = Depends(get_db),
 ):
+    require_area(request, "reports")
     """
     Dynamic AR Report with filters
     """
@@ -132,6 +134,7 @@ async def dynamic_ap_report(
     supplier: str = Query(None),  # Can be comma-separated list
     db: Session = Depends(get_db),
 ):
+    require_area(request, "reports")
     """
     Dynamic AP Report with filters
     """
@@ -209,6 +212,7 @@ async def dynamic_inventory_report(
     cost_center: str = Query(None),
     db: Session = Depends(get_db),
 ):
+    require_area(request, "reports")
     """
     Dynamic Inventory Report with category and cost-center filters
     """

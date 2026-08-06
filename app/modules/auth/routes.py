@@ -508,10 +508,14 @@ async def login(
     request.session["header_title"] = branding.get("header_title") or "ISFC"
     request.session["header_subtitle"] = branding.get("header_subtitle") or "Production"
 
-    # Batch 10: EVERY user lands on the Module Launcher after login.
-    # The launcher itself filters cards through the RBAC access matrix,
-    # so each user only sees the modules granted from Users & Access UI.
-    target_url = "/modules"
+    # Batch 83 fix: every user used to land on the Module Launcher after
+    # login, including customer accounts — meant to be filtered down to
+    # just their own portal by RBAC, but a customer landing on "a grid of
+    # launcher cards" (even a grid of one) is the wrong first experience
+    # for someone who should only ever see their own orders. Customers now
+    # go straight to their portal home; every other role is unchanged.
+    role_name = (user.role.name if user.role else "CUSTOMER") or "CUSTOMER"
+    target_url = "/my" if role_name.upper() == "CUSTOMER" else "/modules"
     
     logger.info(f"✅ Login successful: {username}")
     

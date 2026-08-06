@@ -115,11 +115,13 @@
   <div class="grid">
     <div class="panel">
       <h3>Pack Order</h3>
-      <form method="post" action="/packing/{{ row.id }}/update">
+      <form method="post" action="/packing/{{ row.id }}/update" id="packForm"
+            data-planned="{{ order.total_planned_portions if order else (row.packed_portions or 0) }}">
         <div class="form-grid">
-          <div><label>Packed Portions</label><input class="form-control" name="packed_portions" type="number"
+          <div><label>Packed Portions</label><input class="form-control" name="packed_portions" id="packedInput" type="number"
               step="0.01" value="{{ row.packed_portions or (order.total_planned_portions if order else 0) }}"></div>
-          <div><label>Rejected Portions</label><input class="form-control" name="rejected_portions" type="number"
+          <div><label>Rejected Portions <span class="text-body-tertiary" title="Auto = Planned − Packed, editable">(auto)</span></label>
+            <input class="form-control" name="rejected_portions" id="rejectedInput" type="number"
               step="0.01" value="{{ row.rejected_portions or 0 }}"></div>
           <div><label>Packing / Dispatch Date</label><input class="form-control" name="dispatch_date" type="date"
               value="{{ row.dispatch_date or '' }}"></div>
@@ -166,4 +168,26 @@
     </div>
   </div>
 </div>
+<script>
+/* Batch 80 fix: rejected portions auto-calculates from the shortfall
+   between the order's planned total and what was actually packed
+   (e.g. plan 15, pack 11 -> 4 auto-fill as rejected), but stays editable
+   for cases that don't reduce to simple subtraction (e.g. rejects found
+   after packing, at the same count as planned). */
+(function () {
+  var form = document.getElementById('packForm');
+  var packed = document.getElementById('packedInput');
+  var rejected = document.getElementById('rejectedInput');
+  if (!form || !packed || !rejected) return;
+  var planned = parseFloat(form.dataset.planned || '0');
+  var rejectedTouched = false;
+  packed.addEventListener('input', function () {
+    if (rejectedTouched) return;
+    var p = parseFloat(packed.value || '0');
+    var shortfall = planned - p;
+    rejected.value = shortfall > 0 ? shortfall.toFixed(2) : 0;
+  });
+  rejected.addEventListener('input', function () { rejectedTouched = true; });
+})();
+</script>
 {% endblock %}

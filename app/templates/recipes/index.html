@@ -287,14 +287,13 @@
 }
 </style>
 
-<div class="pis-page">
-
-    <div class="pis-page-header">
-        <div class="pis-title-wrap">
-            <h1>Recipes & Costing</h1>
-        </div>
-
+<div class="container-fluid py-3">
+    <div class="isfc-hero mb-4 p-4 rounded-4 text-white d-flex align-items-center justify-content-between flex-wrap gap-3"
+       style="background:linear-gradient(135deg,#132947,#0c91a3)">
+    <div>
+      <h1 class="mb-1 fw-bold text-white"><i class="bi bi-cart-plus me-2"></i>Recipes & Costing</h1>
     </div>
+  </div>
 
     {% if request.query_params.get("upload") == "success" %}
     <div class="pis-card">
@@ -352,26 +351,38 @@
     </div>
     {% endif %}
 
+    {# Batch 81 fix: these cards now reflect the active Category/Customer/
+       Search filters (previously always showed the unfiltered company
+       total, out of sync with the table below), and each card is also a
+       one-click filter itself — clicking "Active Recipes" jumps straight
+       to status=ACTIVE while keeping whatever Category/Customer/Search is
+       currently applied. #}
+    {% set _qs = '&search=' + search|urlencode if search else '' %}
+    {% set _qs = _qs + '&category=' + selected_category|urlencode if selected_category and selected_category != 'All Categories' else _qs %}
+    {% set _qs = _qs + '&customer=' + selected_customer|urlencode if selected_customer and selected_customer != 'All Customers' else _qs %}
+    {% if filters_active %}
+    <div class="small-muted mb-2"><i class="bi bi-funnel-fill me-1"></i>Cards below reflect your current Category/Customer/Search filter{{ 's' if (selected_category != 'All Categories' and selected_customer != 'All Customers') else '' }}.</div>
+    {% endif %}
     <div class="pis-summary-grid">
-        <div class="pis-summary-card">
+        <a href="/recipes?status=ALL{{ _qs }}" class="pis-summary-card isfc-kpi-link {{ 'isfc-kpi-link-active' if status == 'ALL' }}" style="position:relative;">
             <span>Total Recipes</span>
             <strong>{{ stats.total if stats is defined else recipes|length }}</strong>
-        </div>
+        </a>
 
-        <div class="pis-summary-card">
+        <a href="/recipes?status=ACTIVE{{ _qs }}" class="pis-summary-card isfc-kpi-link {{ 'isfc-kpi-link-active' if status == 'ACTIVE' }}" style="position:relative;">
             <span>Active Recipes</span>
             <strong>{{ stats.active if stats is defined else (recipes | selectattr("status", "equalto", "ACTIVE") | list | length) }}</strong>
-        </div>
+        </a>
 
-        <div class="pis-summary-card">
+        <a href="/recipes?status=PENDING{{ _qs }}" class="pis-summary-card isfc-kpi-link {{ 'isfc-kpi-link-active' if status == 'PENDING' }}" style="position:relative;">
             <span>Pending Versions</span>
             <strong>{{ stats.pending if stats is defined else (recipes | selectattr("status", "equalto", "PENDING") | list | length) }}</strong>
-        </div>
+        </a>
 
-        <div class="pis-summary-card">
+        <a href="/recipes?status=INACTIVE{{ _qs }}" class="pis-summary-card isfc-kpi-link {{ 'isfc-kpi-link-active' if status == 'INACTIVE' }}" style="position:relative;">
             <span>Inactive Recipes</span>
             <strong>{{ stats.inactive if stats is defined else (recipes | selectattr("status", "equalto", "INACTIVE") | list | length) }}</strong>
-        </div>
+        </a>
     </div>
 
     <div class="pis-card">

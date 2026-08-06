@@ -388,6 +388,32 @@ async def startup_event():
     logger.info("Application startup complete")
     logger.info("API Documentation: http://localhost:8000/docs")
 
+    # Batch 89 CRITICAL FIX: the sales_review_status columns added to the
+    # CustomerOrder ORM model in Batch 88 were only ever migrated into the
+    # real database from 3 specific routes (order detail, sales-approve,
+    # sales-reject). Every OTHER route that touches CustomerOrder through
+    # the ORM — order creation, Head Chef queue, Production Orders list,
+    # Store Issuance, and more — generates a SELECT listing every column
+    # the MODEL declares, including these new ones, regardless of whether
+    # that specific route ever calls the migration helper. On a database
+    # that hadn't yet visited one of those 3 routes, every one of those
+    # other pages broke with "Unknown column" the moment this shipped.
+    # Running the migration once here, before the app accepts any
+    # requests, guarantees the column exists everywhere from the start —
+    # this is the actual fix, not scattering more ensure-schema calls
+    # across more individual routes and hoping none are missed again.
+    try:
+        from app.database.session import SessionLocal
+        from app.modules.production.routes import _ensure_sales_review_schema
+        _db = SessionLocal()
+        try:
+            _ensure_sales_review_schema(_db)
+            logger.info("Verified customer_orders.sales_review_status schema")
+        finally:
+            _db.close()
+    except Exception as exc:
+        logger.error(f"Startup schema check failed (sales_review_status): {exc}")
+
 
 # ===== SHUTDOWN EVENT =====
 @app.on_event("shutdown")

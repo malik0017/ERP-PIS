@@ -38,6 +38,114 @@
     </div>
   </div>
 
+  {% set editable_count = lines | selectattr('received_qty', 'equalto', 0) | list | length %}
+  {% if po.status in ['Open','Partially Received'] %}
+  {# Batch 88: the PO edit capability — supplier, ordered quantity, and
+     unit price can now be corrected before receiving. This is the fix
+     for auto-generated POs (from the shortage-PO feature) showing
+     "Unassigned Supplier" and zero prices with no way to fix them. Lines
+     that already have received_qty > 0 are locked — editing a quantity
+     or price after stock was already received against it would corrupt
+     what's already posted to the ledger and GL. #}
+  <form method="post" action="/procurement/po/{{ po.po_no }}/edit" class="mb-3" id="poEditForm">
+    <div class="card shadow-none border" data-component-card>
+      <div class="card-header p-3 bg-body d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div>
+          <h5 class="text-body mb-0"><i class="bi bi-pencil-square me-1"></i>Edit PO Details</h5>
+          <div class="small-muted">Supplier, quantity, and price — only for lines nothing has been received against yet.</div>
+        </div>
+        <div class="d-flex gap-2">
+          <button type="button" class="btn btn-sm btn-outline-secondary" id="poEditToggle" onclick="togglePoEdit()">
+            <i class="bi bi-unlock me-1"></i>Edit</button>
+          <button class="btn btn-sm btn-primary fw-bold" type="submit" id="poEditSave" disabled><i class="bi bi-save me-1"></i>Save Changes</button>
+        </div>
+      </div>
+      <div class="card-body p-3">
+        <div class="row g-2 mb-2">
+          <div class="col-md-5">
+            <label class="form-label fs-10 text-uppercase fw-bold text-body-tertiary mb-1">Supplier</label>
+            {# Batch 90 fix: was a free-text box, not linked to anything.
+               Now a real searchable dropdown of the actual supplier
+               master — click to browse, or type to filter. #}
+            <div class="isfc-combo" id="supplierCombo">
+              <input class="form-control form-control-sm isfc-combo-input" id="supplierNameInput" name="supplier_name"
+                     value="{{ po.supplier_name }}" autocomplete="off" disabled>
+              <div class="isfc-combo-panel">
+                {% for s in suppliers %}
+                <div class="isfc-combo-item" data-code="{{ s.supplier_code }}" data-value="{{ s.supplier_name }}">{{ s.supplier_name }} <span class="small-muted">({{ s.supplier_code }})</span></div>
+                {% else %}
+                <div class="isfc-combo-empty">No suppliers found</div>
+                {% endfor %}
+              </div>
+            </div>
+            <input type="hidden" name="supplier_code" id="supplierCodeInput">
+          </div>
+        </div>
+        {% if editable_count %}
+        <div class="table-responsive">
+          <table class="table table-sm fs-9 mb-0">
+            <thead class="bg-body-highlight"><tr><th>Item</th><th style="width:140px">Ordered Qty</th><th style="width:140px">Unit Price</th></tr></thead>
+            <tbody>
+              {% for l in lines %}
+              {% if (l.received_qty or 0) == 0 %}
+              <tr>
+                <td><b>{{ l.inventory_code }}</b> <span class="text-body-tertiary">{{ l.item_name }}</span></td>
+                <td><input type="hidden" name="edit_line_id" value="{{ l.id }}">
+                  <input class="form-control form-control-sm po-edit-field" type="number" step="0.0001" min="0"
+                         name="edit_ordered_qty" value="{{ l.ordered_qty }}" disabled></td>
+                <td><input class="form-control form-control-sm po-edit-field" type="number" step="0.0001" min="0"
+                           name="edit_unit_price" value="{{ l.unit_price }}" disabled></td>
+              </tr>
+              {% endif %}
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="small-muted">Every line has already been received against — nothing left to edit here.</div>
+        {% endif %}
+      </div>
+    </div>
+  </form>
+  <script>
+    (function () {
+      var root = document.getElementById('supplierCombo');
+      var input = document.getElementById('supplierNameInput');
+      var hidden = document.getElementById('supplierCodeInput');
+      var items = Array.prototype.slice.call(root.querySelectorAll('.isfc-combo-item'));
+      function filter() {
+        var f = input.value.toLowerCase();
+        items.forEach(function (el) { el.style.display = (!f || el.dataset.value.toLowerCase().indexOf(f) !== -1) ? '' : 'none'; });
+      }
+      input.addEventListener('focus', function () { root.classList.add('open'); filter(); });
+      input.addEventListener('input', function () { root.classList.add('open'); filter(); hidden.value = ''; });
+      input.addEventListener('blur', function () { setTimeout(function () { root.classList.remove('open'); }, 150); });
+      items.forEach(function (el) {
+        el.addEventListener('mousedown', function (e) {
+          e.preventDefault();
+          input.value = el.dataset.value; hidden.value = el.dataset.code || '';
+          root.classList.remove('open');
+        });
+      });
+    })();
+
+    // Batch 90: save-then-lock — every field here starts read-only so a PO
+    // already in good shape can't be bumped by accident; "Edit" unlocks
+    // everything, "Save Changes" (only enabled once unlocked) commits and
+    // the page reload naturally re-locks it for the next visit.
+    function togglePoEdit() {
+      var unlocking = document.getElementById('supplierNameInput').disabled;
+      document.querySelectorAll('#poEditForm .po-edit-field, #poEditForm #supplierNameInput').forEach(function (el) {
+        el.disabled = !unlocking;
+      });
+      document.getElementById('poEditSave').disabled = !unlocking;
+      document.getElementById('poEditToggle').innerHTML = unlocking
+        ? '<i class="bi bi-lock me-1"></i>Cancel'
+        : '<i class="bi bi-unlock me-1"></i>Edit';
+    }
+  </script>
+  {% endif %}
+
   <form method="post" action="/procurement/po/{{ po.po_no }}/receive"
         data-confirm="Post this GRN? Stock will be received into the inventory ledger."
         data-confirm-title="Post Goods Receipt" data-confirm-ok="Post GRN" data-confirm-variant="success">
@@ -57,7 +165,7 @@
           <table class="table fs-9 mb-0 align-middle">
             <thead class="bg-body-highlight"><tr>
               <th class="ps-4">#</th><th>Item</th><th>UOM</th><th>Ordered</th><th>Received</th>
-              <th>Outstanding</th><th>Unit Price</th><th>Value</th><th class="pe-4" style="width:140px">Receive Now</th>
+              <th>Outstanding</th><th style="width:120px">Unit Price</th><th>Value</th><th class="pe-4" style="width:140px">Receive Now</th>
             </tr></thead>
             <tbody>
               {% for l in lines %}
@@ -69,7 +177,16 @@
                 <td>{{ l.ordered_qty }}</td>
                 <td class="{% if (l.received_qty or 0) > 0 %}text-success fw-bold{% endif %}">{{ l.received_qty or 0 }}</td>
                 <td class="{% if outstanding > 0 %}text-warning fw-bold{% endif %}">{{ outstanding }}</td>
-                <td>{{ l.unit_price }}</td>
+                <td>
+                  {% if po.status in ['Open','Partially Received'] and outstanding > 0 %}
+                  {# Batch 88: editable at the moment of receiving — if the
+                     actual supplier invoice price differs from what the PO
+                     originally estimated, this is what actually gets
+                     recorded (GRN, stock ledger, and the PO line itself),
+                     not the stale estimate. Defaults to the PO's price. #}
+                  <input class="form-control form-control-sm" type="number" name="receive_price" step="0.0001" min="0" value="{{ l.unit_price }}" title="Actual price for this receipt — change it if the invoice differs">
+                  {% else %}{{ l.unit_price }}{% endif %}
+                </td>
                 <td>{{ '%.2f'|format(l.line_value or 0) }}</td>
                 <td class="pe-4">
                   {% if po.status in ['Open','Partially Received'] and outstanding > 0 %}
@@ -81,6 +198,44 @@
               {% endfor %}
             </tbody>
           </table>
+        </div>
+
+        {# Batch 88: "supplier sent something not on the PO" — a small,
+           optional extra line, collapsed by default so it doesn't clutter
+           the normal case. Received in the same GRN as everything else. #}
+        <div class="mt-3">
+          <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="collapse" data-bs-target="#extraItemBody">
+            <i class="bi bi-plus-circle me-1"></i>Received something not on this PO?
+          </button>
+          <div class="collapse mt-2" id="extraItemBody">
+            <div class="card shadow-none border">
+              <div class="card-body p-3">
+                <div class="row g-2">
+                  <div class="col-md-3">
+                    <label class="form-label fs-10 text-uppercase fw-bold text-body-tertiary mb-1">Inventory Code</label>
+                    <input class="form-control form-control-sm" name="extra_inventory_code" placeholder="e.g. DRS1-999">
+                  </div>
+                  <div class="col-md-3">
+                    <label class="form-label fs-10 text-uppercase fw-bold text-body-tertiary mb-1">Item Name</label>
+                    <input class="form-control form-control-sm" name="extra_item_name" placeholder="Item description">
+                  </div>
+                  <div class="col-md-2">
+                    <label class="form-label fs-10 text-uppercase fw-bold text-body-tertiary mb-1">UOM</label>
+                    <input class="form-control form-control-sm" name="extra_uom" placeholder="Kg" value="Kg">
+                  </div>
+                  <div class="col-md-2">
+                    <label class="form-label fs-10 text-uppercase fw-bold text-body-tertiary mb-1">Qty Received</label>
+                    <input class="form-control form-control-sm" type="number" step="0.0001" min="0" name="extra_qty">
+                  </div>
+                  <div class="col-md-2">
+                    <label class="form-label fs-10 text-uppercase fw-bold text-body-tertiary mb-1">Unit Price</label>
+                    <input class="form-control form-control-sm" type="number" step="0.0001" min="0" name="extra_price">
+                  </div>
+                </div>
+                <div class="small-muted mt-2">This creates a new line on this PO (not counted against the original plan) and receives it into stock in the same action as everything above.</div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>

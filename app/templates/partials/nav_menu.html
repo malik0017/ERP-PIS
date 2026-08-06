@@ -1,33 +1,11 @@
-{# ============================================================================
-   ISFC PIMS — Batch 15: ONE navigation definition for ALL navbar types.
-   13 main modules (SAP-style module map). Everything starts COLLAPSED;
-   clicking a module reveals its nested dropdown. RBAC-filtered per child.
-   Used by: vertical sidebar, top navbar, slim top navbar (imported with
-   context so can_access / path / t are available).
-   ============================================================================ #}
 
 {% set NAV_MODULES = [
   {"key": "main", "title": "Main", "icon": "uil-apps", "children": [
     {"title": "Module Launcher", "url": "/modules", "area": "dashboard", "feather": "grid"},
     {"title": "Command Center", "url": "/dashboard", "area": "dashboard", "feather": "monitor"},
-    {"title": "Relationship Map", "url": "/relationship-map", "area": "relationship", "feather": "share-2"},
-    {"title": "Relationship Tree", "url": "/reports/relationship-tree", "area": "relationship", "feather": "git-branch"},
-  ]},
-  {"key": "masters", "title": "Master", "icon": "uil-database", "children": [
-    {"title": "Masters Dashboard", "url": "/module/masters/dashboard", "area": "master_data", "feather": "database"},
-    {"title": "Customers", "url": "/customers", "area": "master_data", "feather": "users"},
-    {"title": "Suppliers", "url": "/suppliers", "area": "master_data", "feather": "truck"},
-    {"title": "Chefs", "url": "/chefs", "area": "master_data", "feather": "user"},
-    {"title": "Brands", "url": "/brands", "area": "master_data", "feather": "tag"},
-    {"title": "Kitchen Sections", "url": "/kitchen-sections", "area": "master_data", "feather": "layout"},
-    {"title": "Kitchen Locations", "url": "/kitchen-locations", "area": "master_data", "feather": "map-pin"},
-    {"title": "Revenue Streams", "url": "/revenue-streams", "area": "master_data", "feather": "trending-up"},
-    {"title": "Master Upload", "url": "/masters/upload", "area": "master_upload", "feather": "upload"},
-    {"title": "Pending Approvals", "url": "/masters/pending", "area": "master_approvals", "feather": "check-circle"},
-    {"title": "Master Archive", "url": "/masters/archive", "area": "master_data", "feather": "archive"},
   ]},
   {"key": "sales", "title": "Sales", "icon": "uil-shopping-cart-alt", "children": [
-    {"title": "Customer / Internal Order", "url": "/orders/portal", "area": "order_portal", "feather": "shopping-cart"},
+    {"title": "Sale Requisitions", "url": "/orders/portal", "area": "order_portal", "feather": "shopping-cart", "match": "/orders/portal"},
     {"title": "Customer Portal", "url": "/my", "area": "customer_portal", "feather": "user-check"},
     {"title": "Place New Order", "url": "/my/orders/new", "area": "customer_portal", "feather": "plus-circle"},
     {"title": "My Orders", "url": "/my/orders", "area": "customer_portal", "feather": "list"},
@@ -37,8 +15,6 @@
   {"key": "recipes", "title": "Recipes", "icon": "uil-book-open", "children": [
     {"title": "Recipes & Costing", "url": "/recipes", "area": "recipe_list", "feather": "book-open"},
     {"title": "Prepare Recipe", "url": "/recipes/prepare", "area": "recipe_prepare", "feather": "edit-3"},
-    {"title": "Recipe Missing Data", "url": "/recipes/missing-data", "area": "recipe_missing", "feather": "alert-triangle"},
-    {"title": "Recipe Approvals", "url": "/recipes/pending", "area": "recipe_approvals", "feather": "check-square"},
   ]},
   {"key": "procurement", "title": "Procurement", "icon": "uil-shop", "children": [
     {"title": "Procurement Cockpit", "url": "/module/procurement/dashboard", "area": "procurement", "feather": "bar-chart-2"},
@@ -46,7 +22,7 @@
   ]},
   {"key": "inventory", "title": "Inventory", "icon": "uil-box", "children": [
     {"title": "Inventory Cockpit", "url": "/module/inventory/dashboard", "area": "inventory_valuation", "feather": "bar-chart-2"},
-    {"title": "Stock on Hand & Valuation", "url": "/inventory", "area": "inventory_valuation", "feather": "box", "match": "/inventory"},
+    {"title": "Stock", "url": "/inventory", "area": "inventory_valuation", "feather": "box", "match": "/inventory"},
     {"title": "Ledger Verification", "url": "/inventory/verification", "area": "inventory_valuation", "feather": "check-circle"},
     {"title": "Store Issuance", "url": "/production/store-issuance", "area": "store_issuance", "feather": "package", "match": "/production/store-issuance", "match2": "store-issuance"},
     {"title": "Issuance by Section", "url": "/production/store-issuance/by-section", "area": "store_issuance", "feather": "layers"},
@@ -54,7 +30,6 @@
   {"key": "production", "title": "Production", "icon": "uil-processor", "children": [
     {"title": "Production Cockpit", "url": "/module/production/dashboard", "area": "dashboard", "feather": "activity"},
     {"title": "Head Chef Planning", "url": "/production/head-chef", "area": "head_chef", "feather": "user-check"},
-    {"title": "Production Orders", "url": "/production/orders", "area": "production_orders", "feather": "clipboard", "match": "/production/orders"},
   ]},
   {"key": "kitchen", "title": "Kitchen", "icon": "uil-fire", "children": [
     {"title": "All Section Summary", "url": "/production/kitchen-summary", "area": "kitchen_summary", "feather": "layers"},
@@ -94,7 +69,24 @@
     {"title": "Reports Cockpit", "url": "/module/reports/dashboard", "area": "reports", "feather": "pie-chart"},
     {"title": "Reports Center", "url": "/reports", "area": "reports", "feather": "bar-chart-2"},    
     {"title": "Yield & Wastage", "url": "/reports/yield-wastage", "area": "reports", "feather": "trending-down"},
+    {"title": "Relationship Map", "url": "/relationship-map", "area": "relationship", "feather": "share-2"},
+    {"title": "Relationship Tree", "url": "/reports/relationship-tree", "area": "relationship", "feather": "git-branch"},
     {"title": "Projects", "url": "/projects", "area": "project_management", "feather": "briefcase", "match": "/projects"},
+  ]},
+  {"key": "masters", "title": "Master", "icon": "uil-database", "children": [
+    {"title": "Masters Dashboard", "url": "/module/masters/dashboard", "area": "master_data", "feather": "database"},
+    {"title": "Customers", "url": "/customers", "area": "master_data", "feather": "users"},
+    {"title": "Suppliers", "url": "/suppliers", "area": "master_data", "feather": "truck"},
+    {"title": "Chefs", "url": "/chefs", "area": "master_data", "feather": "user"},
+    {"title": "Brands", "url": "/brands", "area": "master_data", "feather": "tag"},
+    {"title": "Kitchen Sections", "url": "/kitchen-sections", "area": "master_data", "feather": "layout"},
+    {"title": "Kitchen Locations", "url": "/kitchen-locations", "area": "master_data", "feather": "map-pin"},
+    {"title": "Revenue Streams", "url": "/revenue-streams", "area": "master_data", "feather": "trending-up"},
+    {"title": "Master Upload", "url": "/masters/upload", "area": "master_upload", "feather": "upload"},
+    {"title": "Pending Approvals", "url": "/masters/pending", "area": "master_approvals", "feather": "check-circle"},
+    {"title": "Recipe Missing Data", "url": "/recipes/missing-data", "area": "recipe_missing", "feather": "alert-triangle"},
+    {"title": "Recipe Approvals", "url": "/recipes/pending", "area": "recipe_approvals", "feather": "check-square"},
+    {"title": "Master Archive", "url": "/masters/archive", "area": "master_data", "feather": "archive"},
   ]},
   {"key": "system", "title": "System", "icon": "uil-setting", "children": [
     {"title": "Users & Access", "url": "/admin/users", "area": "users", "feather": "users", "match": "/admin/users"},
@@ -108,14 +100,17 @@
     {"title": "Settings", "url": "/settings", "area": "settings", "feather": "settings", "match": "/settings"},
   ]},
 ] %}
+{# Batch 83 fix: "Sign Out" used to be registered here as its own
+   NAV_MODULES group with area="Sign Out" — not a real RBAC area, so
+   can_access() silently failed for every non-admin role and the link
+   vanished from their sidebar entirely (they had no way to sign out from
+   the nav at all). It also rendered as a collapsible dropdown group for
+   what should be a single-click action. Removed from here; every layout
+   macro below now renders Sign Out directly, un-gated, one click,
+   consistently across all navbar variants — see the end of vertical(),
+   top(), and the other macros. #}
 
-{# ---- helpers ---- #}
-{# ============================================================================
-   Batch 21: longest-match-wins active detection.
-   A child is active only if it is the MOST SPECIFIC match for the current
-   path. This stops "/production/orders/&lt;no&gt;/store-issuance" from lighting up
-   "Production Orders" — "Store Issuance" (match2 substring) wins instead.
-   ============================================================================ #}
+
 {% macro _match_len(c, path) -%}
   {%- set ns = namespace(n=0) -%}
   {%- if path == c.url -%}{%- set ns.n = 1000 + c.url|length -%}
@@ -138,8 +133,7 @@
 {%- endmacro %}
 
 {# ============================================================================
-   TOP NAVBAR variant: 13 collapsed modules; click opens the dropdown.
-   (data-bs-toggle="dropdown" — Phoenix caret style, closed by default)
+   TOP NAVBAR variant: 13 
    ============================================================================ #}
 {% macro top() %}
   {% set path = request.url.path %}
@@ -169,12 +163,14 @@
     </li>
     {% endif %}
   {% endfor %}
+  <li class="nav-item">
+    <a class="nav-link lh-1" href="/api/auth/logout">
+      <span class="uil fs-8 me-2 uil-signout"></span>{{ t('Sign Out') }}</a>
+  </li>
 {% endmacro %}
 
 {# ============================================================================
-   VERTICAL SIDEBAR variant: 13 collapsed groups; click expands the nested
-   list (Bootstrap collapse). The group containing the current page starts
-   open — everything else starts closed, exactly like the theme demo.
+   VERTICAL SIDEBAR variant:
    ============================================================================ #}
 {% macro vertical() %}
   {% set path = request.url.path %}
@@ -218,4 +214,12 @@
     </li>
     {% endif %}
   {% endfor %}
+  <li class="nav-item mt-2 pt-2" style="border-top:1px solid var(--phoenix-border-color, #e7ebf3);">
+    <a class="nav-link" href="/api/auth/logout">
+      <div class="d-flex align-items-center">
+        <span class="nav-link-icon me-2"><span data-feather="log-out"></span></span>
+        <span class="nav-link-text">{{ t('Sign Out') }}</span>
+      </div>
+    </a>
+  </li>
 {% endmacro %}

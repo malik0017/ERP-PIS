@@ -325,6 +325,37 @@ def finance_dashboard(request: Request, db: Session = Depends(get_db)):
     return render(request, "finance/index.html", {"ar": ar, "ap": ap, "payments": payments, "grns": grns, "kpis": kpis, "aging": ar_aging(db), "page_title": "Finance"})
 
 
+def create_ap_invoice_core(db: Session, request: Request, company_id: int, user: str,
+                            supplier_name: str, po_no: str, grn_no: str, amount: float,
+                            remarks: str = "") -> str | None:
+    """Batch 92 — extracted from create_ap_invoice() so the exact same,
+    already-correct AP-invoice-and-GL-posting logic can be triggered
+    automatically when a GRN posts, not only through the manual form.
+    Returns the new ap_no, or None if amount/supplier weren't valid
+    enough to create one.
+    """
+    if not (supplier_name or "").strip() or float(amount or 0) <= 0:
+        return None
+    match_status = "Matched"
+    if grn_no:
+        grn_value = _safe_scalar(db, "SELECT ROUND(SUM(COALESCE(received_qty,0)*COALESCE(unit_price,0)),2) FROM grn_lines WHERE grn_no=:g", {"g": grn_no}, 0)
+        if abs(float(grn_value or 0) - float(amount or 0)) > 0.01:
+            match_status = "Variance"
+    ap_no = next_document_no(db, company_id, "AP", "AP")
+    db.execute(text("""
+        INSERT INTO ap_invoices (company_id, ap_no, supplier_name, po_no, grn_no, invoice_date, status, amount, match_status, remarks, created_by)
+        VALUES (:cid, :ap, :sup, :po, :grn, CURDATE(), 'Open', :amount, :match, :remarks, :by)
+    """), {"cid": company_id, "ap": ap_no, "sup": supplier_name, "po": po_no, "grn": grn_no, "amount": amount, "match": match_status, "remarks": remarks, "by": user})
+    db.commit()
+    if float(amount or 0) > 0:
+        debit_account = "2200" if grn_no else "5100"
+        post_journal(db, request, "AP_INVOICE", ap_no,
+                     f"AP invoice {ap_no} — {supplier_name}",
+                     [(debit_account, float(amount), 0.0, supplier_name),
+                      ("2100", 0.0, float(amount), supplier_name)])
+    return ap_no
+
+
 @router.post("/ap/create")
 def create_ap_invoice(request: Request, supplier_name: str = Form(""), po_no: str = Form(""), grn_no: str = Form(""), amount: float = Form(0), remarks: str = Form(""), db: Session = Depends(get_db)):
     require_action(request, "finance", "add")
@@ -341,31 +372,7 @@ def create_ap_invoice(request: Request, supplier_name: str = Form(""), po_no: st
             "/finance?toast=danger&title=AP Invoice&msg=Amount must be greater than zero",
             status_code=303)
 
-    match_status = "Matched"
-    if grn_no:
-        grn_value = _safe_scalar(db, "SELECT ROUND(SUM(COALESCE(received_qty,0)*COALESCE(unit_price,0)),2) FROM grn_lines WHERE grn_no=:g", {"g": grn_no}, 0)
-        if abs(float(grn_value or 0) - float(amount or 0)) > 0.01:
-            match_status = "Variance"
-    ap_no = next_document_no(db, _cid(request), "AP", "AP")
-    db.execute(text("""
-        INSERT INTO ap_invoices (company_id, ap_no, supplier_name, po_no, grn_no, invoice_date, status, amount, match_status, remarks, created_by)
-        VALUES (:cid, :ap, :sup, :po, :grn, CURDATE(), 'Open', :amount, :match, :remarks, :by)
-    """), {"cid": _cid(request), "ap": ap_no, "sup": supplier_name, "po": po_no, "grn": grn_no, "amount": amount, "match": match_status, "remarks": remarks, "by": _user(request)})
-    db.commit()
-    if float(amount or 0) > 0:
-        # ------------------------------------------------------------------
-        # Batch 67 workflow alignment.
-        # The GRN already posted Dr 1130 Inventory / Cr 2200 GR accrual. The
-        # vendor invoice must therefore CLEAR the GR accrual, not touch stock
-        # again:  Dr 2200 GR accrual / Cr 2100 Accounts payable.
-        # A GRN-less invoice (services, utilities, no goods received) has no
-        # accrual to clear, so it expenses to 5100 instead.
-        # ------------------------------------------------------------------
-        debit_account = "2200" if grn_no else "5100"
-        post_journal(db, request, "AP_INVOICE", ap_no,
-                     f"AP invoice {ap_no} — {supplier_name}",
-                     [(debit_account, float(amount), 0.0, supplier_name),
-                      ("2100", 0.0, float(amount), supplier_name)])
+    ap_no = create_ap_invoice_core(db, request, _cid(request), _user(request), supplier_name, po_no, grn_no, amount, remarks)
     return RedirectResponse(f"/finance?toast=success&title=AP Invoice&msg={ap_no} saved and posted to GL", status_code=303)
 
 

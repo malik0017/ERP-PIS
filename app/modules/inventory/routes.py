@@ -288,63 +288,78 @@ def ledger_verification(request: Request, db: Session = Depends(get_db)):
     except Exception:
         db.rollback()
 
+    # Batch 87 fix: this used to compare the ledger against
+    # ingredients.current_stock — a column that doesn't exist anywhere in
+    # this codebase (confirmed against the actual model). Every row of
+    # this query silently failed, which is why this page always showed
+    # 0 items checked regardless of how much real ledger data existed.
+    #
+    # There was never a second, independent "master stock" figure to
+    # verify the ledger against in this system — inventory_transactions
+    # IS the single source of truth here, by design (matches how the
+    # rest of the system works: GL posting sequence, stock valuation,
+    # everything reads from the ledger, nothing maintains a separate
+    # running total elsewhere). So "verify the ledger against the
+    # master" was checking something that structurally can't diverge.
+    #
+    # Repurposed to catch a real, detectable problem instead: negative
+    # balances, which genuinely indicate a data issue (more issued than
+    # was ever received/receipted for that item) — something that IS
+    # possible to happen by mistake and worth surfacing.
     rows = []
     cid = get_current_company_id(request)
     try:
         rows = db.execute(text("""
-            SELECT i.ingredient_code AS inventory_code,
-                   COALESCE(i.name,'') AS item_name,
-                   COALESCE(i.current_stock, 0) AS master_stock,
-                   COALESCE(t.ledger_in, 0) AS ledger_in,
-                   COALESCE(t.ledger_out, 0) AS ledger_out,
-                   COALESCE(t.ledger_in, 0) - COALESCE(t.ledger_out, 0) AS ledger_balance,
-                   COALESCE(i.current_stock, 0) - (COALESCE(t.ledger_in, 0) - COALESCE(t.ledger_out, 0)) AS variance
-            FROM ingredients i
-            LEFT JOIN (
-                SELECT inventory_code,
-                       SUM(COALESCE(qty_in, 0)) AS ledger_in,
-                       SUM(COALESCE(qty_out, 0)) AS ledger_out
-                FROM inventory_transactions
-                WHERE (company_id = :cid OR company_id IS NULL)
-                GROUP BY inventory_code
-            ) t ON t.inventory_code = i.ingredient_code
-            ORDER BY ABS(COALESCE(i.current_stock, 0) - (COALESCE(t.ledger_in, 0) - COALESCE(t.ledger_out, 0))) DESC
-            LIMIT 1000
+            SELECT
+                t.inventory_code,
+                COALESCE(MAX(NULLIF(t.item_name,'')), t.inventory_code) AS item_name,
+                ROUND(SUM(COALESCE(t.qty_in,0)), 4) AS ledger_in,
+                ROUND(SUM(COALESCE(t.qty_out,0)), 4) AS ledger_out,
+                ROUND(SUM(COALESCE(t.qty_in,0)) - SUM(COALESCE(t.qty_out,0)), 4) AS ledger_balance
+            FROM inventory_transactions t
+            WHERE (t.company_id = :cid OR t.company_id IS NULL)
+            GROUP BY t.inventory_code
+            HAVING ledger_balance < -0.001
+            ORDER BY ledger_balance ASC
+            LIMIT 500
         """), {"cid": cid}).mappings().all()
     except Exception:
         rows = []
 
-    TOL = 0.001
+    total_items = db.execute(text("""
+        SELECT COUNT(DISTINCT inventory_code) FROM inventory_transactions
+        WHERE (company_id = :cid OR company_id IS NULL)
+    """), {"cid": cid}).scalar() or 0
+
     items = [dict(r) for r in rows]
-    mismatched = [r for r in items if abs(float(r["variance"] or 0)) > TOL]
     kpis = {
-        "total": len(items),
-        "matched": len(items) - len(mismatched),
-        "mismatched": len(mismatched),
-        "variance_value": round(sum(abs(float(r["variance"] or 0)) for r in mismatched), 3),
+        "total": int(total_items),
+        "matched": int(total_items) - len(items),
+        "mismatched": len(items),
+        "variance_value": round(sum(abs(float(r["ledger_balance"] or 0)) for r in items), 3),
     }
     return render(request, "inventory/verification.html", {
-        "items": mismatched[:500], "kpis": kpis,
+        "items": items, "kpis": kpis,
         "page_title": "Stock Ledger Verification",
     })
 
 
 @router.post("/verification/align/{inventory_code}")
 def align_master_to_ledger(request: Request, inventory_code: str, db: Session = Depends(get_db)):
-    """Adopt the ledger balance as the master current_stock for ONE item —
-    the ledger (documents) is the source of truth."""
+    """Batch 87: this used to UPDATE ingredients.current_stock — a column
+    that has never existed on this table (confirmed against the model).
+    It silently failed every single time while still redirecting with a
+    "success" message, which is worse than doing nothing: it told users
+    an action had worked when it hadn't. Removed rather than left as a
+    misleading no-op. A negative ledger balance isn't something a button
+    can safely "fix" anyway — it means an issuance was recorded without
+    matching stock ever being received, which needs a real correcting
+    transaction (a GRN or a store-issuance adjustment), not a silent
+    overwrite of a number nothing else in the system reads from.
+    """
     require_action(request, "inventory_valuation", "edit")
-    cid = get_current_company_id(request)
-    try:
-        bal = db.execute(text("""
-            SELECT COALESCE(SUM(COALESCE(qty_in,0)) - SUM(COALESCE(qty_out,0)), 0)
-            FROM inventory_transactions
-            WHERE inventory_code = :c AND (company_id = :cid OR company_id IS NULL)
-        """), {"c": inventory_code, "cid": cid}).scalar() or 0
-        db.execute(text("""
-            UPDATE ingredients SET current_stock = :b WHERE ingredient_code = :c
-        """), {"b": float(bal), "c": inventory_code})
-        db.commit()
-    except Exception:
-        db.rollback()
-    return RedirectResponse("/inventory/verification?toast=success&title=Aligned&msg=Master stock set to ledger balance", status_code=303)
+    return RedirectResponse(
+        "/inventory/verification?toast=warning&title=Use a Real Correction&msg="
+        "A negative balance needs an actual correcting transaction (a GRN or a store-issuance adjustment) — "
+        "there's no longer a separate master figure to just overwrite.",
+        status_code=303)

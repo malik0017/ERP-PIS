@@ -11,6 +11,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.templates import render
+from app.core.rbac import require_area
 from app.database.session import get_db
 
 router = APIRouter(tags=["dashboard"])
@@ -39,6 +40,7 @@ def _pct(value: float, base: float) -> float:
 
 @router.get("/dashboard", name="dashboard")
 async def dashboard(request: Request, db: Session = Depends(get_db)):
+    require_area(request, "dashboard")
     company_id = int(request.session.get("company_id") or 1)
 
     active_recipes = _one(db, """
@@ -261,6 +263,7 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
 
 @router.get("/production", name="production_home")
 async def production(request: Request):
+    require_area(request, "dashboard")
     return render(
         request,
         "production/index.html",

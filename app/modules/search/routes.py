@@ -37,7 +37,7 @@ def _page_results(q: str) -> list[dict]:
     pages = [
         ("Module Launcher", "/modules", "Open ERP module cards"),
         ("Production Dashboard", "/dashboard", "Production command center"),
-        ("Customer / Internal Order Portal", "/orders/portal", "Create customer or internal order"),
+        ("Sale Order Portal", "/orders/portal", "Create customer or internal order"),
         ("Production Orders", "/production/orders", "Order register and workflow"),
         ("Head Chef Planning", "/production/head-chef", "Approve cooking and material schedule"),
         ("Store Issuance", "/production/store-issuance", "Issue material to kitchen sections"),
@@ -66,7 +66,7 @@ def _page_results(q: str) -> list[dict]:
     return [{"type":"Page", "title":p[0], "subtitle":p[2], "url":p[1], "meta":"Screen"} for p in pages if ql in p[0].lower() or ql in p[2].lower()]
 
 
-def build_results(db: Session, q: str, limit: int = 8) -> list[dict]:
+def build_results(db: Session, q: str, cid: int, limit: int = 8) -> list[dict]:
     q = (q or "").strip()
     if not q:
         return []
@@ -76,35 +76,49 @@ def build_results(db: Session, q: str, limit: int = 8) -> list[dict]:
     # Pages / reports / dashboards
     results.extend(_page_results(q)[:limit])
 
-    # Orders: customer_orders and production_orders both appear in different builds.
+    # Batch 81 fix: search had no company scoping at all — any logged-in
+    # user could find another company's orders, production records, and
+    # recipes by name/code. The queries below now filter to the caller's
+    # company (NULL-tolerant, matching every other company-scoped query in
+    # this codebase, for legacy rows written before scoping existed).
     for r in _rows(db, """
         SELECT order_no, customer_name, COALESCE(brand,'') AS brand, COALESCE(status,'') AS status,
                COALESCE(required_delivery_date, delivery_date, '') AS delivery_date
         FROM customer_orders
-        WHERE order_no LIKE :like OR customer_name LIKE :like OR COALESCE(brand,'') LIKE :like OR COALESCE(status,'') LIKE :like
+        WHERE (order_no LIKE :like OR customer_name LIKE :like OR COALESCE(brand,'') LIKE :like OR COALESCE(status,'') LIKE :like)
+          AND (company_id = :cid OR company_id IS NULL)
         ORDER BY id DESC LIMIT :lim
-    """, {"like": like, "lim": limit}):
+    """, {"like": like, "lim": limit, "cid": cid}):
         results.append({"type":"Order", "title":r["order_no"], "subtitle":f"{r.get('customer_name','')} · {r.get('brand','')} · {r.get('status','')}", "url":f"/production/orders/{r['order_no']}", "meta":str(r.get("delivery_date") or "")})
 
     for r in _rows(db, """
         SELECT order_no, customer_name, COALESCE(brand,'') AS brand, COALESCE(status,'') AS status
         FROM production_orders
-        WHERE order_no LIKE :like OR customer_name LIKE :like OR COALESCE(brand,'') LIKE :like OR COALESCE(status,'') LIKE :like
+        WHERE (order_no LIKE :like OR customer_name LIKE :like OR COALESCE(brand,'') LIKE :like OR COALESCE(status,'') LIKE :like)
+          AND (company_id = :cid OR company_id IS NULL)
         ORDER BY id DESC LIMIT :lim
-    """, {"like": like, "lim": limit}):
+    """, {"like": like, "lim": limit, "cid": cid}):
         results.append({"type":"Production", "title":r["order_no"], "subtitle":f"{r.get('customer_name','')} · {r.get('brand','')} · {r.get('status','')}", "url":f"/production/orders/{r['order_no']}", "meta":"Order"})
 
     # Recipes
     for r in _rows(db, """
         SELECT id, recipe_code, recipe_name, COALESCE(category,'') AS category, COALESCE(customer_name,'') AS customer_name, COALESCE(status,'') AS status
         FROM recipes
-        WHERE recipe_code LIKE :like OR recipe_name LIKE :like OR COALESCE(category,'') LIKE :like OR COALESCE(customer_name,'') LIKE :like
+        WHERE (recipe_code LIKE :like OR recipe_name LIKE :like OR COALESCE(category,'') LIKE :like OR COALESCE(customer_name,'') LIKE :like)
+          AND (company_id = :cid OR company_id IS NULL)
         ORDER BY id DESC LIMIT :lim
-    """, {"like": like, "lim": limit}):
+    """, {"like": like, "lim": limit, "cid": cid}):
         url = f"/recipes/{r['id']}" if r.get("id") else "/recipes"
         results.append({"type":"Recipe", "title":f"{r.get('recipe_code','')} - {r.get('recipe_name','')}", "subtitle":f"{r.get('category','')} · {r.get('customer_name','')}", "url":url, "meta":r.get("status") or "Recipe"})
 
-    # Masters
+    # Batch 82: finished the company-scoping pass started last batch.
+    # Verified via the actual model definitions (not assumed) that
+    # customers/suppliers/chefs/brands all have company_id — so do
+    # purchase_orders/grn_receipts/ar_invoices/ap_invoices/finance_payments
+    # (each confirmed by their own INSERT statements stamping company_id
+    # already). ingredients is the one exception, left unscoped on purpose:
+    # confirmed in an earlier audit it has no company_id column at all —
+    # it's shared master data across companies, not a leak.
     for table, code_col, name_col, url_prefix, label in [
         ("customers", "customer_code", "customer_name", "/masters/customers", "Customer"),
         ("suppliers", "supplier_code", "supplier_name", "/masters/suppliers", "Supplier"),
@@ -115,12 +129,14 @@ def build_results(db: Session, q: str, limit: int = 8) -> list[dict]:
             for r in _rows(db, f"""
                 SELECT id, {code_col} AS code, {name_col} AS name, COALESCE(status,'') AS status
                 FROM {table}
-                WHERE {code_col} LIKE :like OR {name_col} LIKE :like OR COALESCE(status,'') LIKE :like
+                WHERE ({code_col} LIKE :like OR {name_col} LIKE :like OR COALESCE(status,'') LIKE :like)
+                  AND (company_id = :cid OR company_id IS NULL)
                 ORDER BY id DESC LIMIT :lim
-            """, {"like": like, "lim": limit}):
+            """, {"like": like, "lim": limit, "cid": cid}):
                 results.append({"type":label, "title":f"{r.get('code','')} - {r.get('name','')}", "subtitle":label, "url":f"{url_prefix}/{r.get('id')}", "meta":r.get("status") or "Master"})
 
-    # Inventory item master (ingredients is current stable table)
+    # Inventory item master (ingredients) — intentionally NOT company-scoped:
+    # confirmed this table has no company_id column, it's shared across companies.
     for r in _rows(db, """
         SELECT ingredient_code AS code, name AS name, COALESCE(main_category, category, '') AS category,
                COALESCE(standard_uom, purchase_uom, recipe_uom, '') AS uom
@@ -134,39 +150,44 @@ def build_results(db: Session, q: str, limit: int = 8) -> list[dict]:
     for r in _rows(db, """
         SELECT po_no, supplier_name, COALESCE(status,'') AS status, COALESCE(total_value,0) AS total_value
         FROM purchase_orders
-        WHERE po_no LIKE :like OR supplier_name LIKE :like OR COALESCE(status,'') LIKE :like
+        WHERE (po_no LIKE :like OR supplier_name LIKE :like OR COALESCE(status,'') LIKE :like)
+          AND (company_id = :cid OR company_id IS NULL)
         ORDER BY id DESC LIMIT :lim
-    """, {"like": like, "lim": limit}):
+    """, {"like": like, "lim": limit, "cid": cid}):
         results.append({"type":"PO", "title":r["po_no"], "subtitle":r.get("supplier_name") or "Supplier", "url":f"/procurement/po/{r['po_no']}", "meta":r.get("status") or "PO"})
     for r in _rows(db, """
         SELECT grn_no, po_no, supplier_name, COALESCE(status,'') AS status
         FROM grn_receipts
-        WHERE grn_no LIKE :like OR po_no LIKE :like OR supplier_name LIKE :like
+        WHERE (grn_no LIKE :like OR po_no LIKE :like OR supplier_name LIKE :like)
+          AND (company_id = :cid OR company_id IS NULL)
         ORDER BY id DESC LIMIT :lim
-    """, {"like": like, "lim": limit}):
+    """, {"like": like, "lim": limit, "cid": cid}):
         results.append({"type":"GRN", "title":r["grn_no"], "subtitle":f"PO {r.get('po_no','')} · {r.get('supplier_name','')}", "url":f"/procurement/po/{r.get('po_no')}", "meta":r.get("status") or "GRN"})
 
     # Finance documents
     for r in _rows(db, """
         SELECT invoice_no, order_no, customer_name, COALESCE(status,'') AS status, COALESCE(amount,0) AS amount
         FROM ar_invoices
-        WHERE invoice_no LIKE :like OR order_no LIKE :like OR customer_name LIKE :like OR COALESCE(status,'') LIKE :like
+        WHERE (invoice_no LIKE :like OR order_no LIKE :like OR customer_name LIKE :like OR COALESCE(status,'') LIKE :like)
+          AND (company_id = :cid OR company_id IS NULL)
         ORDER BY id DESC LIMIT :lim
-    """, {"like": like, "lim": limit}):
+    """, {"like": like, "lim": limit, "cid": cid}):
         results.append({"type":"AR", "title":r["invoice_no"], "subtitle":f"{r.get('customer_name','')} · {r.get('order_no','')}", "url":"/finance#ar", "meta":r.get("status") or "AR"})
     for r in _rows(db, """
         SELECT ap_no, supplier_name, po_no, grn_no, COALESCE(status,'') AS status
         FROM ap_invoices
-        WHERE ap_no LIKE :like OR supplier_name LIKE :like OR po_no LIKE :like OR grn_no LIKE :like OR COALESCE(status,'') LIKE :like
+        WHERE (ap_no LIKE :like OR supplier_name LIKE :like OR po_no LIKE :like OR grn_no LIKE :like OR COALESCE(status,'') LIKE :like)
+          AND (company_id = :cid OR company_id IS NULL)
         ORDER BY id DESC LIMIT :lim
-    """, {"like": like, "lim": limit}):
+    """, {"like": like, "lim": limit, "cid": cid}):
         results.append({"type":"AP", "title":r["ap_no"], "subtitle":f"{r.get('supplier_name','')} · PO {r.get('po_no','')}", "url":"/finance#ap", "meta":r.get("status") or "AP"})
     for r in _rows(db, """
         SELECT payment_no, party_type, party_name, reference_no, COALESCE(amount,0) AS amount
         FROM finance_payments
-        WHERE payment_no LIKE :like OR party_name LIKE :like OR reference_no LIKE :like OR party_type LIKE :like
+        WHERE (payment_no LIKE :like OR party_name LIKE :like OR reference_no LIKE :like OR party_type LIKE :like)
+          AND (company_id = :cid OR company_id IS NULL)
         ORDER BY id DESC LIMIT :lim
-    """, {"like": like, "lim": limit}):
+    """, {"like": like, "lim": limit, "cid": cid}):
         results.append({"type":"Payment", "title":r["payment_no"], "subtitle":f"{r.get('party_type','')} · {r.get('party_name','')} · {r.get('reference_no','')}", "url":"/finance#payments", "meta":str(r.get("amount") or "")})
 
     # De-duplicate by type/title/url
@@ -178,16 +199,23 @@ def build_results(db: Session, q: str, limit: int = 8) -> list[dict]:
     return clean[:50]
 
 
+def _cid(request: Request) -> int:
+    try:
+        return int(request.session.get("company_id") or 1)
+    except Exception:
+        return 1
+
+
 @router.get("/api")
-def global_search_api(q: str = "", db: Session = Depends(get_db)):
-    results = build_results(db, q, limit=6)
+def global_search_api(request: Request, q: str = "", db: Session = Depends(get_db)):
+    results = build_results(db, q, _cid(request), limit=6)
     return JSONResponse({"q": q, "total": len(results), "results": results[:20]})
 
 
 @router.get("")
 async def global_search(request: Request, db: Session = Depends(get_db)):
     q = (request.query_params.get("q") or "").strip()
-    results = build_results(db, q, limit=12)
+    results = build_results(db, q, _cid(request), limit=12)
     groups = []
     by_type: dict[str, list[dict]] = {}
     for r in results:

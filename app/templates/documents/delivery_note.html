@@ -13,7 +13,7 @@
   [data-bs-theme="dark"] .dn-doc { background:#0f1a2b; color:var(--phoenix-emphasis-color); }
   .dn-head { padding:22px 26px; border-bottom:2px solid #2563eb; display:flex; justify-content:space-between; align-items:flex-start; }
   .dn-title { font-size:1.6rem; font-weight:900; color:#2563eb; margin:0; }
-  .dn-no { text-align:right; }
+  .dn-no { text-align: {{ 'left' if is_rtl else 'right' }}; }
   .dn-no .n { font-size:1.1rem; font-weight:900; }
   .dn-meta { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; padding:18px 26px; }
   .dn-meta .lbl { font-size:.68rem; text-transform:uppercase; letter-spacing:.05em; color:#64748b; }
@@ -55,13 +55,20 @@
       <div><div class="lbl">Vehicle</div><div class="val">{{ d.vehicle_no or '—' }}</div></div>
       <div><div class="lbl">Driver</div><div class="val">{{ d.driver_name or '—' }}</div></div>
       <div><div class="lbl">Packed Portions</div><div class="val">{{ '%.0f'|format(d.packed_portions) }}</div></div>
-      <div><div class="lbl">Rejected</div><div class="val">{{ '%.0f'|format(d.rejected_portions) }}</div></div>
+      <div><div class="lbl">Rejected Portions</div><div class="val text-danger">{{ '%.0f'|format(d.rejected_portions) }}</div></div>
+      <div><div class="lbl">Net Delivered</div><div class="val text-success">{{ '%.0f'|format((d.packed_portions or 0) - (d.rejected_portions or 0)) }}</div></div>
       <div><div class="lbl">Delivery Temp °C</div><div class="val">{{ '%.1f'|format(d.delivery_temperature_c) if d.delivery_temperature_c is not none else '—' }}</div></div>
     </div>
 
     <div style="padding:0 26px 8px">
+      {# Batch 80 fix: this table lists the ORIGINAL order plan per recipe —
+         packing/rejection is only tracked as a single order-level total, not
+         broken down per recipe line, so labeling this "Portions" (implying
+         actual packed amounts) was misleading. Labeled honestly, and the
+         footer now shows the real net-delivered figure instead of silently
+         re-showing the original order total regardless of any rejection. #}
       <table class="dn-tbl">
-        <thead><tr><th style="width:60px">#</th><th>Recipe</th><th class="text-end">Portions</th></tr></thead>
+        <thead><tr><th style="width:60px">#</th><th>Recipe</th><th class="text-end">Planned Portions</th></tr></thead>
         <tbody>
           {% for l in lines %}
           <tr><td>{{ loop.index }}</td><td>{{ l.recipe }}</td><td class="text-end">{{ '%.2f'|format(l.portions or 0) }}</td></tr>
@@ -69,9 +76,11 @@
           <tr><td colspan="3" class="text-center text-body-tertiary py-3">No order lines found.</td></tr>
           {% endfor %}
         </tbody>
-        {% if order %}
-        <tfoot><tr><th colspan="2" class="text-end">Total Portions</th><th class="text-end">{{ '%.2f'|format(order.total_portions or 0) }}</th></tr></tfoot>
-        {% endif %}
+        <tfoot>
+          <tr><th colspan="2" class="text-end">Total Planned</th><th class="text-end">{{ '%.2f'|format(order.total_portions or 0) if order else '0.00' }}</th></tr>
+          <tr><th colspan="2" class="text-end">Rejected</th><th class="text-end text-danger">− {{ '%.2f'|format(d.rejected_portions or 0) }}</th></tr>
+          <tr style="border-top:2px solid #2563eb"><th colspan="2" class="text-end">Net Portions Delivered</th><th class="text-end text-success">{{ '%.2f'|format((d.packed_portions or 0) - (d.rejected_portions or 0)) }}</th></tr>
+        </tfoot>
       </table>
     </div>
 

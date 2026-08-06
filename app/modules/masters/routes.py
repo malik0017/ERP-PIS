@@ -512,6 +512,7 @@ def _editable_fields_for(master_type: str, row):
 
 @router.get("/masters/pending", response_class=HTMLResponse)
 def pending_masters(request: Request, db: Session = Depends(get_db)):
+    require_area(request, "master_approvals")
     rows = (
         db.query(MasterRecord)
         .filter(MasterRecord.approval_status == "PENDING")

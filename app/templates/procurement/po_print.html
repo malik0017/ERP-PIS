@@ -42,6 +42,14 @@
                   padding: 1px 3px; min-width: 30px; display: inline-block; }
     .is-editing:focus { outline: 2px solid #2563eb; background: #fff; }
     @media print {
+      /* Batch 90: the date/URL/page-number strip at the very top and
+         bottom of the printed page is Chrome's own print-dialog header/
+         footer — not part of this page's HTML or CSS, and there's no
+         reliable CSS property that suppresses it across browsers. It's
+         the "Headers and footers" checkbox in Chrome's print dialog
+         (More settings), off by default in some setups, on in others.
+         What IS controllable from here is page size/margins, set below. */
+      @page { size: A4; margin: 14mm 12mm; }
       .toolbar { display: none; }
       body { padding: 0; }
       .is-editing { outline: none !important; background: transparent !important; }

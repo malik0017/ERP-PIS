@@ -36,6 +36,25 @@
     color: #132947
   }
 
+  /* Batch 81 fix: replaces two cramped, unformatted stacked chips with a
+     single compact stat pair — clear labels, rounded numbers, a visual
+     divider, and a muted (not alarming) zero-balance state. */
+  .qty-summary-pair {
+    display: inline-flex;
+    align-items: stretch;
+    border: 1px solid var(--phoenix-border-color, #dfe7f0);
+    border-radius: 10px;
+    overflow: hidden;
+    background: var(--phoenix-body-bg, #fff);
+  }
+  .qs-seg { display: flex; flex-direction: column; padding: 5px 12px; min-width: 74px; }
+  .qs-lbl { font-size: 9px; text-transform: uppercase; letter-spacing: .04em; color: #7a8aa0; font-weight: 700; }
+  .qs-val { font-size: 13.5px; font-weight: 800; color: #132947; }
+  .qs-val-zero { color: #16a34a; }
+  .qs-div { width: 1px; background: var(--phoenix-border-color, #dfe7f0); }
+  [data-bs-theme="dark"] .qty-summary-pair { background: #111c2e; }
+  [data-bs-theme="dark"] .qs-val { color: #e7edf5; }
+
   .pis-chip {
     display: inline-flex;
     align-items: center;
@@ -132,8 +151,6 @@
       <div>
         <div class="pis-chip mb-3">Section Workstation</div>
         <h2 class="mb-1">{{ section }} Receiving Dashboard</h2>
-        <p class="mb-0 opacity-75">One row per order. Open an order to receive ingredients, process quantities, record
-          waste and transfer to the next stage.</p>
       </div>
       <div class="d-flex gap-2 flex-wrap">
         <a class="pis-btn pis-soft" href="/production/orders">Production Orders</a>
@@ -164,8 +181,6 @@
     <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
       <div>
         <h4 class="mb-1">Orders Waiting in {{ section }}</h4>
-        <div class="text-muted">Same filter style as Production Orders: date range, status and quick search before
-          opening receiving.</div>
       </div>
     </div>
     <form method="get" class="section-filter-pro">
@@ -214,8 +229,24 @@
                 <div class="progress-bar" style="width:{{ pct }}%"></div>
               </div>
             </td>
-            <td><span class="pis-chip">Issued {{ o.issued_qty or 0 }}</span> <span class="pis-chip">Balance {{
-                o.balance_qty or 0 }}</span></td>
+            <td>
+              {# Batch 81 fix: was two plain, unformatted chips stacked
+                 awkwardly (raw floats like "23.8636"), flagged as needing
+                 a proper design. Now a single compact stat pair with
+                 clear labels, rounded values, and a balance that reads
+                 as "still owed" only when it's actually non-zero. #}
+              <div class="qty-summary-pair">
+                <div class="qs-seg">
+                  <span class="qs-lbl">Issued</span>
+                  <span class="qs-val">{{ '%.2f'|format(o.issued_qty or 0) }}</span>
+                </div>
+                <div class="qs-div"></div>
+                <div class="qs-seg">
+                  <span class="qs-lbl">Balance</span>
+                  <span class="qs-val {{ 'qs-val-zero' if not o.balance_qty }}">{{ '%.2f'|format(o.balance_qty or 0) }}</span>
+                </div>
+              </div>
+            </td>
             <td><a class="pis-btn pis-primary"
                 href="/production/section/{{ section_slug }}/orders/{{ o.order_no }}">Open Receiving</a></td>
           </tr>

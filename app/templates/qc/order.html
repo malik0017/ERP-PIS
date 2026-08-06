@@ -203,6 +203,20 @@
     <h3>Final QC Decision</h3>
     <p class="note">Recommended rule: Passed orders move to Packing/Dispatch automatically. Hold/Rejected orders remain
       blocked until correction.</p>
+    {% set pending_receive = [] %}
+    {% for t in txs %}
+      {% if not t.received_qty_standard or t.received_qty_standard <= 0 %}
+        {% set _ = pending_receive.append(t) %}
+      {% endif %}
+    {% endfor %}
+    {% if pending_receive %}
+    <div class="alert alert-warning d-flex align-items-center gap-2" role="alert">
+      <i class="bi bi-exclamation-triangle-fill"></i>
+      <div><strong>{{ pending_receive|length }} of {{ txs|length }} line(s)</strong> still show 0 received qty.
+        Click <strong>"Receive All QC Lines"</strong> above (or receive each line individually) before a QC decision can be submitted —
+        this can't be skipped, since a Pass/Hold/Reject decision has to reflect product that was actually received and inspected.</div>
+    </div>
+    {% endif %}
     <form method="post" action="/qc/orders/{{ order.order_no }}/submit">
       <div class="form-grid">
         <div><label>Check Type</label><select name="check_type">
@@ -231,8 +245,11 @@
         <div class="span-3"><label>Corrective Action</label><textarea name="corrective_action" rows="2"
             placeholder="Correction / rework instruction"></textarea></div>
       </div>
-      <div class="mt-3 d-flex gap-2"><button class="btn-pro" type="submit"><i class="bi bi-check2-circle"></i> Submit QC
-          Decision</button><a class="btn-soft" href="/qc">Back</a></div>
+      <div class="mt-3 d-flex gap-2">
+        <button class="btn-pro" type="submit" {% if pending_receive %}disabled title="Receive all QC lines first"{% endif %}>
+          <i class="bi bi-check2-circle"></i> Submit QC Decision</button>
+        <a class="btn-soft" href="/qc">Back</a>
+      </div>
     </form>
   </div>
 </div>

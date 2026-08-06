@@ -18,6 +18,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.core.rbac import require_area
+
 from app.core.templates import render
 from app.database.session import get_db
 
@@ -49,6 +51,7 @@ def _rows(db: Session, sql: str, params: dict) -> list:
 
 @router.get("/{order_no}")
 async def print_hub(request: Request, order_no: str, db: Session = Depends(get_db)):
+    require_area(request, "production_orders")
     order = _order(db, order_no)
     return render(request, "print/hub.html", {"order": order, "forms": FORMS, "order_no": order_no,
                                               "page_title": f"Print Forms {order_no}"})
@@ -56,6 +59,7 @@ async def print_hub(request: Request, order_no: str, db: Session = Depends(get_d
 
 @router.get("/{order_no}/order-sheet")
 async def order_sheet(request: Request, order_no: str, db: Session = Depends(get_db)):
+    require_area(request, "production_orders")
     order = _order(db, order_no)
     lines = _rows(db, """
         SELECT recipe_no, recipe_name, required_portions, standard_portions,
@@ -68,6 +72,7 @@ async def order_sheet(request: Request, order_no: str, db: Session = Depends(get
 
 @router.get("/{order_no}/bom-sheet")
 async def bom_sheet(request: Request, order_no: str, db: Session = Depends(get_db)):
+    require_area(request, "production_orders")
     order = _order(db, order_no)
     lines = _rows(db, """
         SELECT COALESCE(ingredient_main_category, ingredient_category, '-') AS main_category,
@@ -86,6 +91,7 @@ async def bom_sheet(request: Request, order_no: str, db: Session = Depends(get_d
 
 @router.get("/{order_no}/store-issue")
 async def store_issue_slip(request: Request, order_no: str, db: Session = Depends(get_db)):
+    require_area(request, "production_orders")
     order = _order(db, order_no)
     lines = _rows(db, """
         SELECT ingredient_code, ingredient_name, issue_to_section,
@@ -101,6 +107,7 @@ async def store_issue_slip(request: Request, order_no: str, db: Session = Depend
 
 @router.get("/{order_no}/qc-certificate")
 async def qc_certificate(request: Request, order_no: str, db: Session = Depends(get_db)):
+    require_area(request, "production_orders")
     order = _order(db, order_no)
     checks = _rows(db, """
         SELECT qc_no, qc_type, qc_status, score, checked_by, created_at,
@@ -113,6 +120,7 @@ async def qc_certificate(request: Request, order_no: str, db: Session = Depends(
 
 @router.get("/{order_no}/packing-slip")
 async def packing_slip(request: Request, order_no: str, db: Session = Depends(get_db)):
+    require_area(request, "production_orders")
     order = _order(db, order_no)
     pack = db.execute(text("SELECT * FROM packing_dispatch WHERE order_no = :o ORDER BY id DESC LIMIT 1"),
                       {"o": order_no}).mappings().first()
@@ -125,6 +133,7 @@ async def packing_slip(request: Request, order_no: str, db: Session = Depends(ge
 
 @router.get("/{order_no}/delivery-note")
 async def delivery_note(request: Request, order_no: str, db: Session = Depends(get_db)):
+    require_area(request, "production_orders")
     order = _order(db, order_no)
     pack = db.execute(text("SELECT * FROM packing_dispatch WHERE order_no = :o ORDER BY id DESC LIMIT 1"),
                       {"o": order_no}).mappings().first()

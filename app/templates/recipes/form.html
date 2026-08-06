@@ -4,9 +4,15 @@
 .pis-card{background:#fff;border:1px solid #d9e6f2;border-radius:18px;padding:20px;margin-bottom:18px;box-shadow:0 10px 28px rgba(6,43,73,.06)}.pis-title h1{margin:0;color:#142a46;font-size:38px;font-weight:900}.pis-title p{color:#71839a;margin:6px 0 0}.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.grid2{display:grid;grid-template-columns:1.1fr .9fr;gap:18px}.field label{font-weight:800;color:#142a46;margin-bottom:6px;display:block}.field input,.field select{width:100%;border:1px solid #cbdbea;border-radius:12px;padding:10px 12px}.btn{border:0;border-radius:12px;padding:11px 16px;font-weight:900;text-decoration:none;cursor:pointer}.btn-primary{background:#3874ff;color:#fff}.btn-secondary{background:#eaf2f8;color:#142a46}.btn-danger{background:#c9352b;color:#fff}.table-wrap{overflow-x:auto;border:1px solid #dce8f2;border-radius:16px;background:linear-gradient(180deg,#fbfdff,#fff)}.pis-table{width:100%;border-collapse:separate;border-spacing:0;font-size:13px}.pis-table th{background:#eef5fa;color:#142a46;text-align:left;padding:12px 10px;font-weight:900;white-space:nowrap;position:sticky;top:0;z-index:2}.pis-table td{border-bottom:1px solid #edf3f8;padding:8px;vertical-align:middle}.pis-table input,.pis-table select{min-width:120px;border:1px solid #cbdbea;border-radius:10px;padding:8px}.pis-table .line-no{font-weight:900;color:#3874ff}.line-toolbar{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:12px}.line-help{display:flex;gap:10px;flex-wrap:wrap;color:#587089}.help-pill{background:#eef7fb;border:1px solid #d2e7f0;border-radius:999px;padding:7px 10px;font-weight:800;font-size:12px}.line-cost-display{font-weight:900;color:#3874ff;background:#f0fbf4;border-radius:10px;text-align:right}.live{background:#eefbff;border-color:#bdeaf3;position:sticky;top:82px}.live p{font-size:16px;color:#142a46}.live strong{font-weight:900}.muted{color:#71839a}@media(max-width:1100px){.grid3,.grid2{grid-template-columns:1fr}}
 </style>
 
-<div class="pis-card pis-title">
+<!-- <div class="pis-card pis-title">
   <h1>{% if mode == 'edit' %}Edit Recipe{% else %}Prepare Manual Recipe{% endif %}</h1>
-</div>
+</div> -->
+ <div class="isfc-hero mb-4 p-4 rounded-4 text-white d-flex align-items-center justify-content-between flex-wrap gap-3"
+       style="background:linear-gradient(135deg,#132947,#0c91a3)">
+    <div>
+      <h1 class="mb-1 fw-bold text-white"><i class="bi bi-cart-plus me-2"></i>{% if mode == 'edit' %}Edit Recipe{% else %}Prepare Manual Recipe{% endif %}</h1>
+    </div>
+  </div>
 
 <form method="post" action="{% if mode == 'edit' %}/recipes/{{ recipe.id }}/edit{% else %}/recipes/prepare{% endif %}">
   <div class="pis-card">

@@ -172,6 +172,29 @@ async def balance_sheet_statement(
         logger.error("Balance Sheet query failed: %s", exc)
         rows = []
 
+    # ------------------------------------------------------------------
+    # Batch 79 fix — 500 error: "unsupported operand type(s) for -:
+    # 'decimal.Decimal' and 'float'".
+    #
+    # MySQL's SUM() comes back through raw text() queries as
+    # decimal.Decimal (via mappings()), not float. Meanwhile `retained`
+    # a few lines below was explicitly cast with float(...). Python's
+    # Decimal deliberately refuses to auto-mix with float (to avoid
+    # silent precision loss), so the moment one side of a calculation
+    # was a Decimal and the other a float, this raised instead of adding.
+    # It only ever surfaced once a company had posted to Asset accounts
+    # but not yet to Liability/Equity accounts (an empty list sums to
+    # plain int 0, not Decimal) — a normal state for a system this early
+    # in real use, which is exactly why it hadn't shown up before now.
+    #
+    # Fix: normalize every balance to float the moment it leaves the DB
+    # layer, so every downstream sum/round/subtract operates on one
+    # consistent type. This removes the whole class of bug, not just the
+    # one combination that happened to trigger here.
+    # ------------------------------------------------------------------
+    for r in rows:
+        r["balance"] = float(r["balance"] or 0)
+
     # Assets are debit-natural (positive as computed). Liabilities & equity are
     # credit-natural, so debit-credit is negative -> flip so they read positive.
     assets = [r for r in rows if r["category"] == "Assets"]

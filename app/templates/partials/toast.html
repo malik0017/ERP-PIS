@@ -47,11 +47,32 @@
     info:    { icon: 'uil-info-circle',          color: '#2563eb', bg: '#e9f1fe', title: 'Notice' }
   };
 
+  var _lastToastAt = 0;
+
   window.showToast = function (message, type, title) {
     type = TYPES[type] ? type : 'info';
     var cfg = TYPES[type];
     var area = document.getElementById('isfcToastArea');
     if (!area || !message) return;
+
+    // Batch 92 fix: this has now been reported three times as "two
+    // toasts at once", and despite the Batch 90 clear-before-show fix
+    // (still in place below) it's still happening. Since the exact
+    // second call path hasn't been pinned down with certainty even
+    // after repeated investigation, adding a second, independent layer:
+    // a hard time lock that rejects any call within 400ms of the
+    // previous one outright, rather than clearing and re-adding. If two
+    // calls are landing close enough together that a clear-then-add
+    // isn't enough (e.g. both DOM writes settling in the same paint
+    // frame), an outright reject of the second call closes that gap too.
+    var now = Date.now();
+    if (now - _lastToastAt < 400) return;
+    _lastToastAt = now;
+
+    // Clear anything already in the toast area before adding a new one,
+    // so at most one toast is ever visible on screen even outside the
+    // 400ms window above.
+    area.innerHTML = '';
 
     var el = document.createElement('div');
     var delay = (type === 'error' || type === 'danger') ? 7000 : 4500;
@@ -85,17 +106,58 @@
   };
 
   /* ---------------------------------------------------------------
-     2. Flash messages from URL query params (?success=, ?error=...)
-        After showing, clean the URL so refresh does not re-toast.
+     2. Flash messages from URL query params.
+        Batch 81 fix: two real bugs here.
+        (a) This only ever read ?success=/?error=/?warning=/?msg=, and
+            NEVER read ?title= — so a redirect like
+            "?toast=success&title=Store Issue Finalized&msg=Order ..."
+            (the pattern used throughout this app's routes) showed the
+            message under the generic default title "Notice" instead of
+            the real one that was sent.
+        (b) No de-duplication: if anything else on the page ever also
+            surfaces the same message (a second toast call from another
+            script, a race on double form-submit, etc.) it would show
+            twice. Now tracked per page-load so the exact same message
+            text can only ever render once.
   ----------------------------------------------------------------*/
+  var shownMessages = {};
+  function flashOnce(message, type, title) {
+    var key = type + '|' + title + '|' + message;
+    if (shownMessages[key]) return;
+    shownMessages[key] = true;
+    window.showToast(message, type, title);
+  }
+
   function flashFromQuery() {
     var params = new URLSearchParams(window.location.search);
     var shown = false;
-    [['success','success'],['error','error'],['warning','warning'],['msg','info'],['message','info']].forEach(function (pair) {
+    var explicitTitle = params.get('title') || '';
+
+    // Primary pattern used across this app's routes: ?toast=<type>&title=&msg=
+    var toastType = params.get('toast');
+    var toastMsg = params.get('msg');
+    if (toastType && toastMsg) {
+      flashOnce(toastMsg, toastType, explicitTitle);
+      params.delete('toast'); params.delete('title'); params.delete('msg');
+      shown = true;
+    }
+
+    // Legacy pattern still used by a few older routes: ?success=/?error=/
+    // ?warning=/?msg=/?message= directly, each its own toast, each now
+    // honoring ?title= too instead of only ever using the type default.
+    // Batch 91 fix: 'error' used to be in this list too, so ?error=...
+    // triggered a toast AND, on every one of the 14 templates that also
+    // render an inline "if error" banner block, a second, redundant
+    // warning for the exact same message. Every page in this codebase
+    // that sets ?error= already shows it inline — removed from here so
+    // it's shown once, not twice.
+    [['success','success'],['warning','warning'],['msg','info'],['message','info']].forEach(function (pair) {
       var val = params.get(pair[0]);
-      if (val) { window.showToast(val, pair[1]); params.delete(pair[0]); shown = true; }
+      if (val) { flashOnce(val, pair[1], explicitTitle); params.delete(pair[0]); shown = true; }
     });
+
     if (shown) {
+      params.delete('title');
       var qs = params.toString();
       var clean = window.location.pathname + (qs ? '?' + qs : '') + window.location.hash;
       window.history.replaceState({}, document.title, clean);
