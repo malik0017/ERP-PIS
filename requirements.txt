@@ -30,6 +30,12 @@ jinja2==3.1.2
 # Session management
 starlette==0.27.0
 
+# Test/audit tooling — starlette 0.27's TestClient imports httpx at module
+# level, so scripts/route_audit.py and scripts/test_batch94.py fail with
+# "No module named 'httpx'" without it. Pinned to the last release compatible
+# with starlette 0.27 (0.25+ changed the client API TestClient relies on).
+httpx==0.24.1
+
 
 # Optional: For async database operations (recommended)
 # aiomysql==0.2.0

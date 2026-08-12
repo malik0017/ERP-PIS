@@ -72,7 +72,10 @@
                      value="{{ po.supplier_name }}" autocomplete="off" disabled>
               <div class="isfc-combo-panel">
                 {% for s in suppliers %}
-                <div class="isfc-combo-item" data-code="{{ s.supplier_code }}" data-value="{{ s.supplier_name }}">{{ s.supplier_name }} <span class="small-muted">({{ s.supplier_code }})</span></div>
+                <div class="isfc-combo-item" data-code="{{ s.supplier_code }}" data-value="{{ s.supplier_name }}">
+                  {{ s.supplier_name }} <span class="small-muted">({{ s.supplier_code }})</span>
+                  {% if s.rating %}<span class="ms-1">{% for i in range(1,6) %}<i class="bi {{ 'bi-star-fill' if i <= s.rating else 'bi-star' }}" style="font-size:.7rem;color:{{ '#f5b301' if i <= s.rating else '#cbd5e1' }}"></i>{% endfor %}</span>{% endif %}
+                </div>
                 {% else %}
                 <div class="isfc-combo-empty">No suppliers found</div>
                 {% endfor %}

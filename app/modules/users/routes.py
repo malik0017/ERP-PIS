@@ -54,7 +54,6 @@ MODULES = [
     ("procurement", "Procurement (PO / GRN)", "Purchase orders, GRN and supplier purchasing"),
     ("inventory_valuation", "Inventory Valuation", "Stock ledger, on hand and item valuation"),
     ("finance", "Finance", "AR, AP, payments and statements"),
-    # Batch 10: newly UI-manageable areas — tick these in the matrix, no code needed.
     ("module_home", "Module Launcher", "ERP module landing page after login"),
     ("project_management", "Project Management", "Projects, tasks, teams and timelines"),
     ("hr", "HCM (Human Capital)", "Employees, staff and HR dashboard"),
@@ -62,7 +61,58 @@ MODULES = [
     ("settings", "System Settings", "Company branding, security settings"),
     ("users", "Users & Roles", "User profile, role access and admin security"),
     ("audit", "Audit Log", "Login, lock, unlock, reset and access change history"),
+
+    # ---- Batch 96: areas that existed in RBAC but were MISSING from this list ----
+    # An area absent from MODULES never renders a row in the access matrix, so
+    # it can never be granted through the UI — it is invisible, not merely
+    # unticked. sales_review and purchase_requisition were added to PAGE_AREAS
+    # in Batch 94 and the release note said "grant these in Users & Access",
+    # which was impossible: they were not on the page. Same for several
+    # long-standing areas below.
+    ("sales_review", "Sales Requests (Approval)",
+     "Approve or reject incoming sale requests before they reach Head Chef"),
+    ("purchase_requisition", "Purchase Requisitions",
+     "Raise and review purchase requests before any purchase order exists"),
+    ("immediate_order", "Immediate Order",
+     "Urgent order entry — bypasses the 48-hour delivery rule"),
+    ("subscriptions", "Subscriptions", "Recurring order schedules and generation"),
+    ("master_approvals", "Master Data Approvals", "Approve master data changes"),
+    ("orders", "Sales (parent area)", "Parent grant covering the Sales menu"),
+    ("recipes", "Recipes (parent area)", "Parent grant covering the Recipes menu"),
+    ("masters", "Master Data (parent area)", "Parent grant covering Master Data"),
+    ("kitchen", "Kitchen (parent area)", "Parent grant covering all kitchen sections"),
+    ("store", "Store (parent area)", "Parent grant covering store screens"),
+    ("project_list", "Projects: List", "Project register"),
+    ("project_detail", "Projects: Detail", "Individual project document"),
+    ("project_team", "Projects: Team", "Project team assignment"),
+    ("project_timeline", "Projects: Timeline", "Project timeline / schedule"),
 ]
+
+# ---------------------------------------------------------------------------
+# Batch 96 — completeness guarantee.
+#
+# The failure above was structural, not a typo: MODULES (what the UI shows)
+# and PAGE_AREAS (what the system actually checks) are two separate lists that
+# have to be kept in sync by hand, and nothing ever verified that they were.
+# Any future area added to rbac.py would silently vanish from this screen the
+# same way.
+#
+# This reconciles them at import time: anything in PAGE_AREAS with no MODULES
+# entry is appended automatically with a readable generated label, so a new
+# area is grantable the moment it is defined, whether or not anyone remembers
+# to edit this file.
+# ---------------------------------------------------------------------------
+def _reconcile_modules_with_rbac():
+    known = {key for key, _label, _desc in MODULES}
+    for area in sorted(PAGE_AREAS):
+        if area in known:
+            continue
+        label = area.replace("_", " ").title()
+        MODULES.append((area, label,
+                        "Auto-listed from RBAC — no description set in MODULES yet."))
+
+
+_reconcile_modules_with_rbac()
 ADMIN_ROLES = {"ADMIN", "SUPER_ADMIN", "ADMINISTRATOR"}
 
 
@@ -210,6 +260,21 @@ def _admin_required(request: Request):
         raise HTTPException(status_code=403, detail="Access denied for users")
 
 
+def _block_if_protected_admin_target(request: Request, target_role_name: str | None):
+    
+    viewer_role = normalized_role(request)
+    if viewer_role in ("SUPER_ADMIN", "SUPERADMIN"):
+        return
+    if (target_role_name or "").upper() in ("SUPER_ADMIN", "SUPERADMIN", "ADMIN", "ADMINISTRATOR"):
+        raise HTTPException(status_code=403, detail="Only Super Admin can manage Admin/Super Admin accounts")
+
+
+def _role_name_of(db: Session, user_id: int) -> str | None:
+    return db.execute(text("""
+        SELECT r.name FROM users u LEFT JOIN roles r ON r.id = u.role_id WHERE u.id = :id
+    """), {"id": user_id}).scalar()
+
+
 @router.get("/users/profile", response_class=HTMLResponse)
 def my_profile(request: Request, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     _ensure_schema(db)
@@ -255,15 +320,21 @@ async def change_password(request: Request, db: Session = Depends(get_db), curre
 def users_list(request: Request, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     _admin_required(request)
     _ensure_schema(db)
-    users = db.execute(text("""
+    viewer_role = normalized_role(request)
+    hide_admin_rows = viewer_role not in ("SUPER_ADMIN", "SUPERADMIN")
+    admin_filter_sql = "AND UPPER(COALESCE(r.name,'')) NOT IN ('SUPER_ADMIN','SUPERADMIN','ADMIN','ADMINISTRATOR')" if hide_admin_rows else ""
+    users = db.execute(text(f"""
         SELECT u.id, u.username, u.email, u.full_name, u.phone, u.company_id,
                u.is_active, u.is_verified, u.last_login, u.failed_login_attempts,
                u.locked_until, u.two_factor_enabled, u.two_factor_setup_required, u.two_factor_setup_expires_at, r.name AS role_name
         FROM users u
         LEFT JOIN roles r ON r.id = u.role_id
+        WHERE 1=1 {admin_filter_sql}
         ORDER BY u.id
     """)).mappings().all()
     roles = db.query(Role).order_by(Role.name).all()
+    if hide_admin_rows:
+        roles = [r for r in roles if (r.name or "").upper() not in ("SUPER_ADMIN", "SUPERADMIN", "ADMIN", "ADMINISTRATOR")]
     return render(request, "users/admin_list.html", {"users": users, "roles": roles})
 
 
@@ -312,6 +383,7 @@ def user_access(request: Request, user_id: int, db: Session = Depends(get_db), c
 @router.post("/admin/users/{user_id}/access")
 async def save_user_access(request: Request, user_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     _admin_required(request)
+    _block_if_protected_admin_target(request, _role_name_of(db, user_id))
     _ensure_schema(db)
     form = await request.form()
     user = db.query(User).filter(User.id == user_id).first()
@@ -356,6 +428,7 @@ async def save_user_access(request: Request, user_id: int, db: Session = Depends
 @router.post("/admin/users/{user_id}/delete")
 async def delete_user(request: Request, user_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     _admin_required(request)
+    _block_if_protected_admin_target(request, _role_name_of(db, user_id))
     _ensure_schema(db)
     if int(current_user.id) == int(user_id):
         return RedirectResponse("/admin/users?toast=error&title=Delete Blocked&msg=You cannot delete your own active login user.", status_code=303)
@@ -373,6 +446,7 @@ async def delete_user(request: Request, user_id: int, db: Session = Depends(get_
 @router.post("/admin/users/{user_id}/unlock")
 async def unlock_user(request: Request, user_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     _admin_required(request)
+    _block_if_protected_admin_target(request, _role_name_of(db, user_id))
     _ensure_schema(db)
     db.execute(text("UPDATE users SET failed_login_attempts = 0, locked_until = NULL, is_active = 1 WHERE id = :id"), {"id": user_id})
     write_audit(db, current_user.id, f"USER_UNLOCKED:{user_id}", "users", user_id)
@@ -383,6 +457,7 @@ async def unlock_user(request: Request, user_id: int, db: Session = Depends(get_
 @router.post("/admin/users/{user_id}/reset-password")
 async def admin_reset_password(request: Request, user_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     _admin_required(request)
+    _block_if_protected_admin_target(request, _role_name_of(db, user_id))
     form = await request.form()
     password = str(form.get("new_password") or "admin123")
     if len(password) < 8:
@@ -399,6 +474,7 @@ async def admin_reset_password(request: Request, user_id: int, db: Session = Dep
 @router.get("/admin/users/{user_id}/edit", response_class=HTMLResponse)
 def edit_user(request: Request, user_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     _admin_required(request)
+    _block_if_protected_admin_target(request, _role_name_of(db, user_id))
     _ensure_schema(db)
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
@@ -422,6 +498,7 @@ def edit_user(request: Request, user_id: int, db: Session = Depends(get_db), cur
 @router.post("/admin/users/{user_id}/edit")
 async def save_edit_user(request: Request, user_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     _admin_required(request)
+    _block_if_protected_admin_target(request, _role_name_of(db, user_id))
     _ensure_schema(db)
     form = await request.form()
     user = db.query(User).filter(User.id == user_id).first()
@@ -450,6 +527,7 @@ async def save_edit_user(request: Request, user_id: int, db: Session = Depends(g
 @router.post("/admin/users/{user_id}/2fa/generate")
 async def generate_2fa_secret(request: Request, user_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     _admin_required(request)
+    _block_if_protected_admin_target(request, _role_name_of(db, user_id))
     _ensure_schema(db)
     secret = _new_totp_secret()
     expires_at = _setup_expiry()
@@ -486,6 +564,7 @@ def admin_user_2fa_qr(user_id: int, request: Request, db: Session = Depends(get_
 @router.post("/admin/users/{user_id}/2fa/disable")
 async def disable_2fa(request: Request, user_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     _admin_required(request)
+    _block_if_protected_admin_target(request, _role_name_of(db, user_id))
     _ensure_schema(db)
     db.execute(text("UPDATE users SET two_factor_enabled=0, two_factor_secret=NULL, two_factor_setup_required=0, two_factor_setup_expires_at=NULL, two_factor_verified_at=NULL WHERE id=:id"), {"id": user_id})
     write_audit(db, current_user.id, f"2FA_DISABLED:{user_id}", "users", user_id)
@@ -621,3 +700,38 @@ async def upload_avatar(request: Request, avatar: UploadFile = _File(...),
     current_user.updated_at = datetime.utcnow()
     db.commit()
     return RedirectResponse("/users/profile?toast=success&title=Profile Photo&msg=Your photo was updated.", status_code=303)
+
+
+@router.post("/users/profile/avatar/remove")
+async def remove_avatar(request: Request, db: Session = Depends(get_db),
+                        current_user: User = Depends(get_current_user)):
+    """Batch 102 — delete your own profile photo.
+
+    Upload existed; removal did not, so a photo could be replaced but never
+    taken down. Deletes every extension variant, not just the one recorded on
+    users.avatar: uploading a .png then a .jpg leaves the .png on disk, and
+    the header resolver picks the FIRST extension it finds — so clearing only
+    the recorded one would make an older photo reappear.
+    """
+    removed = 0
+    for ext in ("png", "jpg", "jpeg", "webp"):
+        fp = _os.path.join(_AVATAR_DIR, f"user_{current_user.id}.{ext}")
+        try:
+            if _os.path.exists(fp):
+                _os.remove(fp)
+                removed += 1
+        except Exception:
+            pass
+
+    current_user.avatar = None
+    current_user.updated_at = datetime.utcnow()
+    db.commit()
+
+    if removed:
+        return RedirectResponse(
+            "/users/profile?toast=success&title=Profile Photo"
+            "&msg=Your photo was removed. The header now shows the default avatar.",
+            status_code=303)
+    return RedirectResponse(
+        "/users/profile?toast=warning&title=Profile Photo&msg=There was no photo to remove.",
+        status_code=303)

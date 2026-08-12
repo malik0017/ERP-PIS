@@ -1,10 +1,4 @@
 # app/modules/inventory/routes.py
-"""Inventory Valuation (MM-IM) — robust against older ISFC database copies.
-
-Reads inventory_transactions when available and falls back to the Ingredient
-master when no ledger exists yet. This prevents /inventory from failing while
-Procurement/GRN is still being introduced.
-"""
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Request
@@ -62,16 +56,6 @@ def _ensure_inventory_ledger(db: Session) -> None:
 
 
 def _migrate_legacy_ledger(db: Session) -> None:
-    """Upgrade an OLD inventory_transactions table (ingredient_code / qty_standard
-    / transaction_type columns from the original SQLAlchemy model) to the new
-    valuation schema, backfilling data so history is preserved.
-
-    This is what caused the /inventory 500:
-        Unknown column 't.inventory_code' in 'field list'
-    CREATE TABLE IF NOT EXISTS did nothing because the legacy table already
-    existed - so we ALTER + backfill instead. Safe to run on every request
-    (all steps are guarded by column checks and cheap when already migrated).
-    """
     table = "inventory_transactions"
     # 1) Add any missing new columns
     new_cols = {
@@ -131,7 +115,6 @@ def _migrate_legacy_ledger(db: Session) -> None:
             UPDATE {table} SET txn_date = transaction_date
             WHERE txn_date IS NULL AND transaction_date IS NOT NULL
         """))
-    # 3) Guarantee no NULL inventory_code (would break GROUP BY presentation)
     db.execute(text(f"UPDATE {table} SET inventory_code = CONCAT('LEGACY-', id) WHERE inventory_code IS NULL OR inventory_code = ''"))
     if changed:
         try:
@@ -172,10 +155,6 @@ def stock_valuation(request: Request, db: Session = Depends(get_db)):
         db.rollback()
     q = request.query_params
     search = (q.get("search") or "").strip()
-    # Batch 78 fix: inventory_transactions HAS a company_id column that was
-    # never actually filtered on here — every company's stock movements
-    # were aggregated into one shared valuation view. NULL-tolerant to
-    # match the same transition-safe behavior used everywhere else.
     cid = get_current_company_id(request)
 
     params = {"cid": cid}
@@ -195,6 +174,14 @@ def stock_valuation(request: Request, db: Session = Depends(get_db)):
                 ROUND(SUM(COALESCE(t.qty_in,0)), 4) AS total_in,
                 ROUND(SUM(COALESCE(t.qty_out,0)), 4) AS total_out,
                 ROUND(SUM(COALESCE(t.qty_in,0)) - SUM(COALESCE(t.qty_out,0)), 4) AS on_hand,
+                -- Batch 93: informational only — how much of on_hand is
+                -- still sitting in QC Hold, not yet cleared for use.
+                -- Kept separate from on_hand/stock_value here since this
+                -- page is a financial/valuation view (everything received
+                -- is a real owned asset regardless of QC status); the
+                -- actual availability GATE for production is enforced in
+                -- production_service.py's shortage check, not here.
+                ROUND(SUM(CASE WHEN t.qc_status = 'Pending' THEN COALESCE(t.qty_in,0) ELSE 0 END), 4) AS qc_hold_qty,
                 ROUND(CASE WHEN SUM(COALESCE(t.qty_in,0)) > 0
                       THEN SUM(COALESCE(t.qty_in,0) * COALESCE(t.unit_cost,0)) / SUM(COALESCE(t.qty_in,0))
                       ELSE 0 END, 4) AS avg_cost,
@@ -242,17 +229,6 @@ def item_ledger(request: Request, inventory_code: str, db: Session = Depends(get
         ORDER BY t.id DESC LIMIT 500
     """), {"c": inventory_code, "cid": cid}).mappings().all()]
 
-    # ------------------------------------------------------------------
-    # Batch 24 FIX — 500 error: "'running' is undefined".
-    # inventory/ledger.html renders a "Running Balance" column using
-    # running[loop.index0], but this route never built that list, so Jinja2
-    # raised UndefinedError on every item drill-down.
-    #
-    # `rows` is NEWEST-FIRST (ORDER BY id DESC). A running balance only makes
-    # sense oldest-first, so we walk the list in reverse, accumulate
-    # (qty_in - qty_out), then flip the result back so index N of `running`
-    # lines up with index N of `rows`.
-    # ------------------------------------------------------------------
     running: list[float] = []
     balance = 0.0
     for r in reversed(rows):                      # oldest -> newest
@@ -271,15 +247,6 @@ def item_ledger(request: Request, inventory_code: str, db: Session = Depends(get
         "page_title": f"Ledger {inventory_code}",
     })
 
-
-# ============================================================================
-# Batch 15 — Stock Ledger Verification (the gate before deeper Finance)
-# ============================================================================
-# Compares, per item:  ledger balance = SUM(qty_in) - SUM(qty_out)
-# against the master snapshot ingredients.current_stock.
-# Items where the two disagree beyond a tolerance are flagged so they can be
-# corrected before stock values feed COGS / GL postings.
-
 @router.get("/verification")
 def ledger_verification(request: Request, db: Session = Depends(get_db)):
     require_area(request, "inventory_valuation")
@@ -288,24 +255,6 @@ def ledger_verification(request: Request, db: Session = Depends(get_db)):
     except Exception:
         db.rollback()
 
-    # Batch 87 fix: this used to compare the ledger against
-    # ingredients.current_stock — a column that doesn't exist anywhere in
-    # this codebase (confirmed against the actual model). Every row of
-    # this query silently failed, which is why this page always showed
-    # 0 items checked regardless of how much real ledger data existed.
-    #
-    # There was never a second, independent "master stock" figure to
-    # verify the ledger against in this system — inventory_transactions
-    # IS the single source of truth here, by design (matches how the
-    # rest of the system works: GL posting sequence, stock valuation,
-    # everything reads from the ledger, nothing maintains a separate
-    # running total elsewhere). So "verify the ledger against the
-    # master" was checking something that structurally can't diverge.
-    #
-    # Repurposed to catch a real, detectable problem instead: negative
-    # balances, which genuinely indicate a data issue (more issued than
-    # was ever received/receipted for that item) — something that IS
-    # possible to happen by mistake and worth surfacing.
     rows = []
     cid = get_current_company_id(request)
     try:
@@ -346,17 +295,7 @@ def ledger_verification(request: Request, db: Session = Depends(get_db)):
 
 @router.post("/verification/align/{inventory_code}")
 def align_master_to_ledger(request: Request, inventory_code: str, db: Session = Depends(get_db)):
-    """Batch 87: this used to UPDATE ingredients.current_stock — a column
-    that has never existed on this table (confirmed against the model).
-    It silently failed every single time while still redirecting with a
-    "success" message, which is worse than doing nothing: it told users
-    an action had worked when it hadn't. Removed rather than left as a
-    misleading no-op. A negative ledger balance isn't something a button
-    can safely "fix" anyway — it means an issuance was recorded without
-    matching stock ever being received, which needs a real correcting
-    transaction (a GRN or a store-issuance adjustment), not a silent
-    overwrite of a number nothing else in the system reads from.
-    """
+
     require_action(request, "inventory_valuation", "edit")
     return RedirectResponse(
         "/inventory/verification?toast=warning&title=Use a Real Correction&msg="

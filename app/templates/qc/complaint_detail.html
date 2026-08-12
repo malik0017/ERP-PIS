@@ -1,0 +1,56 @@
+{% extends "layouts/base.html" %}
+{% block title %}{{ c.complaint_no }}{% endblock %}
+{% block content %}
+<div class="container-fluid py-3 isfc-page">
+  <div class="isfc-hero mb-4 p-4 rounded-4 text-white d-flex align-items-center justify-content-between flex-wrap gap-3"
+       style="background:linear-gradient(135deg,#132947,#0c91a3)">
+    <div>
+      <h1 class="mb-1 fw-bold"><i class="bi bi-chat-square-dots me-2"></i>{{ c.complaint_no }}</h1>
+      <p class="mb-0 opacity-75">{{ c.customer_name or 'Unknown customer' }} · {{ c.category or '—' }} · {{ c.complaint_date }}</p>
+    </div>
+    <a class="btn btn-light btn-sm fw-bold" href="/qc/complaints"><i class="bi bi-arrow-left me-1"></i>{{ t('Back') }}</a>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-lg-7">
+      <div class="card border mb-3">
+        <div class="card-header bg-body-highlight fw-bold">{{ t('What Was Reported') }}</div>
+        <div class="card-body">{{ c.description }}</div>
+      </div>
+      <div class="card border mb-3">
+        <div class="card-header bg-body-highlight fw-bold">{{ t('Traceability') }}</div>
+        <div class="card-body">
+          <table class="table table-sm mb-0">
+            <tr><td class="text-body-tertiary" style="width:160px">{{ t('Order') }}</td>
+                <td>{% if c.order_no %}<a href="/production/orders/{{ c.order_no }}">{{ c.order_no }}</a>{% else %}—{% endif %}</td></tr>
+            <tr><td class="text-body-tertiary">{{ t('Section') }}</td><td>{{ c.traced_section or '—' }}</td></tr>
+            <tr><td class="text-body-tertiary">{{ t('Shift') }}</td><td>{{ c.traced_shift or '—' }}</td></tr>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-5">
+      <form method="post" action="/qc/complaints/{{ c.complaint_no }}/update">
+        <div class="card border">
+          <div class="card-header bg-body-highlight fw-bold">{{ t('Root Cause & Resolution') }}</div>
+          <div class="card-body">
+            <label class="form-label fw-bold">{{ t('Status') }}</label>
+            <select class="form-select mb-3" name="status">
+              <option value="Open" {% if c.status == 'Open' %}selected{% endif %}>Open</option>
+              <option value="Investigating" {% if c.status == 'Investigating' %}selected{% endif %}>Investigating</option>
+              <option value="Resolved" {% if c.status == 'Resolved' %}selected{% endif %}>Resolved</option>
+            </select>
+            <label class="form-label fw-bold">{{ t('Root Cause') }}</label>
+            <textarea class="form-control mb-3" name="root_cause" rows="3">{{ c.root_cause or '' }}</textarea>
+            <label class="form-label fw-bold">{{ t('Corrective Action') }}</label>
+            <textarea class="form-control mb-3" name="corrective_action" rows="3">{{ c.corrective_action or '' }}</textarea>
+            <button type="submit" class="btn btn-primary fw-bold w-100"><i class="bi bi-save me-1"></i>{{ t('Save') }}</button>
+            <div class="small-muted mt-2">{{ t('A credit note or supplier claim, if warranted, is raised separately in Finance / Procurement — this record is the evidence trail behind that decision.') }}</div>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

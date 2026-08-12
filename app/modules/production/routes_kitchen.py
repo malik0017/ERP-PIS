@@ -15,6 +15,7 @@
 # =============================================================================
 
 from datetime import datetime
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import RedirectResponse
@@ -106,9 +107,18 @@ async def kitchen_produce(request: Request, section_name: str, order_no: str,
     # Round server-side too, since a client without JS could still post decimals.
     produced_whole = max(0, round(float(produced_portions or 0)))
     waste_whole = max(0, round(float(waste_portions or 0)))
-    kp.produce_final_product(db, order_no, section, recipe_no,
-                             float(produced_whole), float(waste_whole),
-                             current_user_name(request), remarks)
+    # Batch 100: a locked section returns a warning toast rather than a 500.
+    # SectionLocked carries a message written for the person on the line, so
+    # it is surfaced verbatim instead of being replaced with a generic error.
+    try:
+        kp.produce_final_product(db, order_no, section, recipe_no,
+                                 float(produced_whole), float(waste_whole),
+                                 current_user_name(request), remarks)
+    except kp.SectionLocked as exc:
+        return RedirectResponse(
+            f"/production/kitchen/{_section_slug(section)}/{order_no}"
+            f"?toast=warning&title={quote('Section Locked')}&msg={quote(str(exc))}",
+            status_code=HTTP_303_SEE_OTHER)
     return RedirectResponse(
         f"/production/kitchen/{_section_slug(section)}/{order_no}?toast=success&title=Produced&msg=Final product recorded",
         status_code=HTTP_303_SEE_OTHER)
@@ -121,7 +131,13 @@ async def kitchen_transfer(request: Request, section_name: str, order_no: str,
                            db: Session = Depends(get_db)):
     require_action(request, "kitchen", "edit")
     section = _section_from_slug(section_name)
-    kp.transfer_product(db, order_no, section, recipe_no, to_section, current_user_name(request))
+    try:
+        kp.transfer_product(db, order_no, section, recipe_no, to_section, current_user_name(request))
+    except kp.SectionLocked as exc:
+        return RedirectResponse(
+            f"/production/kitchen/{_section_slug(section)}/{order_no}"
+            f"?toast=warning&title={quote('Cannot Transfer')}&msg={quote(str(exc))}",
+            status_code=HTTP_303_SEE_OTHER)
     return RedirectResponse(
         f"/production/kitchen/{_section_slug(section)}/{order_no}?toast=success&title=Transferred&msg=Product moved to {to_section or kp.next_section(section)}",
         status_code=HTTP_303_SEE_OTHER)

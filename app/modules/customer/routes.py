@@ -518,8 +518,13 @@ async def customer_order_create(
         lines=lines,
     )
     try:
+        # Batch 94 FIX: company_id was never passed, so every order placed
+        # through the Customer Portal was written with company_id = NULL —
+        # unscoped in a system that is explicitly multi-company. Same bug
+        # existed on the internal Sale Requisition form; both fixed together.
         order = _svc_create_order(db, payload,
-                                  created_by=f"{request.session.get('username','portal')} (customer portal)")
+                                  created_by=f"{request.session.get('username','portal')} (customer portal)",
+                                  company_id=int(request.session.get("company_id") or 1))
     except ValueError as exc:
         return RedirectResponse(f"/my/orders/new?toast=danger&title=Could not submit&msg={exc}", status_code=303)
 

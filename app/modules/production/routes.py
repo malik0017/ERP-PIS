@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from starlette.status import HTTP_303_SEE_OTHER
 
 from app.core.templates import render
-from app.core.rbac import require_area, require_action
+from app.core.rbac import require_area, require_action, can_access
 from app.core.notifications import notify_role
 from app.database.session import get_db
 from app.models.production import (
@@ -75,7 +75,7 @@ async def sales_approve_order(request: Request, order_no: str, db: Session = Dep
     """
     require_action(request, "production_orders", "edit")
     _ensure_sales_review_schema(db)
-    order = db.query(CustomerOrder).filter(CustomerOrder.order_no == order_no).first()
+    order = scoped_order(db, request, order_no)
     if not order:
         raise HTTPException(404, "Order not found")
     if order.sales_review_status == "Pending":
@@ -96,7 +96,7 @@ async def sales_reject_order(request: Request, order_no: str, db: Session = Depe
     _ensure_sales_review_schema(db)
     form = await request.form()
     reason = (form.get("reason") or "").strip()
-    order = db.query(CustomerOrder).filter(CustomerOrder.order_no == order_no).first()
+    order = scoped_order(db, request, order_no)
     if not order:
         raise HTTPException(404, "Order not found")
     if order.sales_review_status == "Pending":
@@ -107,69 +107,88 @@ async def sales_reject_order(request: Request, order_no: str, db: Session = Depe
         db.commit()
     return RedirectResponse(f"/production/orders/{order_no}?toast=warning&title=Rejected&msg=Order rejected — it will not proceed to Head Chef", status_code=303)
 
-# Batch 86: reused directly from Procurement rather than duplicating the
-# PO-numbering/schema-creation logic — same PO that a human would create
-# by hand from the Procurement screen, just pre-filled from a real
-# ingredient shortage instead of typed in manually.
-from app.modules.procurement.routes import _cid as _proc_cid, _next_no as _proc_next_no, _ensure_procurement_schema
+# Batch 94: the module-level import of Procurement internals that Batch 86
+# added here is gone — this module no longer creates purchase orders at all,
+# so the import was dead weight AND a standing circular-import hazard
+# (production -> procurement at import time). The Purchase Requisition module
+# it now uses instead is imported lazily inside the one route that needs it.
 
 
 @router.post("/orders/{order_no}/generate-shortage-po")
-async def generate_shortage_po(request: Request, order_no: str, db: Session = Depends(get_db)):
-    """Batch 86 — the "check inventory, generate a PO if it's short"
-    gate asked for: turns the advisory shortage warning (Batch 80) into
-    a real, one-click action. Groups every short ingredient by its
-    default supplier and creates one real Purchase Order per supplier,
-    quantities set to exactly the shortfall — the same purchase_orders /
-    purchase_order_lines tables and PO-numbering Procurement itself uses,
-    so these POs behave completely normally from here on (GRN, receiving,
-    everything). This does not auto-approve or auto-order anything on its
-    own — it lands as a normal Open PO for Procurement to review, same as
-    every other PO in the system.
+async def generate_shortage_pr(request: Request, order_no: str, db: Session = Depends(get_db)):
+    """Batch 94 — this route now raises a Purchase REQUISITION, not a PO.
+
+    Batch 86 created live Purchase Orders straight from a shortage. That
+    meant anyone who could view a shortage could commit the company to a
+    purchase without Procurement ever seeing it — no supplier decision, no
+    pricing, no approval. A PO is a commitment; only Procurement makes
+    commitments. What a shortage legitimately produces is a REQUEST.
+
+    The URL is deliberately unchanged so the existing button on the order
+    detail screen (and any bookmark or muscle memory) keeps working rather
+    than 404-ing; only the behaviour and the wording changed. Duplicate
+    protection added too: raising the same shortage five times because the
+    page was refreshed created five real POs before.
     """
     require_action(request, "production_orders", "edit")
-    _ensure_procurement_schema(db)
+    from app.modules.purchase_req.routes import create_requisition, ensure_schema as _pr_ensure
+    _pr_ensure(db)
+
+    cid = _company_id_from_session(request)
+    order = scoped_order(db, request, order_no)
+    if not order:
+        raise HTTPException(404, "Order not found")
+
     shortages = preview_bom_shortages(db, order_no)
     if not shortages:
-        return RedirectResponse(f"/production/orders/{order_no}?toast=warning&title=No Shortage&msg=No ingredient shortage found for this order right now.", status_code=303)
+        return RedirectResponse(
+            f"/production/orders/{order_no}?toast=warning&title=No Shortage"
+            "&msg=No ingredient shortage found for this order right now.", status_code=303)
 
-    cid = _proc_cid(request)
-    supplier_rows = db.execute(text("""
-        SELECT ingredient_code, COALESCE(default_supplier, '') AS supplier
-        FROM ingredients WHERE ingredient_code IN :codes
-    """).bindparams(bindparam("codes", expanding=True)),
-        {"codes": [s["ingredient_code"] for s in shortages]}).mappings().all()
-    supplier_by_code = {r["ingredient_code"]: (r["supplier"] or "").strip() for r in supplier_rows}
+    open_pr = db.execute(text("""
+        SELECT pr_no FROM purchase_requisitions
+        WHERE source_type = 'Order Shortage' AND source_ref = :o
+          AND status IN ('Pending', 'Approved')
+        ORDER BY id DESC LIMIT 1
+    """), {"o": order_no}).first()
+    if open_pr:
+        return RedirectResponse(
+            f"/purchase-requisitions/{open_pr[0]}?toast=warning&title=Already Raised"
+            f"&msg={open_pr[0]} is already open for this order's shortage — review that one instead of raising a duplicate.",
+            status_code=303)
 
-    groups: dict[str, list[dict]] = {}
-    for s in shortages:
-        supplier = supplier_by_code.get(s["ingredient_code"]) or "Unassigned Supplier"
-        groups.setdefault(supplier, []).append(s)
+    codes = [s["ingredient_code"] for s in shortages]
+    ph = ",".join(f":c{i}" for i in range(len(codes)))
+    params = {f"c{i}": c for i, c in enumerate(codes)}
+    meta_rows = db.execute(text(f"""
+        SELECT ingredient_code, COALESCE(default_supplier,'') AS supplier,
+               COALESCE(unit_cost_standard, 0) AS price
+        FROM ingredients WHERE ingredient_code IN ({ph})
+    """), params).mappings().all()
+    meta = {r["ingredient_code"]: r for r in meta_rows}
 
-    created_pos = []
-    for supplier, items in groups.items():
-        po_no = _proc_next_no(db, "purchase_orders", "po_no", "PO")
-        total = 0.0
-        db.execute(text("""
-            INSERT INTO purchase_orders (company_id, po_no, po_date, supplier_code, supplier_name,
-                                         expected_date, status, total_value, remarks, created_by)
-            VALUES (:cid, :po_no, :po_date, :sc, :sn, :ed, 'Open', 0, :rm, :cb)
-        """), {"cid": cid, "po_no": po_no, "po_date": date.today(), "sc": "", "sn": supplier,
-               "ed": (date.today() + timedelta(days=3)).isoformat(),
-               "rm": f"Auto-generated from shortage check on order {order_no}", "cb": current_user_name(request)})
-        for i, s in enumerate(items, start=1):
-            db.execute(text("""
-                INSERT INTO purchase_order_lines (company_id, po_no, line_no, inventory_code, item_name,
-                                                  ordered_qty, uom, unit_price, line_value)
-                VALUES (:cid, :po_no, :ln, :code, :name, :qty, :uom, 0, 0)
-            """), {"cid": cid, "po_no": po_no, "ln": i, "code": s["ingredient_code"],
-                   "name": s["ingredient_name"], "qty": s["shortfall"], "uom": s["standard_uom"]})
-        db.commit()
-        created_pos.append(po_no)
+    lines = [{
+        "inventory_code": s["ingredient_code"],
+        "item_name": s["ingredient_name"],
+        "uom": s["standard_uom"],
+        "required_qty": s["shortfall"],
+        "on_hand_qty": s["available_qty"],
+        "suggested_supplier": (meta.get(s["ingredient_code"]) or {}).get("supplier", ""),
+        "estimated_price": float((meta.get(s["ingredient_code"]) or {}).get("price", 0) or 0),
+        "line_remarks": f"Shortage on {order_no}"[:255],
+    } for s in shortages]
 
-    po_list = ", ".join(created_pos)
+    pr_no = create_requisition(
+        db, company_id=cid, requested_by=current_user_name(request), lines=lines,
+        department="Production Planning", source_type="Order Shortage", source_ref=order_no,
+        required_date=order.material_receiving_date or order.required_delivery_date,
+        justification=f"Ingredient shortage blocking order {order_no}"
+                      f" for {order.customer_name or 'internal production'}.",
+    )
+
     return RedirectResponse(
-        f"/production/orders/{order_no}?toast=success&title=Purchase Order(s) Created&msg=Created {len(created_pos)} PO(s) for the shortage: {po_list}. Set unit prices and confirm supplier details in Procurement before sending.",
+        f"/production/orders/{order_no}?toast=success&title=Requisition Raised"
+        f"&msg={pr_no} sent to Procurement for review. No purchase order has been created — Procurement decides supplier, price and approval.",
         status_code=303)
 
 
@@ -218,9 +237,51 @@ def _date_filter_params(request: Request):
     return view, status, date_from, date_to
 
 
-def _filtered_orders_query(db: Session, request: Request, date_column: str = "order_date"):
+def scoped_order(db: Session, request: Request, order_no: str):
+    """Batch 96 — fetch an order ONLY if it belongs to the caller's company.
+
+    THE LEAK THIS CLOSES (found by scripts/test_multicompany.py, not reported):
+
+        scoped_order(db, request, order_no)
+
+    appeared 14 times across the production and QC modules with no company
+    filter at all. The LIST screens were correctly scoped, so the system
+    looked airtight — but any logged-in user of any company could open
+    /production/orders/ORD-20260806-0002 directly and read another company's
+    order: customer name, recipes, costs, margins, the whole document. Order
+    numbers are sequential and guessable.
+
+    List filtering is not access control. This is.
+
+    Returns None when the order belongs to another company, so callers 404
+    exactly as they would for a genuinely non-existent order — deliberately
+    NOT a 403, which would confirm the order exists.
+
+    The `OR company_id IS NULL` branch is kept for legacy rows written before
+    multi-company scoping existed; dropping it would hide historical orders
+    from everyone.
+    """
+    cid = _company_id_from_session(request)
+    return (db.query(CustomerOrder)
+              .filter(CustomerOrder.order_no == order_no)
+              .filter((CustomerOrder.company_id == cid) | (CustomerOrder.company_id.is_(None)))
+              .first())
+
+
+def _filtered_orders_query(db: Session, request: Request, date_column: str = "order_date",
+                           exclude_pending_review: bool = True):
+   
     view, status, date_from, date_to = _date_filter_params(request)
     q = db.query(CustomerOrder)
+
+    if exclude_pending_review:
+        # Rejected is excluded as well as Pending. Caught by the Batch 94
+        # functional test: filtering only on "Pending" let a REJECTED request
+        # reappear in Head Chef Planning the moment it was rejected, which is
+        # worse than the original bug — the reviewer explicitly said no and
+        # the order showed up in planning anyway.
+        q = q.filter(func.coalesce(CustomerOrder.sales_review_status, "Approved").notin_(
+            ["Pending", "Rejected"]))
 
     col = CustomerOrder.order_date
     if date_column == "delivery":
@@ -254,8 +315,35 @@ def _order_stats(db: Session):
     }
 
 
-def _order_flow_status(db: Session, order_no: str) -> dict:
-    order = db.query(CustomerOrder).filter(CustomerOrder.order_no == order_no).first()
+def _order_flow_status(db: Session, order_no: str, order=None) -> dict:
+    """Batch 97 FIX — NameError: name 'request' is not defined.
+
+    My mistake in Batch 96. The cross-company scoping fix mechanically
+    replaced 15 occurrences of
+
+        db.query(CustomerOrder).filter(CustomerOrder.order_no == order_no).first()
+
+    with scoped_order(db, request, order_no). Fourteen of those were inside
+    route handlers that take `request`. This one is NOT a route — it is a
+    plain helper with the signature (db, order_no), so `request` was simply
+    not in scope and the call raised NameError at runtime.
+
+    That made /production/orders/{order_no} 500 on EVERY request, which is
+    the single most-used screen in the system.
+
+    The fix is not to thread `request` down into a helper that has no business
+    knowing about HTTP. The caller has already fetched (and already scoped)
+    the order — so it passes that object in, and the helper stops re-querying
+    it entirely. One less query, and the scoping question can't come back
+    here because there is no longer a lookup to scope.
+
+    `order` stays optional so any other caller keeps working; when it isn't
+    supplied the helper falls back to an UNSCOPED lookup, which is safe only
+    because every current caller is a scoped route. That fallback is the
+    reason the signature is documented rather than silently changed.
+    """
+    if order is None:
+        order = db.query(CustomerOrder).filter(CustomerOrder.order_no == order_no).first()
     if not order:
         return {}
     bom_count = db.query(BOMLine).filter(BOMLine.order_no == order_no).count()
@@ -408,6 +496,7 @@ async def create_order_form(
     recipe_name: List[str] = Form([]),
     recipe_display: List[str] = Form([]),
     required_portions: List[float] = Form([]),
+    immediate: str = Form(""),
     db: Session = Depends(get_db),
 ):
     _ensure_sales_review_schema(db)
@@ -456,10 +545,14 @@ async def create_order_form(
         origin = request.headers.get("referer") or "/orders/portal"
         return redirect_with_error(origin, "Please enter at least one recipe with portions greater than zero.")
 
-    # Batch 69: 48-hour rule — delivery must be at least 48 hours from now.
-    # Enforced server-side so it can't be bypassed by editing the form. Admins
-    # and internal staff placing back-dated/urgent orders can be exempted later
-    # via a permission if needed; for now the rule applies to all order entry.
+    # Batch 95: 48-hour rule — delivery must be at least 48 hours from now.
+    # Enforced server-side so it can't be bypassed by editing the form.
+    # Users explicitly granted the "immediate_order" area (via Users &
+    # Access — nobody has it by default) skip this check entirely, for
+    # genuinely urgent orders. Not a silent bypass: notes records who
+    # placed it and that the rule was skipped, same principle as every
+    # other deviation-needs-a-reason pattern elsewhere in this system.
+    is_immediate = immediate == "1" and can_access(request, "immediate_order")
     _deliv = _parse_date(required_delivery_date)
     if _deliv:
         try:
@@ -468,7 +561,7 @@ async def create_order_form(
         except Exception:
             _hh, _mm = 0, 0
         _deliv_dt = datetime(_deliv.year, _deliv.month, _deliv.day, _hh, _mm)
-        if _deliv_dt < datetime.now() + timedelta(hours=48):
+        if not is_immediate and _deliv_dt < datetime.now() + timedelta(hours=48):
             return redirect_with_error(
                 "/orders/portal",
                 "Orders must be placed at least 48 hours before the delivery date and time.")
@@ -493,18 +586,33 @@ async def create_order_form(
     )
 
     try:
-        order = create_order(db, payload, created_by=current_user_name(request))
+        # Batch 94 FIX: company_id was never passed here, so every order raised
+        # from the Sale Requisition / Immediate Order form landed with
+        # company_id = NULL — the single highest-volume order entry point in
+        # the system was writing unscoped rows. Subscriptions and the old
+        # Requisitions module always passed it; these two paths never did.
+        order = create_order(db, payload, created_by=current_user_name(request),
+                             company_id=_company_id_from_session(request))
     except ValueError as exc:
         return redirect_with_error("/production/orders", str(exc))
 
-    return RedirectResponse(f"/production/orders?created={order.order_no}", status_code=HTTP_303_SEE_OTHER)
+    # Batch 94: this used to land on /production/orders (which redirects to
+    # Head Chef Planning). Now that a new order is correctly held at
+    # sales_review_status='Pending', that screen deliberately no longer shows
+    # it — so the person who just submitted an order would have been sent to
+    # a page where their own order was invisible. Sending them to the review
+    # queue instead, which is where the order actually is.
+    return RedirectResponse(
+        f"/sales-requests?toast=success&title=Request Submitted"
+        f"&msg=Request {order.order_no} submitted for sales review. It reaches Head Chef Planning only after approval.",
+        status_code=HTTP_303_SEE_OTHER)
 
 
 @router.get("/orders/{order_no}")
 async def order_detail(request: Request, order_no: str, db: Session = Depends(get_db)):
     require_area(request, "production_orders")
     _ensure_sales_review_schema(db)
-    order = db.query(CustomerOrder).filter(CustomerOrder.order_no == order_no).first()
+    order = scoped_order(db, request, order_no)
     if not order:
         raise HTTPException(404, "Order not found")
 
@@ -536,7 +644,9 @@ async def order_detail(request: Request, order_no: str, db: Session = Depends(ge
             "txs": txs,
             "recipe_meta": recipe_meta,
             "shortages": shortages,
-            "flow_status": _order_flow_status(db, order_no),
+            # Batch 97: pass the already-scoped order rather than making the
+            # helper look it up again.
+            "flow_status": _order_flow_status(db, order_no, order=order),
             "page_title": order_no,
             "error": request.query_params.get("error"),
         },
@@ -547,7 +657,7 @@ async def order_detail(request: Request, order_no: str, db: Session = Depends(ge
 async def generate_bom(request: Request, order_no: str, db: Session = Depends(get_db)):
     require_action(request, "bom", "add")
     try:
-        order = db.query(CustomerOrder).filter(CustomerOrder.order_no == order_no).first()
+        order = scoped_order(db, request, order_no)
         if order and order.status not in {"Head Chef Approved", "BOM Generated", "Store Pending", "Store Issued", "In Production"}:
             raise ValueError("Head Chef approval is required before BOM generation")
         generate_bom_for_order(db, order_no)
@@ -573,7 +683,7 @@ async def approve_plan(
     """
     require_action(request, "head_chef", "edit")
     try:
-        order = db.query(CustomerOrder).filter(CustomerOrder.order_no == order_no).first()
+        order = scoped_order(db, request, order_no)
         if not order:
             raise ValueError("Order not found")
 
@@ -616,7 +726,7 @@ async def bom_report(request: Request, order_no: str, group_by: str = "item", ex
     if group_by not in valid_groups:
         group_by = "item"
 
-    order = db.query(CustomerOrder).filter(CustomerOrder.order_no == order_no).first()
+    order = scoped_order(db, request, order_no)
     if not order:
         raise HTTPException(404, "Order not found")
 
@@ -700,7 +810,7 @@ async def bom_report(request: Request, order_no: str, group_by: str = "item", ex
 @router.get("/orders/{order_no}/store-issuance")
 async def store_issuance_page(request: Request, order_no: str, db: Session = Depends(get_db)):
     require_area(request, "store_issuance")
-    order = db.query(CustomerOrder).filter(CustomerOrder.order_no == order_no).first()
+    order = scoped_order(db, request, order_no)
     lines = (
         db.query(StoreIssuanceLine)
         .filter(StoreIssuanceLine.order_no == order_no)
@@ -954,7 +1064,7 @@ async def section_page(request: Request, section_name: str, db: Session = Depend
 async def section_order_page(request: Request, section_name: str, order_no: str, db: Session = Depends(get_db)):
     require_area(request, "kitchen")
     section = _section_from_slug(section_name)
-    order = db.query(CustomerOrder).filter(CustomerOrder.order_no == order_no).first()
+    order = scoped_order(db, request, order_no)
     txs = (
         db.query(KitchenSectionTransaction)
         .filter(KitchenSectionTransaction.current_section == section, KitchenSectionTransaction.order_no == order_no)
@@ -1118,6 +1228,16 @@ async def transfer_tx(
     tx = db.query(KitchenSectionTransaction).filter(KitchenSectionTransaction.id == tx_id).first()
     fallback_section = tx.current_section.replace("/", "-") if tx else "Hot-Kitchen"
 
+    # Batch 94: server-side twin of the client-side check — editing
+    # Transfer away from the full amount needs a reason on record, and
+    # that has to be enforced here too, not just in JS someone could
+    # bypass by submitting the form directly.
+    if tx is not None:
+        full_amount = float(tx.balance_qty_standard or tx.received_qty_standard or tx.issued_qty_standard or 0)
+        if abs(float(transferred_qty_standard) - full_amount) > 0.0001 and not waste_reason.strip():
+            return redirect_with_error(f"/production/section/{fallback_section}",
+                                        "Transfer quantity was changed from the full amount — a reason is required.")
+
     try:
         tx = transfer_transaction(
             db,
@@ -1259,7 +1379,11 @@ async def head_chef_dashboard(request: Request, db: Session = Depends(get_db)):
     # all 3 cards stay meaningful together rather than collapsing to the
     # same number.
     stats.update({
-        "awaiting_head_chef": q.filter(CustomerOrder.status == "Submitted", func.coalesce(CustomerOrder.sales_review_status, "Approved") != "Pending").count(),
+        # Batch 94: the sales-review exclusion moved into _filtered_orders_query
+        # itself, so `q` is already gated here. Keeping the filter duplicated on
+        # this one card was what made the cards and the table disagree in the
+        # first place — the card knew about the gate, the table didn't.
+        "awaiting_head_chef": q.filter(CustomerOrder.status == "Submitted").count(),
         "scheduled": q.filter(CustomerOrder.cooking_date.isnot(None)).count(),
         "bom_ready": q.filter(CustomerOrder.status == "Head Chef Approved").count(),
         "filtered_total": q.count(),

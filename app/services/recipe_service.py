@@ -224,6 +224,9 @@ def _read_recipe_master_rows(recipe_ws) -> tuple[dict[str, dict[str, Any]], int]
             "brand_name": _s(_get(recipe_ws, row, headers, "Brand Name", "Brand Code")),
             "customer_name": _s(_get(recipe_ws, row, headers, "Customer Name")),
             "category": _s(_get(recipe_ws, row, headers, "Category")),
+            # Batch 101: Day is what drives the Frsh weekly menu. Read it here
+            # too so both import paths behave the same.
+            "day_of_week": _s(_get(recipe_ws, row, headers, "Day")),
             "has_sub_recipe": _b(_get(recipe_ws, row, headers, "Has Sub Recipe?", "Has Sub Recipe")),
             "linked_sub_recipe_code": _code(_get(recipe_ws, row, headers, "Sub Recipe ID", "Sub Recipe Ref")),
             "linked_sub_recipe_name": _s(_get(recipe_ws, row, headers, "Sub Recipe Name")),
@@ -259,7 +262,21 @@ def _read_recipe_rows_from_ingredients(line_ws) -> tuple[dict[str, dict[str, Any
             "recipe_name": _s(_get(line_ws, row, headers, "Recipe Name")) or recipe_code,
             "brand_name": _s(_get(line_ws, row, headers, "Brand Name")),
             "customer_name": _s(_get(line_ws, row, headers, "Customer Name")),
-            "category": None,
+            # Batch 101 FIX — this was hard-coded to None, which is why every
+            # RCP-FRSH-* recipe shows "—" in the Category column.
+            #
+            # This is the FALLBACK path, used when the workbook has no
+            # "Master Recipes" sheet and recipes have to be reconstructed from
+            # the "Recipe Ingredients" sheet alone. Whoever wrote it assumed
+            # that sheet carries no recipe-level metadata. It does: the
+            # Recipe Ingredients sheet has both a "Category" and a "Day"
+            # column, and they were being read past and thrown away.
+            #
+            # The Frsh recipes were loaded through exactly this path, so all
+            # 55 of them lost their category on import even though it was
+            # sitting in the file.
+            "category": _s(_get(line_ws, row, headers, "Category")),
+            "day_of_week": _s(_get(line_ws, row, headers, "Day")),
             "has_sub_recipe": False,
             "linked_sub_recipe_code": _code(_get(line_ws, row, headers, "Sub Recipe ID", "Sub Recipe Ref")),
             "linked_sub_recipe_name": None,
@@ -285,6 +302,10 @@ def _apply_recipe_meta(recipe: Recipe, recipe_code: str, meta: dict[str, Any]) -
     recipe.brand_name = meta.get("brand_name") or recipe.brand_name
     recipe.customer_name = meta.get("customer_name") or recipe.customer_name
     recipe.category = meta.get("category") or recipe.category
+    # Batch 101: only set when the model actually has the column, so this file
+    # keeps working against a database that has not run the migration yet.
+    if hasattr(recipe, "day_of_week"):
+        recipe.day_of_week = meta.get("day_of_week") or getattr(recipe, "day_of_week", None)
     recipe.is_sub_recipe = recipe_code.startswith("SUB-") or recipe_code.startswith("RCP-MS-")
     recipe.has_sub_recipe = bool(meta.get("has_sub_recipe"))
     recipe.linked_sub_recipe_code = meta.get("linked_sub_recipe_code")

@@ -59,10 +59,24 @@ def _real_notifications(db: Session, request: Request, limit: int = 30) -> list[
     rows = _safe_rows(db, """
         SELECT id, title, message, url, category, is_read, created_at
         FROM notifications
-        WHERE user_id = :uid OR (role = :role AND role IS NOT NULL)
+        -- Batch 98 FIX: cross-company notification leak.
+        --
+        -- This clause had no company filter, so a ROLE-broadcast notification
+        -- was delivered to every user holding that role in EVERY company. A
+        -- PROCUREMENT user at Company 2 received "Requisition PR-000001
+        -- approved" raised by Company 1 — leaking document numbers, order
+        -- references and approver names across the tenancy boundary, on the
+        -- one screen users check most often.
+        --
+        -- Proven by seeding a Company 1 role notification and reading it back
+        -- as a Company 2 user; it appeared in both /notifications and
+        -- /notifications/summary.
+        WHERE (company_id = :cid OR company_id IS NULL)
+          AND (user_id = :uid OR (role = :role AND role IS NOT NULL))
         ORDER BY is_read ASC, created_at DESC
         LIMIT :lim
-    """, {"uid": user_id, "role": role, "lim": limit})
+    """, {"uid": user_id, "role": role, "lim": limit,
+          "cid": int(request.session.get("company_id") or 1)})
     return [dict(r) for r in rows]
 
 
@@ -192,8 +206,14 @@ async def mark_notification_read(request: Request, notification_id: int, db: Ses
         return RedirectResponse("/login", status_code=HTTP_303_SEE_OTHER)
     db.execute(text("""
         UPDATE notifications SET is_read = 1, read_at = NOW()
-        WHERE id = :id AND (user_id = :uid OR role = :role)
-    """), {"id": notification_id, "uid": user_id, "role": role})
+        -- Batch 98: company-scoped for the same reason as the read query —
+        -- without it a user could mark another company's notification read,
+        -- silently mutating a row they should never have seen.
+        WHERE id = :id
+          AND (company_id = :cid OR company_id IS NULL)
+          AND (user_id = :uid OR role = :role)
+    """), {"id": notification_id, "uid": user_id, "role": role,
+           "cid": int(request.session.get("company_id") or 1)})
     db.commit()
     ref = request.headers.get("referer") or "/notifications"
     return RedirectResponse(ref, status_code=HTTP_303_SEE_OTHER)
@@ -208,8 +228,10 @@ async def mark_all_notifications_read(request: Request, db: Session = Depends(ge
         return RedirectResponse("/login", status_code=HTTP_303_SEE_OTHER)
     db.execute(text("""
         UPDATE notifications SET is_read = 1, read_at = NOW()
-        WHERE (user_id = :uid OR role = :role) AND is_read = 0
-    """), {"uid": user_id, "role": role})
+        WHERE (company_id = :cid OR company_id IS NULL)
+          AND (user_id = :uid OR role = :role) AND is_read = 0
+    """), {"uid": user_id, "role": role,
+           "cid": int(request.session.get("company_id") or 1)})
     db.commit()
     ref = request.headers.get("referer") or "/notifications"
     return RedirectResponse(ref, status_code=HTTP_303_SEE_OTHER)

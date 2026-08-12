@@ -138,6 +138,32 @@ async def update_dispatch(
     if not row:
         return _redirect_with_error("/dispatch", "Dispatch record not found.")
 
+    # ------------------------------------------------------------------
+    # Batch 100 — DELIVERED IS FINAL. Lock the record once delivery closes.
+    #
+    # Before this, a Delivered dispatch stayed fully editable: the packed
+    # quantity, the driver, the vehicle, even the status could be changed
+    # back afterwards. That breaks the whole point of the Batch 80
+    # proof-of-delivery gate — you can satisfy it with a photo, save, and
+    # then quietly rewrite the numbers the proof was attached to. It also
+    # makes the delivery note and the AR invoice raised from it
+    # unreconcilable with the record they came from.
+    #
+    # A delivered dispatch is a closed financial and legal document. If
+    # something genuinely needs correcting, that is a credit note or a
+    # returns process, not a silent edit — and neither exists yet, so the
+    # honest behaviour is to refuse rather than to pretend.
+    #
+    # Deliberately checked BEFORE the proof gate below: a locked record must
+    # not even reach the validation that could change it.
+    # ------------------------------------------------------------------
+    if (row.dispatch_status or "") == "Delivered":
+        return _redirect_with_error(
+            "/dispatch",
+            f"{row.order_no} is already Delivered and is locked. "
+            "A completed delivery cannot be edited — raise a customer complaint "
+            "or a credit note if something needs correcting.")
+
     # Batch 80: proof-of-delivery gate. A delivery can't be marked Delivered
     # on trust alone anymore — the driver needs to provide EITHER a photo
     # (uploaded here) OR the OTP code the customer read back to them

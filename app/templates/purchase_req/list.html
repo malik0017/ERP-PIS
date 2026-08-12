@@ -1,0 +1,129 @@
+{% extends "layouts/base.html" %}
+{% block title %}{{ t('Purchase Requisitions') }}{% endblock %}
+{% block content %}
+<div class="container-fluid py-3 isfc-page">
+
+  <div class="isfc-hero mb-4 p-4 rounded-4 text-white d-flex align-items-center justify-content-between flex-wrap gap-3"
+       style="background:linear-gradient(135deg,#132947,#0c91a3)">
+    <div>
+      <h1 class="mb-1 fw-bold text-white"><i class="bi bi-file-earmark-text me-2"></i>{{ t('Purchase Requisitions') }}</h1>
+      <p class="mb-0 opacity-75">
+        {{ t('A request to buy — not a commitment to buy.') }}
+      </p>
+    </div>
+    {% if can_action('purchase_requisition', 'add') %}
+    <a href="/purchase-requisitions/new" class="btn btn-light btn-sm">
+      <i class="bi bi-plus-lg me-1"></i>{{ t('New Requisition') }}</a>
+    {% endif %}
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-lg-3">
+      <div class="card border h-100"><div class="card-body">
+        <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Awaiting Review') }}</div>
+        <div class="fs-3 fw-bold text-warning">{{ counts.pending or 0 }}</div>
+        <div class="small-muted">{{ t('Est. value') }} {{ '%.2f'|format(counts.pending_value or 0) }}</div>
+      </div></div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="card border h-100"><div class="card-body">
+        <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Approved — not yet ordered') }}</div>
+        <div class="fs-3 fw-bold text-info">{{ counts.approved or 0 }}</div>
+      </div></div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="card border h-100"><div class="card-body">
+        <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Converted to PO') }}</div>
+        <div class="fs-3 fw-bold text-success">{{ counts.converted or 0 }}</div>
+      </div></div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="card border h-100"><div class="card-body">
+        <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Rejected') }}</div>
+        <div class="fs-3 fw-bold text-body-tertiary">{{ counts.rejected or 0 }}</div>
+      </div></div>
+    </div>
+  </div>
+
+  <div class="card border mb-4">
+    <div class="card-body py-3">
+      <form method="get" class="row g-2 align-items-end">
+        <div class="col-md-4">
+          <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('Status') }}</label>
+          <select name="status" class="form-select form-select-sm">
+            {% for s in status_options %}
+            <option value="{{ s }}" {% if filters.status==s %}selected{% endif %}>{{ t(s) }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-5">
+          <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('Search') }}</label>
+          <input name="search" value="{{ filters.search }}" class="form-control form-control-sm"
+                 placeholder="{{ t('PR number, source order, requester') }}">
+        </div>
+        <div class="col-md-3 d-flex gap-2">
+          <button class="btn btn-primary btn-sm flex-grow-1">{{ t('Apply') }}</button>
+          <a href="/purchase-requisitions" class="btn btn-phoenix-secondary btn-sm">{{ t('Reset') }}</a>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="card border">
+    <div class="card-header bg-body-highlight fw-bold">
+      {{ t('Requisitions') }} <span class="badge badge-phoenix badge-phoenix-secondary">{{ prs|length }}</span>
+    </div>
+    <div class="card-body p-4">
+      <div class="table-responsive">
+        <table class="table table-hover mb-0 align-middle" data-isfc-table>
+          <thead class="bg-body-highlight">
+            <tr>
+              <th>{{ t('PR No') }}</th><th>{{ t('Raised By') }}</th><th>{{ t('Source') }}</th>
+              <th>{{ t('Needed By') }}</th><th class="text-center">{{ t('Items') }}</th>
+              <th class="text-end">{{ t('Est. Value') }}</th><th class="text-center">{{ t('Status') }}</th>
+              <th class="text-end">{{ t('Action') }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for p in prs %}
+            <tr>
+              <td><a href="/purchase-requisitions/{{ p.pr_no }}" class="fw-bold text-decoration-none">{{ p.pr_no }}</a>
+                <div class="small-muted">{{ p.pr_date }}</div></td>
+              <td>{{ p.requested_by or '—' }}
+                {% if p.department %}<div class="small-muted">{{ p.department }}</div>{% endif %}</td>
+              <td>
+                <span class="badge badge-phoenix badge-phoenix-{{ 'info' if p.source_type == 'Order Shortage' else 'secondary' }}">
+                  {{ t(p.source_type or 'Manual') }}</span>
+                {% if p.source_ref %}
+                <div class="small-muted"><a href="/production/orders/{{ p.source_ref }}"
+                    class="text-decoration-none">{{ p.source_ref }}</a></div>{% endif %}
+              </td>
+              <td>{{ p.required_date or '—' }}</td>
+              <td class="text-center">{{ p.line_count }}</td>
+              <td class="text-end">{{ '%.2f'|format(p.estimated_value or 0) }}</td>
+              <td class="text-center">
+                {% if p.status == 'Pending' %}<span class="badge badge-phoenix badge-phoenix-warning">{{ t('Pending') }}</span>
+                {% elif p.status == 'Approved' %}<span class="badge badge-phoenix badge-phoenix-info">{{ t('Approved') }}</span>
+                {% elif p.status == 'Converted' %}<span class="badge badge-phoenix badge-phoenix-success">{{ t('Converted') }}</span>
+                {% else %}<span class="badge badge-phoenix badge-phoenix-danger">{{ t('Rejected') }}</span>{% endif %}
+                {% if p.converted_po_nos %}<div class="small-muted">{{ p.converted_po_nos }}</div>{% endif %}
+              </td>
+              <td class="text-end">
+                <a href="/purchase-requisitions/{{ p.pr_no }}"
+                   class="btn btn-sm {{ 'btn-primary' if p.status in ['Pending','Approved'] else 'btn-phoenix-secondary' }}">
+                  {{ t('Review') if p.status == 'Pending' else t('Open') }}</a>
+              </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="8" class="text-center text-body-tertiary py-5">
+              <i class="bi bi-inbox fs-3 d-block mb-2"></i>
+              {{ t('No requisitions in this view. They are raised manually, or automatically from an ingredient shortage on a sales request.') }}
+            </td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

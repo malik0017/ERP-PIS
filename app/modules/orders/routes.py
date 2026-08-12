@@ -102,6 +102,24 @@ def order_portal(request: Request, db: Session = Depends(get_db)):
     return render(request, "orders/portal.html", context)
 
 
+@router.get("/portal/immediate", response_class=HTMLResponse)
+def order_portal_immediate(request: Request, db: Session = Depends(get_db)):
+    """Batch 95 — same order form, same everything, except the 48-hour
+    delivery rule doesn't apply here. Restricted to a new RBAC area
+    ("immediate_order") that has to be explicitly granted per user from
+    Users & Access — nobody gets this by default, including Admin roles
+    that only have the base "order_portal" area. This is genuinely a
+    separate permission from placing a normal order, on purpose: bypassing
+    the lead-time rule should be a deliberate grant, not a side effect of
+    already being allowed to place regular orders.
+    """
+    require_area(request, "immediate_order")
+    company_id = _company_id_from_session(request)
+    context = _master_dropdown_context(db, company_id)
+    context.update({"page_title": "Immediate Order (No 48-Hour Rule)", "immediate": True})
+    return render(request, "orders/portal.html", context)
+
+
 @router.get("", response_class=HTMLResponse)
 def orders_list(request: Request, db: Session = Depends(get_db)):
     require_area(request, "production_orders")

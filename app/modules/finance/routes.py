@@ -575,15 +575,51 @@ def _ensure_gl_schema(db: Session) -> None:
     _try("""
         CREATE TABLE IF NOT EXISTS gl_journal_lines (
             id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            company_id INT NULL,
             journal_no VARCHAR(80) NOT NULL,
             account_code VARCHAR(20) NOT NULL,
             debit DECIMAL(18,4) NOT NULL DEFAULT 0,
             credit DECIMAL(18,4) NOT NULL DEFAULT 0,
             party VARCHAR(255) NULL,
             KEY idx_gll_journal (journal_no),
-            KEY idx_gll_account (account_code)
+            KEY idx_gll_account (account_code),
+            KEY idx_gll_company (company_id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     """)
+
+    # Batch 95 FIX — company_id was missing from the CREATE above, but the
+    # Chart of Accounts query JOINs on l.company_id:
+    #     LEFT JOIN gl_journal_lines l ON ... AND (l.company_id = :cid OR ...)
+    # so /finance/coa returned a 500 "Unknown column 'l.company_id'" on any
+    # database where this table was created by this statement. Found by the
+    # route-by-route audit, not reported.
+    #
+    # This is the same class of bug as the inventory_transactions shape
+    # mismatch fixed in Batch 94: a table definition and the queries that
+    # read it drifting apart, invisible until the exact conditions line up.
+    # information_schema pre-check because ADD COLUMN IF NOT EXISTS is not
+    # supported on the target MySQL version.
+    try:
+        _has = db.execute(text("""
+            SELECT COUNT(*) FROM information_schema.columns
+            WHERE table_schema = DATABASE()
+              AND table_name = 'gl_journal_lines'
+              AND column_name = 'company_id'
+        """)).scalar()
+        if not _has:
+            db.execute(text("ALTER TABLE gl_journal_lines ADD COLUMN company_id INT NULL"))
+            # Backfill from the journal header so historical lines stay
+            # visible to company-scoped queries instead of silently vanishing
+            # from the Chart of Accounts for every company.
+            db.execute(text("""
+                UPDATE gl_journal_lines l
+                JOIN gl_journals j ON j.journal_no = l.journal_no
+                SET l.company_id = j.company_id
+                WHERE l.company_id IS NULL
+            """))
+            db.commit()
+    except Exception:
+        db.rollback()
     _try("""
         CREATE TABLE IF NOT EXISTS document_sequences (
             id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,

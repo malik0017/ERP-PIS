@@ -1,41 +1,38 @@
 # app/main.py
-"""
-FastAPI Application Entry Point
-Production-ready architecture with session management and authentication
-"""
-
 from contextlib import asynccontextmanager
 from pathlib import Path
 import logging
-
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
-
 from app.config import APP_NAME, COMPANY_NAME, SECRET_KEY, DEBUG
 from app.core.templates import render
 from app.modules.auth.routes import router as auth_router
-from app.modules.auth.routes_register import router as self_register_router  # Batch 71
+from app.modules.auth.routes_register import router as self_register_router 
 from app.modules.dashboard.routes import router as dashboard_router
 from app.modules.production.routes import router as production_router
 from app.modules.recipes.routes import router as recipes_router
 from app.modules.inventory.routes import router as inventory_router
 from app.modules.masters.routes import router as masters_router
 from app.modules.orders.routes import router as orders_router
+from app.modules.sales_review.routes import router as sales_review_router
+from app.modules.purchase_req.routes import router as purchase_req_router
 from app.modules.qc.routes import router as qc_router
-from app.modules.production.routes_docs import router as prod_docs_router  # Batch 70
-from app.modules.production.routes_kitchen import router as kitchen_prod_router  # Batch 72
+from app.modules.production.routes_docs import router as prod_docs_router  
+from app.modules.production.routes_kitchen import router as kitchen_prod_router 
+from app.modules.production.routes_topup import router as topup_router  
+from app.modules.qc.routes_sampling import router as qc_sampling_router  
 from app.modules.dispatch.routes import router as dispatch_router
 from app.modules.packing.routes import router as packing_router
 from app.modules.settings.routes import router as settings_router
-from app.modules.settings.routes_modules import router as settings_modules_router  # Batch 65
+from app.modules.settings.routes_modules import router as settings_modules_router  
 from app.modules.reports.routes import router as reports_router
-from app.modules.reports.routes_tree import router as reports_tree_router  # Batch 68
-from app.modules.reports.routes_workflow import router as reports_workflow_router  # Batch 66
-from app.modules.reports.routes_schedule import router as report_schedule_router  # Batch 74
+from app.modules.reports.routes_tree import router as reports_tree_router  
+from app.modules.reports.routes_workflow import router as reports_workflow_router 
+from app.modules.reports.routes_schedule import router as report_schedule_router 
 from app.modules.users.routes import router as users_router
 from app.modules.notifications.routes import router as notifications_router
 from app.modules.search.routes import router as search_router
@@ -44,15 +41,11 @@ from app.modules.procurement.routes import router as procurement_router
 from app.modules.finance.routes import router as finance_router
 from app.modules.projects.routes import router as projects_router
 from app.modules.hr.routes import router as hr_router
-from app.modules.hr.routes_payroll import router as hr_payroll_router  # Batch 74
-from app.modules.subscriptions.routes import router as subscriptions_router  # Batch 76
-from app.modules.subscriptions.routes_portal import router as subscriptions_portal_router  # Batch 76
-from app.modules.printforms.routes import router as printforms_router  # Batch 77: was built, never wired in
-# Batch 10: config-driven per-module dashboards (/module/{key}/dashboard)
+from app.modules.hr.routes_payroll import router as hr_payroll_router 
+from app.modules.subscriptions.routes import router as subscriptions_router 
+from app.modules.subscriptions.routes_portal import router as subscriptions_portal_router  
+from app.modules.printforms.routes import router as printforms_router
 from app.modules.module_dash.routes import router as module_dash_router
-
-# Batch 22: new & extended routers (manual masters CRUD, finance extensions,
-# PO print). These extend existing namespaces; base routers stay untouched.
 from app.modules.masters_crud.routes import router as masters_crud_router
 from app.modules.finance.routes_ext import router as finance_ext_router
 from app.modules.finance.routes_statements import router as finance_statements_router  # Batch 67
@@ -126,11 +119,6 @@ async def lifespan(app: FastAPI):
     logger.info(f"Shutting down {APP_NAME}...")
 
 
-# ===== INITIALIZE FASTAPI =====
-# Batch 77: /docs, /redoc and the raw OpenAPI schema handed the full route
-# map (paths + parameter names) to anyone, logged in or not. RBAC still
-# protects each route individually, but there's no reason to publish the
-# blueprint. Only expose them when DEBUG=True (local development).
 app = FastAPI(
     title=APP_NAME,
     description=f"{APP_NAME} - Production & Inventory Management System",
@@ -182,31 +170,45 @@ except Exception as e:
 
 # ===== REGISTER ROUTERS =====
 app.include_router(auth_router)
-# Batch 71: public self-service registration (form POST /register)
 app.include_router(self_register_router)
-# Recipes router is intentionally registered before dashboard.
-# Older versions had a placeholder /recipes route in dashboard, which shadowed
-# the real recipe list and made the screen show zero records.
+# Batch 101: registered BEFORE recipes_router on purpose. That router has a
+# catch-all /recipes/{recipe_id}, which matched "/recipes/template" first and
+# turned the template download into a 401. FastAPI resolves in registration
+# order, so the specific paths have to come before the parameterised one.
+from app.modules.recipes.routes_excel import router as recipes_excel_router  # Batch 101
+from app.modules.recipes.routes_bulk import router as recipes_bulk_router    # Batch 103
+from app.modules.reports.routes_inventory import router as inv_reports_router  # Batch 103
+from app.modules.masters.routes_bulk import router as masters_bulk_router      # Batch 104
+from app.modules.production.routes_boq import router as boq_router             # Batch 105
+from app.modules.admin.routes_audit import router as audit_viewer_router       # Batch 106
+from app.modules.inventory.routes_reorder import router as reorder_router      # Batch 107
+app.include_router(recipes_excel_router)
+app.include_router(recipes_bulk_router)
+app.include_router(inv_reports_router)
+app.include_router(masters_bulk_router)
+app.include_router(boq_router)
+app.include_router(audit_viewer_router)
+app.include_router(reorder_router)
 app.include_router(recipes_router)
 app.include_router(dashboard_router)
 app.include_router(production_router)
-# Batch 72: kitchen production state machine (receive-all → produce → transfer)
 app.include_router(kitchen_prod_router)
 app.include_router(inventory_router)
 app.include_router(masters_router)
 app.include_router(orders_router)
+from app.modules.orders.routes_menu import router as menu_router  # Batch 102
+app.include_router(menu_router)
+app.include_router(sales_review_router)   
+app.include_router(purchase_req_router)   
 app.include_router(qc_router)
+app.include_router(qc_sampling_router)    
+app.include_router(topup_router)          
 app.include_router(packing_router)
 app.include_router(dispatch_router)
-
-# Batch 70: printable documents (QC certificate, delivery note)
 app.include_router(prod_docs_router)
 app.include_router(settings_router)
-# Batch 68: SAP-style relationship tree (registered before reports_router so
-# its /reports/relationship-tree page + /reports/api/tree-node endpoint win).
 app.include_router(reports_tree_router)
 app.include_router(reports_router)
-# Batch 74: scheduled report exports
 app.include_router(report_schedule_router)
 app.include_router(users_router)
 app.include_router(notifications_router)
@@ -216,47 +218,24 @@ app.include_router(procurement_router)
 app.include_router(finance_router)
 app.include_router(projects_router)
 app.include_router(hr_router)
-# Batch 74: HCM payroll + leave + shifts
 app.include_router(hr_payroll_router)
 app.include_router(subscriptions_router)
 app.include_router(subscriptions_portal_router)
-# Batch 77: was fully built (all 6 print documents + templates) but never
-# registered — wiring it in is the only change needed to make it reachable.
 app.include_router(printforms_router)
 app.include_router(module_dash_router)
-
-# Batch 22: register new/extended routers.
 app.include_router(masters_crud_router)
 app.include_router(finance_ext_router)
 app.include_router(procurement_print_router)
-
-# Batch 65: module visibility admin (Settings ▸ Module Visibility)
 app.include_router(settings_modules_router)
-
-# Batch 66: ERP workflow / data-movement reference (Reports ▸ Data Flow)
 app.include_router(reports_workflow_router)
-
-# Batch 67: financial statements (P&L, Balance Sheet, Cash Flow, Aging)
 app.include_router(finance_statements_router)
-# Batch 73: finance period close + cost centers
 app.include_router(finance_periods_router)
 
 # ===== ROUTES =====
 
 @app.get("/modules")
 async def module_launcher(request: Request):
-    """ERP Module Launcher.
-
-    Only ADMIN / SUPER_ADMIN / MANAGER see the launcher overview page;
-    everyone else is routed straight to the production dashboard so the
-    launcher works as a management landing page (SAP-style cockpit).
-    Each module card also shows a live KPI pulled with safe fallbacks.
-    """
-    # Batch 10: the launcher is now the landing page for EVERY logged-in
-    # user (login redirect + logo both point here). Cards are filtered by
-    # can_access() inside the template, so a user with a single module sees
-    # one card. Admin/superadmin/administrator see every card.
-    # Batch 22: live KPI tiles + real chart data (orders / inventory / AR-AP).
+   
     ctx = {"stats": {}, "charts": {}}
     try:
         from app.database.session import SessionLocal
@@ -349,10 +328,7 @@ async def not_found_handler(request: Request, exc):
 @app.exception_handler(500)
 async def server_error_handler(request: Request, exc):
     logger.error(f"500 Server Error: {exc}")
-    # Batch 77: the full exception string (which can include table/column
-    # names or SQL fragments) used to render straight to the browser for
-    # anyone who triggered a 500. Full detail still goes to the server log
-    # above; the page itself only shows it when DEBUG=True.
+
     error_detail = str(exc) if DEBUG else "Something went wrong. The team has been notified."
     try:
         return render(
@@ -368,8 +344,6 @@ async def server_error_handler(request: Request, exc):
             content={"detail": "Internal server error"},
         )
 
-
-
 @app.exception_handler(403)
 async def forbidden_handler(request: Request, exc):
     detail = getattr(exc, "detail", "Access denied")
@@ -383,25 +357,65 @@ async def forbidden_handler(request: Request, exc):
         return JSONResponse(status_code=403, content={"detail": detail})
 
 # ===== STARTUP EVENT =====
+# =============================================================================
+# Batch 102 — schema guards that run at IMPORT, not only at startup.
+#
+# WHY THIS MOVED.  Batch 101 added recipes.day_of_week to the ORM model and put
+# the ALTER inside @app.on_event("startup"). That is how every other migration
+# in this file works, and it still produced a hard 500 on /recipes/upload-excel:
+#
+#     Unknown column 'recipes.day_of_week' in 'field list'
+#
+# The moment a column exists on the ORM model, EVERY query SQLAlchemy builds
+# for that model selects it. So the window between "model imported" and
+# "startup event finished" is a window in which the entire Recipes module is
+# broken — and anything that imports app.main without running the lifespan
+# (a script, a worker, a test client that isn't used as a context manager, or
+# a reload that races) never closes that window at all.
+#
+# My own note from Batch 89 says additive features should prefer raw SQL over
+# ORM model changes precisely because of this. Adding the column to the model
+# was the right call for readability, so the guard has to be stronger instead:
+# it now runs at import time, before the app object can serve anything, AND
+# again at startup. It is idempotent, so running twice costs one cheap
+# information_schema lookup.
+# =============================================================================
+def _ensure_recipe_menu_columns() -> None:
+    """Add recipes.day_of_week if missing. Safe to call repeatedly."""
+    try:
+        from app.database.session import SessionLocal as _SL
+        from sqlalchemy import text as _t
+        _db = _SL()
+        try:
+            has = _db.execute(_t("""
+                SELECT COUNT(*) FROM information_schema.columns
+                WHERE table_schema = DATABASE() AND table_name = 'recipes'
+                  AND column_name = 'day_of_week'
+            """)).scalar()
+            if not has:
+                _db.execute(_t("ALTER TABLE recipes ADD COLUMN day_of_week VARCHAR(20) NULL"))
+                try:
+                    _db.execute(_t("CREATE INDEX idx_recipes_day ON recipes (day_of_week)"))
+                except Exception:
+                    pass   # index already there, or insufficient privilege
+                _db.commit()
+                logger.info("Added recipes.day_of_week")
+        finally:
+            _db.close()
+    except Exception as exc:
+        # Never block import over this — log loudly and let startup retry.
+        logger.error(f"Schema guard failed (recipes.day_of_week): {exc}")
+
+
+# Run immediately at import, before any router can receive a request.
+_ensure_recipe_menu_columns()
+
+
 @app.on_event("startup")
 async def startup_event():
     logger.info("Application startup complete")
     logger.info("API Documentation: http://localhost:8000/docs")
 
-    # Batch 89 CRITICAL FIX: the sales_review_status columns added to the
-    # CustomerOrder ORM model in Batch 88 were only ever migrated into the
-    # real database from 3 specific routes (order detail, sales-approve,
-    # sales-reject). Every OTHER route that touches CustomerOrder through
-    # the ORM — order creation, Head Chef queue, Production Orders list,
-    # Store Issuance, and more — generates a SELECT listing every column
-    # the MODEL declares, including these new ones, regardless of whether
-    # that specific route ever calls the migration helper. On a database
-    # that hadn't yet visited one of those 3 routes, every one of those
-    # other pages broke with "Unknown column" the moment this shipped.
-    # Running the migration once here, before the app accepts any
-    # requests, guarantees the column exists everywhere from the start —
-    # this is the actual fix, not scattering more ensure-schema calls
-    # across more individual routes and hoping none are missed again.
     try:
         from app.database.session import SessionLocal
         from app.modules.production.routes import _ensure_sales_review_schema
@@ -413,6 +427,74 @@ async def startup_event():
             _db.close()
     except Exception as exc:
         logger.error(f"Startup schema check failed (sales_review_status): {exc}")
+
+    _ensure_recipe_menu_columns()   # Batch 102: also runs at import — see below
+
+    try:
+        from app.database.session import SessionLocal
+        from app.modules.purchase_req.routes import ensure_schema as _pr_ensure_schema
+        _db = SessionLocal()
+        try:
+            _pr_ensure_schema(_db)
+            logger.info("Verified purchase_requisitions schema")
+        finally:
+            _db.close()
+    except Exception as exc:
+        logger.error(f"Startup schema check failed (purchase_requisitions): {exc}")
+
+    # Batch 94: top-up requests and the QC sampling config, same startup
+    # migration reasoning as everything above it.
+    try:
+        from app.database.session import SessionLocal
+        from app.modules.production.routes_topup import ensure_schema as _topup_schema
+        from app.modules.qc.sampling import ensure_schema as _sampling_schema
+        _db = SessionLocal()
+        try:
+            _topup_schema(_db)
+            _sampling_schema(_db)
+            logger.info("Verified store_topup_requests / qc_sampling_config schema")
+        finally:
+            _db.close()
+    except Exception as exc:
+        logger.error(f"Startup schema check failed (topup/sampling): {exc}")
+
+    # Batch 93: same reasoning as above — the new Incoming QC gate needs
+    # inventory_transactions.qc_status to exist before any GRN posts or
+    # any stock-availability query runs, not just when /qc/inspection or
+    # a GRN receipt happens to be the first thing hit.
+    try:
+        from app.database.session import SessionLocal
+        from app.core.stock_ledger import ensure_qc_status_column, ensure_ledger_schema
+        _db = SessionLocal()
+        try:
+            # Batch 94: repair a legacy-shaped ledger table BEFORE the
+            # qc_status check — on a fresh database created through
+            # init_db.py the ORM model wins the CREATE TABLE race and
+            # produces a table with none of the modern columns, which breaks
+            # every stock read in the system. See ensure_ledger_schema().
+            ensure_ledger_schema(_db)
+            ensure_qc_status_column(_db)
+            logger.info("Verified inventory_transactions schema (shape + qc_status)")
+        finally:
+            _db.close()
+    except Exception as exc:
+        logger.error(f"Startup schema check failed (qc_status): {exc}")
+
+    # Batch 95: same reasoning again — supplier ratings are read by the PO
+    # creation and PO detail supplier dropdowns, so the column needs to
+    # exist before either of those is ever hit, not just when the ratings
+    # screen itself happens to be visited first.
+    try:
+        from app.database.session import SessionLocal
+        from app.modules.procurement.routes import _ensure_supplier_rating_schema
+        _db = SessionLocal()
+        try:
+            _ensure_supplier_rating_schema(_db)
+            logger.info("Verified suppliers.rating schema")
+        finally:
+            _db.close()
+    except Exception as exc:
+        logger.error(f"Startup schema check failed (supplier rating): {exc}")
 
 
 # ===== SHUTDOWN EVENT =====

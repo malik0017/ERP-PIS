@@ -321,11 +321,36 @@
             </div>
 
             <div class="pis-toolbar-right">
-                <form action="/recipes/upload-excel" method="post" enctype="multipart/form-data" style="display:flex; gap:8px; flex-wrap:wrap;">
+                {# Batch 101: template download + check-before-import.
+
+                   Previously the only action was "Upload Excel", which wrote
+                   straight to the database. A wrong header name is not an
+                   error to the parser — it simply doesn't match, so the value
+                   is dropped silently. That is how 55 Frsh recipes imported
+                   with no category: the data was in the file and nothing ever
+                   said it wasn't being read.
+
+                   "Check File" runs the SAME parser and reports what would
+                   happen, writing nothing. #}
+                <form id="recipeExcelForm" method="post" enctype="multipart/form-data"
+                      action="/recipes/validate-excel" style="display:flex; gap:8px; flex-wrap:wrap;">
+                    <a href="/recipes/template" class="pis-btn pis-btn-secondary">
+                        <i class="bi bi-download"></i>
+                        {{ t('Template') }}
+                    </a>
                     <input class="pis-file" type="file" name="file" accept=".xlsx,.xlsm" required>
-                    <button type="submit" class="pis-btn pis-btn-secondary">
+                    <button type="submit" class="pis-btn pis-btn-primary">
+                        <i class="bi bi-clipboard-check"></i>
+                        {{ t('Check File') }}
+                    </button>
+                    <button type="submit" class="pis-btn pis-btn-secondary"
+                            formaction="/recipes/upload-excel"
+                            data-confirm="{{ t('Import this file directly without checking it first? Rows with problems will be imported anyway.') }}"
+                            data-confirm-title="{{ t('Import without checking') }}"
+                            data-confirm-ok="{{ t('Import anyway') }}"
+                            data-confirm-variant="warning">
                         <i class="bi bi-upload"></i>
-                        Upload Excel
+                        {{ t('Import Now') }}
                     </button>
                 </form>
             </div>

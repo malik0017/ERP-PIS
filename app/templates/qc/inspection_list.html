@@ -1,0 +1,76 @@
+{% extends "layouts/base.html" %}
+{% block title %}Incoming QC Inspection{% endblock %}
+{% block content %}
+<div class="container-fluid py-3 isfc-page">
+  <div class="isfc-hero mb-4 p-4 rounded-4 text-white d-flex align-items-center justify-content-between flex-wrap gap-3"
+       style="background:linear-gradient(135deg,#132947,#0c91a3)">
+    <div>
+      <h1 class="mb-1 fw-bold"><i class="bi bi-clipboard2-check me-2"></i>{{ t('Incoming QC Inspection') }}</h1>
+      <p class="mb-0 opacity-75">{{ t('Goods receipt does not mean usable stock. Every GRN sits here, excluded from available inventory, until inspected.') }}</p>
+    </div>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-md-4">
+      <div class="card border h-100"><div class="card-body">
+        <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Awaiting Inspection') }}</div>
+        <div class="fs-3 fw-bold text-warning">{{ pending|length }}</div>
+      </div></div>
+    </div>
+  </div>
+
+  <div class="card border mb-4">
+    <div class="card-header bg-body-highlight fw-bold">{{ t('GRNs Awaiting Inspection') }}</div>
+    <div class="card-body p-0">
+      <table class="table table-hover mb-0">
+        <thead class="bg-body-highlight">
+          <tr><th>{{ t('GRN') }}</th><th>{{ t('Supplier') }}</th><th>{{ t('Received') }}</th>
+            <th class="text-center">{{ t('Items') }}</th><th class="text-end">{{ t('Total Qty') }}</th><th></th></tr>
+        </thead>
+        <tbody>
+          {% for g in pending %}
+          <tr>
+            <td><a href="/qc/inspection/{{ g.grn_no }}" class="fw-bold text-decoration-none">{{ g.grn_no }}</a>
+              {% if g.po_no %}<div class="small-muted">PO {{ g.po_no }}</div>{% endif %}</td>
+            <td>{{ g.supplier_name or '—' }}</td>
+            <td>{{ g.received_date }} <span class="small-muted">by {{ g.received_by }}</span></td>
+            <td class="text-center">{{ g.item_count }}</td>
+            <td class="text-end">{{ g.total_qty }}</td>
+            <td><a href="/qc/inspection/{{ g.grn_no }}" class="btn btn-sm btn-primary">{{ t('Inspect') }}</a></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="6" class="text-center text-body-tertiary py-5">
+            <i class="bi bi-check2-circle fs-3 d-block mb-2 text-success"></i>
+            {{ t('Nothing awaiting inspection — every receipt is cleared.') }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card border">
+    <div class="card-header bg-body-highlight fw-bold">{{ t('Recent Decisions') }}</div>
+    <div class="card-body p-0">
+      <table class="table table-sm mb-0">
+        <thead class="bg-body-highlight">
+          <tr><th>{{ t('GRN') }}</th><th>{{ t('Supplier') }}</th><th>{{ t('Decision') }}</th><th>{{ t('Inspector') }}</th><th>{{ t('When') }}</th></tr>
+        </thead>
+        <tbody>
+          {% for r in recent %}
+          <tr>
+            <td><a href="/qc/inspection/{{ r.grn_no }}" class="text-decoration-none">{{ r.grn_no }}</a></td>
+            <td>{{ r.supplier_name or '—' }}</td>
+            <td>{% if r.decision == 'Passed' %}<span class="badge badge-phoenix badge-phoenix-success">Passed</span>
+                {% else %}<span class="badge badge-phoenix badge-phoenix-danger">Failed</span>{% endif %}</td>
+            <td>{{ r.inspected_by }}</td>
+            <td>{{ r.inspected_at }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="5" class="text-center text-body-tertiary py-4">{{ t('No inspections recorded yet.') }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

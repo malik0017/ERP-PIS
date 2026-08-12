@@ -17,7 +17,10 @@
       <div class="modal-body p-4 text-center">
         <div id="isfcConfirmIcon" class="d-inline-flex align-items-center justify-content-center rounded-circle mb-3"
              style="width:64px;height:64px;background:var(--phoenix-warning-bg-subtle,#fff3cd);">
-          <span class="uil uil-exclamation-triangle fs-4 text-warning"></span>
+          {# Batch 99: Unicons (uil) is not loaded anywhere in this project, so
+             this glyph rendered as an empty box in every confirm dialog.
+             Bootstrap Icons is loaded globally. #}
+          <i class="bi bi-exclamation-triangle-fill fs-4 text-warning"></i>
         </div>
         <h4 class="mb-2" id="isfcConfirmTitle">Are you sure?</h4>
         <p class="text-body-tertiary mb-4" id="isfcConfirmMessage">This action cannot be undone.</p>

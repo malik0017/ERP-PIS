@@ -1,0 +1,199 @@
+{% extends "layouts/base.html" %}
+{% block title %}{{ t('Sales Request') }} {{ order.order_no }}{% endblock %}
+{% block content %}
+{% set review = order.sales_review_status or 'Approved' %}
+<div class="container-fluid py-3 isfc-page">
+
+  <div class="isfc-hero mb-4 p-4 rounded-4 text-white d-flex align-items-center justify-content-between flex-wrap gap-3"
+       style="background:linear-gradient(135deg,#132947,#0c91a3)">
+    <div>
+      <h1 class="mb-1 fw-bold text-white"><i class="bi bi-clipboard-check me-2"></i>{{ order.order_no }}</h1>
+      <p class="mb-0 opacity-75">
+        {{ order.customer_name or t('Internal') }}
+        {% if order.brand %} · {{ order.brand }}{% endif %}
+        {% if order.channel %} · {{ order.channel }}{% endif %}
+        · {{ t('Delivery') }} {{ order.required_delivery_date or '—' }} {{ order.required_delivery_time or '' }}
+      </p>
+    </div>
+    <div class="d-flex gap-2 align-items-center">
+      {% if review == 'Pending' %}
+      <span class="badge badge-phoenix badge-phoenix-warning fs-9">{{ t('Awaiting Review') }}</span>
+      {% elif review == 'Rejected' %}
+      <span class="badge badge-phoenix badge-phoenix-danger fs-9">{{ t('Rejected') }}</span>
+      {% else %}
+      <span class="badge badge-phoenix badge-phoenix-success fs-9">{{ t('Approved') }}</span>
+      {% endif %}
+      <a href="/sales-requests" class="btn btn-light btn-sm">{{ t('Back to list') }}</a>
+    </div>
+  </div>
+
+  {% if review != 'Pending' %}
+  {# Batch 99: emitted as a toast, same as the requisition screen. The status
+     stays permanently visible in the header pill above. #}
+  <div class="d-none"
+       data-isfc-autotoast="{{ 'danger' if review == 'Rejected' else 'success' }}"
+       data-isfc-autotoast-title="{{ t(review) }}"
+       data-isfc-autotoast-msg="{{ order.order_no }} {{ t(review)|lower }}{% if order.sales_reviewed_by %} — {{ t('by') }} {{ order.sales_reviewed_by }}{% endif %}{% if order.sales_review_reason %}. {{ order.sales_review_reason }}{% endif %}">
+  </div>
+  <div class="alert alert-subtle-{{ 'danger' if review == 'Rejected' else 'success' }} mb-4 d-none">
+    <strong>{{ t(review) }}</strong>
+    {% if order.sales_reviewed_by %} — {{ t('by') }} {{ order.sales_reviewed_by }}{% endif %}
+    {% if order.sales_reviewed_at %} {{ t('on') }} {{ order.sales_reviewed_at }}{% endif %}
+    {% if order.sales_review_reason %}<div class="mt-1">{{ order.sales_review_reason }}</div>{% endif %}
+  </div>
+  {% endif %}
+
+  <div class="row g-3">
+    <div class="col-lg-7">
+      <div class="card border mb-3">
+        <div class="card-header bg-body-highlight fw-bold">{{ t('Requested Items') }}</div>
+        <div class="card-body p-0">
+          <table class="table table-sm mb-0">
+            <thead class="bg-body-highlight">
+              <tr><th>{{ t('Recipe') }}</th><th class="text-end">{{ t('Portions') }}</th>
+                <th class="text-end">{{ t('Price') }}</th><th class="text-end">{{ t('Value') }}</th></tr>
+            </thead>
+            <tbody>
+              {% for l in lines %}
+              <tr>
+                <td><span class="fw-bold">{{ l.recipe_no }}</span>
+                  <div class="small-muted">{{ l.recipe_name }}</div></td>
+                <td class="text-end">{{ l.required_portions }}</td>
+                <td class="text-end">{{ '%.2f'|format(l.selling_price_per_portion or 0) }}</td>
+                <td class="text-end">{{ '%.2f'|format((l.required_portions or 0) * (l.selling_price_per_portion or 0)) }}</td>
+              </tr>
+              {% else %}
+              <tr><td colspan="4" class="text-center text-body-tertiary py-4">{{ t('No lines on this request.') }}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card border">
+        <div class="card-header bg-body-highlight fw-bold d-flex justify-content-between align-items-center">
+          <span>{{ t('Inventory Check') }}</span>
+          {% if shortages %}
+          <span class="badge badge-phoenix badge-phoenix-danger">{{ shortages|length }} {{ t('items short') }}</span>
+          {% elif coverage %}
+          <span class="badge badge-phoenix badge-phoenix-success">{{ t('Fully covered') }}</span>
+          {% endif %}
+        </div>
+        <div class="card-body p-4">
+          <div class="table-responsive" style="max-height:420px;overflow:auto">
+            <table class="table table-sm mb-0" data-isfc-table>
+              <thead class="bg-body-highlight position-sticky top-0">
+                <tr><th>{{ t('Ingredient') }}</th><th class="text-end">{{ t('Required') }}</th>
+                  <th class="text-end">{{ t('On Hand') }}</th><th class="text-end">{{ t('Short By') }}</th>
+                  <th class="text-center">{{ t('Status') }}</th></tr>
+              </thead>
+              <tbody>
+                {% for c in coverage %}
+                <tr class="{% if c.verdict == 'SHORT' %}table-danger{% elif c.verdict == 'EMPTY' %}table-warning{% endif %}">
+                  <td><span class="fw-bold">{{ c.inventory_code }}</span>
+                    <div class="small-muted">{{ c.item_name }}</div></td>
+                  <td class="text-end">{% if c.required_qty is not none %}{{ c.required_qty }} {{ c.uom }}{% else %}—{% endif %}</td>
+                  <td class="text-end">{{ c.on_hand }} {{ c.uom }}</td>
+                  <td class="text-end">{% if c.shortfall %}<span class="text-danger fw-bold">{{ c.shortfall }}</span>{% else %}—{% endif %}</td>
+                  <td class="text-center">
+                    {% if c.verdict == 'SHORT' %}
+                    <span class="badge badge-phoenix badge-phoenix-danger">{{ t('Short') }}</span>
+                    {% elif c.verdict == 'EMPTY' %}
+                    <span class="badge badge-phoenix badge-phoenix-warning">{{ t('Empty') }}</span>
+                    {% else %}
+                    <span class="badge badge-phoenix badge-phoenix-success">{{ t('Available') }}</span>
+                    {% endif %}
+                  </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="5" class="text-center text-body-tertiary py-4">
+                  {{ t('No BOM could be exploded for this request — check that the recipes have ingredients mapped.') }}</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-5">
+      {% if review == 'Pending' %}
+      <div class="card border mb-3">
+        <div class="card-header bg-body-highlight fw-bold">{{ t('Decision') }}</div>
+        <div class="card-body">
+          {% if shortages %}
+          <div class="alert alert-subtle-warning py-2 fs-9 mb-3">
+            <i class="bi bi-exclamation-triangle me-1"></i>
+            {{ t('This request has an ingredient shortage. You can still approve it (stock may be arriving), or raise a purchase requisition first.') }}
+          </div>
+          {% endif %}
+
+          {% if can_action('sales_review', 'edit') %}
+          <form method="post" action="/sales-requests/{{ order.order_no }}/approve" class="mb-3">
+            <button class="btn btn-success w-100">
+              <i class="bi bi-check2-circle me-1"></i>{{ t('Approve — send to Head Chef Planning') }}</button>
+          </form>
+
+          <form method="post" action="/sales-requests/{{ order.order_no }}/reject">
+            <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary">{{ t('Rejection reason') }}</label>
+            <textarea name="reason" rows="2" class="form-control form-control-sm mb-2"
+                      placeholder="{{ t('Required — the requester will see this') }}"></textarea>
+            <button class="btn btn-outline-danger w-100">
+              <i class="bi bi-x-circle me-1"></i>{{ t('Reject request') }}</button>
+          </form>
+          {% else %}
+          <div class="text-body-tertiary fs-9">{{ t('You do not have edit rights on Sales Review.') }}</div>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+
+      <div class="card border mb-3">
+        <div class="card-header bg-body-highlight fw-bold">{{ t('Purchase Requisition') }}</div>
+        <div class="card-body">
+          {% if existing_prs %}
+          <div class="mb-3">
+            {% for p in existing_prs %}
+            <div class="d-flex justify-content-between align-items-center border rounded p-2 mb-1">
+              <a href="/purchase-requisitions/{{ p.pr_no }}" class="fw-bold text-decoration-none">{{ p.pr_no }}</a>
+              <span class="badge badge-phoenix badge-phoenix-{{ 'success' if p.status in ['Approved','Converted'] else ('danger' if p.status == 'Rejected' else 'warning') }}">
+                {{ t(p.status) }}</span>
+            </div>
+            {% if p.converted_po_nos %}<div class="small-muted mb-2">PO: {{ p.converted_po_nos }}</div>{% endif %}
+            {% endfor %}
+          </div>
+          {% endif %}
+
+          {% if shortages and can_action('sales_review', 'edit') %}
+          <form method="post" action="/sales-requests/{{ order.order_no }}/raise-pr">
+            <button class="btn btn-warning w-100">
+              <i class="bi bi-file-earmark-plus me-1"></i>
+              {{ t('Raise Purchase Requisition') }} ({{ shortages|length }} {{ t('items') }})</button>
+          </form>
+          {% elif not shortages %}
+          <div class="text-body-tertiary fs-9">
+            <i class="bi bi-check2-circle text-success me-1"></i>{{ t('No shortage — nothing to requisition.') }}</div>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="card border">
+        <div class="card-header bg-body-highlight fw-bold">{{ t('Request Details') }}</div>
+        <div class="card-body fs-9">
+          <div class="d-flex justify-content-between py-1 border-bottom">
+            <span class="text-body-tertiary">{{ t('Order date') }}</span><span>{{ order.order_date }}</span></div>
+          <div class="d-flex justify-content-between py-1 border-bottom">
+            <span class="text-body-tertiary">{{ t('Raised by') }}</span><span>{{ order.created_by or '—' }}</span></div>
+          <div class="d-flex justify-content-between py-1 border-bottom">
+            <span class="text-body-tertiary">{{ t('Kitchen') }}</span><span>{{ order.kitchen or '—' }}</span></div>
+          <div class="d-flex justify-content-between py-1 border-bottom">
+            <span class="text-body-tertiary">{{ t('Total portions') }}</span><span>{{ order.total_planned_portions or 0 }}</span></div>
+          <div class="d-flex justify-content-between py-1">
+            <span class="text-body-tertiary">{{ t('Sales value') }}</span>
+            <span class="fw-bold">{{ '%.2f'|format(order.total_sales_value or 0) }}</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

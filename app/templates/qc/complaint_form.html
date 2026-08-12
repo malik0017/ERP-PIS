@@ -1,0 +1,66 @@
+{% extends "layouts/base.html" %}
+{% block title %}Log Complaint{% endblock %}
+{% block content %}
+<div class="container-fluid py-3 isfc-page">
+  <div class="isfc-hero mb-4 p-4 rounded-4 text-white d-flex align-items-center justify-content-between flex-wrap gap-3"
+       style="background:linear-gradient(135deg,#132947,#0c91a3)">
+    <div>
+      <h1 class="mb-1 fw-bold"><i class="bi bi-chat-square-dots me-2"></i>{{ t('Log Complaint') }}</h1>
+      <p class="mb-0 opacity-75">{{ t('Trace it back through the order to the batch, section, and shift that produced it.') }}</p>
+    </div>
+    <a class="btn btn-light btn-sm fw-bold" href="/qc/complaints"><i class="bi bi-arrow-left me-1"></i>{{ t('Back') }}</a>
+  </div>
+
+  {% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+
+  <form method="post" action="/qc/complaints/new">
+    <div class="card border mb-3">
+      <div class="card-header bg-body-highlight fw-bold">{{ t('Complaint Details') }}</div>
+      <div class="card-body">
+        <div class="row g-3">
+          <div class="col-md-4">
+            <label class="form-label fw-bold">{{ t('Order Number') }} <span class="small-muted fw-normal">({{ t('optional, enables tracing') }})</span></label>
+            <input class="form-control" name="order_no" value="{{ order_no }}" placeholder="e.g. ORD-20260805-0001">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fw-bold">{{ t('Customer') }}</label>
+            <input class="form-control" name="customer_name" value="{{ order.customer_name if order else '' }}">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fw-bold">{{ t('Category') }}</label>
+            <select class="form-select" name="category">
+              <option value="Quality">Quality / Taste</option>
+              <option value="Packaging">Packaging / Damage</option>
+              <option value="Temperature">Temperature / Cold Chain</option>
+              <option value="Labeling">Labeling / Allergen</option>
+              <option value="Quantity">Quantity / Missing Item</option>
+              <option value="Delivery">Delivery / Timing</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+          <div class="col-12">
+            <label class="form-label fw-bold">{{ t('Description') }} *</label>
+            <textarea class="form-control" name="description" rows="3" required placeholder="{{ t('What the customer reported, in their own words where possible') }}"></textarea>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label fw-bold">{{ t('Traced Section') }}</label>
+            {% if sections %}
+            <select class="form-select" name="traced_section">
+              <option value="">{{ t('Select if known') }}</option>
+              {% for s in sections %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
+            </select>
+            {% else %}
+            <input class="form-control" name="traced_section" placeholder="{{ t('e.g. Hot Kitchen') }}">
+            {% endif %}
+          </div>
+          <div class="col-md-6">
+            <label class="form-label fw-bold">{{ t('Traced Shift') }}</label>
+            <input class="form-control" name="traced_shift" placeholder="{{ t('e.g. Morning shift, 6 Aug') }}">
+          </div>
+        </div>
+      </div>
+    </div>
+    <button type="submit" class="btn btn-primary fw-bold px-4"><i class="bi bi-send-check me-1"></i>{{ t('Log Complaint') }}</button>
+  </form>
+</div>
+{% endblock %}

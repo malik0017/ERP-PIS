@@ -1,17 +1,16 @@
 # app/modules/qc/routes.py
 from datetime import datetime
-
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 from starlette.status import HTTP_303_SEE_OTHER
-
 from app.core.templates import render
 from app.core.rbac import require_area, require_action
 from app.core.notifications import notify_role
 from app.database.session import get_db
 from app.models.production import CustomerOrder, KitchenSectionTransaction, PackingDispatch, QCCheck
+from app.modules.production.routes import scoped_order
 
 router = APIRouter(prefix="/qc", tags=["QC"])
 
@@ -106,7 +105,7 @@ def qc_dashboard(request: Request, db: Session = Depends(get_db)):
 @router.get("/orders/{order_no}", response_class=HTMLResponse)
 def qc_order(request: Request, order_no: str, db: Session = Depends(get_db)):
     require_area(request, "qc")
-    order = db.query(CustomerOrder).filter(CustomerOrder.order_no == order_no).first()
+    order = scoped_order(db, request, order_no)
     if not order:
         raise HTTPException(404, "Order not found")
     txs = (
@@ -149,7 +148,7 @@ def qc_receive_all(request: Request, order_no: str, db: Session = Depends(get_db
             tx.received_by = user
             tx.received_at = now
             tx.transaction_status = "QC Received"
-    order = db.query(CustomerOrder).filter(CustomerOrder.order_no == order_no).first()
+    order = scoped_order(db, request, order_no)
     if order:
         order.status = "QC In Progress"
     db.commit()
@@ -173,7 +172,7 @@ def qc_submit(
     db: Session = Depends(get_db),
 ):
     require_action(request, "qc", "edit")
-    order = db.query(CustomerOrder).filter(CustomerOrder.order_no == order_no).first()
+    order = scoped_order(db, request, order_no)
     if not order:
         return _redirect_with_error("/qc", "Order not found.")
     txs = db.query(KitchenSectionTransaction).filter(
@@ -183,14 +182,6 @@ def qc_submit(
     if not txs:
         return _redirect_with_error("/qc", "No QC lines found for this order.")
 
-    # Batch 80 fix: this used to silently backfill received_qty_standard to
-    # the full issued quantity for any line still at 0 right here, meaning a
-    # QC officer could submit a Pass/Hold/Reject decision — with real scores —
-    # against product that was never actually confirmed received. That's a
-    # genuine food-safety process gap, not just a data-entry inconvenience.
-    # Receiving is now a hard prerequisite: submit is refused, with the exact
-    # line count still pending, until every line has been received via
-    # "Receive All QC Lines" (or individually) first.
     not_received = [t for t in txs if float(t.received_qty_standard or 0) <= 0]
     if not_received:
         return _redirect_with_error(
@@ -228,8 +219,6 @@ def qc_submit(
     db.add(qc)
 
     for tx in txs:
-        # (No auto-receive fallback here anymore — the gate above guarantees
-        # every line already has a real received_qty_standard by this point.)
         tx.processed_by = _user(request)
         tx.processed_at = now
         tx.section_remarks = corrective_action or issue_found or tx.section_remarks
@@ -268,9 +257,6 @@ def qc_submit(
 
     db.commit()
 
-    # Batch 78: real notification — a QC failure/hold needs someone's
-    # attention right away; a pass just flows on to packing automatically
-    # and doesn't need one.
     if status in ("Rejected", "Hold"):
         notify_role(
             db, company_id=getattr(order, "company_id", None) or int(request.session.get("company_id") or 1),
@@ -281,3 +267,267 @@ def qc_submit(
             category="qc_" + status.lower(),
         )
     return RedirectResponse("/qc", status_code=HTTP_303_SEE_OTHER)
+
+def _ensure_incoming_qc_schema(db: Session) -> None:
+    try:
+        db.execute(text("""
+            CREATE TABLE IF NOT EXISTS qc_incoming_inspections (
+                id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+                company_id INT NULL,
+                grn_no VARCHAR(50) NOT NULL,
+                po_no VARCHAR(50) NULL,
+                supplier_name VARCHAR(255) NULL,
+                temperature_ok TINYINT(1) NULL,
+                temperature_reading VARCHAR(50) NULL,
+                packaging_ok TINYINT(1) NULL,
+                expiry_ok TINYINT(1) NULL,
+                documentation_ok TINYINT(1) NULL,
+                decision VARCHAR(20) NOT NULL,
+                notes VARCHAR(500) NULL,
+                inspected_by VARCHAR(120) NULL,
+                inspected_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                KEY idx_qii_grn (grn_no)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        """))
+        db.commit()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+
+
+@router.get("/inspection")
+def incoming_qc_list(request: Request, db: Session = Depends(get_db)):
+    require_area(request, "qc")
+    _ensure_incoming_qc_schema(db)
+    from app.core.stock_ledger import ensure_qc_status_column
+    ensure_qc_status_column(db)
+    cid = int(request.session.get("company_id") or 1)
+
+    pending = db.execute(text("""
+        SELECT g.grn_no, g.po_no, g.supplier_name, g.received_date, g.received_by,
+               COUNT(DISTINCT t.inventory_code) AS item_count,
+               ROUND(SUM(t.qty_in), 3) AS total_qty
+        FROM grn_receipts g
+        JOIN inventory_transactions t ON t.reference_no = g.grn_no AND t.movement_type = 'GRN_IN'
+        WHERE t.qc_status = 'Pending' AND (t.company_id = :cid OR t.company_id IS NULL)
+        GROUP BY g.grn_no, g.po_no, g.supplier_name, g.received_date, g.received_by
+        ORDER BY g.received_date DESC
+    """), {"cid": cid}).mappings().all()
+
+    recent = db.execute(text("""
+        SELECT * FROM qc_incoming_inspections
+        WHERE (company_id = :cid OR company_id IS NULL)
+        ORDER BY id DESC LIMIT 30
+    """), {"cid": cid}).mappings().all()
+
+    return render(request, "qc/inspection_list.html", {
+        "pending": pending, "recent": recent, "page_title": "Incoming QC Inspection",
+    })
+
+
+@router.get("/inspection/{grn_no}")
+def incoming_qc_detail(request: Request, grn_no: str, db: Session = Depends(get_db)):
+    require_area(request, "qc")
+    _ensure_incoming_qc_schema(db)
+    cid = int(request.session.get("company_id") or 1)
+
+    grn = db.execute(text("SELECT * FROM grn_receipts WHERE grn_no = :g"), {"g": grn_no}).mappings().first()
+    if not grn:
+        raise HTTPException(404, "GRN not found")
+
+    lines = db.execute(text("""
+        SELECT t.inventory_code, t.item_name, t.uom, t.qty_in, t.lot_no, t.qc_status
+        FROM inventory_transactions t
+        WHERE t.reference_no = :g AND t.movement_type = 'GRN_IN' AND (t.company_id = :cid OR t.company_id IS NULL)
+    """), {"g": grn_no, "cid": cid}).mappings().all()
+
+    already = db.execute(text(
+        "SELECT * FROM qc_incoming_inspections WHERE grn_no = :g ORDER BY id DESC LIMIT 1"
+    ), {"g": grn_no}).mappings().first()
+
+    return render(request, "qc/inspection_detail.html", {
+        "grn": grn, "lines": lines, "already": already, "page_title": f"Incoming QC — {grn_no}",
+    })
+
+
+@router.post("/inspection/{grn_no}/decide")
+async def incoming_qc_decide(request: Request, grn_no: str, db: Session = Depends(get_db)):
+    require_action(request, "qc", "edit")
+    _ensure_incoming_qc_schema(db)
+    from app.core.stock_ledger import ensure_qc_status_column
+    ensure_qc_status_column(db)
+    cid = int(request.session.get("company_id") or 1)
+
+    form = await request.form()
+    decision = (form.get("decision") or "").strip()
+    if decision not in ("Passed", "Failed"):
+        return _redirect_with_error(f"/qc/inspection/{grn_no}", "Choose Pass or Fail before submitting.")
+
+    grn = db.execute(text("SELECT * FROM grn_receipts WHERE grn_no = :g"), {"g": grn_no}).mappings().first()
+    if not grn:
+        raise HTTPException(404, "GRN not found")
+
+    def _flag(name: str) -> int | None:
+        v = form.get(name)
+        if v == "yes":
+            return 1
+        if v == "no":
+            return 0
+        return None
+
+    db.execute(text("""
+        INSERT INTO qc_incoming_inspections
+            (company_id, grn_no, po_no, supplier_name, temperature_ok, temperature_reading,
+             packaging_ok, expiry_ok, documentation_ok, decision, notes, inspected_by)
+        VALUES (:cid, :grn, :po, :sup, :temp_ok, :temp_read, :pack_ok, :exp_ok, :doc_ok, :dec, :notes, :by)
+    """), {
+        "cid": cid, "grn": grn_no, "po": grn["po_no"], "sup": grn["supplier_name"],
+        "temp_ok": _flag("temperature_ok"), "temp_read": (form.get("temperature_reading") or "").strip() or None,
+        "pack_ok": _flag("packaging_ok"), "exp_ok": _flag("expiry_ok"), "doc_ok": _flag("documentation_ok"),
+        "dec": decision, "notes": (form.get("notes") or "").strip() or None, "by": _user(request),
+    })
+
+    db.execute(text("""
+        UPDATE inventory_transactions
+        SET qc_status = :dec
+        WHERE reference_no = :g AND movement_type = 'GRN_IN' AND (company_id = :cid OR company_id IS NULL)
+    """), {"dec": decision, "g": grn_no, "cid": cid})
+    db.commit()
+
+    if decision == "Failed":
+        notify_role(db, company_id=cid, role="ADMIN",
+                    title=f"Incoming QC failed — {grn_no}",
+                    message=f"{grn['supplier_name'] or 'Supplier'} · {(form.get('notes') or '').strip()[:150]}",
+                    url=f"/qc/inspection/{grn_no}", category="incoming_qc_failed")
+        return RedirectResponse(f"/qc/inspection?toast=danger&title=QC Failed&msg={grn_no} held — stock stays excluded from available inventory. Raise a supplier return from Procurement.", status_code=303)
+
+    return RedirectResponse(f"/qc/inspection?toast=success&title=QC Passed&msg={grn_no} cleared — stock is now available for production.", status_code=303)
+
+
+def _ensure_complaints_schema(db: Session) -> None:
+    try:
+        db.execute(text("""
+            CREATE TABLE IF NOT EXISTS qc_complaints (
+                id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+                company_id INT NULL,
+                complaint_no VARCHAR(30) NOT NULL UNIQUE,
+                order_no VARCHAR(80) NULL,
+                customer_name VARCHAR(255) NULL,
+                complaint_date DATE NULL,
+                category VARCHAR(50) NULL,
+                description VARCHAR(1000) NULL,
+                traced_section VARCHAR(80) NULL,
+                traced_shift VARCHAR(80) NULL,
+                root_cause VARCHAR(1000) NULL,
+                corrective_action VARCHAR(1000) NULL,
+                status VARCHAR(20) NOT NULL DEFAULT 'Open',
+                logged_by VARCHAR(120) NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                resolved_at DATETIME NULL
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        """))
+        db.commit()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+
+
+def _next_complaint_no(db: Session) -> str:
+    n = int(db.execute(text("SELECT COUNT(*) FROM qc_complaints")).scalar() or 0)
+    return f"CMP-{n + 1:05d}"
+
+
+@router.get("/complaints")
+def complaints_list(request: Request, db: Session = Depends(get_db)):
+    require_area(request, "qc")
+    _ensure_complaints_schema(db)
+    cid = int(request.session.get("company_id") or 1)
+    status_filter = (request.query_params.get("status") or "").strip()
+    where = "(company_id = :cid OR company_id IS NULL)"
+    params: dict = {"cid": cid}
+    if status_filter:
+        where += " AND status = :st"
+        params["st"] = status_filter
+    rows = db.execute(text(f"SELECT * FROM qc_complaints WHERE {where} ORDER BY id DESC LIMIT 300"), params).mappings().all()
+    kpis = {
+        "open": db.execute(text("SELECT COUNT(*) FROM qc_complaints WHERE status='Open' AND (company_id = :cid OR company_id IS NULL)"), {"cid": cid}).scalar() or 0,
+        "investigating": db.execute(text("SELECT COUNT(*) FROM qc_complaints WHERE status='Investigating' AND (company_id = :cid OR company_id IS NULL)"), {"cid": cid}).scalar() or 0,
+        "resolved": db.execute(text("SELECT COUNT(*) FROM qc_complaints WHERE status='Resolved' AND (company_id = :cid OR company_id IS NULL)"), {"cid": cid}).scalar() or 0,
+    }
+    return render(request, "qc/complaints_list.html", {"rows": rows, "kpis": kpis, "status_filter": status_filter, "page_title": "Customer Complaints"})
+
+
+@router.get("/complaints/new")
+def new_complaint_form(request: Request, db: Session = Depends(get_db)):
+    require_area(request, "qc")
+    order_no = (request.query_params.get("order_no") or "").strip()
+    order = None
+    sections = []
+    if order_no:
+        order = scoped_order(db, request, order_no)
+        sections = db.execute(text(
+            "SELECT DISTINCT current_section FROM kitchen_section_transactions WHERE order_no = :o"
+        ), {"o": order_no}).scalars().all()
+    return render(request, "qc/complaint_form.html", {"order": order, "order_no": order_no, "sections": sections, "page_title": "Log Complaint"})
+
+
+@router.post("/complaints/new")
+async def create_complaint(request: Request, db: Session = Depends(get_db)):
+    require_action(request, "qc", "add")
+    _ensure_complaints_schema(db)
+    form = await request.form()
+    description = (form.get("description") or "").strip()
+    if not description:
+        return _redirect_with_error("/qc/complaints/new", "Describe the complaint before submitting.")
+
+    cid = int(request.session.get("company_id") or 1)
+    complaint_no = _next_complaint_no(db)
+    db.execute(text("""
+        INSERT INTO qc_complaints
+            (company_id, complaint_no, order_no, customer_name, complaint_date, category,
+             description, traced_section, traced_shift, status, logged_by)
+        VALUES (:cid, :no, :order_no, :cust, CURDATE(), :cat, :desc, :sec, :shift, 'Open', :by)
+    """), {
+        "cid": cid, "no": complaint_no, "order_no": (form.get("order_no") or "").strip() or None,
+        "cust": (form.get("customer_name") or "").strip() or None,
+        "cat": (form.get("category") or "").strip() or None, "desc": description,
+        "sec": (form.get("traced_section") or "").strip() or None,
+        "shift": (form.get("traced_shift") or "").strip() or None, "by": _user(request),
+    })
+    db.commit()
+    notify_role(db, company_id=cid, role="ADMIN",
+                title=f"New customer complaint — {complaint_no}",
+                message=description[:150], url=f"/qc/complaints/{complaint_no}", category="complaint_logged")
+    return RedirectResponse(f"/qc/complaints/{complaint_no}?toast=success&title=Complaint Logged&msg={complaint_no} recorded", status_code=303)
+
+
+@router.get("/complaints/{complaint_no}")
+def complaint_detail(request: Request, complaint_no: str, db: Session = Depends(get_db)):
+    require_area(request, "qc")
+    row = db.execute(text("SELECT * FROM qc_complaints WHERE complaint_no = :n"), {"n": complaint_no}).mappings().first()
+    if not row:
+        raise HTTPException(404, "Complaint not found")
+    return render(request, "qc/complaint_detail.html", {"c": row, "page_title": complaint_no})
+
+
+@router.post("/complaints/{complaint_no}/update")
+async def update_complaint(request: Request, complaint_no: str, db: Session = Depends(get_db)):
+    require_action(request, "qc", "edit")
+    form = await request.form()
+    status = (form.get("status") or "Open").strip()
+    resolved_at_sql = ", resolved_at = NOW()" if status == "Resolved" else ""
+    db.execute(text(f"""
+        UPDATE qc_complaints
+        SET root_cause = :rc, corrective_action = :ca, status = :st {resolved_at_sql}
+        WHERE complaint_no = :n
+    """), {
+        "rc": (form.get("root_cause") or "").strip() or None,
+        "ca": (form.get("corrective_action") or "").strip() or None,
+        "st": status, "n": complaint_no,
+    })
+    db.commit()
+    return RedirectResponse(f"/qc/complaints/{complaint_no}?toast=success&title=Updated&msg=Complaint updated", status_code=303)

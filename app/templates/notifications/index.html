@@ -3,14 +3,27 @@
 {% block content %}
 <div class="container-fluid py-3">
 
-  <div class="card shadow-none border mb-4" style="background:linear-gradient(135deg,#132947,#0c91a3);border-radius:20px;">
-    <div class="card-body p-4 text-white d-flex justify-content-between align-items-center flex-wrap gap-3">
-      <div>
-        <h2 class="text-white mb-1"><span class="uil uil-bell me-2"></span>Notification Center</h2>
-        <p class="mb-0 opacity-75">Everything waiting for action across the production chain, in one place.</p>
-      </div>
-      <span class="badge rounded-pill text-bg-light fs-8 px-3 py-2">{{ total }} pending item{{ 's' if total != 1 else '' }}</span>
+  {# Batch 99 — this hero rendered as a WHITE box with invisible text.
+     It used `class="card"` plus an inline gradient background. The Phoenix
+     stylesheet sets the card background with !important, and !important beats
+     an inline style — so the gradient was discarded, the card stayed white,
+     and `text-white` made the heading and subtitle invisible against it. Only
+     the light-coloured badge survived, which is exactly what the screenshot
+     showed: an empty white bar with one floating pill.
+
+     Now uses the same plain `isfc-hero` div as every other screen in the
+     project (Sales Requests, Purchase Requisitions, QC Sampling, Top-Ups) —
+     no `card` class, so nothing overrides the gradient, and the look matches
+     the rest of the system instead of being a one-off. #}
+  <div class="isfc-hero mb-4 p-4 rounded-4 text-white d-flex justify-content-between align-items-center flex-wrap gap-3"
+       style="background:linear-gradient(135deg,#132947,#0c91a3)">
+    <div>
+      <h1 class="mb-1 fw-bold text-white"><i class="bi bi-bell-fill me-2"></i>{{ t('Notification Center') }}</h1>
+      <p class="mb-0 opacity-75">
+        {{ t('Everything waiting for action across the production chain, in one place.') }}</p>
     </div>
+    <span class="badge rounded-pill text-bg-light fs-8 px-3 py-2">
+      {{ total }} {{ t('pending item') if total == 1 else t('pending items') }}</span>
   </div>
 
   {# Batch 78: real, persisted, per-user notifications — separate from the
@@ -19,7 +32,7 @@
     <div class="card-header p-4 border-bottom bg-body d-flex justify-content-between align-items-center flex-wrap gap-2">
       <div>
         <h4 class="text-body mb-1">
-          <span class="uil uil-envelope-alt me-2 text-primary"></span>Your Notifications
+          <i class="bi bi-envelope-fill me-2 text-primary"></i>Your Notifications
           {% if unread_count %}<span class="badge badge-phoenix badge-phoenix-danger ms-2">{{ unread_count }} unread</span>{% endif %}
         </h4>
         <p class="text-body-tertiary mb-0 fs-9">Events sent directly to you or your role — order submissions, QC results, payroll, and more.</p>
@@ -63,12 +76,12 @@
     </div>
   </div>
 
-  <h5 class="mb-3 text-body-tertiary"><span class="uil uil-refresh me-1"></span>Pending Work Queue <span class="fs-9 fw-normal">(live — recalculated on every visit)</span></h5>
+  <h5 class="mb-3 text-body-tertiary"><i class="bi bi-arrow-repeat me-1"></i>Pending Work Queue <span class="fs-9 fw-normal">(live — recalculated on every visit)</span></h5>
 
   {% if total == 0 %}
   <div class="card shadow-none border">
     <div class="card-body text-center py-5">
-      <span class="uil uil-check-circle text-success" style="font-size:56px;"></span>
+      <i class="bi bi-check-circle-fill text-success" style="font-size:56px;"></i>
       <h4 class="mt-3 mb-1">All caught up</h4>
       <p class="text-body-tertiary mb-0">There is no pending approval, issuance, QC or dispatch right now.</p>
     </div>

@@ -410,11 +410,22 @@ def preview_bom_shortages(db: Session, order_no: str) -> list[dict[str, Any]]:
     params = {f"c{i}": c for i, c in enumerate(codes)}
     params["cid"] = cid
     stock_rows = db.execute(text(f"""
-        SELECT inventory_code, COALESCE(SUM(COALESCE(qty_in,0)) - SUM(COALESCE(qty_out,0)), 0) AS on_hand
+        SELECT inventory_code,
+               COALESCE(SUM(
+                 CASE WHEN qc_status IN ('Pending','Failed') THEN 0 ELSE COALESCE(qty_in,0) END
+               ), 0) - COALESCE(SUM(COALESCE(qty_out,0)), 0) AS on_hand
         FROM inventory_transactions
         WHERE inventory_code IN ({placeholders}) AND (company_id = :cid OR company_id IS NULL)
         GROUP BY inventory_code
     """), params).mappings().all()
+    # Batch 93: only counts qty_in that QC has actually cleared (or
+    # legacy rows from before this gate existed, which have no
+    # qc_status at all — those pass through the CASE unaffected since
+    # NULL never matches 'Pending'/'Failed'). A receipt still sitting in
+    # QC Hold contributes its value to the ledger elsewhere (so
+    # financials stay correct) but not to what production can actually
+    # consume — the gate that makes /qc/inspection real rather than
+    # decorative, per the blueprint's own stated principle.
     on_hand = {r["inventory_code"]: float(r["on_hand"] or 0) for r in stock_rows}
 
     shortages = []

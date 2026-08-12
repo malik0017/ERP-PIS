@@ -128,9 +128,8 @@
 
   <footer class="lch-footer">
     <div class="lch-footer-inner">
-      <span>{{ t('Thank you for using') }} <b>ISFC PIMS</b> &nbsp;·&nbsp; {{ '2026' }} © {{ t('Copyright PIS') }}</span>
-      <span>{{ t('Signed in as') }}: <span class="who">{{ request.session.get('username') or session_username or 'user' }}</span>
-        {% if user_role %}<span class="badge badge-phoenix badge-phoenix-primary ms-1">{{ user_role }}</span>{% endif %}
+      <span>{{ t('Thank you for using') }} <b>PIMS</b> &nbsp;·&nbsp; {{ '2026' }} © {{ t('Copyright PIS') }}</span>
+      <span>{{ t('Signed in as') }}: {% if user_role %}<span class="badge badge-phoenix badge-phoenix-primary ms-1">{{ user_role }}</span>{% endif %}
       </span>
     </div>
   </footer>

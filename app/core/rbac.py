@@ -1,26 +1,5 @@
 # app/core/rbac.py — Batch 10
-"""
-Role-Based Access Control (RBAC) and Authorization
 
-Batch 10 change (IMPORTANT):
-The per-user access matrix managed from the UI
-(Users & Access -> /admin/users/{id}/access, stored in `user_page_access`
-and loaded into the session at login as `user_access` / `user_actions`)
-is now the PRIMARY authority for access decisions.
-
-Decision order:
-  1. ADMIN / SUPER_ADMIN / ADMINISTRATOR  -> always full access (all modules,
-     including Customer Portal and every dashboard).
-  2. Session UI matrix (`user_access`)    -> if the admin has saved a matrix
-     for this user, it is authoritative. No code change is ever needed to
-     grant or revoke a module: tick/untick in the UI and the user re-logins.
-  3. Role defaults (ROLE_PERMISSIONS)     -> fallback for users that have no
-     saved matrix yet (fresh users), so the system remains usable.
-  4. Parent-area inheritance              -> unchanged.
-
-This file stays framework-light: it reads only request.session, so it is safe
-in templates (sidebar/menus) and in route guards.
-"""
 
 from fastapi import Request
 
@@ -35,8 +14,11 @@ PAGE_AREAS = {
 
     # Granular pages
     "master_upload", "master_data", "recipe_list", "recipe_prepare", "recipe_missing",
-    "recipe_approvals", "master_approvals", "order_portal", "production_orders", "store_issuance",
+    "recipe_approvals", "master_approvals", "order_portal", "immediate_order", "production_orders", "store_issuance",
     "kitchen_summary",
+
+
+    "sales_review", "purchase_requisition",
 
     # Kitchen sections
     "section_cutting", "section_butchery",
@@ -65,6 +47,8 @@ AREA_PARENTS = {
     "section_cold_kitchen": "kitchen",
     "section_bakery_pastry": "kitchen",
     "procurement": "orders",
+    "sales_review": "orders",
+    "purchase_requisition": "procurement",
     "inventory_valuation": "masters",
     "project_list": "project_management",
     "project_detail": "project_management",
@@ -91,6 +75,7 @@ ROLE_PERMISSIONS = {
         "qc": True, "dispatch": True, "procurement": True,
         "inventory_valuation": True, "project_management": True, "reports": True,
         "subscriptions": True,
+        "sales_review": True, "purchase_requisition": True,
     },
 
     "SUPERVISOR": {
@@ -111,15 +96,7 @@ ROLE_PERMISSIONS = {
         "dashboard": True, "reports": True,
     },
 
-    # Batch 83 fix: CUSTOMER had no explicit entry here, so it fell back to
-    # DEFAULT — which grants "dashboard" and "reports". That's exactly what
-    # a customer account should never see: the internal admin Dashboard and
-    # cross-customer business Reports, not their own order history. A
-    # customer now gets exactly one area: their own portal. Recipe/brand/
-    # channel browsing while placing an order still works — the customer
-    # portal's own order-placement pages look those up through their own
-    # scoped internal queries, not the general /recipes or /master admin
-    # modules, so nothing else needs to be granted for that to keep working.
+
     "CUSTOMER": {
         "customer_portal": True,
     },
@@ -144,9 +121,6 @@ def _session_access_set(request: Request) -> set | None:
     if isinstance(raw, str):
         raw = raw.strip()
         if raw == "":
-            # Distinguish "never saved" from "saved empty": auth stores the key
-            # only after loading the DB; an empty string means no rows -> treat
-            # as "no matrix" so role defaults still apply for fresh users.
             return None
         return {p for p in raw.split("|") if p}
     if isinstance(raw, (list, set, tuple)):
@@ -197,20 +171,7 @@ def is_admin(request: Request) -> bool:
 
 
 def can_access(request: Request, area: str) -> bool:
-    """
-    Check if user can access a module/page area.
-
-    Batch 65: a COMPANY-level module-visibility gate now runs FIRST. If the
-    company has switched a module OFF (it hasn't bought/enabled it yet), the
-    area is hidden for everyone — including admins — because the module simply
-    isn't part of the product for that company. RBAC then decides per-user
-    access among the modules that ARE enabled.
-
-    Order:
-      0. Module visibility (company bought/enabled the module?)   [Batch 65]
-      1. Admin / superadmin / administrator -> full access to enabled modules
-      2. UI matrix (session)  ->  3. role defaults  ->  4. parent area
-    """
+   
     # 0. Company-level module gate (fail-open on infra errors).
     try:
         from app.core.module_visibility import area_enabled

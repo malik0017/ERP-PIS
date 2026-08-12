@@ -110,18 +110,32 @@
       grid-template-columns: 1fr;
     }
   }
-</style>
+
+    /* Batch 102: the sticky header row that replaced the repeated labels. */
+    .portal-lines-head{
+      padding-bottom:.35rem; margin-bottom:.35rem;
+      border-bottom:2px solid var(--phoenix-border-color, #e3e8ef);
+      position:sticky; top:0; z-index:2;
+      background:var(--phoenix-body-bg, #fff);
+    }
+    .portal-lines-head .sap-label{ font-weight:700; text-transform:uppercase; font-size:.72rem; }
+  </style>
 <div class="container-fluid py-3">
   <div class="isfc-hero mb-4 p-4 rounded-4 text-white d-flex align-items-center justify-content-between flex-wrap gap-3"
        style="background:linear-gradient(135deg,#132947,#0c91a3)">
     <div>
-      <h1 class="mb-1 fw-bold text-white"><i class="bi bi-cart-plus me-2"></i>{{ t('Sale Requisitions') }}</h1>
-      <p class="mb-0 opacity-75">{{ t('Place a new order on behalf of a customer, or for internal production — the same 48-hour delivery rule applies here as everywhere else.') }}</p>
+      <h1 class="mb-1 fw-bold text-white">
+        {% if immediate %}<i class="bi bi-lightning-fill me-2"></i>{{ t('Immediate Order') }}
+        {% else %}<i class="bi bi-cart-plus me-2"></i>{{ t('Sale Requisitions') }}{% endif %}</h1>
+      <p class="mb-0 opacity-75">
+        {% if immediate %}{{ t('Same order form, same everything — the 48-hour delivery rule does not apply on this screen. Use it only for genuinely urgent orders.') }}
+        {% else %}{{ t('Place a new order on behalf of a customer, or for internal production — the same 48-hour delivery rule applies here as everywhere else.') }}{% endif %}</p>
     </div>
   </div>
 
   <div class="sap-card">
     <form method="post" action="/production/orders/create" id="orderForm">
+      {% if immediate %}<input type="hidden" name="immediate" value="1">{% endif %}
       <div class="sap-grid">
         <div>
           <div class="sap-label">Customer Code & Name</div>
@@ -158,8 +172,17 @@
           />
           <input type="hidden" name="channel" id="channel" />
         </div>
+        {# Batch 102: Day appears only for menu-driven customers (Frsh and any
+           other customer flagged is_menu_driven in Master Data). Hidden and
+           inert otherwise, so nothing changes for ad-hoc customers. #}
+        {# Batch 104: the Day dropdown is gone. The weekday is derived from
+           the delivery date, so choosing both was redundant and made it
+           possible to pick a day and a date that disagreed. #}
         <div>
-          <div class="sap-label">Delivery Date</div>
+          <div class="sap-label">{{ t('Delivery Date') }}</div>
+          {# Free date entry for normal customers; for a menu customer this is
+             swapped for a dropdown of that weekday's upcoming dates, so an
+             invalid date cannot be typed in the first place. #}
           <input
             class="sap-input"
             type="date"
@@ -167,6 +190,9 @@
             id="deliveryDate"
             required
           />
+          {# Batch 104: the constrained date dropdown is gone too — the plain
+             date input is now the single source, and the weekday it falls on
+             drives the menu. #}
         </div>
         <div>
           <div class="sap-label">Delivery Time</div>
@@ -219,46 +245,69 @@
       <div
         class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2"
       >
-        <h5 class="m-0">Recipes Ordered</h5>
+        <h5 class="m-0">{{ t('Recipes Ordered') }}</h5>
+        <span class="small-muted" id="menuHint"></span>
       </div>
 
-      <div id="portal-lines" class="portal-lines-pro">
-        <div class="sap-line-pro order-line">
-          <div>
-            <div class="sap-label">Recipe Code & Name</div>
-            <input
-              class="sap-input recipe-display"
-              list="recipeList"
-              name="recipe_display"
-              placeholder="Type recipe code or recipe name"
-              required
-            />
-            <input type="hidden" name="recipe_no" class="recipe-no" />
-            <input type="hidden" name="recipe_name" class="recipe-name" />
-            <small class="recipe-info"></small>
-          </div>
-          <div>
-            <div class="sap-label">Quantity Ordered</div>
-            <input
-              class="sap-input"
-              type="number"
-              step="0.01"
-              min="0"
-              name="required_portions"
-              value="0"
-              required
-            />
-          </div>
-          <div>
-            <button
-              type="button"
-              class="sap-btn sap-danger"
-              onclick="removeLine(this)"
-            >
-              X
-            </button>
-          </div>
-        </div>
+      {# ==================================================================
+         Batch 103 — ONE REAL TABLE.
+
+         Batch 102 added a header row but each line was still its own bordered
+         .sap-line-pro block, so the screen still read as separate cards. This
+         is now a genuine <table>: one header, one <tr> per line, nothing
+         repeated. On a 20-line Frsh order that is the difference between a
+         readable grid and 20 stacked panels.
+
+         Same markup is used by Sale Requisition, Immediate Order and the
+         Customer Portal because all three render this one template.
+         ================================================================== #}
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0 isfc-order-table" data-no-sort>
+          <thead>
+            <tr>
+              <th>{{ t('Recipe Code & Name') }}</th>
+              <th style="width:150px" class="text-end">{{ t('Quantity Ordered') }}</th>
+              <th style="width:56px"></th>
+            </tr>
+          </thead>
+          <tbody id="portal-lines">
+            <tr class="order-line">
+              <td>
+                <input
+                  class="sap-input recipe-display"
+                  list="recipeList"
+                  name="recipe_display"
+                  placeholder="{{ t('Type recipe code or recipe name') }}"
+                  required
+                />
+                <input type="hidden" name="recipe_no" class="recipe-no" />
+                <input type="hidden" name="recipe_name" class="recipe-name" />
+                {# Batch 103: portion size, price and food cost for the picked
+                   recipe, so whoever places the order can see what they are
+                   committing to without opening the recipe in another tab. #}
+                <small class="recipe-info text-body-tertiary d-block mt-1"></small>
+              </td>
+              <td>
+                <input
+                  class="sap-input text-end"
+                  {# Batch 105: step="1" so the spinner arrows move 1, 2, 3 —
+                     step="0.01" made every up-arrow click produce 0.01, 0.02.
+                     Portions are counted items; you cannot cook 0.01 of one. #}
+                  type="number"
+                  step="1"
+                  min="0"
+                  inputmode="numeric"
+                  name="required_portions"
+                  value="0"
+                  required
+                />
+              </td>
+              <td class="text-center">
+                <button type="button" class="sap-btn sap-danger" onclick="removeLine(this)">X</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
       <button type="button" class="sap-btn sap-soft" onclick="addPortalLine()">
         Add Recipe
@@ -283,6 +332,10 @@
     const parts = splitDisplay(c.value);
     document.getElementById("customer_no").value =
       opt?.dataset.code || parts[0] || "";
+    // Batch 102: re-evaluate menu mode whenever the customer changes.
+    setTimeout(function () {
+      loadMenuMode(document.getElementById("customer_name").value);
+    }, 0);
     document.getElementById("customer_name").value =
       opt?.dataset.name || parts[1] || c.value;
     const b = document.getElementById("brand_display");
@@ -294,6 +347,136 @@
     document.getElementById("channel").value =
       chopt?.dataset.name || splitDisplay(ch.value)[1] || ch.value;
   }
+  /* =====================================================================
+     Batch 104 — MENU ORDERING, DATE-DRIVEN.
+
+     Replaces the Batch 102/103 day-dropdown. The flow is now:
+
+        pick customer -> brand + sales channel fill themselves
+        pick date     -> weekday is DERIVED, that day's whole menu loads
+                         with a quantity box against each recipe
+        type quantities -> submit
+
+     Deriving the weekday from the date removes a field AND a class of
+     mistake: you can no longer choose "Sunday" and then a date that is a
+     Monday. Nothing here is Frsh-specific — the server decides whether a
+     customer is menu-driven, so the next one is a Master Data edit.
+     ===================================================================== */
+  const menuState = { active: false, customer: "", brand: "", loadedDate: "" };
+
+  function setVal(id, value) {
+    const el = document.getElementById(id);
+    if (el && value) el.value = value;
+  }
+
+  async function loadMenuMode(customerName) {
+    const hint = document.getElementById("menuHint");
+    menuState.customer = customerName || "";
+    if (!customerName) { menuState.active = false; hint.textContent = ""; return; }
+
+    const opt = optionByValue("customerList", document.getElementById("customer_display").value);
+    const code = (opt && opt.dataset.code) || "";
+    try {
+      const r = await fetch("/api/menu/customer-defaults?customer=" +
+        encodeURIComponent(customerName) + "&code=" + encodeURIComponent(code),
+        { credentials: "same-origin" });
+      const d = await r.json();
+
+      // Auto-fill brand and sales channel. Only fills EMPTY fields — never
+      // overwrites something the user deliberately typed.
+      const bd = document.getElementById("brand_display");
+      const cd = document.getElementById("channel_display");
+      if (bd && !bd.value && d.brand_display) {
+        bd.value = d.brand_display;
+        setVal("brand", d.brand_name || d.brand_code);
+        menuState.brand = d.brand_name || "";
+      }
+      if (cd && !cd.value && d.channel_display) {
+        cd.value = d.channel_display;
+        setVal("channel", d.channel_name || d.channel_code);
+      }
+
+      menuState.active = !!d.menu_driven;
+      if (menuState.active) {
+        hint.innerHTML = '<span class="badge badge-phoenix badge-phoenix-info">'
+          + "{{ t('Weekly menu customer') }}</span> "
+          + "{{ t('Pick a delivery date — that day\'s menu will load automatically.') }}"
+          + (d.days_available && d.days_available.length
+              ? " (" + d.days_available.join(", ") + ")" : "");
+        // If a date is already set, load immediately rather than waiting for
+        // the user to re-pick it.
+        const dt = document.getElementById("deliveryDate");
+        if (dt && dt.value) loadMenuForDate(dt.value);
+      } else {
+        hint.textContent = "";
+      }
+    } catch (e) {
+      // A failed lookup must never block ordering — fall back to the plain form.
+      menuState.active = false;
+    }
+  }
+
+  async function loadMenuForDate(dateStr) {
+    if (!menuState.active || !dateStr) return;
+    if (menuState.loadedDate === dateStr) return;   // avoid reloading on re-render
+    const hint = document.getElementById("menuHint");
+    try {
+      const r = await fetch("/api/menu/for-date?customer=" + encodeURIComponent(menuState.customer) +
+        "&brand=" + encodeURIComponent(menuState.brand) +
+        "&order_date=" + encodeURIComponent(dateStr), { credentials: "same-origin" });
+      const d = await r.json();
+      if (d.error) { hint.textContent = d.error; return; }
+
+      if (!d.count) {
+        hint.innerHTML = '<span class="text-warning">'
+          + "{{ t('No menu recipes for') }} " + d.day + "</span>";
+        return;
+      }
+      renderMenuRows(d.recipes);
+      menuState.loadedDate = dateStr;
+      hint.innerHTML = '<span class="badge badge-phoenix badge-phoenix-success">'
+        + d.day + "</span> " + d.count + " {{ t('recipes loaded — just enter quantities.') }}";
+    } catch (e) { /* leave the manual form usable */ }
+  }
+
+  function renderMenuRows(recipes) {
+    const tbody = document.getElementById("portal-lines");
+    const template = document.querySelector(".order-line");
+    if (!tbody || !template) return;
+
+    // Keep anything already typed, so re-picking a date does not wipe work.
+    const typed = {};
+    tbody.querySelectorAll(".order-line").forEach(function (tr) {
+      const code = tr.querySelector(".recipe-no");
+      const qty = tr.querySelector('input[name="required_portions"]');
+      if (code && code.value && qty && parseFloat(qty.value) > 0) typed[code.value] = qty.value;
+    });
+
+    tbody.innerHTML = "";
+    recipes.forEach(function (rc) {
+      const tr = template.cloneNode(true);
+      tr.querySelector(".recipe-display").value = rc.code + " - " + rc.name;
+      tr.querySelector(".recipe-no").value = rc.code;
+      tr.querySelector(".recipe-name").value = rc.name;
+      // The recipe is fixed by the menu, so the text box is read-only — the
+      // only thing to fill in is the quantity.
+      tr.querySelector(".recipe-display").setAttribute("readonly", "readonly");
+      // Batch 105: the "Main course · price 3.22" line under every row is
+      // gone. On an 8-line menu it tripled the vertical space and repeated
+      // information that belongs on the recipe, not the order form.
+      tr.querySelector(".recipe-info").textContent = "";
+      const qty = tr.querySelector('input[name="required_portions"]');
+      qty.value = typed[rc.code] || 0;
+      tbody.appendChild(tr);
+    });
+  }
+
+  document.addEventListener("change", function (e) {
+    if (e.target && e.target.id === "deliveryDate") {
+      loadMenuForDate(e.target.value);
+    }
+  });
+
   function bindRecipeLine(line) {
     const input = line.querySelector(".recipe-display");
     const opt = optionByValue("recipeList", input.value);
@@ -302,12 +485,10 @@
       opt?.dataset.code || parts[0] || "";
     line.querySelector(".recipe-name").value =
       opt?.dataset.name || parts[1] || input.value;
+    // Batch 105: detail line removed here too, so the manual and menu paths
+    // render identically.
     const info = line.querySelector(".recipe-info");
-    // Batch 92 fix: this used to show "Food/portion: X | Sale/portion: Y
-    // | BOM lines: Z" under every recipe line — extra detail that wasn't
-    // needed here, removed per request. Left the element itself in place
-    // (now always empty) rather than restructure the surrounding markup.
-    info.textContent = "";
+    if (info) info.textContent = "";
   }
   function removeLine(btn) {
     const rows = document.querySelectorAll(".order-line");
@@ -316,6 +497,8 @@
     }
   }
   function addPortalLine() {
+    // Batch 103: .order-line is a <tr> now, appended to <tbody>. Cloning into
+    // the old div container would have produced a row outside the table.
     const first = document.querySelector(".order-line");
     const clone = first.cloneNode(true);
     clone.querySelectorAll("input").forEach((i) => {
@@ -336,10 +519,6 @@
       bindRecipeLine(e.target.closest(".order-line"));
   });
   document.getElementById("orderForm").addEventListener("submit", (e) => {
-    // Batch 91 fix: "at least one recipe with portions > 0" used to only
-    // be checked server-side, after a full round-trip that landed the
-    // user on a completely different screen with the error. Checked here
-    // first so a zero-portion submission never leaves this page at all.
     var hasPortions = Array.prototype.some.call(
       document.querySelectorAll('input[name="required_portions"]'),
       function (el) { return parseFloat(el.value) > 0; }
@@ -351,7 +530,8 @@
       return;
     }
 
-    // Batch 69: 48-hour rule. Delivery date+time must be >= now + 48h.
+ 
+    {% if not immediate %}
     var dEl = document.getElementById("deliveryDate");
     var tEl = document.getElementById("deliveryTime");
     if (dEl && dEl.value) {
@@ -365,16 +545,23 @@
         return;
       }
     }
+    {% endif %}
     bindHeaderFields();
     document.querySelectorAll(".order-line").forEach(bindRecipeLine);
   });
 
-  // Set the date picker's minimum to 48 hours from now (date part).
   (function () {
     var dEl = document.getElementById("deliveryDate");
     if (!dEl) return;
+    {% if immediate %}
+    var min = new Date();
+    {% else %}
     var min = new Date(Date.now() + 48 * 3600 * 1000);
-    var iso = min.toISOString().slice(0, 10);
+    {% endif %}
+   
+    var iso = min.getFullYear() + "-"
+      + String(min.getMonth() + 1).padStart(2, "0") + "-"
+      + String(min.getDate()).padStart(2, "0");
     dEl.setAttribute("min", iso);
   })();
 </script>

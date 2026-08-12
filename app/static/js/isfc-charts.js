@@ -33,16 +33,126 @@
       danger: v('--phoenix-danger', '#fa3b1d'),
       text: v('--phoenix-secondary-color', '#6e7891'),
       grid: v('--phoenix-border-color', '#e3e6ed'),
-      body: v('--phoenix-body-color', '#31374a')
+      body: v('--phoenix-body-color', '#31374a'),
+      // Batch 106: tooltip surface taken from the theme rather than left to
+      // ECharts' hard-coded near-white, which was invisible in dark mode.
+      tipBg: v('--phoenix-body-bg', '#ffffff'),
+      tipText: v('--phoenix-body-color', '#31374a')
     };
   }
 
   function palette(c) { return [c.primary, c.info, c.success, c.warning, c.danger, '#8c68f5', '#12b8a6', '#e84f8a']; }
 
-  function buildOption(type, labels, values, c) {
+  function buildOption(type, labels, values, c, unit, note) {
+    unit = unit || '';
+    note = note || '';
     var pal = palette(c);
     var pieData = labels.map(function (l, i) { return { name: l, value: values[i] }; });
-    var base = { color: pal, tooltip: { trigger: type === 'pie' || type === 'donut' ? 'item' : 'axis' } };
+    // =====================================================================
+    // Batch 106 — READABLE TOOLTIPS, SYSTEM-WIDE.
+    //
+    // The tooltip had a `trigger` and nothing else. Two consequences:
+    //
+    //   1. NO STYLING. ECharts defaults to a near-white background with dark
+    //      text. In dark mode that is white-on-white — the tooltip was firing
+    //      the whole time and you simply could not read it. That is why it
+    //      looked like "no information, just a number".
+    //   2. NO FORMATTER. Even when visible it showed a bare value with no
+    //      share of total, so a bar reading "6" told you nothing about
+    //      whether 6 was most of the pipeline or a rounding error.
+    //
+    // Every chart in the system is built through this one function, so fixing
+    // it here fixes all of them at once.
+    // =====================================================================
+    var total = values.reduce(function (a, b) { return a + (Math.abs(+b) || 0); }, 0);
+
+    function fmtNum(n) {
+      var x = +n || 0;
+      // Whole numbers stay whole (counts of orders), decimals keep 2 places
+      // (money and quantities). Printing "6.00 orders" reads like an error.
+      return (Math.abs(x % 1) < 1e-9) ? x.toLocaleString()
+                                      : x.toLocaleString(undefined, { minimumFractionDigits: 2,
+                                                                      maximumFractionDigits: 2 });
+    }
+
+    function share(v) {
+      if (!total) return '';
+      var pct = (Math.abs(+v) || 0) / total * 100;
+      return ' <span style="opacity:.7">(' + pct.toFixed(1) + '% of ' + fmtNum(total) + ')</span>';
+    }
+
+    var tip = {
+      trigger: (type === 'pie' || type === 'donut' || type === 'gauge') ? 'item' : 'axis',
+      confine: true,                 // never let it fall outside a fullscreen card
+      backgroundColor: c.tipBg,
+      borderColor: c.grid,
+      borderWidth: 1,
+      padding: [8, 12],
+      extraCssText: 'border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.18);',
+      textStyle: { color: c.tipText, fontSize: 12 },
+      axisPointer: {
+        type: (type === 'line' || type === 'area') ? 'line' : 'shadow',
+        lineStyle: { color: c.grid },
+        shadowStyle: { color: 'rgba(125,145,180,.14)' }
+      },
+      formatter: function (params) {
+        // Batch 107 — tooltips now carry CONTEXT, not just a repeat of the
+        // number already printed on the bar. Hovering "Submitted 6" used to
+        // tell you "6", which you could already see. It now tells you what
+        // that 6 means relative to everything else on the chart:
+        //
+        //     Submitted
+        //     6 orders          46.2% of 13
+        //     Largest of 6 · 3 more than the next
+        //
+        // `unit` and `note` come from optional data attributes on the chart
+        // element, so each chart can name its own unit and explain itself
+        // without touching this file.
+        var arr = Array.isArray(params) ? params : [params];
+        if (!arr.length) return '';
+        var head = arr[0].name || '';
+        var out = '<div style="font-weight:700;margin-bottom:5px;font-size:13px">' + head + '</div>';
+
+        arr.forEach(function (p) {
+          var v = (p.value && typeof p.value === 'object') ? p.value.value : p.value;
+          var n = Math.abs(+v) || 0;
+          out += '<div style="display:flex;align-items:baseline;gap:6px;margin-bottom:2px">'
+               + (p.marker || '')
+               + '<strong style="font-size:15px">' + fmtNum(v) + '</strong>'
+               + (unit ? '<span style="opacity:.75">' + unit + '</span>' : '')
+               + share(v)
+               + '</div>';
+
+          // Rank and gap — the two things a reader is actually working out in
+          // their head when they look at a bar chart.
+          if (values.length > 1) {
+            var sorted = values.map(function (x) { return Math.abs(+x) || 0; })
+                               .sort(function (a, b) { return b - a; });
+            var rank = sorted.indexOf(n) + 1;
+            var bits = [];
+            if (rank === 1) {
+              var gap = sorted[0] - sorted[1];
+              bits.push('Largest of ' + values.length);
+              if (gap > 0) bits.push(fmtNum(gap) + ' more than the next');
+            } else if (rank === values.length) {
+              bits.push('Smallest of ' + values.length);
+            } else {
+              bits.push('#' + rank + ' of ' + values.length);
+            }
+            out += '<div style="opacity:.7;font-size:11px">' + bits.join(' · ') + '</div>';
+          }
+        });
+
+        if (note) {
+          out += '<div style="opacity:.65;font-size:11px;margin-top:5px;'
+               + 'border-top:1px solid rgba(125,145,180,.25);padding-top:4px;'
+               + 'max-width:230px;white-space:normal">' + note + '</div>';
+        }
+        return out;
+      }
+    };
+
+    var base = { color: pal, tooltip: tip };
 
     if (type === 'pie' || type === 'donut') {
       base.legend = { bottom: 0, textStyle: { color: c.text }, type: 'scroll' };
@@ -112,7 +222,7 @@
     var values = JSON.parse(el.dataset.values || '[]').map(Number);
     var type = el.dataset.isfcChart || 'bar';
     var chart = echarts.getInstanceByDom(el) || echarts.init(el);
-    chart.setOption(buildOption(type, labels, values, vars()), true);
+    chart.setOption(buildOption(type, labels, values, vars(), el.dataset.unit, el.dataset.note), true);
     return chart;
   }
 

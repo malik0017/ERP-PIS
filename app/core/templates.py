@@ -46,6 +46,62 @@ def _inject_common_context(context: dict[str, Any] | None) -> dict[str, Any]:
             data.setdefault("company_logo", f"/static/uploads/logos/company_{_cid}.png" if _cid and _os.path.exists(_logo_fs) else None)
         except Exception:
             data.setdefault("company_logo", None)
+        # ------------------------------------------------------------------
+        # Batch 99 — header essentials, injected globally so EVERY page's
+        # navbar has them rather than only the handful of routes that
+        # remembered to pass them.
+        #
+        #   user_avatar          the logged-in user's uploaded profile photo
+        #   unread_notifications the count for the bell badge
+        #   company_logo_small   50x50 header logo (see below)
+        #
+        # Each is wrapped defensively: a missing table or column must degrade
+        # to a sensible default, never 500 the whole application on every
+        # single page. That is the same reasoning behind the existing
+        # company_logo block above.
+        # ------------------------------------------------------------------
+        try:
+            import os as _os2
+            _uid = request.session.get("user_id")
+            _avatar = None
+            if _uid:
+                _base = _os2.path.join(_os2.path.dirname(_os2.path.dirname(__file__)),
+                                       "static", "uploads", "avatars")
+                for _ext in ("png", "jpg", "jpeg", "webp"):
+                    _fs = _os2.path.join(_base, f"user_{_uid}.{_ext}")
+                    if _os2.path.exists(_fs):
+                        # Cache-bust on mtime so a re-upload shows immediately
+                        # instead of being served from the browser cache.
+                        _avatar = f"/static/uploads/avatars/user_{_uid}.{_ext}?v={int(_os2.path.getmtime(_fs))}"
+                        break
+            data.setdefault("user_avatar", _avatar)
+        except Exception:
+            data.setdefault("user_avatar", None)
+
+        try:
+            from app.database.session import SessionLocal as _SL
+            from sqlalchemy import text as _text
+            _uid = request.session.get("user_id")
+            _role = request.session.get("user_role")
+            _cid2 = int(request.session.get("company_id") or 1)
+            _n = 0
+            if _uid:
+                _db = _SL()
+                try:
+                    # Batch 98 scoping applies here too — the badge must count
+                    # only what this user in THIS company can actually open.
+                    _n = _db.execute(_text("""
+                        SELECT COUNT(*) FROM notifications
+                        WHERE (company_id = :cid OR company_id IS NULL)
+                          AND (user_id = :uid OR (role = :role AND role IS NOT NULL))
+                          AND COALESCE(is_read, 0) = 0
+                    """), {"uid": _uid, "role": _role, "cid": _cid2}).scalar() or 0
+                finally:
+                    _db.close()
+            data.setdefault("unread_notifications", int(_n))
+        except Exception:
+            data.setdefault("unread_notifications", 0)
+
         _lang = lang_from_request(request)
         data.setdefault("lang", _lang)
         data.setdefault("is_rtl", _is_rtl(_lang))
@@ -57,6 +113,9 @@ def _inject_common_context(context: dict[str, Any] | None) -> dict[str, Any]:
         data.setdefault("can_action", lambda area, action="view": False)
         data.setdefault("module_enabled", lambda key: True)
         data.setdefault("session_username", None)
+        data.setdefault("user_avatar", None)
+        data.setdefault("unread_notifications", 0)
+        data.setdefault("company_logo", None)
         data.setdefault("lang", "en")
         data.setdefault("is_rtl", False)
         data.setdefault("t", lambda key: key)

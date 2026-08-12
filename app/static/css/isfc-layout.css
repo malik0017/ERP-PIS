@@ -184,9 +184,9 @@ html {
 }
 
 /* ========== 10. NAVIGATION ========== */
-.navbar-vertical {
+/* .navbar-vertical {
   background: var(--phoenix-body-bg, #fff);
-}
+} */
 
 .navbar-top {
   background: var(--phoenix-body-bg, #fff);

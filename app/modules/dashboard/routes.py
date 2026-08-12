@@ -6,6 +6,7 @@ ISFC14 update:
 - Keeps /recipes removed from dashboard router so recipe master remains handled by app.modules.recipes.routes.
 """
 
+from fastapi.responses import RedirectResponse
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -263,12 +264,18 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
 
 @router.get("/production", name="production_home")
 async def production(request: Request):
+    """Batch 95 FIX — this route 500'd on every request.
+
+    Found by the route-by-route audit (scripts/route_audit.py). It rendered
+    "production/index.html", a template that does not exist anywhere in the
+    repo — so anything linking to /production, or anyone typing it, got a
+    TemplateNotFound 500. It had presumably been a stub since before the
+    production module grew its real screens.
+
+    Rather than create an empty placeholder template, this now redirects to
+    the actual production home: Head Chef Planning, which is where the
+    module's work starts. `name="production_home"` is preserved so any
+    url_for('production_home') in a template keeps resolving.
+    """
     require_area(request, "dashboard")
-    return render(
-        request,
-        "production/index.html",
-        {
-            "username": request.session.get("username", "Guest"),
-            "page_title": "Production - ISFC PIMS",
-        },
-    )
+    return RedirectResponse("/production/head-chef", status_code=303)

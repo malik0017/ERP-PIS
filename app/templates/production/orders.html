@@ -189,19 +189,22 @@
             id="customer_name">
         </div>
         <div>
-          <div class="po-label">Brand Code & Name</div><input class="form-control po-input" list="brandList" name="brand_display"
-            id="brand_display" placeholder="Search brand code or name"><input type="hidden" name="brand" id="brand">
+          <div class="po-label">Brand Code & Name</div><input class="form-control po-input" list="brandList"
+            name="brand_display" id="brand_display" placeholder="Search brand code or name"><input type="hidden"
+            name="brand" id="brand">
         </div>
         <div>
-          <div class="po-label">Sales Channel</div><input class="form-control po-input" list="channelList" name="channel_display"
-            id="channel_display" placeholder="Search sales channel"><input type="hidden" name="channel" id="channel">
+          <div class="po-label">Sales Channel</div><input class="form-control po-input" list="channelList"
+            name="channel_display" id="channel_display" placeholder="Search sales channel"><input type="hidden"
+            name="channel" id="channel">
         </div>
         <div>
-          <div class="po-label">Delivery Date</div><input class="form-control po-input" type="date" name="required_delivery_date"
-            required>
+          <div class="po-label">Delivery Date</div><input class="form-control po-input" type="date"
+            name="required_delivery_date" required>
         </div>
         <div>
-          <div class="po-label">Delivery Time</div><input class="form-control po-input" type="time" name="required_delivery_time">
+          <div class="po-label">Delivery Time</div><input class="form-control po-input" type="time"
+            name="required_delivery_time">
         </div>
       </div>
       <datalist id="customerList">{% for c in customers %}<option value="{{ c.customer_code }} - {{ c.customer_name }}"
@@ -228,8 +231,8 @@
               class="recipe-info"></small>
           </div>
           <div>
-            <div class="po-label">Quantity Ordered</div><input class="form-control po-input" type="number" step="0.01" min="0"
-              name="required_portions" value="0" required>
+            <div class="po-label">Quantity Ordered</div><input class="form-control po-input" type="number" step="0.01"
+              min="0" name="required_portions" value="0" required>
           </div>
           <div><button type="button" class="po-btn po-danger" onclick="removeLine(this)">X</button></div>
         </div>
@@ -253,12 +256,19 @@
         href="/production/orders?status=process">In Process</a><a class="filter-chip" href="/production/orders">All</a>
     </div>
     <form method="get" class="isfc-filter-line mb-3">
-      <div><label class="po-label">From Order Date</label><input type="date" class="form-control po-input" name="date_from" value="{{ filters.date_from or '' }}"></div>
-      <div><label class="po-label">To Order Date</label><input type="date" class="form-control po-input" name="date_to" value="{{ filters.date_to or '' }}"></div>
+      <div><label class="po-label">From Order Date</label><input type="date" class="form-control po-input"
+          name="date_from" value="{{ filters.date_from or '' }}"></div>
+      <div><label class="po-label">To Order Date</label><input type="date" class="form-control po-input" name="date_to"
+          value="{{ filters.date_to or '' }}"></div>
       <div><label class="po-label">Status</label><select class="form-control po-input" name="status">
-          <option value="">All Status</option>{% for st in ['Submitted','Head Chef Approved','BOM Generated','Store Pending','In Production','QC In Progress','Packing Pending','Packed','Out for Delivery','Dispatched'] %}<option value="{{ st }}" {% if filters.status==st %}selected{% endif %}>{{ st }}</option>{% endfor %}<option value="pending" {% if filters.status=='pending' %}selected{% endif %}>Pending Group</option><option value="process" {% if filters.status=='process' %}selected{% endif %}>Process Group</option>
+          <option value="">All Status</option>{% for st in ['Submitted','Head Chef Approved','BOM Generated','Store
+          Pending','In Production','QC In Progress','Packing Pending','Packed','Out for Delivery','Dispatched'] %}
+          <option value="{{ st }}" {% if filters.status==st %}selected{% endif %}>{{ st }}</option>{% endfor %}<option
+            value="pending" {% if filters.status=='pending' %}selected{% endif %}>Pending Group</option>
+          <option value="process" {% if filters.status=='process' %}selected{% endif %}>Process Group</option>
         </select></div>
-      <div><label class="po-label">Quick Search</label><input class="po-input" id="orderSearch" placeholder="Search order, customer, brand, status..." onkeyup="filterTable()"></div>
+      <div><label class="po-label">Quick Search</label><input class="po-input" id="orderSearch"
+          placeholder="Search order, customer, brand, status..." onkeyup="filterTable()"></div>
       <button class="po-btn po-primary w-100 filter-submit">Filter</button>
     </form>
     <div class="table-responsive">

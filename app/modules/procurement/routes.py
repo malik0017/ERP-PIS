@@ -26,7 +26,7 @@ from app.core.rbac import require_area, require_action
 from app.core.company import get_current_company_id
 from app.database.session import get_db
 # Batch 23: shared, legacy-aware stock ledger writer (see app/core/stock_ledger.py)
-from app.core.stock_ledger import post_stock_movement
+from app.core.stock_ledger import post_stock_movement, ensure_qc_status_column
 from app.core.gl_posting import post_grn_journal  # Batch 69: GRN → GL
 
 router = APIRouter(prefix="/procurement", tags=["Procurement"])
@@ -47,6 +47,78 @@ def _next_no(db: Session, table: str, col: str, prefix: str) -> str:
     ), {"p": f"{prefix}-{today}-%"}).first()
     seq = int(row[0].rsplit("-", 1)[-1]) + 1 if row else 1
     return f"{prefix}-{today}-{seq:04d}"
+
+
+def _ensure_supplier_rating_schema(db: Session) -> None:
+    """Batch 95 — supplier performance rating. Deliberately raw SQL only,
+    not added to the Supplier ORM model at all: this codebase learned the
+    hard way (Batch 89) that adding a column to a model without every
+    caller knowing to migrate first breaks every OTHER route that touches
+    that table via the ORM. Since ratings are only ever read/written
+    through this module's own raw SQL, that whole risk class doesn't
+    apply here — the ORM never needs to know this column exists.
+    """
+    try:
+        exists = db.execute(text("""
+            SELECT COUNT(*) FROM information_schema.columns
+            WHERE table_schema = DATABASE() AND table_name = 'suppliers' AND column_name = 'rating'
+        """)).scalar()
+        if not exists:
+            db.execute(text("""
+                ALTER TABLE suppliers
+                ADD COLUMN rating TINYINT NULL,
+                ADD COLUMN rating_notes VARCHAR(500) NULL,
+                ADD COLUMN rating_updated_by VARCHAR(120) NULL,
+                ADD COLUMN rating_updated_at DATETIME NULL
+            """))
+            db.commit()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+
+
+@router.get("/suppliers/ratings")
+def supplier_ratings(request: Request, db: Session = Depends(get_db)):
+    require_area(request, "procurement")
+    _ensure_supplier_rating_schema(db)
+    cid = _cid(request)
+    rows = db.execute(text("""
+        SELECT s.supplier_code, s.supplier_name, s.category, s.rating, s.rating_notes,
+               s.rating_updated_by, s.rating_updated_at,
+               COUNT(DISTINCT po.po_no) AS po_count,
+               ROUND(COALESCE(SUM(po.total_value), 0), 2) AS total_value,
+               SUM(CASE WHEN po.status IN ('Received') AND po.expected_date IS NOT NULL
+                        AND EXISTS (SELECT 1 FROM grn_receipts g WHERE g.po_no = po.po_no AND g.received_date <= po.expected_date)
+                   THEN 1 ELSE 0 END) AS on_time_count
+        FROM suppliers s
+        LEFT JOIN purchase_orders po ON po.supplier_name = s.supplier_name AND (po.company_id = :cid OR po.company_id IS NULL)
+        WHERE (s.company_id = :cid OR s.company_id IS NULL)
+        GROUP BY s.supplier_code, s.supplier_name, s.category, s.rating, s.rating_notes, s.rating_updated_by, s.rating_updated_at
+        ORDER BY s.rating DESC, total_value DESC
+    """), {"cid": cid}).mappings().all()
+    return render(request, "procurement/supplier_ratings.html", {"rows": rows, "page_title": "Supplier Ratings"})
+
+
+@router.post("/suppliers/{supplier_code}/rating")
+async def update_supplier_rating(request: Request, supplier_code: str, db: Session = Depends(get_db)):
+    require_action(request, "procurement", "edit")
+    _ensure_supplier_rating_schema(db)
+    form = await request.form()
+    try:
+        rating = int(form.get("rating") or 0)
+    except ValueError:
+        rating = 0
+    if rating < 1 or rating > 5:
+        return RedirectResponse("/procurement/suppliers/ratings?toast=warning&title=Invalid Rating&msg=Choose 1 to 5 stars", status_code=303)
+    db.execute(text("""
+        UPDATE suppliers SET rating = :r, rating_notes = :notes, rating_updated_by = :by, rating_updated_at = NOW()
+        WHERE supplier_code = :code AND (company_id = :cid OR company_id IS NULL)
+    """), {"r": rating, "notes": (form.get("notes") or "").strip() or None, "by": _user(request),
+           "code": supplier_code, "cid": _cid(request)})
+    db.commit()
+    return RedirectResponse("/procurement/suppliers/ratings?toast=success&title=Rating Saved&msg=Supplier rating updated", status_code=303)
 
 
 def _ensure_procurement_schema(db: Session) -> None:
@@ -128,9 +200,6 @@ async def po_register(request: Request, db: Session = Depends(get_db)):
     status_f = (q.get("status") or "").strip()
     search = (q.get("search") or "").strip()
     extra, params = "", {}
-    # Batch 78 fix: purchase_orders has a company_id column that was stamped
-    # on every insert but never actually filtered on read — every company's
-    # POs showed up together on this register.
     cid = _cid(request)
     extra += " AND (po.company_id = :cid OR po.company_id IS NULL)"
     params["cid"] = cid
@@ -143,7 +212,7 @@ async def po_register(request: Request, db: Session = Depends(get_db)):
         FROM purchase_orders po WHERE 1=1 {extra} ORDER BY po.id DESC LIMIT 300
     """), params).mappings().all()
     suppliers = db.execute(text(
-        "SELECT supplier_code, supplier_name FROM suppliers ORDER BY supplier_name LIMIT 1000"
+        "SELECT supplier_code, supplier_name, rating FROM suppliers ORDER BY COALESCE(rating,0) DESC, supplier_name LIMIT 1000"
     )).mappings().all()
     summary = {
         "open": sum(1 for p in pos if p["status"] == "Open"),
@@ -157,7 +226,6 @@ async def po_register(request: Request, db: Session = Depends(get_db)):
         "status_options": ["Open", "Partially Received", "Received", "Closed"],
         "page_title": "Procurement - Purchase Orders",
     })
-
 
 @router.post("/po/create")
 async def create_po(
@@ -286,11 +354,8 @@ async def po_detail(request: Request, po_no: str, db: Session = Depends(get_db))
         GROUP BY g.grn_no, g.received_date, g.received_by, g.remarks
         ORDER BY MAX(g.id) DESC
     """), {"p": po_no}).mappings().all()
-    # Batch 90 fix: Supplier used to be a plain free-text box, not linked
-    # to anything. Now a real searchable dropdown of the actual supplier
-    # master, same pattern used for Customer/Recipe elsewhere.
     suppliers = db.execute(text(
-        "SELECT supplier_code, supplier_name FROM suppliers WHERE (company_id = :cid OR company_id IS NULL) ORDER BY supplier_name LIMIT 1000"
+        "SELECT supplier_code, supplier_name, rating FROM suppliers WHERE (company_id = :cid OR company_id IS NULL) ORDER BY COALESCE(rating,0) DESC, supplier_name LIMIT 1000"
     ), {"cid": _cid(request)}).mappings().all()
     return render(request, "procurement/po_detail.html", {
         "po": po, "lines": lines, "grns": grns, "suppliers": suppliers, "page_title": f"PO {po_no}",
@@ -302,6 +367,7 @@ async def po_receive(request: Request, po_no: str, db: Session = Depends(get_db)
     """Post a GRN against this PO and write GRN_IN stock movements."""
     require_action(request, "procurement", "edit")
     _ensure_procurement_schema(db)
+    ensure_qc_status_column(db)
     form = await request.form()
     po = db.execute(text(
         "SELECT * FROM purchase_orders WHERE po_no = :p AND (company_id = :cid OR company_id IS NULL)"
@@ -314,6 +380,21 @@ async def po_receive(request: Request, po_no: str, db: Session = Depends(get_db)
     recv_prices = form.getlist("receive_price")  # Batch 88: optional price override at receiving
     grn_no = _next_no(db, "grn_receipts", "grn_no", "GRN")
     cid = _cid(request)
+
+    from app.modules.qc.sampling import decide as _qc_sample_decide
+    _sample_codes: list[str] = []
+    for _i, _lid in enumerate(line_ids):
+        try:
+            if float(recv_qtys[_i] or 0) <= 0:
+                continue
+        except (ValueError, IndexError):
+            continue
+        _l = db.execute(text("SELECT inventory_code FROM purchase_order_lines WHERE id = :i"),
+                        {"i": int(_lid)}).first()
+        if _l and _l[0]:
+            _sample_codes.append(_l[0])
+    grn_qc_status, grn_qc_reason = _qc_sample_decide(
+        db, company_id=cid, supplier_name=po["supplier_name"] or "", inventory_codes=_sample_codes)
     posted = 0
     grn_value = 0.0  # Batch 69: accumulate received value for the GL journal
     ledger_failures: list[str] = []  # Batch 23: surface ledger problems, never hide them
@@ -328,11 +409,7 @@ async def po_receive(request: Request, po_no: str, db: Session = Depends(get_db)
         line = db.execute(text("SELECT * FROM purchase_order_lines WHERE id = :i"), {"i": int(lid)}).mappings().first()
         if not line:
             continue
-        # Batch 88: if the person receiving typed a different price (the
-        # actual supplier invoice, which can genuinely differ from what
-        # the PO originally estimated), that becomes the real cost —
-        # for this GRN, for the stock ledger, and for the PO line itself
-        # going forward — rather than silently keeping the stale estimate.
+
         po_price = float(line["unit_price"] or 0)
         actual_price = po_price
         if i < len(recv_prices) and recv_prices[i] not in ("", None):
@@ -351,13 +428,7 @@ async def po_receive(request: Request, po_no: str, db: Session = Depends(get_db)
             "UPDATE purchase_order_lines SET received_qty = COALESCE(received_qty,0) + :q, "
             "unit_price = :pr, line_value = ordered_qty * :pr WHERE id = :i"
         ), {"q": qty, "pr": actual_price, "i": int(lid)})
-        # ---- THE REAL STOCK MOVEMENT (GRN_IN in the ledger) ----
-        # Batch 23 FIX: this used to INSERT only the NEW column names inside a
-        # bare `except: pass`. On databases where inventory_transactions still
-        # has the LEGACY NOT NULL columns (transaction_no / ingredient_code /
-        # ingredient_name / transaction_type) the INSERT was rejected and the
-        # error was swallowed — the PO went to "RECEIVED" while stock stayed 0.
-        # post_stock_movement() fills legacy AND new columns and reports failure.
+ 
         ok = post_stock_movement(
             db,
             company_id=cid,
@@ -371,19 +442,14 @@ async def po_receive(request: Request, po_no: str, db: Session = Depends(get_db)
             remarks=f"GRN against {po_no}",
             created_by=_user(request),
             lot_no=form.get("lot_no") or "",
-            to_location="Main Store",
+            to_location=("QC Hold" if grn_qc_status == "Pending" else "Main Store"),
+            qc_status=grn_qc_status,  # Batch 94: sampling verdict, not hard-coded
         )
         if not ok:
             ledger_failures.append(line["inventory_code"])
         grn_value += qty * actual_price  # Batch 69
         posted += 1
 
-    # Batch 88: "the supplier sent something not on the PO at all" — an
-    # optional extra line, added and received in this same GRN. Creates a
-    # real purchase_order_lines row (ordered_qty=0, so it never shows up
-    # as "outstanding" against the original plan) purely so the GRN and
-    # stock ledger have somewhere consistent to point back to, exactly
-    # like every other line.
     extra_code = (form.get("extra_inventory_code") or "").strip()
     extra_qty_raw = form.get("extra_qty") or ""
     if extra_code and extra_qty_raw:
@@ -415,7 +481,9 @@ async def po_receive(request: Request, po_no: str, db: Session = Depends(get_db)
                 db, company_id=cid, inventory_code=extra_code, item_name=extra_name, uom=extra_uom,
                 qty=extra_qty, movement_type="GRN_IN", reference_no=grn_no, unit_cost=extra_price,
                 remarks=f"GRN against {po_no} — not on original PO", created_by=_user(request),
-                lot_no=form.get("lot_no") or "", to_location="Main Store",
+                lot_no=form.get("lot_no") or "",
+                to_location=("QC Hold" if grn_qc_status == "Pending" else "Main Store"),
+                qc_status=grn_qc_status,
             )
             if not ok:
                 ledger_failures.append(extra_code)
@@ -430,6 +498,14 @@ async def po_receive(request: Request, po_no: str, db: Session = Depends(get_db)
         VALUES (:cid, :grn, :po, :sn, CURDATE(), 'Posted', :rb, :rm)
     """), {"cid": cid, "grn": grn_no, "po": po_no, "sn": po["supplier_name"],
            "rb": _user(request), "rm": form.get("remarks") or ""})
+    if grn_qc_status != "Pending":
+        try:
+            from app.modules.qc.sampling import record_auto_release
+            record_auto_release(db, company_id=cid, grn_no=grn_no, po_no=po_no,
+                                supplier_name=po["supplier_name"] or "",
+                                reason=grn_qc_reason, by=_user(request))
+        except Exception:
+            pass
 
     open_lines = db.execute(text("""
         SELECT SUM(CASE WHEN COALESCE(received_qty,0) >= COALESCE(ordered_qty,0) THEN 0 ELSE 1 END)
@@ -438,23 +514,10 @@ async def po_receive(request: Request, po_no: str, db: Session = Depends(get_db)
     new_status = "Received" if int(open_lines) == 0 else "Partially Received"
     db.execute(text("UPDATE purchase_orders SET status = :s WHERE po_no = :p"), {"s": new_status, "p": po_no})
     db.commit()
-
-    # Batch 69: auto-post the GRN to the GL — Dr 1130 Inventory / Cr 2200 GR accrual.
-    # This is the inventory→GL bridge that was missing, so stock value now feeds
-    # the P&L/Balance Sheet. Idempotent per GRN; never blocks the receive.
     try:
         post_grn_journal(db, request, grn_no, grn_value, supplier=po["supplier_name"] or "")
     except Exception:
         pass
-
-    # Batch 92 fix: this was the actual reason AP Aging always showed
-    # "no open items" no matter how much had genuinely been received —
-    # a GRN posted stock and the GL journal, but never created the AP
-    # invoice that represents actually owing the supplier for it. There
-    # was never any data for AP Aging to show, not a bug in that report
-    # itself. Auto-creates a real, Open AP invoice for this GRN's value,
-    # using the exact same logic (and account postings) the manual "New
-    # A/R Invoice"-style AP form already used correctly.
     try:
         if grn_value and float(grn_value) > 0 and po["supplier_name"] and po["supplier_name"] != "Unassigned Supplier":
             from app.modules.finance.routes import create_ap_invoice_core
@@ -464,10 +527,7 @@ async def po_receive(request: Request, po_no: str, db: Session = Depends(get_db)
                 amount=float(grn_value), remarks=f"Auto-created on GRN {grn_no}",
             )
     except Exception:
-        pass  # never block a successful goods receipt over the AP-invoice step
-
-    # Batch 23: if any line failed to reach the stock ledger, SAY SO. Previously
-    # this always reported success even when zero stock had actually moved.
+        pass 
     if ledger_failures:
         bad = ", ".join(ledger_failures[:5])
         return RedirectResponse(
@@ -481,24 +541,7 @@ async def po_receive(request: Request, po_no: str, db: Session = Depends(get_db)
 
 
 # ============================================================================
-# Batch 26 — PO CLOSE / REOPEN  (Oracle & SAP B1 style document control)
-# ----------------------------------------------------------------------------
-# In Oracle Purchasing and SAP B1 a buyer can CLOSE a purchase order manually,
-# even when it was never fully received. Typical reasons:
-#   * the supplier short-shipped and will not send the remainder
-#   * the balance is no longer needed
-#   * the PO was raised in error
-#
-# A closed PO stops appearing in the "open commitments" list and can no longer
-# receive a GRN, but all its history (lines, GRNs, stock movements, journals)
-# is preserved — closing is NOT deleting.
-#
-# Statuses:
-#   Open               awaiting receipt
-#   Partially Received some lines received
-#   Received           fully received
-#   Closed             manually closed; no further GRN allowed
-#   Cancelled          voided before any receipt
+#  PO CLOSE / REOPEN  (document control)
 # ============================================================================
 @router.post("/po/{po_no}/status")
 async def set_po_status(request: Request, po_no: str, db: Session = Depends(get_db)):
@@ -520,8 +563,7 @@ async def set_po_status(request: Request, po_no: str, db: Session = Depends(get_
     if not po:
         return RedirectResponse("/procurement?error=PO not found", status_code=303)
 
-    # Cancelling is only safe before ANY goods were received — otherwise stock
-    # already moved and the document must be Closed, not voided.
+    
     if new_status == "Cancelled":
         received = db.execute(text(
             "SELECT COALESCE(SUM(COALESCE(received_qty,0)),0) FROM purchase_order_lines WHERE po_no = :p"
@@ -532,8 +574,6 @@ async def set_po_status(request: Request, po_no: str, db: Session = Depends(get_
                 f"Use Close instead so stock history is preserved.",
                 status_code=303)
 
-    # Re-opening recomputes the true status from the received quantities so we
-    # never re-open into a misleading state.
     if new_status == "Open":
         open_lines = db.execute(text("""
             SELECT SUM(CASE WHEN COALESCE(received_qty,0) >= COALESCE(ordered_qty,0) THEN 0 ELSE 1 END)

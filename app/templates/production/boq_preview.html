@@ -1,0 +1,194 @@
+{% extends "layouts/base.html" %}
+{% block title %}{{ t('Bill of Quantity') }}{% endblock %}
+{% block content %}
+{% set qs = 'date_from=' ~ (filters.date_from or '') ~ '&date_to=' ~ (filters.date_to or '')
+            ~ '&customer=' ~ (filters.customer or '') ~ '&order_no=' ~ (filters.order_no or '')
+            ~ '&brand=' ~ (filters.brand or '') %}
+<div class="container-fluid py-3 isfc-page">
+
+  <div class="isfc-hero mb-4 p-4 rounded-4 text-white d-flex justify-content-between align-items-center flex-wrap gap-3"
+       style="background:linear-gradient(135deg,#132947,#0c91a3)">
+    <div>
+      <h1 class="mb-1 fw-bold text-white"><i class="bi bi-list-check me-2"></i>{{ t('Bill of Quantity') }}</h1>
+      <p class="mb-0 opacity-75">
+        {{ t('Consolidated material requirement across every order in the filter — expected wastage included.') }}</p>
+    </div>
+    <div class="d-flex gap-2">
+      <a class="btn btn-light" href="/production/boq/export?{{ qs }}">
+        <i class="bi bi-file-earmark-excel me-1"></i>{{ t('Download Excel') }}</a>
+      <a class="btn btn-phoenix-secondary" href="/production/head-chef">{{ t('Back') }}</a>
+    </div>
+  </div>
+
+  <div class="card border mb-4"><div class="card-body">
+    {# Batch 106: real pickers. These were free-text boxes matched against data
+       the user cannot see — typing "Ma'una" when the record says
+       "Ma'una Foundation (FRSH)" silently returned nothing, which looks
+       exactly like "no orders match". Options come from orders that could
+       actually appear in a BOQ, so every choice returns at least one row. #}
+    <form method="get" action="/production/boq/preview" class="row g-2 align-items-end">
+      <div class="col-md-2">
+        <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('Delivery From') }}</label>
+        <input type="date" name="date_from" value="{{ filters.date_from }}" class="form-control form-control-sm">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('Delivery To') }}</label>
+        <input type="date" name="date_to" value="{{ filters.date_to }}" class="form-control form-control-sm">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('Customer') }}</label>
+        <input name="customer" value="{{ filters.customer }}" list="boqCustomers" autocomplete="off"
+               class="form-control form-control-sm" placeholder="{{ t('Any — type to search') }}">
+        <datalist id="boqCustomers">
+          {% for c in pick.customers %}<option value="{{ c }}"></option>{% endfor %}
+        </datalist>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('Order No') }}</label>
+        <input name="order_no" value="{{ filters.order_no }}" list="boqOrders" autocomplete="off"
+               class="form-control form-control-sm" placeholder="{{ t('Any') }}">
+        <datalist id="boqOrders">
+          {% for o in pick.orders %}<option value="{{ o }}"></option>{% endfor %}
+        </datalist>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('Brand') }}</label>
+        <input name="brand" value="{{ filters.brand }}" list="boqBrands" autocomplete="off"
+               class="form-control form-control-sm" placeholder="{{ t('Any') }}">
+        <datalist id="boqBrands">
+          {% for b in pick.brands %}<option value="{{ b }}"></option>{% endfor %}
+        </datalist>
+      </div>
+      <div class="col-md-1 d-flex gap-1">
+        <button class="btn btn-primary btn-sm w-100"><i class="bi bi-search"></i></button>
+      </div>
+      <div class="col-12">
+        <a href="/production/boq/preview" class="btn btn-link btn-sm px-0">{{ t('Clear filters') }}</a>
+      </div>
+    </form>
+  </div></div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-lg-3"><div class="card border h-100"><div class="card-body">
+      <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Ingredients') }}</div>
+      <div class="fs-3 fw-bold">{{ totals.ingredients }}</div></div></div></div>
+    <div class="col-6 col-lg-3"><div class="card border h-100"><div class="card-body">
+      <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Orders Covered') }}</div>
+      <div class="fs-3 fw-bold text-info">{{ totals.orders }}</div></div></div></div>
+    <div class="col-6 col-lg-3"><div class="card border h-100"><div class="card-body">
+      <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Est. Material Value') }}</div>
+      <div class="fs-3 fw-bold text-success">{{ '%.2f'|format(totals.value) }}</div></div></div></div>
+    <div class="col-6 col-lg-3"><div class="card border h-100"><div class="card-body">
+      <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Sections') }}</div>
+      <div class="fs-3 fw-bold">{{ totals.sections|length }}</div></div></div></div>
+  </div>
+
+  {% if not rows %}
+  <div class="alert alert-subtle-warning">
+    <i class="bi bi-exclamation-triangle me-1"></i>
+    <strong>{{ t('Nothing to show for this filter.') }}</strong>
+    {{ t('A BOQ is built from generated BOM lines — orders that have not reached BOM generation yet will not appear here.') }}
+  </div>
+  {% else %}
+
+  <ul class="nav nav-tabs mb-3" role="tablist">
+    <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tabPick" type="button">
+      <i class="bi bi-basket me-1"></i>{{ t('Consolidated Pick List') }}</button></li>
+    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabOrder" type="button">
+      {{ t('By Order') }}</button></li>
+    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabCust" type="button">
+      {{ t('By Customer') }}</button></li>
+  </ul>
+
+  <div class="tab-content">
+    <div class="tab-pane fade show active" id="tabPick">
+      <div class="card border">
+        <div class="card-header bg-body-highlight fw-bold d-flex justify-content-between align-items-center">
+          <span>{{ t('What to pull from the store') }}</span>
+          <span class="fs-9 text-body-tertiary">{{ t('One line per ingredient, wastage included') }}</span>
+        </div>
+        <div class="card-body p-0"><div class="table-responsive">
+          <table class="table table-sm table-hover mb-0" data-isfc-table>
+            <thead class="bg-body-highlight"><tr>
+              <th>{{ t('Section') }}</th><th>{{ t('Storage') }}</th><th>{{ t('Item') }}</th>
+              <th class="text-end">{{ t('Required') }}</th><th>{{ t('UOM') }}</th>
+              <th class="text-end">{{ t('Orders') }}</th><th class="text-end">{{ t('Est. Value') }}</th>
+            </tr></thead>
+            <tbody>
+              {% for r in rows %}
+              <tr>
+                <td class="fs-9">{{ r.section or '—' }}</td>
+                <td class="fs-9">
+                  {% if r.storage_type %}
+                  <span class="badge badge-phoenix badge-phoenix-{{ 'info' if 'CHILL' in (r.storage_type|upper) or 'FROZ' in (r.storage_type|upper) else 'secondary' }}">
+                    {{ r.storage_type }}</span>
+                  {% else %}—{% endif %}
+                </td>
+                <td><span class="fw-bold">{{ r.ingredient_code }}</span>
+                  <div class="small-muted">{{ r.item_name }}</div></td>
+                <td class="text-end fw-bold">{{ '%.3f'|format(r.required_qty or 0) }}</td>
+                <td class="fs-9">{{ r.uom }}</td>
+                <td class="text-end">{{ r.order_count }}</td>
+                <td class="text-end">{{ '%.2f'|format((r.required_qty or 0) * (r.unit_cost or 0)) }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div></div>
+      </div>
+    </div>
+
+    <div class="tab-pane fade" id="tabOrder">
+      <div class="card border"><div class="card-body p-0"><div class="table-responsive">
+        <table class="table table-sm mb-0" data-isfc-table>
+          <thead class="bg-body-highlight"><tr>
+            <th>{{ t('Delivery') }}</th><th>{{ t('Order') }}</th><th>{{ t('Customer') }}</th>
+            <th>{{ t('Recipe') }}</th><th>{{ t('Item') }}</th>
+            <th class="text-end">{{ t('Required') }}</th><th>{{ t('UOM') }}</th>
+          </tr></thead>
+          <tbody>
+            {% for r in order_rows %}
+            <tr>
+              <td class="fs-9">{{ r.delivery_date or '—' }}</td>
+              <td class="fw-bold fs-9">{{ r.order_no }}</td>
+              <td class="fs-9">{{ r.customer_name }}</td>
+              <td class="fs-9">{{ r.recipe_no }}</td>
+              <td class="fs-9">{{ r.item_name }}</td>
+              <td class="text-end">{{ '%.3f'|format(r.required_qty or 0) }}</td>
+              <td class="fs-9">{{ r.uom }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div></div>
+      {% if order_rows|length >= 500 %}
+      <div class="card-footer bg-body-highlight fs-9 text-body-tertiary">
+        {{ t('Showing the first 500 lines — the Excel download contains everything.') }}</div>
+      {% endif %}
+      </div>
+    </div>
+
+    <div class="tab-pane fade" id="tabCust">
+      <div class="card border"><div class="card-body p-0"><div class="table-responsive">
+        <table class="table table-sm mb-0" data-isfc-table>
+          <thead class="bg-body-highlight"><tr>
+            <th>{{ t('Customer') }}</th><th class="text-end">{{ t('Orders') }}</th>
+            <th class="text-end">{{ t('Ingredients') }}</th><th class="text-end">{{ t('Total Qty') }}</th>
+          </tr></thead>
+          <tbody>
+            {% for c in customers_summary %}
+            <tr>
+              <td class="fw-bold">{{ c.customer }}</td>
+              <td class="text-end">{{ c.orders }}</td>
+              <td class="text-end">{{ c.items }}</td>
+              <td class="text-end">{{ '%.3f'|format(c.qty) }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div></div></div>
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

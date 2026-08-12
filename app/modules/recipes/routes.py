@@ -875,7 +875,7 @@ def activate_recipe(
     recipe.status = "ACTIVE"
     recipe.is_active = True
     db.commit()
-    return RedirectResponse(url=f"/recipes/{recipe_id}?toast=success&title=Activated&msg=Recipe is active again", status_code=303)
+    return RedirectResponse(url=f"/recipes/{recipe_id}", status_code=303)
 
 
 def _recipe_for_export(recipe_id: int, db: Session, current_user):

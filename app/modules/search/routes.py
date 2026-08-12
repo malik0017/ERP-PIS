@@ -14,9 +14,71 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.templates import render
+from app.core.rbac import can_access
 from app.database.session import get_db
 
 router = APIRouter(prefix="/search", tags=["Search"])
+
+
+# ---------------------------------------------------------------------------
+# Batch 98 — SEARCH MUST RESPECT MODULE ACCESS, not just company.
+#
+# Batch 81 fixed company scoping here, so a user could no longer find another
+# company's records. What it did not fix is that search ignored RBAC entirely
+# WITHIN a company: a kitchen-section user with no procurement and no finance
+# access could type a supplier name into the global search box and get back
+# purchase orders, GRNs, AP invoices and payment records, complete with
+# supplier names and amounts.
+#
+# The links 403'd when clicked — but the search results themselves already
+# leaked the information (who the suppliers are, what was ordered, what was
+# paid). Enumerating a company's supplier list through a search box is a
+# disclosure whether or not the detail page opens.
+#
+# Each result type is mapped to the RBAC area that owns it, and results are
+# filtered to what the caller can actually access. Types with no entry are
+# treated as unrestricted (pages, recipes, orders) — deliberately explicit so
+# adding a new result type without a mapping fails open on low-sensitivity
+# data rather than silently hiding legitimate results.
+# ---------------------------------------------------------------------------
+RESULT_TYPE_AREA = {
+    "Order":      "production_orders",
+    "Production": "production_orders",
+    "Recipe":     "recipes",
+    "Inventory":  "inventory_valuation",
+    "PO":         "procurement",
+    "GRN":        "procurement",
+    "AR":         "finance",
+    "AP":         "finance",
+    "Payment":    "finance",
+    "Customer":   "master_data",
+    "Supplier":   "procurement",
+    "Chef":       "master_data",
+    "Brand":      "master_data",
+    "Employee":   "hr",
+    "Requisition": "purchase_requisition",
+}
+
+
+def _filter_by_access(request: Request, results: list[dict]) -> list[dict]:
+    """Drop any result whose owning module the caller cannot access."""
+    allowed: dict[str, bool] = {}
+    out = []
+    for r in results:
+        area = RESULT_TYPE_AREA.get(r.get("type"))
+        if not area:
+            out.append(r)
+            continue
+        if area not in allowed:
+            try:
+                allowed[area] = bool(can_access(request, area))
+            except Exception:
+                # Fail CLOSED on a mapped (sensitive) type — if the access
+                # check itself errors, do not show the row.
+                allowed[area] = False
+        if allowed[area]:
+            out.append(r)
+    return out
 
 
 def _rows(db: Session, sql: str, params: dict | None = None) -> list[dict]:
@@ -66,7 +128,7 @@ def _page_results(q: str) -> list[dict]:
     return [{"type":"Page", "title":p[0], "subtitle":p[2], "url":p[1], "meta":"Screen"} for p in pages if ql in p[0].lower() or ql in p[2].lower()]
 
 
-def build_results(db: Session, q: str, cid: int, limit: int = 8) -> list[dict]:
+def build_results(db: Session, q: str, cid: int, limit: int = 8, request: Request | None = None) -> list[dict]:
     q = (q or "").strip()
     if not q:
         return []
@@ -196,6 +258,12 @@ def build_results(db: Session, q: str, cid: int, limit: int = 8) -> list[dict]:
         key=(x.get("type"), x.get("title"), x.get("url"))
         if key not in seen:
             seen.add(key); clean.append(x)
+
+    # Batch 98: apply module-access filtering LAST, so it covers every result
+    # type including any added later. Filtering inside each query block would
+    # mean a new block could be written without the check and nobody notices.
+    if request is not None:
+        clean = _filter_by_access(request, clean)
     return clean[:50]
 
 
@@ -208,14 +276,14 @@ def _cid(request: Request) -> int:
 
 @router.get("/api")
 def global_search_api(request: Request, q: str = "", db: Session = Depends(get_db)):
-    results = build_results(db, q, _cid(request), limit=6)
+    results = build_results(db, q, _cid(request), limit=6, request=request)
     return JSONResponse({"q": q, "total": len(results), "results": results[:20]})
 
 
 @router.get("")
 async def global_search(request: Request, db: Session = Depends(get_db)):
     q = (request.query_params.get("q") or "").strip()
-    results = build_results(db, q, _cid(request), limit=12)
+    results = build_results(db, q, _cid(request), limit=12, request=request)
     groups = []
     by_type: dict[str, list[dict]] = {}
     for r in results:

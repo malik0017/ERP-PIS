@@ -59,7 +59,9 @@
 
     <div class="card border shadow-none p-3">
       <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-        <div><h4 class="mb-0">Module / Page Access Matrix</h4><small class="text-secondary">Grouped by business area. Use the group toggles to grant a whole area at once.</small></div>
+        <div><h4 class="mb-0">Module / Page Access Matrix</h4>
+          <small class="text-secondary">Grouped by business area. Use the group toggles to grant a whole area at once.
+          Showing <strong>{{ modules|length }}</strong> areas — every access-controlled screen in the system.</small></div>
         <div class="d-flex gap-2">
           <button type="button" class="btn btn-phoenix-secondary btn-sm" onclick="toggleAll('pages',true)">Grant View to All</button>
           <button type="button" class="btn btn-phoenix-secondary btn-sm" onclick="toggleAll('pages',false)">Clear All View</button>
@@ -68,17 +70,28 @@
       </div>
 
       {# ----- group definitions (area key -> which group) ----- #}
+      {# Batch 96: groups extended with every area that was previously missing
+         (sales_review, purchase_requisition, immediate_order, subscriptions,
+         the parent areas and the project sub-areas). A catch-all group is
+         appended below so an area can never again be invisible just because
+         nobody added it to this hardcoded list. #}
       {% set GROUPS = [
-        ('Sales & Orders', 'cart', ['order_portal','customer_portal','production_orders']),
-        ('Production & Kitchen', 'activity', ['dashboard','head_chef','bom','store_issuance','kitchen_summary','section_cutting','section_butchery','section_hot_kitchen','section_cold_kitchen','section_bakery_pastry','qc','packing','dispatch']),
-        ('Recipes', 'journal-text', ['recipe_list','recipe_prepare','recipe_missing','recipe_approvals']),
-        ('Procurement', 'bag', ['procurement']),
+        ('Sales & Orders', 'cart', ['orders','order_portal','immediate_order','sales_review','customer_portal','production_orders','subscriptions']),
+        ('Production & Kitchen', 'activity', ['dashboard','head_chef','bom','store','store_issuance','kitchen','kitchen_summary','section_cutting','section_butchery','section_hot_kitchen','section_cold_kitchen','section_bakery_pastry','qc','packing','dispatch']),
+        ('Recipes', 'journal-text', ['recipes','recipe_list','recipe_prepare','recipe_missing','recipe_approvals']),
+        ('Procurement', 'bag', ['purchase_requisition','procurement']),
         ('Inventory', 'box-seam', ['inventory_valuation']),
         ('Finance', 'cash-coin', ['finance']),
-        ('Reports & Data', 'bar-chart-line', ['reports','relationship','master_upload','master_data']),
-        ('Projects & HR', 'people', ['project_management','hr']),
+        ('Reports & Data', 'bar-chart-line', ['reports','relationship','masters','master_upload','master_data','master_approvals']),
+        ('Projects & HR', 'people', ['project_management','project_list','project_detail','project_team','project_timeline','hr']),
         ('Administration', 'shield-lock', ['module_home','settings','users','audit'])
       ] %}
+      {# Any area present in the matrix but not claimed by a group above. #}
+      {% set _grouped = [] %}
+      {% for _g, _i, _keys in GROUPS %}{% for _k in _keys %}{% set _ = _grouped.append(_k) %}{% endfor %}{% endfor %}
+      {% set _ungrouped = [] %}
+      {% for key, label, desc in modules %}{% if key not in _grouped %}{% set _ = _ungrouped.append(key) %}{% endif %}{% endfor %}
+      {% if _ungrouped %}{% set GROUPS = GROUPS + [('Other / Newly Added', 'plus-square', _ungrouped)] %}{% endif %}
       {% set MOD = {} %}
       {% for key, label, desc in modules %}{% set _ = MOD.update({key: (label, desc)}) %}{% endfor %}
 

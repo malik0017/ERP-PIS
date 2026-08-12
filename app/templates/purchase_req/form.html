@@ -1,0 +1,132 @@
+{% extends "layouts/base.html" %}
+{% block title %}{{ t('New Purchase Requisition') }}{% endblock %}
+{% block content %}
+<div class="container-fluid py-3 isfc-page">
+
+  <div class="isfc-hero mb-4 p-4 rounded-4 text-white"
+       style="background:linear-gradient(135deg,#132947,#0c91a3)">
+    <h1 class="mb-1 fw-bold text-white"><i class="bi bi-file-earmark-plus me-2"></i>{{ t('New Purchase Requisition') }}</h1>
+    <p class="mb-0 opacity-75">
+      {{ t('Request items you need. Procurement reviews and prices it before any purchase order is raised.') }}</p>
+  </div>
+
+  <form method="post" action="/purchase-requisitions/new" id="prForm">
+    <div class="card border mb-3">
+      <div class="card-body">
+        <div class="row g-3">
+          <div class="col-md-4">
+            <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary">{{ t('Department') }}</label>
+            <input name="department" class="form-control form-control-sm"
+                   placeholder="{{ t('e.g. Hot Kitchen, Store, Bakery') }}">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary">{{ t('Needed By') }}</label>
+            <input type="date" name="required_date" class="form-control form-control-sm">
+          </div>
+          <div class="col-md-5">
+            <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary">{{ t('Justification') }}</label>
+            <input name="justification" class="form-control form-control-sm"
+                   placeholder="{{ t('Why is this needed?') }}">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card border mb-3">
+      <div class="card-header bg-body-highlight fw-bold d-flex justify-content-between align-items-center">
+        <span>{{ t('Items') }}</span>
+        <button type="button" class="btn btn-sm btn-phoenix-primary" id="addLine">
+          <i class="bi bi-plus-lg me-1"></i>{{ t('Add Item') }}</button>
+      </div>
+      <div class="card-body p-0">
+        <table class="table table-sm mb-0 align-middle">
+          <thead class="bg-body-highlight">
+            <tr>
+              <th style="min-width:260px">{{ t('Item') }}</th>
+              <th style="width:120px">{{ t('UOM') }}</th>
+              <th style="width:130px" class="text-end">{{ t('Quantity') }}</th>
+              <th style="width:200px">{{ t('Suggested Supplier') }}</th>
+              <th style="width:130px" class="text-end">{{ t('Est. Price') }}</th>
+              <th style="width:50px"></th>
+            </tr>
+          </thead>
+          <tbody id="prLines"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="d-flex gap-2">
+      <button class="btn btn-primary"><i class="bi bi-send me-1"></i>{{ t('Submit to Procurement') }}</button>
+      <a href="/purchase-requisitions" class="btn btn-phoenix-secondary">{{ t('Cancel') }}</a>
+    </div>
+  </form>
+
+  <datalist id="itemList">
+    {% for i in items %}
+    <option value="{{ i.inventory_code }}"
+            data-name="{{ i.item_name }}" data-uom="{{ i.uom }}"
+            data-supplier="{{ i.default_supplier }}">{{ i.item_name }}</option>
+    {% endfor %}
+  </datalist>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  (function () {
+    var tbody = document.getElementById('prLines');
+    var list = document.getElementById('itemList');
+
+    function addLine() {
+      var tr = document.createElement('tr');
+      tr.innerHTML =
+        '<td><input list="itemList" name="inventory_code" class="form-control form-control-sm code" ' +
+        'placeholder="{{ t("Type item code or name") }}" autocomplete="off">' +
+        '<input type="hidden" name="item_name" class="name">' +
+        '<div class="small-muted nameHint"></div></td>' +
+        '<td><input name="uom" class="form-control form-control-sm uom"></td>' +
+        '<td><input type="number" step="0.001" min="0" name="required_qty" class="form-control form-control-sm text-end"></td>' +
+        '<td><input name="suggested_supplier" class="form-control form-control-sm supplier"></td>' +
+        '<td><input type="number" step="0.0001" min="0" name="estimated_price" class="form-control form-control-sm text-end" value="0"></td>' +
+        '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger rm">&times;</button></td>';
+      tbody.appendChild(tr);
+    }
+
+    // Autofill name / UOM / default supplier from the ingredient master the
+    // moment a code is picked, so the requester types one field, not five.
+    tbody.addEventListener('input', function (e) {
+      if (!e.target.classList.contains('code')) return;
+      var tr = e.target.closest('tr');
+      var opt = list.querySelector('option[value="' + e.target.value.replace(/"/g, '\\"') + '"]');
+      if (!opt) return;
+      tr.querySelector('.name').value = opt.dataset.name || '';
+      tr.querySelector('.nameHint').textContent = opt.dataset.name || '';
+      if (!tr.querySelector('.uom').value) tr.querySelector('.uom').value = opt.dataset.uom || '';
+      if (!tr.querySelector('.supplier').value) tr.querySelector('.supplier').value = opt.dataset.supplier || '';
+    });
+
+    tbody.addEventListener('click', function (e) {
+      if (e.target.classList.contains('rm')) {
+        e.target.closest('tr').remove();
+        if (!tbody.children.length) addLine();
+      }
+    });
+
+    document.getElementById('addLine').addEventListener('click', addLine);
+
+    document.getElementById('prForm').addEventListener('submit', function (e) {
+      var any = Array.prototype.some.call(
+        tbody.querySelectorAll('input[name="required_qty"]'),
+        function (el) { return parseFloat(el.value) > 0; });
+      if (!any) {
+        e.preventDefault();
+        if (window.showToast) showToast("{{ t('Add at least one item with a quantity greater than zero.') }}", "warning", "{{ t('Nothing to request') }}");
+        else alert("{{ t('Add at least one item with a quantity greater than zero.') }}");
+      }
+    });
+
+    addLine();
+    addLine();
+  })();
+</script>
+{% endblock %}

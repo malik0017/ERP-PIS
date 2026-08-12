@@ -166,7 +166,15 @@
   {% set active_step = 'Packing' %}{% include 'partials/process_status_row.html'
   %} {% set status_options = ['Packing Pending','Packing In Progress','Packed']
   %} {% include 'partials/filter_bar.html' %} {% if error %}
+  {# Batch 95: the inline red banner is gone. _redirect_with_error() already
+     appends ?error=... to the URL, and the global toast system in
+     partials/toast.html auto-shows any ?error= param as a dismissing toast.
+     So this block was rendering the SAME message a second time as a
+     permanent banner that never went away — which is what the screenshot
+     showed. The toast alone is the correct behaviour. #}
+  {% if false %}
   <div class="alert alert-danger">{{ error }}</div>
+  {% endif %}
   {% endif %}
   <div class="kpi-grid">
     <div class="kpi">

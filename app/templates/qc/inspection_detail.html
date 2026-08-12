@@ -1,0 +1,137 @@
+{% extends "layouts/base.html" %}
+{% block title %}Incoming QC — {{ grn.grn_no }}{% endblock %}
+{% block content %}
+<div class="container-fluid py-3 isfc-page">
+  <div class="isfc-hero mb-4 p-4 rounded-4 text-white d-flex align-items-center justify-content-between flex-wrap gap-3"
+       style="background:linear-gradient(135deg,#132947,#0c91a3)">
+    <div>
+      <h1 class="mb-1 fw-bold"><i class="bi bi-clipboard2-check me-2"></i>{{ grn.grn_no }}</h1>
+      <p class="mb-0 opacity-75">{{ grn.supplier_name or 'Unassigned Supplier' }} · {{ t('Received') }} {{ grn.received_date }} {{ t('by') }} {{ grn.received_by }}</p>
+    </div>
+    <a class="btn btn-light btn-sm fw-bold" href="/qc/inspection"><i class="bi bi-arrow-left me-1"></i>{{ t('Back') }}</a>
+  </div>
+
+  {% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+
+  {% if already %}
+  <div class="alert {{ 'alert-success' if already.decision == 'Passed' else 'alert-danger' }} mb-3">
+    <strong>{{ t('Already inspected') }}:</strong> {{ already.decision }} {{ t('by') }} {{ already.inspected_by }} {{ t('on') }} {{ already.inspected_at }}.
+    {% if already.notes %}<br>{{ already.notes }}{% endif %}
+  </div>
+  {% endif %}
+
+  <div class="card border mb-3">
+    <div class="card-header bg-body-highlight fw-bold">{{ t('Items on This Receipt') }}</div>
+    <div class="card-body p-0">
+      <table class="table table-sm mb-0">
+        <thead class="bg-body-highlight"><tr><th>{{ t('Item') }}</th><th class="text-end">{{ t('Qty') }}</th><th>{{ t('Lot') }}</th><th>{{ t('Status') }}</th></tr></thead>
+        <tbody>
+          {% for l in lines %}
+          <tr>
+            <td><b>{{ l.inventory_code }}</b> {{ l.item_name }}</td>
+            <td class="text-end">{{ l.qty_in }} {{ l.uom }}</td>
+            <td>{{ l.lot_no or '—' }}</td>
+            <td>
+              {% if l.qc_status == 'Pending' %}<span class="badge badge-phoenix badge-phoenix-warning">Awaiting QC</span>
+              {% elif l.qc_status == 'Passed' %}<span class="badge badge-phoenix badge-phoenix-success">Passed</span>
+              {% else %}<span class="badge badge-phoenix badge-phoenix-danger">Failed</span>{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  {% if not already %}
+  <div id="qcChecksForm">
+    <div class="card border mb-3">
+      <div class="card-header bg-body-highlight fw-bold">{{ t('Inspection Checks') }}</div>
+      <div class="card-body">
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label fw-bold">{{ t('Temperature on arrival OK?') }}</label>
+            <div class="d-flex gap-3 align-items-center">
+              <div class="form-check"><input class="form-check-input" type="radio" name="temperature_ok" value="yes" id="tempYes"><label class="form-check-label" for="tempYes">{{ t('Yes') }}</label></div>
+              <div class="form-check"><input class="form-check-input" type="radio" name="temperature_ok" value="no" id="tempNo"><label class="form-check-label" for="tempNo">{{ t('No') }}</label></div>
+              <input class="form-control form-control-sm ms-2" style="max-width:140px" name="temperature_reading" placeholder="e.g. 4°C">
+            </div>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label fw-bold">{{ t('Packaging integrity OK?') }}</label>
+            <div class="d-flex gap-3">
+              <div class="form-check"><input class="form-check-input" type="radio" name="packaging_ok" value="yes" id="packYes"><label class="form-check-label" for="packYes">{{ t('Yes') }}</label></div>
+              <div class="form-check"><input class="form-check-input" type="radio" name="packaging_ok" value="no" id="packNo"><label class="form-check-label" for="packNo">{{ t('No') }}</label></div>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label fw-bold">{{ t('Expiry remaining OK?') }}</label>
+            <div class="d-flex gap-3">
+              <div class="form-check"><input class="form-check-input" type="radio" name="expiry_ok" value="yes" id="expYes"><label class="form-check-label" for="expYes">{{ t('Yes') }}</label></div>
+              <div class="form-check"><input class="form-check-input" type="radio" name="expiry_ok" value="no" id="expNo"><label class="form-check-label" for="expNo">{{ t('No') }}</label></div>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label fw-bold">{{ t('Documentation OK?') }}</label>
+            <div class="d-flex gap-3">
+              <div class="form-check"><input class="form-check-input" type="radio" name="documentation_ok" value="yes" id="docYes"><label class="form-check-label" for="docYes">{{ t('Yes') }}</label></div>
+              <div class="form-check"><input class="form-check-input" type="radio" name="documentation_ok" value="no" id="docNo"><label class="form-check-label" for="docNo">{{ t('No') }}</label></div>
+            </div>
+          </div>
+          <div class="col-12">
+            <label class="form-label fw-bold">{{ t('Notes') }}</label>
+            <textarea class="form-control" name="notes" rows="2" placeholder="{{ t('Any observation worth recording, especially on a fail') }}"></textarea>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="d-flex gap-2">
+      <form method="post" action="/qc/inspection/{{ grn.grn_no }}/decide" id="incomingQcPassForm"
+            data-confirm="Pass this receipt? Stock becomes available for production immediately."
+            data-confirm-title="Pass Incoming QC" data-confirm-ok="Pass" data-confirm-variant="success">
+        <input type="hidden" name="decision" value="Passed">
+        <input type="hidden" name="temperature_ok" class="mirror-temperature_ok">
+        <input type="hidden" name="temperature_reading" class="mirror-temperature_reading">
+        <input type="hidden" name="packaging_ok" class="mirror-packaging_ok">
+        <input type="hidden" name="expiry_ok" class="mirror-expiry_ok">
+        <input type="hidden" name="documentation_ok" class="mirror-documentation_ok">
+        <input type="hidden" name="notes" class="mirror-notes">
+        <button type="submit" class="btn btn-success fw-bold px-4" onclick="return syncQcMirror(this.form)">
+          <i class="bi bi-check2-circle me-1"></i>{{ t('Pass — Release to Stock') }}</button>
+      </form>
+      <form method="post" action="/qc/inspection/{{ grn.grn_no }}/decide" id="incomingQcFailForm"
+            data-confirm="Fail this receipt? Stock stays held — raise a supplier return from Procurement."
+            data-confirm-title="Fail Incoming QC" data-confirm-ok="Fail" data-confirm-variant="danger">
+        <input type="hidden" name="decision" value="Failed">
+        <input type="hidden" name="temperature_ok" class="mirror-temperature_ok">
+        <input type="hidden" name="temperature_reading" class="mirror-temperature_reading">
+        <input type="hidden" name="packaging_ok" class="mirror-packaging_ok">
+        <input type="hidden" name="expiry_ok" class="mirror-expiry_ok">
+        <input type="hidden" name="documentation_ok" class="mirror-documentation_ok">
+        <input type="hidden" name="notes" class="mirror-notes">
+        <button type="submit" class="btn btn-danger fw-bold px-4" onclick="return syncQcMirror(this.form)">
+          <i class="bi bi-x-circle me-1"></i>{{ t('Fail — Hold & Quarantine') }}</button>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    // The checks form above and the two decision forms are separate
+    // (each decision form needs its own data-confirm message, and that
+    // only works on a <form> element, not per-button) — this copies the
+    // filled-in checks into whichever decision form is being submitted.
+    function syncQcMirror(targetForm) {
+      var checksForm = document.getElementById('qcChecksForm');
+      ['temperature_ok', 'packaging_ok', 'expiry_ok', 'documentation_ok'].forEach(function (name) {
+        var checked = checksForm.querySelector('input[name="' + name + '"]:checked');
+        targetForm.querySelector('.mirror-' + name).value = checked ? checked.value : '';
+      });
+      targetForm.querySelector('.mirror-temperature_reading').value = checksForm.querySelector('[name="temperature_reading"]').value;
+      targetForm.querySelector('.mirror-notes').value = checksForm.querySelector('[name="notes"]').value;
+      return true;
+    }
+  </script>
+  {% endif %}
+</div>
+{% endblock %}

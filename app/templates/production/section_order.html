@@ -222,11 +222,11 @@ tr.locked .lock-note{color:#11783f;font-weight:800}
                   <div style="width:110px"><label class="small-muted d-block">Processed</label><input form="txf{{ tx.id }}" class="pis-input tx-processed" data-tx="{{ tx.id }}" data-avail="{{ tx.received_qty_standard or tx.issued_qty_standard or 0 }}" type="number" step="0.0001" name="processed_qty_standard" value="{{ tx.received_qty_standard or tx.issued_qty_standard or 0 }}"></div>
                   <div style="width:95px"><label class="small-muted d-block">Waste</label><input form="txf{{ tx.id }}" class="pis-input tx-waste" data-tx="{{ tx.id }}" type="number" step="0.0001" min="0" name="waste_qty_standard" value="0"></div>
                   <div style="width:95px"><label class="small-muted d-block">Return</label><input form="txf{{ tx.id }}" class="pis-input tx-return" data-tx="{{ tx.id }}" type="number" step="0.0001" min="0" name="returned_qty_standard" value="0"></div>
-                  <div style="width:110px"><label class="small-muted d-block">Transfer <span class="text-secondary" title="Auto = Received − Waste − Return">⟳</span></label><input form="txf{{ tx.id }}" class="pis-input tx-transfer" data-tx="{{ tx.id }}" type="number" step="0.0001" min="0" name="transferred_qty_standard" value="{{ tx.balance_qty_standard or tx.received_qty_standard or tx.issued_qty_standard or 0 }}"></div>
+                  <div style="width:110px"><label class="small-muted d-block">Transfer <span class="text-secondary" title="Editing this recalculates Waste">⟳</span></label><input form="txf{{ tx.id }}" class="pis-input tx-transfer" data-tx="{{ tx.id }}" data-full="{{ tx.balance_qty_standard or tx.received_qty_standard or tx.issued_qty_standard or 0 }}" type="number" step="0.0001" min="0" name="transferred_qty_standard" value="{{ tx.balance_qty_standard or tx.received_qty_standard or tx.issued_qty_standard or 0 }}"></div>
                   <div style="min-width:220px"><label class="small-muted d-block">Next Section / Reason</label>
                     <div class="d-flex gap-1">
                       <select form="txf{{ tx.id }}" class="pis-input" name="next_section"><option value="">Use route</option>{% for s in next_sections %}<option>{{ s }}</option>{% endfor %}</select>
-                      <input form="txf{{ tx.id }}" class="pis-input" name="waste_reason" placeholder="Reason">
+                      <input form="txf{{ tx.id }}" class="pis-input tx-reason" data-tx="{{ tx.id }}" name="waste_reason" placeholder="Reason (optional)">
                     </div>
                   </div>
                   <div style="width:170px">
@@ -250,19 +250,26 @@ tr.locked .lock-note{color:#11783f;font-weight:800}
   </div>
 </div>
 <script>
-/* Batch 21: automatic quantity balancing.
-   Rule: Received = Waste + Return + Transfer.
-   - Edit Waste or Return  -> Transfer auto = Received - Waste - Return
-   - Edit Transfer         -> Return auto = Received - Waste - Transfer
-   Values never go below zero; a toast warns if the numbers cannot balance. */
+/* Batch 94: auto-balancing direction changed, per request.
+   Rule is still Processed = Waste + Return + Transfer, but which field
+   drives the calculation flipped: staff typically know Transfer first
+   (they weigh what's physically going to the next section), so:
+   - Edit Transfer  -> Waste auto = Processed - Transfer - Return
+   - Edit Waste     -> Return auto = Processed - Transfer - Waste
+   Editing Transfer away from its full-transfer default also makes the
+   reason field required — a deviation from "send everything on" needs
+   an explanation on record, same principle as the QC/Dispatch hard
+   gates elsewhere in this system. */
 (function(){
   function n(v){ var x = parseFloat(v); return isNaN(x) ? 0 : x; }
   function group(tx){
     return {
       avail: n(document.querySelector('.tx-processed[data-tx="'+tx+'"]')?.dataset.avail),
+      full:  document.querySelector('.tx-transfer[data-tx="'+tx+'"]')?.dataset.full,
       waste: document.querySelector('.tx-waste[data-tx="'+tx+'"]'),
       ret:   document.querySelector('.tx-return[data-tx="'+tx+'"]'),
-      tra:   document.querySelector('.tx-transfer[data-tx="'+tx+'"]')
+      tra:   document.querySelector('.tx-transfer[data-tx="'+tx+'"]'),
+      reason: document.querySelector('.tx-reason[data-tx="'+tx+'"]')
     };
   }
   document.addEventListener('input', function(e){
@@ -270,14 +277,31 @@ tr.locked .lock-note{color:#11783f;font-weight:800}
     if (!tx) return;
     var g = group(tx);
     if (!g.waste || !g.ret || !g.tra) return;
-    if (el.classList.contains('tx-waste') || el.classList.contains('tx-return')) {
-      var t = g.avail - n(g.waste.value) - n(g.ret.value);
-      if (t < 0) { t = 0; if (window.showToast) showToast('Waste + Return exceeds the received quantity', 'warning', 'Check quantities'); }
-      g.tra.value = +t.toFixed(4);
-    } else if (el.classList.contains('tx-transfer')) {
-      var r = g.avail - n(g.waste.value) - n(g.tra.value);
-      if (r < 0) { r = 0; if (window.showToast) showToast('Waste + Transfer exceeds the received quantity', 'warning', 'Check quantities'); }
+    if (el.classList.contains('tx-transfer')) {
+      var w = g.avail - n(g.tra.value) - n(g.ret.value);
+      if (w < 0) { w = 0; if (window.showToast) showToast('Transfer + Return exceeds the processed quantity', 'warning', 'Check quantities'); }
+      g.waste.value = +w.toFixed(4);
+      // Deviating from the full-transfer default requires a reason on record.
+      var isFullTransfer = Math.abs(n(g.tra.value) - n(g.full)) < 0.0001;
+      if (g.reason) {
+        g.reason.required = !isFullTransfer;
+        g.reason.placeholder = isFullTransfer ? 'Reason (optional)' : 'Reason — required, transfer changed';
+        g.reason.classList.toggle('is-required-now', !isFullTransfer);
+      }
+    } else if (el.classList.contains('tx-waste')) {
+      var r = g.avail - n(g.tra.value) - n(g.waste.value);
+      if (r < 0) { r = 0; if (window.showToast) showToast('Transfer + Waste exceeds the processed quantity', 'warning', 'Check quantities'); }
       g.ret.value = +r.toFixed(4);
+    }
+  });
+  document.addEventListener('submit', function(e){
+    var form = e.target;
+    if (!form.id || !form.id.startsWith('txf')) return;
+    var reasonEl = form.querySelector('.tx-reason');
+    if (reasonEl && reasonEl.required && !reasonEl.value.trim()) {
+      e.preventDefault();
+      if (window.showToast) showToast('Transfer quantity was changed from the full amount — a reason is required before this can be submitted.', 'warning', 'Reason Required');
+      reasonEl.focus();
     }
   });
 })();

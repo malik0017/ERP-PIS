@@ -1,0 +1,130 @@
+{% extends "layouts/base.html" %}
+{% block title %}{{ t('QC Sampling Plan') }}{% endblock %}
+{% block content %}
+<div class="container-fluid py-3 isfc-page">
+
+  <div class="isfc-hero mb-4 p-4 rounded-4 text-white"
+       style="background:linear-gradient(135deg,#132947,#0c91a3)">
+    <h1 class="mb-1 fw-bold text-white"><i class="bi bi-shuffle me-2"></i>{{ t('QC Sampling Plan') }}</h1>
+    <p class="mb-0 opacity-75">
+      {{ t('Inspect a sample of receipts instead of every one — with guardrails that force full inspection where it matters.') }}</p>
+  </div>
+
+  <div class="alert alert-subtle-warning mb-4">
+    <i class="bi bi-exclamation-triangle me-1"></i>
+    <strong>{{ t('Read this before enabling.') }}</strong>
+    {{ t('When sampling is on, some deliveries reach the kitchen without being inspected. That is the point of a sampling plan, and it is a food safety decision that belongs to you, not to this system. Sampling is off by default and every guardrail below is on by default.') }}
+  </div>
+
+  <div class="row g-3">
+    <div class="col-lg-7">
+      <form method="post" action="/qc/sampling">
+        <div class="card border mb-3">
+          <div class="card-header bg-body-highlight fw-bold">{{ t('Plan') }}</div>
+          <div class="card-body">
+            <div class="form-check form-switch mb-4">
+              <input class="form-check-input" type="checkbox" name="enabled" id="enabled"
+                     {% if cfg.enabled %}checked{% endif %}>
+              <label class="form-check-label fw-bold" for="enabled">
+                {{ t('Enable random sampling') }}
+                <div class="fs-9 text-body-tertiary fw-normal">
+                  {{ t('Off = every goods receipt goes to QC Hold and must be inspected before the stock is usable.') }}</div>
+              </label>
+            </div>
+
+            <div class="row g-3">
+              <div class="col-md-4">
+                <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary">{{ t('Inspect 1 in every') }}</label>
+                <input type="number" name="sample_every_n" min="2" max="100"
+                       value="{{ cfg.sample_every_n }}" class="form-control form-control-sm">
+                <div class="fs-9 text-body-tertiary mt-1">{{ t('Counted per supplier') }}</div>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary">{{ t('Clean receipts first') }}</label>
+                <input type="number" name="min_clean_receipts" min="0" max="100"
+                       value="{{ cfg.min_clean_receipts }}" class="form-control form-control-sm">
+                <div class="fs-9 text-body-tertiary mt-1">{{ t('New suppliers inspected 100% until met') }}</div>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary">{{ t('Failure lookback (days)') }}</label>
+                <input type="number" name="failure_lookback_days" min="1" max="365"
+                       value="{{ cfg.failure_lookback_days }}" class="form-control form-control-sm">
+                <div class="fs-9 text-body-tertiary mt-1">{{ t('One failure = back to 100%') }}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card border mb-3">
+          <div class="card-header bg-body-highlight fw-bold">{{ t('Guardrails') }}</div>
+          <div class="card-body">
+            <div class="form-check form-switch mb-3">
+              <input class="form-check-input" type="checkbox" name="always_inspect_critical" id="crit"
+                     {% if cfg.always_inspect_critical %}checked{% endif %}>
+              <label class="form-check-label" for="crit">
+                <strong>{{ t('Always inspect critical items') }}</strong>
+                <div class="fs-9 text-body-tertiary">
+                  {{ t('Any receipt containing an ingredient flagged Critical in Master Data is fully inspected.') }}</div>
+              </label>
+            </div>
+            <div class="form-check form-switch">
+              <input class="form-check-input" type="checkbox" name="always_inspect_cold_chain" id="cold"
+                     {% if cfg.always_inspect_cold_chain %}checked{% endif %}>
+              <label class="form-check-label" for="cold">
+                <strong>{{ t('Always inspect chilled / frozen') }}</strong>
+                <div class="fs-9 text-body-tertiary">
+                  {{ t('Temperature-controlled goods are fully inspected regardless of the sampling interval.') }}</div>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        {% if can_action('qc', 'edit') %}
+        <button class="btn btn-primary"><i class="bi bi-save me-1"></i>{{ t('Save Plan') }}</button>
+        {% endif %}
+      </form>
+    </div>
+
+    <div class="col-lg-5">
+      <div class="card border mb-3">
+        <div class="card-header bg-body-highlight fw-bold">{{ t('Effect So Far') }}</div>
+        <div class="card-body">
+          <div class="d-flex justify-content-between py-2 border-bottom">
+            <span class="text-body-tertiary">{{ t('Auto-released') }}</span>
+            <span class="fw-bold text-warning">{{ stats.auto_released or 0 }}</span></div>
+          <div class="d-flex justify-content-between py-2 border-bottom">
+            <span class="text-body-tertiary">{{ t('Inspected — passed') }}</span>
+            <span class="fw-bold text-success">{{ stats.inspected_pass or 0 }}</span></div>
+          <div class="d-flex justify-content-between py-2">
+            <span class="text-body-tertiary">{{ t('Inspected — failed') }}</span>
+            <span class="fw-bold text-danger">{{ stats.inspected_fail or 0 }}</span></div>
+        </div>
+      </div>
+
+      <div class="card border">
+        <div class="card-header bg-body-highlight fw-bold">{{ t('Recent Auto-Releases') }}</div>
+        <div class="card-body p-0">
+          <table class="table table-sm mb-0">
+            <thead class="bg-body-highlight">
+              <tr><th>{{ t('GRN') }}</th><th>{{ t('Supplier') }}</th><th>{{ t('When') }}</th></tr>
+            </thead>
+            <tbody>
+              {% for r in recent %}
+              <tr>
+                <td><a href="/qc/inspection/{{ r.grn_no }}" class="text-decoration-none fw-bold">{{ r.grn_no }}</a>
+                  <div class="small-muted">{{ r.notes }}</div></td>
+                <td>{{ r.supplier_name or '—' }}</td>
+                <td class="small-muted">{{ r.inspected_at }}</td>
+              </tr>
+              {% else %}
+              <tr><td colspan="3" class="text-center text-body-tertiary py-4">
+                {{ t('Nothing auto-released — every receipt has been inspected.') }}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

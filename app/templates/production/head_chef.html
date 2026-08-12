@@ -125,7 +125,7 @@
 </style>
 <div class="rep-page container-fluid py-3">
   <div class="rep-hero mb-3">
-    <h2 class="mb-1">Head Chef Planning & Schedule Approval</h2>
+    <h2 class="mb-1">Planning & Schedule Approval</h2>
 
   </div>
   {% if error %}<div class="alert alert-warning">{{ error }}</div>{% endif %}
@@ -155,8 +155,60 @@
   <div class="hc-card">
     <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
       <div>
-        <h4 class="mb-1">Head Chef Order Queue</h4>
+        <h4 class="mb-1">{{ t('Head Chef Order Queue') }}</h4>
       </div>
+      {# Batch 105: Bill of Quantity export. The filters already on this screen
+         (delivery dates, status, quick search) are passed straight through, so
+         what you download is exactly what you are looking at.
+
+         The consolidated sheet is the one the store keeper needs at 5am: one
+         line per ingredient across every order in the filter, rather than
+         twelve separate lists that each ask for flour. Expected wastage is
+         included — a pick list that ignores it sends the kitchen short every
+         time. #}
+      <div class="d-flex gap-2 flex-wrap">
+        {# Batch 106: goes to the PREVIEW, not straight to a download. Seeing
+           what the filter produced before opening Excel is the difference
+           between one click and three round-trips. #}
+        <a class="btn btn-phoenix-primary btn-sm"
+           href="/production/boq/preview?date_from={{ filters.date_from or '' }}&date_to={{ filters.date_to or '' }}">
+          <i class="bi bi-list-check me-1"></i>{{ t('Bill of Quantity') }}</a>
+        <button type="button" class="btn btn-phoenix-secondary btn-sm" data-bs-toggle="collapse"
+                data-bs-target="#boqFilters">
+          <i class="bi bi-funnel me-1"></i>{{ t('BOQ Filters') }}</button>
+      </div>
+    </div>
+
+    <div class="collapse mb-3" id="boqFilters">
+      <form method="get" action="/production/boq/preview" class="row g-2 align-items-end border rounded p-3">
+        <div class="col-md-2">
+          <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('Delivery From') }}</label>
+          <input type="date" name="date_from" value="{{ filters.date_from or '' }}" class="form-control form-control-sm">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('Delivery To') }}</label>
+          <input type="date" name="date_to" value="{{ filters.date_to or '' }}" class="form-control form-control-sm">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('Customer') }}</label>
+          <input name="customer" class="form-control form-control-sm" placeholder="{{ t('Any') }}">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('Order No') }}</label>
+          <input name="order_no" class="form-control form-control-sm" placeholder="{{ t('Any') }}">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('Brand') }}</label>
+          <input name="brand" class="form-control form-control-sm" placeholder="{{ t('Any') }}">
+        </div>
+        <div class="col-md-2">
+          <button class="btn btn-primary btn-sm w-100">
+            <i class="bi bi-search me-1"></i>{{ t('Preview BOQ') }}</button>
+        </div>
+        <div class="col-12 fs-9 text-body-tertiary">
+          {{ t('Opens a preview you can check before downloading. Three sheets: consolidated pick list, per-order detail, customer summary. Cancelled and rejected orders excluded.') }}
+        </div>
+      </form>
     </div>
 
     {# Batch 81 fix: the quick-view chips (Today/Week/...) and the manual
@@ -216,11 +268,11 @@
             <td><strong>{{ o.order_no }}</strong></td>
             <td><strong>{{ o.customer_name }}</strong><br><span class="mini">{{ o.brand or '-' }} · {{ o.channel or '-'
                 }}</span></td>
-            <td><span class="hc-status {% if o.status == 'Submitted' %}hc-pending{% else %}hc-ok{% endif %}">{{ o.status
+            <td><span class="hc-status {% if o.status == 'Submitted' %}hc-pending{% else %}hc-ok{% endif %}">{{ 'Created' if o.status == 'Submitted' else o.status
                 }}</span></td>
             <td>{{ o.required_delivery_date or 'Not set' }} {{ o.required_delivery_time or '' }}
               {% set u = urgency.get(o.order_no, '') %}
-              {% if u == 'LATE' %}<span class="badge badge-phoenix badge-phoenix-danger ms-1">{{ t('LATE') }}</span>
+              {% if u == 'LATE' %}<span class="badge badge-phoenix badge-phoenix-danger ms-1">{{ t('Delay') }}</span>
               {% elif u == 'TODAY' %}<span class="badge badge-phoenix badge-phoenix-warning ms-1">{{ t('TODAY') }}</span>
               {% elif u == 'TOMORROW' %}<span class="badge badge-phoenix badge-phoenix-info ms-1">{{ t('TOMORROW') }}</span>{% endif %}</td>
             <td>{{ o.cooking_date or 'Pending' }} {{ o.cooking_time or '' }}</td>

@@ -1,0 +1,159 @@
+{% extends "layouts/base.html" %}
+{% block title %}{{ t('Sales Requests') }}{% endblock %}
+{% block content %}
+<div class="container-fluid py-3 isfc-page">
+
+  <div class="isfc-hero mb-4 p-4 rounded-4 text-white d-flex align-items-center justify-content-between flex-wrap gap-3"
+       style="background:linear-gradient(135deg,#132947,#0c91a3)">
+    <div>
+      <h1 class="mb-1 fw-bold text-white"><i class="bi bi-clipboard-check me-2"></i>{{ t('Sales Requests') }}</h1>
+    </div>
+    <a href="/purchase-requisitions" class="btn btn-light btn-sm">
+      <i class="bi bi-file-earmark-plus me-1"></i>{{ t('Purchase Requisitions') }}</a>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-lg-3">
+      <div class="card border h-100"><div class="card-body">
+        <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Awaiting Review') }}</div>
+        <div class="fs-3 fw-bold text-warning">{{ counts.pending or 0 }}</div>
+      </div></div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="card border h-100"><div class="card-body">
+        <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Stock Short (in view)') }}</div>
+        <div class="fs-3 fw-bold text-danger">{{ counts.short or 0 }}</div>
+      </div></div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="card border h-100"><div class="card-body">
+        <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Approved') }}</div>
+        <div class="fs-3 fw-bold text-success">{{ counts.approved or 0 }}</div>
+      </div></div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="card border h-100"><div class="card-body">
+        <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Rejected') }}</div>
+        <div class="fs-3 fw-bold text-body-tertiary">{{ counts.rejected or 0 }}</div>
+      </div></div>
+    </div>
+  </div>
+
+  <div class="card border mb-4">
+    <div class="card-body py-3">
+      <form method="get" class="row g-2 align-items-end">
+        <div class="col-md-3">
+          <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('Status') }}</label>
+          <select name="status" class="form-select form-select-sm">
+            {% for s in status_options %}
+            <option value="{{ s }}" {% if filters.status==s %}selected{% endif %}>{{ t(s) }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('Search') }}</label>
+          <input name="search" value="{{ filters.search }}" class="form-control form-control-sm"
+                 placeholder="{{ t('Order no or customer') }}">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('From') }}</label>
+          <input type="date" name="date_from" value="{{ filters.date_from }}" class="form-control form-control-sm">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('To') }}</label>
+          <input type="date" name="date_to" value="{{ filters.date_to }}" class="form-control form-control-sm">
+        </div>
+        <div class="col-md-2 d-flex gap-2">
+          <button class="btn btn-primary btn-sm flex-grow-1">{{ t('Apply') }}</button>
+          <a href="/sales-requests" class="btn btn-phoenix-secondary btn-sm">{{ t('Reset') }}</a>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="card border">
+    <div class="card-header bg-body-highlight fw-bold d-flex justify-content-between align-items-center">
+      <span>{{ t('Requests') }} <span class="badge badge-phoenix badge-phoenix-secondary">{{ orders|length }}</span></span>
+      <span class="fs-9 text-body-tertiary">{{ t('Inventory checked against QC-cleared stock only') }}</span>
+    </div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-hover mb-0 align-middle" data-isfc-table>
+          <thead class="bg-body-highlight">
+            <tr>
+              <th>{{ t('Request') }}</th>
+              <th>{{ t('Customer') }}</th>
+              <th>{{ t('Delivery') }}</th>
+              <th class="text-end">{{ t('Portions') }}</th>
+              <th class="text-end">{{ t('Value') }}</th>
+              <th class="text-center">{{ t('Inventory') }}</th>
+              <th class="text-center">{{ t('Review') }}</th>
+              <th class="text-end">{{ t('Action') }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for o in orders %}
+            {% set st = stock.get(o.order_no) %}
+            {% set review = o.sales_review_status or 'Approved' %}
+            <tr>
+              <td>
+                <a href="/sales-requests/{{ o.order_no }}" class="fw-bold text-decoration-none">{{ o.order_no }}</a>
+                <div class="small-muted">{{ o.order_date }}{% if o.brand %} · {{ o.brand }}{% endif %}</div>
+              </td>
+              <td>
+                {{ o.customer_name or '—' }}
+                {% if o.channel %}<div class="small-muted">{{ o.channel }}</div>{% endif %}
+              </td>
+              <td>
+                {{ o.required_delivery_date or '—' }}
+                {% if o.required_delivery_time %}<div class="small-muted">{{ o.required_delivery_time }}</div>{% endif %}
+                {% if o.required_delivery_date and o.required_delivery_date < today and review == 'Pending' %}
+                <span class="badge badge-phoenix badge-phoenix-danger">{{ t('LATE') }}</span>
+                {% endif %}
+              </td>
+              <td class="text-end">{{ o.total_planned_portions or 0 }}</td>
+              <td class="text-end">{{ '%.2f'|format(o.total_sales_value or 0) }}</td>
+              <td class="text-center">
+                {% if not st %}
+                <span class="badge badge-phoenix badge-phoenix-secondary">—</span>
+                {% elif st.verdict == 'OK' %}
+                <span class="badge badge-phoenix badge-phoenix-success"><i class="bi bi-check2 me-1"></i>{{ t('Available') }}</span>
+                {% elif st.verdict == 'EMPTY' %}
+                <span class="badge badge-phoenix badge-phoenix-secondary">{{ t('No lines') }}</span>
+                {% else %}
+                <span class="badge badge-phoenix badge-phoenix-danger" data-bs-toggle="tooltip"
+                      title="{% for s in st.shortages %}{{ s.ingredient_name }}: short {{ s.shortfall }} {{ s.standard_uom }}{% if not loop.last %} | {% endif %}{% endfor %}">
+                  <i class="bi bi-exclamation-triangle me-1"></i>{{ st.short_count }} {{ t('short') }}</span>
+                {% endif %}
+              </td>
+              <td class="text-center">
+                {% if review == 'Pending' %}
+                <span class="badge badge-phoenix badge-phoenix-warning">{{ t('Pending') }}</span>
+                {% elif review == 'Rejected' %}
+                <span class="badge badge-phoenix badge-phoenix-danger">{{ t('Rejected') }}</span>
+                {% else %}
+                <span class="badge badge-phoenix badge-phoenix-success">{{ t('Approved') }}</span>
+                {% endif %}
+              </td>
+              <td class="text-end">
+                {% if review == 'Pending' %}
+                <a href="/sales-requests/{{ o.order_no }}" class="btn btn-sm btn-primary">
+                  <i class="bi bi-eye me-1"></i>{{ t('Review') }}</a>
+                {% else %}
+                <a href="/production/orders/{{ o.order_no }}" class="btn btn-sm btn-phoenix-secondary">{{ t('Open Order') }}</a>
+                {% endif %}
+              </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="8" class="text-center text-body-tertiary py-5">
+              <i class="bi bi-inbox fs-3 d-block mb-2"></i>
+              {{ t('Nothing here. Requests submitted from Sale Requisitions, Immediate Order, the Customer Portal or a Subscription land on this screen.') }}
+            </td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

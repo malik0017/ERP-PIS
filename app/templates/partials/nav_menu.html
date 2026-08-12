@@ -6,6 +6,8 @@
   ]},
   {"key": "sales", "title": "Sales", "icon": "uil-shopping-cart-alt", "children": [
     {"title": "Sale Requisitions", "url": "/orders/portal", "area": "order_portal", "feather": "shopping-cart", "match": "/orders/portal"},
+    {"title": "Immediate Order", "url": "/orders/portal/immediate", "area": "immediate_order", "feather": "zap", "match": "/orders/portal/immediate"},
+    {"title": "Sales Requests", "url": "/sales-requests", "area": "sales_review", "feather": "check-square", "match": "/sales-requests"},
     {"title": "Customer Portal", "url": "/my", "area": "customer_portal", "feather": "user-check"},
     {"title": "Place New Order", "url": "/my/orders/new", "area": "customer_portal", "feather": "plus-circle"},
     {"title": "My Orders", "url": "/my/orders", "area": "customer_portal", "feather": "list"},
@@ -18,14 +20,18 @@
   ]},
   {"key": "procurement", "title": "Procurement", "icon": "uil-shop", "children": [
     {"title": "Procurement Cockpit", "url": "/module/procurement/dashboard", "area": "procurement", "feather": "bar-chart-2"},
+    {"title": "Purchase Requisitions", "url": "/purchase-requisitions", "area": "purchase_requisition", "feather": "file-text", "match": "/purchase-requisitions"},
     {"title": "Purchase Orders & GRN", "url": "/procurement", "area": "procurement", "feather": "shopping-bag", "match": "/procurement"},
+    {"title": "Supplier Ratings", "url": "/procurement/suppliers/ratings", "area": "procurement", "feather": "star", "match": "/procurement/suppliers/ratings"},
   ]},
   {"key": "inventory", "title": "Inventory", "icon": "uil-box", "children": [
     {"title": "Inventory Cockpit", "url": "/module/inventory/dashboard", "area": "inventory_valuation", "feather": "bar-chart-2"},
     {"title": "Stock", "url": "/inventory", "area": "inventory_valuation", "feather": "box", "match": "/inventory"},
     {"title": "Ledger Verification", "url": "/inventory/verification", "area": "inventory_valuation", "feather": "check-circle"},
+    {"title": "Reorder Suggestions", "url": "/inventory/reorder", "area": "inventory_valuation", "feather": "refresh-cw", "match": "/inventory/reorder"},
     {"title": "Store Issuance", "url": "/production/store-issuance", "area": "store_issuance", "feather": "package", "match": "/production/store-issuance", "match2": "store-issuance"},
     {"title": "Issuance by Section", "url": "/production/store-issuance/by-section", "area": "store_issuance", "feather": "layers"},
+    {"title": "Top-Up Requests", "url": "/production/topups", "area": "store_issuance", "feather": "plus-square", "match": "/production/topups"},
   ]},
   {"key": "production", "title": "Production", "icon": "uil-processor", "children": [
     {"title": "Production Cockpit", "url": "/module/production/dashboard", "area": "dashboard", "feather": "activity"},
@@ -40,7 +46,10 @@
     {"title": "Bakery/Pastry", "url": "/production/section/Bakery-Pastry", "area": "section_bakery_pastry", "feather": "gift"},
   ]},
   {"key": "quality", "title": "Quality", "icon": "uil-shield-check", "children": [
-    {"title": "Quality Control (QC)", "url": "/qc", "area": "qc", "feather": "check-circle", "match": "/qc"},
+    {"title": "Incoming QC Inspection", "url": "/qc/inspection", "area": "qc", "feather": "clipboard", "match": "/qc/inspection"},
+    {"title": "In-Kitchen QC (Pre-Packing)", "url": "/qc", "area": "qc", "feather": "check-circle", "match": "/qc/orders"},
+    {"title": "Customer Complaints", "url": "/qc/complaints", "area": "qc", "feather": "message-square", "match": "/qc/complaints"},
+    {"title": "QC Sampling Plan", "url": "/qc/sampling", "area": "qc", "feather": "shuffle", "match": "/qc/sampling"},
   ]},
   {"key": "logistics", "title": "Packing", "icon": "uil-truck", "children": [
     {"title": "Trayline / Packing", "url": "/packing", "area": "packing", "feather": "package", "match": "/packing"},
@@ -69,6 +78,8 @@
     {"title": "Reports Cockpit", "url": "/module/reports/dashboard", "area": "reports", "feather": "pie-chart"},
     {"title": "Reports Center", "url": "/reports", "area": "reports", "feather": "bar-chart-2"},    
     {"title": "Yield & Wastage", "url": "/reports/yield-wastage", "area": "reports", "feather": "trending-down"},
+    {"title": "Inventory Reports", "url": "/reports/inventory", "area": "reports", "feather": "box", "match": "/reports/inventory"},
+    {"title": "Audit Log", "url": "/admin/audit", "area": "audit", "feather": "shield", "match": "/admin/audit"},
     {"title": "Relationship Map", "url": "/relationship-map", "area": "relationship", "feather": "share-2"},
     {"title": "Relationship Tree", "url": "/reports/relationship-tree", "area": "relationship", "feather": "git-branch"},
     {"title": "Projects", "url": "/projects", "area": "project_management", "feather": "briefcase", "match": "/projects"},
@@ -100,16 +111,6 @@
     {"title": "Settings", "url": "/settings", "area": "settings", "feather": "settings", "match": "/settings"},
   ]},
 ] %}
-{# Batch 83 fix: "Sign Out" used to be registered here as its own
-   NAV_MODULES group with area="Sign Out" — not a real RBAC area, so
-   can_access() silently failed for every non-admin role and the link
-   vanished from their sidebar entirely (they had no way to sign out from
-   the nav at all). It also rendered as a collapsible dropdown group for
-   what should be a single-click action. Removed from here; every layout
-   macro below now renders Sign Out directly, un-gated, one click,
-   consistently across all navbar variants — see the end of vertical(),
-   top(), and the other macros. #}
-
 
 {% macro _match_len(c, path) -%}
   {%- set ns = namespace(n=0) -%}

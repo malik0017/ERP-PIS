@@ -249,44 +249,41 @@
     </div>
     {% endif %}
 
+    {# ==================================================================
+       Batch 95: the full shortage TABLE was removed from this screen.
+
+       Batch 80 put it here because this was the only place an approver
+       could see it. Batch 94 changed that: the Sales Requests screen
+       (/sales-requests) now shows full ingredient coverage — Available /
+       Short / Empty for every line — as part of the approve/reject
+       decision, which is where that decision is actually made now.
+
+       Leaving the table here duplicated ~15 rows of the same data on a
+       screen whose job is the Head Chef's COOKING SCHEDULE, pushing the
+       actual schedule form below the fold. The reviewer has already seen
+       the shortage before this order ever reached Head Chef.
+
+       What stays: a one-line summary plus the requisition action, so a
+       Head Chef who spots a problem at scheduling time can still raise a
+       requisition without navigating away. The detail lives one click
+       away on the sales request.
+       ================================================================== #}
     {% if shortages %}
-    {# Batch 80: stock shortage preview — computed from the same recipe
-       explosion the real BOM will use, before it's generated.
-       Batch 92 fix: this used to be hidden while the order was still
-       pending Sales Review, but the whole point of showing it here is
-       to inform an approve/reject decision — someone reviewing a Sale
-       Requisition needs to see the shortage (and be able to raise a PO
-       for it) as PART of that decision, not only after they've already
-       approved it. Now shown regardless of sales-review state, as long
-       as the order hasn't reached BOM yet. Still advisory either way —
-       doesn't block approval, whoever's reviewing decides. #}
-    <div class="alert alert-warning mb-3">
-      <div class="d-flex align-items-center gap-2 mb-2">
-        <i class="bi bi-exclamation-triangle-fill fs-5"></i>
-        <strong>{{ shortages|length }} ingredient(s) would be short of stock for this order</strong>
+    <div class="alert alert-warning d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3 py-2">
+      <div class="d-flex align-items-center gap-2">
+        <i class="bi bi-exclamation-triangle-fill"></i>
+        <span><strong>{{ shortages|length }}</strong> {{ t('ingredient(s) short for this order.') }}
+          <a href="/sales-requests/{{ order.order_no }}" class="alert-link">{{ t('View full stock check') }}</a></span>
       </div>
-      <div class="table-responsive">
-        <table class="table table-sm mb-0" style="font-size:.82rem">
-          <thead><tr><th>Ingredient</th><th class="text-end">Required</th><th class="text-end">In Stock</th><th class="text-end">Shortfall</th><th>Used In</th></tr></thead>
-          <tbody>
-            {% for s in shortages %}
-            <tr>
-              <td>{{ s.ingredient_name }} <span class="text-body-tertiary">({{ s.ingredient_code }})</span></td>
-              <td class="text-end">{{ '%.2f'|format(s.required_qty) }} {{ s.standard_uom }}</td>
-              <td class="text-end">{{ '%.2f'|format(s.available_qty) }} {{ s.standard_uom }}</td>
-              <td class="text-end text-danger fw-bold">{{ '%.2f'|format(s.shortfall) }} {{ s.standard_uom }}</td>
-              <td class="text-body-tertiary">{{ s.recipes|join(', ') }}</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-      <div class="mt-2 small text-body-tertiary">This is advisory — the order can still be approved either way. Use the button below to raise a purchase order for exactly the shortfall shown, or confirm stock with Procurement first.</div>
+      {% if can_action('production_orders', 'edit') %}
       <form method="post" action="/production/orders/{{ order.order_no }}/generate-shortage-po"
-            data-confirm="Create a purchase order for the {{ shortages|length }} short ingredient(s) shown above, grouped by supplier? You'll still confirm prices and supplier details in Procurement afterward."
-            data-confirm-title="Generate Purchase Order" data-confirm-ok="Create PO(s)" data-confirm-variant="primary" class="mt-2">
-        <button class="btn btn-sm btn-primary fw-bold"><i class="bi bi-cart-plus me-1"></i>Generate Purchase Order for Shortage</button>
+            data-confirm="{{ t('Raise a purchase requisition for the') }} {{ shortages|length }} {{ t('short ingredient(s)? This sends a request to Procurement for review — it does not order anything.') }}"
+            data-confirm-title="{{ t('Raise Purchase Requisition') }}" data-confirm-ok="{{ t('Raise Requisition') }}"
+            data-confirm-variant="warning" class="m-0">
+        <button class="btn btn-sm btn-warning fw-bold">
+          <i class="bi bi-file-earmark-plus me-1"></i>{{ t('Raise Requisition') }}</button>
       </form>
+      {% endif %}
     </div>
     {% endif %}
 

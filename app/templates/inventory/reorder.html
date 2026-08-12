@@ -1,0 +1,141 @@
+{% extends "layouts/base.html" %}
+{% block title %}{{ t('Reorder Suggestions') }}{% endblock %}
+{% block content %}
+<div class="container-fluid py-3 isfc-page">
+
+  <div class="isfc-hero mb-4 p-4 rounded-4 text-white"
+       style="background:linear-gradient(135deg,#132947,#0c91a3)">
+    <h1 class="mb-1 fw-bold text-white"><i class="bi bi-arrow-repeat me-2"></i>{{ t('Reorder Suggestions') }}</h1>
+    <p class="mb-0 opacity-75">
+      {{ t('What to buy, how much, and how urgently — from real consumption, not guesswork.') }}</p>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-lg-4"><div class="card border h-100"><div class="card-body">
+      <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Items to Reorder') }}</div>
+      <div class="fs-3 fw-bold">{{ totals.items }}</div></div></div></div>
+    <div class="col-6 col-lg-4"><div class="card border h-100"><div class="card-body">
+      <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Critical — run out before delivery') }}</div>
+      <div class="fs-3 fw-bold text-danger">{{ totals.critical }}</div></div></div></div>
+    <div class="col-6 col-lg-4"><div class="card border h-100"><div class="card-body">
+      <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Estimated Spend') }}</div>
+      <div class="fs-3 fw-bold text-info">{{ '%.2f'|format(totals.value) }}</div></div></div></div>
+  </div>
+
+  <div class="card border mb-4"><div class="card-body">
+    <form method="get" class="row g-2 align-items-end">
+      <div class="col-md-2">
+        <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('Supplier lead (days)') }}</label>
+        <input type="number" min="1" max="90" name="lead_days" value="{{ filters.lead_days }}"
+               class="form-control form-control-sm"></div>
+      <div class="col-md-2">
+        <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('Usage window (days)') }}</label>
+        <input type="number" min="7" max="365" name="window" value="{{ filters.window }}"
+               class="form-control form-control-sm"></div>
+      <div class="col-md-2">
+        <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('Safety factor') }}</label>
+        <input type="number" step="0.1" min="1" max="3" name="safety" value="{{ filters.safety }}"
+               class="form-control form-control-sm"></div>
+      <div class="col-md-3">
+        <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('Supplier') }}</label>
+        <input name="supplier" value="{{ filters.supplier }}" list="supList" autocomplete="off"
+               class="form-control form-control-sm" placeholder="{{ t('Any') }}">
+        <datalist id="supList">{% for s in suppliers %}<option value="{{ s }}"></option>{% endfor %}</datalist></div>
+      <div class="col-md-3 d-flex gap-2">
+        <button class="btn btn-primary btn-sm flex-grow-1">{{ t('Recalculate') }}</button>
+        <a href="/inventory/reorder" class="btn btn-phoenix-secondary btn-sm">{{ t('Reset') }}</a></div>
+      <div class="col-12 fs-9 text-body-tertiary mt-1">
+        {{ t('Reorder point = average daily usage × lead time × safety factor. Stock already on order is counted as available, so nothing is ordered twice.') }}
+      </div>
+    </form>
+  </div></div>
+
+  <form method="post" action="/inventory/reorder/raise" id="reorderForm">
+    <input type="hidden" name="return_to" value="/inventory/reorder">
+
+    <div class="card border">
+      <div class="card-header bg-body-highlight fw-bold d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <span>{{ t('Suggestions') }}
+          <span class="badge badge-phoenix badge-phoenix-secondary">{{ rows|length }}</span>
+          <span id="selCount" class="badge badge-phoenix badge-phoenix-primary ms-1" style="display:none"></span></span>
+        {% if rows and can_action('purchase_requisition', 'add') %}
+        <button class="btn btn-primary btn-sm"
+                data-confirm="{{ t('Raise one purchase requisition for the ticked items? Procurement reviews it before any purchase order exists.') }}"
+                data-confirm-title="{{ t('Raise Requisition') }}" data-confirm-ok="{{ t('Raise') }}"
+                data-confirm-variant="primary">
+          <i class="bi bi-file-earmark-plus me-1"></i>{{ t('Raise Requisition for Selected') }}</button>
+        {% endif %}
+      </div>
+      <div class="card-body p-0"><div class="table-responsive">
+        <table class="table table-sm table-hover mb-0 align-middle" data-no-sort>
+          <thead class="bg-body-highlight"><tr>
+            <th style="width:36px"><input type="checkbox" id="selAll" title="{{ t('Select all') }}"></th>
+            <th>{{ t('Item') }}</th><th>{{ t('Supplier') }}</th>
+            <th class="text-end">{{ t('On Hand') }}</th><th class="text-end">{{ t('On Order') }}</th>
+            <th class="text-end">{{ t('Daily Use') }}</th><th class="text-end">{{ t('Days Cover') }}</th>
+            <th class="text-end" style="width:130px">{{ t('Order Qty') }}</th>
+            <th class="text-end">{{ t('Est. Value') }}</th><th class="text-center">{{ t('Urgency') }}</th>
+          </tr></thead>
+          <tbody>
+            {% for r in rows %}
+            <tr class="{{ 'table-danger' if r.urgency == 'critical' else ('table-warning' if r.urgency == 'soon' else '') }}">
+              <td><input type="checkbox" class="rowSel" name="code" value="{{ r.ingredient_code }}"
+                         {% if r.urgency == 'critical' %}checked{% endif %}></td>
+              <td><span class="fw-bold">{{ r.ingredient_code }}</span>
+                <div class="small-muted">{{ r.item_name }}{% if r.storage_type %} · {{ r.storage_type }}{% endif %}</div></td>
+              <td class="fs-9">{{ r.supplier_name or '—' }}</td>
+              <td class="text-end">{{ '%.3f'|format(r.on_hand) }}</td>
+              <td class="text-end">{% if r.on_order %}<span class="text-info">{{ '%.3f'|format(r.on_order) }}</span>{% else %}—{% endif %}</td>
+              <td class="text-end fs-9">{{ '%.3f'|format(r.daily_usage) }}</td>
+              <td class="text-end fw-bold">
+                {% if r.days_cover is not none %}{{ r.days_cover }}{{ t('d') }}{% else %}—{% endif %}</td>
+              <td><input type="number" step="0.001" min="0" name="qty" value="{{ r.suggested_qty }}"
+                         class="form-control form-control-sm text-end"></td>
+              <td class="text-end">{{ '%.2f'|format(r.est_value) }}</td>
+              <td class="text-center">
+                <span class="badge badge-phoenix badge-phoenix-{{ 'danger' if r.urgency=='critical' else ('warning' if r.urgency=='soon' else 'secondary') }}">
+                  {{ t(r.urgency) }}</span></td>
+            </tr>
+            {% else %}
+            <tr><td colspan="10" class="text-center text-body-tertiary py-5">
+              <i class="bi bi-check-circle fs-3 d-block mb-2 text-success"></i>
+              {{ t('Nothing needs reordering with these settings.') }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div></div>
+      <div class="card-footer bg-body-highlight fs-9 text-body-tertiary">
+        {{ t('Critical items are pre-ticked: their remaining cover is shorter than the supplier lead time, so they run out before a delivery could arrive. Nothing is ordered automatically — this raises a requisition for Procurement to review.') }}
+      </div>
+    </div>
+  </form>
+</div>
+
+<script>
+  (function () {
+    var all = document.getElementById('selAll');
+    var count = document.getElementById('selCount');
+    function update() {
+      var n = document.querySelectorAll('.rowSel:checked').length;
+      if (!count) return;
+      count.textContent = n + ' {{ t("selected") }}';
+      count.style.display = n ? '' : 'none';
+    }
+    if (all) all.addEventListener('change', function () {
+      document.querySelectorAll('.rowSel').forEach(function (c) { c.checked = all.checked; });
+      update();
+    });
+    document.addEventListener('change', function (e) {
+      if (e.target && e.target.classList.contains('rowSel')) update();
+    });
+    var form = document.getElementById('reorderForm');
+    if (form) form.addEventListener('submit', function (e) {
+      if (!document.querySelectorAll('.rowSel:checked').length) {
+        e.preventDefault();
+        if (window.showToast) showToast('{{ t("Tick at least one item first.") }}', 'warning', '{{ t("Nothing selected") }}');
+      }
+    });
+    update();
+  })();
+</script>
+{% endblock %}

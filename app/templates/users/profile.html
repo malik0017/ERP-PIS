@@ -30,6 +30,19 @@
             </div>
           </form>
 
+          {# Batch 102: removal. Upload existed but there was no way to take a
+             photo down again — only replace it. Separate form because a form
+             cannot be nested inside another one. #}
+          {% if user_avatar %}
+          <form method="post" action="/users/profile/avatar/remove" class="text-start mt-2"
+                data-confirm="{{ t('Remove your profile photo? The header will show the default avatar again.') }}"
+                data-confirm-title="{{ t('Remove photo') }}"
+                data-confirm-ok="{{ t('Remove') }}" data-confirm-variant="danger">
+            <button class="btn btn-outline-danger btn-sm text-nowrap">
+              <i class="bi bi-trash me-1"></i>{{ t('Remove Photo') }}</button>
+          </form>
+          {% endif %}
+
           <hr class="my-4">
           <div class="text-start">
             <h5 class="mb-3">{{ t('Security Status') }}</h5>

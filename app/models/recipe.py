@@ -27,6 +27,10 @@ class Recipe(Base):
     brand_name = Column(String(150), nullable=True)
     customer_name = Column(String(150), nullable=True, index=True)
     category = Column(String(150), nullable=True, index=True)
+    # Batch 101: weekly menu day, read from the "Day" column that already
+    # exists in the Recipe Ingredients sheet. Drives the Frsh day-wise
+    # ordering flow. Nullable — most customers have no weekly cycle.
+    day_of_week = Column(String(20), nullable=True, index=True)
 
     version = Column(Integer, nullable=False, default=1)
     status = Column(String(20), nullable=False, default="ACTIVE")

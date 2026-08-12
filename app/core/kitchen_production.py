@@ -149,6 +149,26 @@ def recipe_states(db: Session, order_no: str, section: str) -> dict:
     return out
 
 
+class SectionLocked(Exception):
+    """Raised when a section tries to act on work it has already handed on.
+
+    Batch 100. Carries a message written for the person on the line, not a
+    stack trace — the routes surface it directly as a toast.
+    """
+
+
+def _product_status(db: Session, order_no: str, section: str, recipe_no: str) -> str | None:
+    """Current status of one recipe within one section, or None if untouched."""
+    try:
+        return db.execute(text("""
+            SELECT status FROM kitchen_production
+            WHERE order_no=:o AND section=:s AND COALESCE(recipe_no,'')=:r
+            LIMIT 1
+        """), {"o": order_no, "s": section, "r": recipe_no or ""}).scalar()
+    except Exception:
+        return None
+
+
 def produce_final_product(db: Session, order_no: str, section: str, recipe_no: str,
                           produced_portions: float, waste_portions: float,
                           user: str, remarks: str = "") -> None:
@@ -156,6 +176,20 @@ def produce_final_product(db: Session, order_no: str, section: str, recipe_no: s
     that recipe's received ingredients into 'processed' and records the product."""
     ensure_schema(db)
     recipe_no = recipe_no or ""
+
+    # Batch 100 — a section cannot re-cook what it has already handed on.
+    #
+    # The INSERT below uses ON DUPLICATE KEY UPDATE and unconditionally sets
+    # status back to 'PRODUCED'. Without this guard, a chef opening an old
+    # order in a section that had already transferred it would silently drag
+    # the product BACK out of the next section's queue — the next section
+    # would simply stop seeing work it had already been given, with no error
+    # anywhere and no way to tell what happened.
+    if _product_status(db, order_no, section, recipe_no) == TRANSFERRED:
+        raise SectionLocked(
+            f"{recipe_no or 'This product'} has already been transferred out of {section}. "
+            f"It is locked here — make any correction in the section that holds it now.")
+
     # mark every received ingredient line for this recipe as processed
     db.execute(text("""
         UPDATE kitchen_section_transactions
@@ -191,6 +225,26 @@ def transfer_product(db: Session, order_no: str, section: str, recipe_no: str,
     ensure_schema(db)
     recipe_no = recipe_no or ""
     to_section = to_section or next_section(section)
+
+    # Batch 100 — two gates before work leaves a section.
+    status = _product_status(db, order_no, section, recipe_no)
+
+    # 1. Already gone. Transferring twice re-homes the ingredient rows a
+    #    second time and stamps a new transferred_at, destroying the audit
+    #    trail of when it actually moved.
+    if status == TRANSFERRED:
+        raise SectionLocked(
+            f"{recipe_no or 'This product'} has already been transferred from {section} "
+            f"and is locked. It cannot be sent forward twice.")
+
+    # 2. Nothing produced yet. "Without complete information the order cannot
+    #    move to the next section" — a section must record what it actually
+    #    made (and wasted) before handing on, otherwise yield and wastage
+    #    reporting has a silent hole exactly where the work happened.
+    if status != PRODUCED:
+        raise SectionLocked(
+            f"Record production for {recipe_no or 'this product'} before transferring it out of "
+            f"{section}. Enter produced and waste portions first.")
 
     # QC / Packing / Dispatch are handled by their own modules — when the kitchen
     # hands off there, we still re-home the rows so those screens can see them.

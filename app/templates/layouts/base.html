@@ -24,6 +24,54 @@
     <meta name="theme-color" content="#ffffff">
     <script src="{{ url_for('static', path='vendors/simplebar/simplebar.min.js') }}"></script>
     <script src="{{ url_for('static', path='js/config.js') }}"></script>
+    <!-- Batch 99: theme controller loads HERE, in <head>, before the body
+         renders. Loading it at the end of <body> like the other ISFC scripts
+         would mean the page paints in light mode and then snaps to dark on
+         every single navigation. -->
+    <script src="{{ url_for('static', path='js/isfc-theme.js') }}"></script>
+    <style>
+      /* Batch 99 — navbar fixes.
+         Scoped to isfc- classes so nothing here can bleed into Phoenix's own
+         components or the RTL stylesheet. */
+      .isfc-bell-badge{
+        top:2px; inset-inline-end:0; font-size:.62rem; line-height:1;
+        padding:.25em .4em; min-width:1.05rem; z-index:2;
+      }
+      .isfc-header-avatar{
+        width:100%; height:100%; object-fit:cover;   /* cover: fill the circle, no letterboxing */
+      }
+      .isfc-brand-logo{
+        width:50px; height:50px; object-fit:contain;  /* contain: never crop a customer's logo */
+        max-width:50px; max-height:50px;
+      }
+      /* ================================================================
+         Batch 102 — dark mode, done properly.
+
+         Batches 99/100/101 each patched one failure mode of the vendor's
+         toggle and each time another was underneath:
+           - the checkbox is display:none
+           - the two <label for> pointed at ids duplicated across 7 navbars
+           - the feather <svg> is only clickable on its painted stroke
+         Three stacked failure modes in one control is a control worth
+         replacing, not patching. It is now a plain <button>.
+
+         The icon swap is driven by [data-bs-theme] on <html> — the same
+         attribute the theme itself uses — instead of a checkbox's :checked
+         state, so the icon reflects the real theme even if nothing else on
+         the page is in sync.
+         ================================================================ */
+      .isfc-theme-btn{
+        color:inherit; line-height:1; width:2rem; height:2rem;
+        display:inline-flex; align-items:center; justify-content:center;
+        text-decoration:none; border:0; background:none; cursor:pointer;
+      }
+      .isfc-theme-btn:hover{ color:inherit; opacity:.75; }
+      /* Icons click-transparent so every pixel of the button works. */
+      .isfc-theme-btn i{ pointer-events:none; font-size:1.05rem; }
+      .isfc-theme-icon-dark{ display:none; }
+      [data-bs-theme="dark"] .isfc-theme-icon-light{ display:none; }
+      [data-bs-theme="dark"] .isfc-theme-icon-dark{ display:inline-block; }
+    </style>
 
     <!-- ===============================================-->
     <!--    Stylesheets-->
@@ -121,6 +169,10 @@
     <script src="{{ url_for('static', path='vendors/echarts/echarts.min.js') }}"></script>
     <script src="{{ url_for('static', path='js/isfc-charts.js') }}"></script>
     <script src="{{ url_for('static', path='js/isfc-table-tools.js') }}"></script>
+    <!-- Batch 94: system-wide sortable columns + fullscreen preview.
+         Must load AFTER isfc-charts.js — fullscreen fires a resize event that
+         ECharts instances need to already exist to respond to. -->
+    <script src="{{ url_for('static', path='js/isfc-ui-tools.js') }}"></script>
     <script src="{{ url_for('static', path='js/isfc-global-search.js') }}"></script>
     <script src="{{ url_for('static', path='js/dashboards/ecommerce-dashboard.js') }}"></script>
  

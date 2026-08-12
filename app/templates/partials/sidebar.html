@@ -88,7 +88,12 @@ Pairs with the vertical sidebar. Brand + search + notifications + profile.
       <a class="navbar-brand me-1 me-sm-3" href="/modules">
         <div class="d-flex align-items-center">
           <div class="d-flex align-items-center"><img
-              src="{{ company_logo or url_for('static', path='img/icons/logo.png') }}" alt="ISFC" width="27" />
+              {# Batch 99: fixed 50x50 box with object-fit:contain. Company logos are
+                 uploaded at whatever aspect ratio the customer has; without a
+                 fixed box a wide logo stretched the navbar and a tall one
+                 overflowed it. contain (not cover) so nothing is cropped. #}
+              src="{{ company_logo or url_for('static', path='img/icons/logo.png') }}" alt="ISFC"
+              class="isfc-brand-logo" width="50" height="50" />
             <h5 class="logo-text ms-2 d-none d-sm-block">{{ request.session.get('header_title', 'ISFC') }}</h5>
           </div>
         </div>
@@ -185,15 +190,11 @@ Pairs with the vertical sidebar. Brand + search + notifications + profile.
 
       {# Theme toggle #}
       <li class="nav-item">
-        <div class="theme-control-toggle feather-icon-wait px-2"><input
-            class="form-check-input ms-0 theme-control-toggle-input" type="checkbox" data-theme-control="phoenixTheme"
-            value="dark" id="themeControlToggle" /><label
-            class="mb-0 theme-control-toggle-label theme-control-toggle-light" for="themeControlToggle"
-            data-bs-toggle="tooltip" data-bs-placement="left" data-bs-title="Switch theme"
-            style="height:32px;width:32px;"><span class="icon" data-feather="moon"></span></label><label
-            class="mb-0 theme-control-toggle-label theme-control-toggle-dark" for="themeControlToggle"
-            data-bs-toggle="tooltip" data-bs-placement="left" data-bs-title="Switch theme"
-            style="height:32px;width:32px;"><span class="icon" data-feather="sun"></span></label></div>
+        {# Batch 102: the vendor toggle (hidden checkbox + two <label for> + feather <svg>) is replaced by a plain button. Three separate patch attempts failed because that construction has three independent failure modes stacked on top of each other: the input is display:none, the labels relied on ids duplicated 7x, and the SVG icon is only clickable on its painted stroke. A button has none of them. The icon now swaps on [data-bs-theme] instead of :checked, so it no longer depends on a checkbox existing at all. #}
+        <button type="button" class="btn btn-link p-0 isfc-theme-btn" data-isfc-theme-toggle aria-label="{{ t('Switch theme') }}" title="{{ t('Switch theme') }}">
+          <i class="bi bi-moon-stars-fill isfc-theme-icon-light"></i>
+          <i class="bi bi-sun-fill isfc-theme-icon-dark"></i>
+        </button>
       </li>
 
       {# Mobile search trigger #}
@@ -203,9 +204,18 @@ Pairs with the vertical sidebar. Brand + search + notifications + profile.
 
       {# Notifications #}
       <li class="nav-item dropdown">
-        <a class="nav-link" href="#" style="min-width: 2.25rem" role="button" data-bs-toggle="dropdown"
+        {# Batch 99: unread count badge. `unread_notifications` is injected
+           globally in core/templates.py, and is already company- and
+           user-scoped by the Batch 98 fix — the badge counts only what this
+           user can actually open, not every unread row in the database. #}
+        <a class="nav-link position-relative" href="#" style="min-width: 2.25rem" role="button" data-bs-toggle="dropdown"
           aria-haspopup="true" aria-expanded="false" data-bs-auto-close="outside"><span class="d-block"
-            style="height:20px;width:20px;"><span data-feather="bell" style="height:20px;width:20px;"></span></span></a>
+            style="height:20px;width:20px;"><span data-feather="bell" style="height:20px;width:20px;"></span></span>
+          {% if unread_notifications and unread_notifications > 0 %}
+          <span class="position-absolute badge rounded-pill bg-danger isfc-bell-badge"
+                title="{{ unread_notifications }} {{ t('unread') }}">{{ unread_notifications if unread_notifications < 100 else '99+' }}</span>
+          {% endif %}
+        </a>
         <div class="dropdown-menu dropdown-menu-end notification-dropdown-menu py-0 shadow border navbar-dropdown-caret"
           id="navbarDropdownNotfication" aria-labelledby="navbarDropdownNotfication">
           <div class="card position-relative border-0">
@@ -255,16 +265,26 @@ Pairs with the vertical sidebar. Brand + search + notifications + profile.
       <li class="nav-item dropdown">
         <a class="nav-link lh-1 pe-0" id="navbarDropdownUser" href="#!" role="button" data-bs-toggle="dropdown"
           data-bs-auto-close="outside" aria-haspopup="true" aria-expanded="false">
-          <div class="avatar avatar-l"><img class="rounded-circle"
-              src="{{ url_for('static', path='img/modern-ai-image/user-6.jpg') }}" alt="" /></div>
+          {# Batch 99: this was hard-coded to a stock photo from the theme
+             pack, so every user saw the same stranger's face regardless of
+             what they uploaded on /users/profile. `user_avatar` is resolved
+             globally and cache-busted on file mtime so a re-upload shows
+             immediately instead of being served from the browser cache. #}
+          <div class="avatar avatar-l"><img class="rounded-circle isfc-header-avatar"
+              src="{{ user_avatar or url_for('static', path='img/modern-ai-image/user-6.jpg') }}"
+              alt="{{ session_username or 'User' }}" /></div>
         </a>
         <div class="dropdown-menu dropdown-menu-end navbar-dropdown-caret py-0 dropdown-profile shadow border"
           aria-labelledby="navbarDropdownUser">
           <div class="card position-relative border-0">
             <div class="card-body p-0">
               <div class="text-center pt-4 pb-3">
-                <div class="avatar avatar-xl"><img class="rounded-circle"
-                    src="{{ url_for('static', path='img/modern-ai-image/user-6.jpg') }}" alt="" /></div>
+                {# Batch 102: the dropdown avatar was still the theme's stock photo even
+                   after Batch 99 fixed the small one in the navbar — so uploading a
+                   photo changed one avatar and not the other. #}
+                <div class="avatar avatar-xl"><img class="rounded-circle isfc-header-avatar"
+                    src="{{ user_avatar or url_for('static', path='img/modern-ai-image/user-6.jpg') }}"
+                    alt="{{ session_username or 'User' }}" /></div>
                 <h6 class="mt-2 text-body-emphasis">{{ request.session.get('username', 'Admin') }}</h6>
                 <p class="fs-9 text-body-tertiary mb-0">{{ user_role }}</p>
               </div>
@@ -317,17 +337,11 @@ Pairs with the vertical sidebar (slim shape).
 
       {# Theme toggle #}
       <li class="nav-item">
-        <div class="theme-control-toggle fa-ion-wait pe-2 theme-control-toggle-slim"><input
-            class="form-check-input ms-0 theme-control-toggle-input" id="themeControlToggle" type="checkbox"
-            data-theme-control="phoenixTheme" value="dark" /><label
-            class="mb-0 theme-control-toggle-label theme-control-toggle-light" for="themeControlToggle"
-            data-bs-toggle="tooltip" data-bs-placement="left" title="Switch theme"><span
-              class="d-none d-sm-flex flex-center" style="height:16px;width:16px;"><span class="me-1 icon"
-                data-feather="moon"></span></span><span class="fs-9 fw-bold">Dark</span></label><label
-            class="mb-0 theme-control-toggle-label theme-control-toggle-dark" for="themeControlToggle"
-            data-bs-toggle="tooltip" data-bs-placement="left" title="Switch theme"><span
-              class="d-none d-sm-flex flex-center" style="height:16px;width:16px;"><span class="me-1 icon"
-                data-feather="sun"></span></span><span class="fs-9 fw-bold">Light</span></label></div>
+        {# Batch 102: the vendor toggle (hidden checkbox + two <label for> + feather <svg>) is replaced by a plain button. Three separate patch attempts failed because that construction has three independent failure modes stacked on top of each other: the input is display:none, the labels relied on ids duplicated 7x, and the SVG icon is only clickable on its painted stroke. A button has none of them. The icon now swaps on [data-bs-theme] instead of :checked, so it no longer depends on a checkbox existing at all. #}
+        <button type="button" class="btn btn-link p-0 isfc-theme-btn" data-isfc-theme-toggle aria-label="{{ t('Switch theme') }}" title="{{ t('Switch theme') }}">
+          <i class="bi bi-moon-stars-fill isfc-theme-icon-light"></i>
+          <i class="bi bi-sun-fill isfc-theme-icon-dark"></i>
+        </button>
       </li>
 
       {# Search trigger #}
@@ -396,8 +410,12 @@ Pairs with the vertical sidebar (slim shape).
           <div class="card position-relative border-0">
             <div class="card-body p-0">
               <div class="text-center pt-4 pb-3">
-                <div class="avatar avatar-xl"><img class="rounded-circle"
-                    src="{{ url_for('static', path='img/modern-ai-image/user-6.jpg') }}" alt="" /></div>
+                {# Batch 102: the dropdown avatar was still the theme's stock photo even
+                   after Batch 99 fixed the small one in the navbar — so uploading a
+                   photo changed one avatar and not the other. #}
+                <div class="avatar avatar-xl"><img class="rounded-circle isfc-header-avatar"
+                    src="{{ user_avatar or url_for('static', path='img/modern-ai-image/user-6.jpg') }}"
+                    alt="{{ session_username or 'User' }}" /></div>
                 <h6 class="mt-2 text-body-emphasis">{{ request.session.get('username', 'Admin') }}</h6>
                 <p class="fs-9 text-body-tertiary mb-0">{{ user_role }}</p>
               </div>
@@ -443,7 +461,12 @@ Used when phoenixNavbarPosition = 'horizontal' (or combo/dual top portion).
     <a class="navbar-brand me-1 me-sm-3" href="/modules">
       <div class="d-flex align-items-center">
         <div class="d-flex align-items-center"><img
-            src="{{ company_logo or url_for('static', path='img/icons/logo.png') }}" alt="ISFC" width="27" />
+            {# Batch 99: fixed 50x50 box with object-fit:contain. Company logos are
+                 uploaded at whatever aspect ratio the customer has; without a
+                 fixed box a wide logo stretched the navbar and a tall one
+                 overflowed it. contain (not cover) so nothing is cropped. #}
+              src="{{ company_logo or url_for('static', path='img/icons/logo.png') }}" alt="ISFC"
+              class="isfc-brand-logo" width="50" height="50" />
           <h5 class="logo-text ms-2 d-none d-sm-block">{{ request.session.get('header_title', 'ISFC') }}</h5>
         </div>
       </div>
@@ -462,15 +485,11 @@ Used when phoenixNavbarPosition = 'horizontal' (or combo/dual top portion).
 
     {# Theme toggle #}
     <li class="nav-item">
-      <div class="theme-control-toggle feather-icon-wait px-2"><input
-          class="form-check-input ms-0 theme-control-toggle-input" type="checkbox" data-theme-control="phoenixTheme"
-          value="dark" id="themeControlToggle" /><label
-          class="mb-0 theme-control-toggle-label theme-control-toggle-light" for="themeControlToggle"
-          data-bs-toggle="tooltip" data-bs-placement="left" data-bs-title="Switch theme"
-          style="height:32px;width:32px;"><span class="icon" data-feather="moon"></span></label><label
-          class="mb-0 theme-control-toggle-label theme-control-toggle-dark" for="themeControlToggle"
-          data-bs-toggle="tooltip" data-bs-placement="left" data-bs-title="Switch theme"
-          style="height:32px;width:32px;"><span class="icon" data-feather="sun"></span></label></div>
+      {# Batch 102: the vendor toggle (hidden checkbox + two <label for> + feather <svg>) is replaced by a plain button. Three separate patch attempts failed because that construction has three independent failure modes stacked on top of each other: the input is display:none, the labels relied on ids duplicated 7x, and the SVG icon is only clickable on its painted stroke. A button has none of them. The icon now swaps on [data-bs-theme] instead of :checked, so it no longer depends on a checkbox existing at all. #}
+        <button type="button" class="btn btn-link p-0 isfc-theme-btn" data-isfc-theme-toggle aria-label="{{ t('Switch theme') }}" title="{{ t('Switch theme') }}">
+          <i class="bi bi-moon-stars-fill isfc-theme-icon-light"></i>
+          <i class="bi bi-sun-fill isfc-theme-icon-dark"></i>
+        </button>
     </li>
 
     {# Search #}
@@ -599,17 +618,11 @@ Menu in slim top-bar dropdowns. Role gating + active states kept.
 
     {# Theme toggle (slim, with Dark/Light labels) #}
     <li class="nav-item">
-      <div class="theme-control-toggle fa-ion-wait pe-2 theme-control-toggle-slim"><input
-          class="form-check-input ms-0 theme-control-toggle-input" id="themeControlToggle" type="checkbox"
-          data-theme-control="phoenixTheme" value="dark" /><label
-          class="mb-0 theme-control-toggle-label theme-control-toggle-light" for="themeControlToggle"
-          data-bs-toggle="tooltip" data-bs-placement="left" title="Switch theme"><span
-            class="d-none d-sm-flex flex-center" style="height:16px;width:16px;"><span class="me-1 icon"
-              data-feather="moon"></span></span><span class="fs-9 fw-bold">Dark</span></label><label
-          class="mb-0 theme-control-toggle-label theme-control-toggle-dark" for="themeControlToggle"
-          data-bs-toggle="tooltip" data-bs-placement="left" title="Switch theme"><span
-            class="d-none d-sm-flex flex-center" style="height:16px;width:16px;"><span class="me-1 icon"
-              data-feather="sun"></span></span><span class="fs-9 fw-bold">Light</span></label></div>
+      {# Batch 102: the vendor toggle (hidden checkbox + two <label for> + feather <svg>) is replaced by a plain button. Three separate patch attempts failed because that construction has three independent failure modes stacked on top of each other: the input is display:none, the labels relied on ids duplicated 7x, and the SVG icon is only clickable on its painted stroke. A button has none of them. The icon now swaps on [data-bs-theme] instead of :checked, so it no longer depends on a checkbox existing at all. #}
+        <button type="button" class="btn btn-link p-0 isfc-theme-btn" data-isfc-theme-toggle aria-label="{{ t('Switch theme') }}" title="{{ t('Switch theme') }}">
+          <i class="bi bi-moon-stars-fill isfc-theme-icon-light"></i>
+          <i class="bi bi-sun-fill isfc-theme-icon-dark"></i>
+        </button>
     </li>
 
     {# Search #}
@@ -729,7 +742,12 @@ sidebar shell (the <nav class="navbar-vertical">...#navbarVerticalNav).
       <a class="navbar-brand me-1 me-sm-3" href="/modules">
         <div class="d-flex align-items-center">
           <div class="d-flex align-items-center"><img
-              src="{{ company_logo or url_for('static', path='img/icons/logo.png') }}" alt="ISFC" width="27" />
+              {# Batch 99: fixed 50x50 box with object-fit:contain. Company logos are
+                 uploaded at whatever aspect ratio the customer has; without a
+                 fixed box a wide logo stretched the navbar and a tall one
+                 overflowed it. contain (not cover) so nothing is cropped. #}
+              src="{{ company_logo or url_for('static', path='img/icons/logo.png') }}" alt="ISFC"
+              class="isfc-brand-logo" width="50" height="50" />
             <h5 class="logo-text ms-2 d-none d-sm-block">{{ request.session.get('header_title', 'ISFC') }}</h5>
           </div>
         </div>
@@ -748,15 +766,11 @@ sidebar shell (the <nav class="navbar-vertical">...#navbarVerticalNav).
 
       {# Theme toggle #}
       <li class="nav-item">
-        <div class="theme-control-toggle feather-icon-wait px-2"><input
-            class="form-check-input ms-0 theme-control-toggle-input" type="checkbox" data-theme-control="phoenixTheme"
-            value="dark" id="themeControlToggle" /><label
-            class="mb-0 theme-control-toggle-label theme-control-toggle-light" for="themeControlToggle"
-            data-bs-toggle="tooltip" data-bs-placement="left" data-bs-title="Switch theme"
-            style="height:32px;width:32px;"><span class="icon" data-feather="moon"></span></label><label
-            class="mb-0 theme-control-toggle-label theme-control-toggle-dark" for="themeControlToggle"
-            data-bs-toggle="tooltip" data-bs-placement="left" data-bs-title="Switch theme"
-            style="height:32px;width:32px;"><span class="icon" data-feather="sun"></span></label></div>
+        {# Batch 102: the vendor toggle (hidden checkbox + two <label for> + feather <svg>) is replaced by a plain button. Three separate patch attempts failed because that construction has three independent failure modes stacked on top of each other: the input is display:none, the labels relied on ids duplicated 7x, and the SVG icon is only clickable on its painted stroke. A button has none of them. The icon now swaps on [data-bs-theme] instead of :checked, so it no longer depends on a checkbox existing at all. #}
+        <button type="button" class="btn btn-link p-0 isfc-theme-btn" data-isfc-theme-toggle aria-label="{{ t('Switch theme') }}" title="{{ t('Switch theme') }}">
+          <i class="bi bi-moon-stars-fill isfc-theme-icon-light"></i>
+          <i class="bi bi-sun-fill isfc-theme-icon-dark"></i>
+        </button>
       </li>
 
       {# Search #}
@@ -826,8 +840,12 @@ sidebar shell (the <nav class="navbar-vertical">...#navbarVerticalNav).
           <div class="card position-relative border-0">
             <div class="card-body p-0">
               <div class="text-center pt-4 pb-3">
-                <div class="avatar avatar-xl"><img class="rounded-circle"
-                    src="{{ url_for('static', path='img/modern-ai-image/user-6.jpg') }}" alt="" /></div>
+                {# Batch 102: the dropdown avatar was still the theme's stock photo even
+                   after Batch 99 fixed the small one in the navbar — so uploading a
+                   photo changed one avatar and not the other. #}
+                <div class="avatar avatar-xl"><img class="rounded-circle isfc-header-avatar"
+                    src="{{ user_avatar or url_for('static', path='img/modern-ai-image/user-6.jpg') }}"
+                    alt="{{ session_username or 'User' }}" /></div>
                 <h6 class="mt-2 text-body-emphasis">{{ request.session.get('username', 'Admin') }}</h6>
                 <p class="fs-9 text-body-tertiary mb-0">{{ user_role }}</p>
               </div>
@@ -890,17 +908,11 @@ sidebar shell (the <nav class="navbar-vertical">...#navbarVerticalNav).
 
       {# Theme toggle (slim, Dark/Light labels) #}
       <li class="nav-item">
-        <div class="theme-control-toggle fa-ion-wait pe-2 theme-control-toggle-slim"><input
-            class="form-check-input ms-0 theme-control-toggle-input" id="themeControlToggle" type="checkbox"
-            data-theme-control="phoenixTheme" value="dark" /><label
-            class="mb-0 theme-control-toggle-label theme-control-toggle-light" for="themeControlToggle"
-            data-bs-toggle="tooltip" data-bs-placement="left" title="Switch theme"><span
-              class="d-none d-sm-flex flex-center" style="height:16px;width:16px;"><span class="me-1 icon"
-                data-feather="moon"></span></span><span class="fs-9 fw-bold">Dark</span></label><label
-            class="mb-0 theme-control-toggle-label theme-control-toggle-dark" for="themeControlToggle"
-            data-bs-toggle="tooltip" data-bs-placement="left" title="Switch theme"><span
-              class="d-none d-sm-flex flex-center" style="height:16px;width:16px;"><span class="me-1 icon"
-                data-feather="sun"></span></span><span class="fs-9 fw-bold">Light</span></label></div>
+        {# Batch 102: the vendor toggle (hidden checkbox + two <label for> + feather <svg>) is replaced by a plain button. Three separate patch attempts failed because that construction has three independent failure modes stacked on top of each other: the input is display:none, the labels relied on ids duplicated 7x, and the SVG icon is only clickable on its painted stroke. A button has none of them. The icon now swaps on [data-bs-theme] instead of :checked, so it no longer depends on a checkbox existing at all. #}
+        <button type="button" class="btn btn-link p-0 isfc-theme-btn" data-isfc-theme-toggle aria-label="{{ t('Switch theme') }}" title="{{ t('Switch theme') }}">
+          <i class="bi bi-moon-stars-fill isfc-theme-icon-light"></i>
+          <i class="bi bi-sun-fill isfc-theme-icon-dark"></i>
+        </button>
       </li>
 
       {# Search #}
@@ -969,8 +981,12 @@ sidebar shell (the <nav class="navbar-vertical">...#navbarVerticalNav).
           <div class="card position-relative border-0">
             <div class="card-body p-0">
               <div class="text-center pt-4 pb-3">
-                <div class="avatar avatar-xl"><img class="rounded-circle"
-                    src="{{ url_for('static', path='img/modern-ai-image/user-6.jpg') }}" alt="" /></div>
+                {# Batch 102: the dropdown avatar was still the theme's stock photo even
+                   after Batch 99 fixed the small one in the navbar — so uploading a
+                   photo changed one avatar and not the other. #}
+                <div class="avatar avatar-xl"><img class="rounded-circle isfc-header-avatar"
+                    src="{{ user_avatar or url_for('static', path='img/modern-ai-image/user-6.jpg') }}"
+                    alt="{{ session_username or 'User' }}" /></div>
                 <h6 class="mt-2 text-body-emphasis">{{ request.session.get('username', 'Admin') }}</h6>
                 <p class="fs-9 text-body-tertiary mb-0">{{ user_role }}</p>
               </div>
@@ -1025,7 +1041,12 @@ sidebar shell (the <nav class="navbar-vertical">...#navbarVerticalNav).
             <a class="navbar-brand me-1 me-sm-3" href="/modules">
               <div class="d-flex align-items-center">
                 <div class="d-flex align-items-center"><img
-                    src="{{ company_logo or url_for('static', path='img/icons/logo.png') }}" alt="ISFC" width="27" />
+                    {# Batch 99: fixed 50x50 box with object-fit:contain. Company logos are
+                 uploaded at whatever aspect ratio the customer has; without a
+                 fixed box a wide logo stretched the navbar and a tall one
+                 overflowed it. contain (not cover) so nothing is cropped. #}
+              src="{{ company_logo or url_for('static', path='img/icons/logo.png') }}" alt="ISFC"
+              class="isfc-brand-logo" width="50" height="50" />
                   <h5 class="logo-text ms-2 d-none d-sm-block">{{ request.session.get('header_title', 'ISFC') }}</h5>
                 </div>
               </div>
@@ -1086,15 +1107,11 @@ sidebar shell (the <nav class="navbar-vertical">...#navbarVerticalNav).
           <ul class="navbar-nav navbar-nav-icons flex-row">
             {# Theme toggle #}
             <li class="nav-item">
-              <div class="theme-control-toggle feather-icon-wait px-2"><input
-                  class="form-check-input ms-0 theme-control-toggle-input" type="checkbox"
-                  data-theme-control="phoenixTheme" value="dark" id="themeControlToggle" /><label
-                  class="mb-0 theme-control-toggle-label theme-control-toggle-light" for="themeControlToggle"
-                  data-bs-toggle="tooltip" data-bs-placement="left" data-bs-title="Switch theme"
-                  style="height:32px;width:32px;"><span class="icon" data-feather="moon"></span></label><label
-                  class="mb-0 theme-control-toggle-label theme-control-toggle-dark" for="themeControlToggle"
-                  data-bs-toggle="tooltip" data-bs-placement="left" data-bs-title="Switch theme"
-                  style="height:32px;width:32px;"><span class="icon" data-feather="sun"></span></label></div>
+              {# Batch 102: the vendor toggle (hidden checkbox + two <label for> + feather <svg>) is replaced by a plain button. Three separate patch attempts failed because that construction has three independent failure modes stacked on top of each other: the input is display:none, the labels relied on ids duplicated 7x, and the SVG icon is only clickable on its painted stroke. A button has none of them. The icon now swaps on [data-bs-theme] instead of :checked, so it no longer depends on a checkbox existing at all. #}
+        <button type="button" class="btn btn-link p-0 isfc-theme-btn" data-isfc-theme-toggle aria-label="{{ t('Switch theme') }}" title="{{ t('Switch theme') }}">
+          <i class="bi bi-moon-stars-fill isfc-theme-icon-light"></i>
+          <i class="bi bi-sun-fill isfc-theme-icon-dark"></i>
+        </button>
             </li>
 
             {# Notifications #}

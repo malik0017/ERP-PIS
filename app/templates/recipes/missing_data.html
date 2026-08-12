@@ -5,9 +5,19 @@
      <div class="pis-hero mb-4" style="background:linear-gradient(135deg,#132947,#0c91a3);border-radius:22px;color:#fff;padding:26px 30px;">
     <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
       <div>
-        <h2 class="mb-1 text-white">Recipe Missing Data</h2>
+        <h2 class="mb-1 text-white">{{ t('Recipe Missing Data') }}</h2>
+        <p class="mb-0 opacity-75 fs-9">
+          {{ t('These ingredient lines have no valid item code. They cost ZERO and never appear in a shortage check — so food cost is understated and production can start without the material being ordered.') }}</p>
       </div>
-      <a href="/recipes" class="btn btn-phoenix-secondary">Back</a>
+      {# Batch 104: download the report as a fixable workbook — with a
+         "Fix Once" sheet listing each distinct unmapped item, because the
+         same "Ranch sauce" appears on many recipes and fixing it once there
+         fixes all of them. #}
+      <div class="d-flex gap-2">
+        <a href="/masters/recipe-missing-data/export" class="btn btn-light">
+          <i class="bi bi-file-earmark-excel me-1"></i>{{ t('Download &amp; Fix') }}</a>
+        <a href="/recipes" class="btn btn-phoenix-secondary">{{ t('Back') }}</a>
+      </div>
     </div>
   </div>
     <div class="card p-4">

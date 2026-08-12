@@ -1,0 +1,123 @@
+{% extends "layouts/base.html" %}
+{% block title %}{{ t('Validate Recipe File') }}{% endblock %}
+{% block content %}
+<div class="container-fluid py-3 isfc-page">
+
+  <div class="isfc-hero mb-4 p-4 rounded-4 text-white"
+       style="background:linear-gradient(135deg,#132947,#0c91a3)">
+    <h1 class="mb-1 fw-bold text-white"><i class="bi bi-clipboard-check me-2"></i>{{ t('File Check') }}</h1>
+    <p class="mb-0 opacity-75">{{ filename }} — {{ t('nothing has been imported yet.') }}</p>
+  </div>
+
+  {% if fatal %}
+  <div class="alert alert-subtle-danger">
+    <h5 class="alert-heading"><i class="bi bi-x-octagon me-2"></i>{{ t('Cannot read this file') }}</h5>
+    <p class="mb-0">{{ fatal }}</p>
+    <hr>
+    <a href="/recipes/template" class="btn btn-sm btn-phoenix-secondary">
+      <i class="bi bi-download me-1"></i>{{ t('Download the template') }}</a>
+  </div>
+  {% else %}
+
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-lg-3"><div class="card border h-100"><div class="card-body">
+      <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Rows OK') }}</div>
+      <div class="fs-3 fw-bold text-success">{{ counts.ok }}</div></div></div></div>
+    <div class="col-6 col-lg-3"><div class="card border h-100"><div class="card-body">
+      <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Warnings') }}</div>
+      <div class="fs-3 fw-bold text-warning">{{ counts.warning }}</div></div></div></div>
+    <div class="col-6 col-lg-3"><div class="card border h-100"><div class="card-body">
+      <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Errors') }}</div>
+      <div class="fs-3 fw-bold text-danger">{{ counts.error }}</div></div></div></div>
+    <div class="col-6 col-lg-3"><div class="card border h-100"><div class="card-body">
+      <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('New / Update') }}</div>
+      <div class="fs-3 fw-bold">{{ will_insert }} <span class="fs-6 text-body-tertiary">/ {{ will_update }}</span></div>
+    </div></div></div>
+  </div>
+
+  <div class="card border mb-4"><div class="card-body">
+    <div class="row g-3 fs-9">
+      <div class="col-md-4">
+        <div class="text-body-tertiary text-uppercase fw-bold mb-1">{{ t('Sheet used') }}</div>
+        <div class="fw-bold">{{ using_sheet }}</div>
+        {% if fallback_mode %}
+        <div class="alert alert-subtle-warning py-2 px-2 mt-2 mb-0">
+          <i class="bi bi-exclamation-triangle me-1"></i>
+          {{ t('No "Master Recipes" sheet found — recipes are being rebuilt from the ingredients sheet. This is the path that used to silently drop the category.') }}
+        </div>
+        {% endif %}
+      </div>
+      <div class="col-md-3">
+        <div class="text-body-tertiary text-uppercase fw-bold mb-1">{{ t('Header row') }}</div>
+        <div class="fw-bold">{{ t('Row') }} {{ header_row }}</div>
+      </div>
+      <div class="col-md-5">
+        <div class="text-body-tertiary text-uppercase fw-bold mb-1">{{ t('Expected columns not found') }}</div>
+        {% if missing_headers %}
+        {% for h in missing_headers %}
+        <span class="badge badge-phoenix badge-phoenix-danger me-1">{{ h }}</span>
+        {% endfor %}
+        <div class="small-muted mt-1">
+          {{ t('These will import as blank. Rename the column in Excel to match the template exactly.') }}</div>
+        {% else %}
+        <span class="badge badge-phoenix badge-phoenix-success">{{ t('All expected columns present') }}</span>
+        {% endif %}
+      </div>
+    </div>
+  </div></div>
+
+  {% if rows %}
+  <div class="card border mb-4">
+    <div class="card-header bg-body-highlight fw-bold">
+      {{ t('Rows needing attention') }}
+      <span class="badge badge-phoenix badge-phoenix-secondary">{{ rows|length }}</span>
+    </div>
+    <div class="card-body p-0">
+      <div class="table-responsive" style="max-height:520px;overflow:auto">
+        <table class="table table-sm mb-0" data-isfc-table>
+          <thead class="bg-body-highlight position-sticky top-0">
+            <tr><th style="width:70px">{{ t('Row') }}</th><th>{{ t('Code') }}</th>
+              <th>{{ t('Name') }}</th><th>{{ t('What will happen') }}</th></tr>
+          </thead>
+          <tbody>
+            {% for r in rows %}
+            <tr class="{% if r.level == 'error' %}table-danger{% elif r.level == 'warning' %}table-warning{% endif %}">
+              <td>{{ r.row }}</td>
+              <td class="fw-bold">{{ r.code }}</td>
+              <td>{{ r.name }}</td>
+              <td><ul class="mb-0 ps-3">{% for i in r.issues %}<li>{{ i }}</li>{% endfor %}</ul></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  {% else %}
+  <div class="alert alert-subtle-success">
+    <i class="bi bi-check-circle me-2"></i>{{ t('Every row looks clean. Nothing needs attention.') }}
+  </div>
+  {% endif %}
+
+  <div class="card border">
+    <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-3">
+      <div class="fs-9 text-body-tertiary">
+        {% if counts.error %}
+        <i class="bi bi-x-octagon text-danger me-1"></i>
+        <strong>{{ counts.error }} {{ t('row(s) will be skipped or imported wrong.') }}</strong>
+        {{ t('Fix the file and check it again before importing.') }}
+        {% else %}
+        <i class="bi bi-check-circle text-success me-1"></i>
+        {{ t('Safe to import. Errors would be listed here if there were any.') }}
+        {% endif %}
+      </div>
+      <div class="d-flex gap-2">
+        <a href="/recipes/template" class="btn btn-phoenix-secondary btn-sm">
+          <i class="bi bi-download me-1"></i>{{ t('Template') }}</a>
+        <a href="/recipes" class="btn btn-phoenix-secondary btn-sm">{{ t('Back to Recipes') }}</a>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

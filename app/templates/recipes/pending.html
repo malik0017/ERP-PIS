@@ -7,28 +7,49 @@
     <h1>Pending Recipe Versions</h1>
   </div>
 
+  {# Batch 103: tick-box selection with bulk actions. The old screen had
+     "Approve All Pending" (all or nothing) and per-row buttons — 49 clicks,
+     each bouncing back to the full recipe list. #}
+  <form method="post" id="bulkForm" action="/recipes/bulk/approve">
+  <input type="hidden" name="return_to" value="/recipes/pending">
+
   <div class="isfc-card toolbar">
     <div class="note">
       <b>{{ recipes|length }}</b> recipe versions are pending.
+      <span id="selCount" class="badge badge-phoenix badge-phoenix-primary ms-2" style="display:none"></span>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <a class="btn soft" href="/recipes?status=ALL">Show All Recipes</a>
       {% if recipes %}
-      <form method="post" action="/recipes/approve-all-pending" style="display:inline">
-        <button class="btn ok" type="submit">Approve All Pending</button>
-      </form>
+      <button class="btn ok" type="submit" formaction="/recipes/bulk/approve"
+              data-confirm="Approve the selected version(s)? Older versions of the same recipe are retired automatically."
+              data-confirm-title="Approve selected" data-confirm-ok="Approve" data-confirm-variant="success">
+        Approve Selected</button>
+      <button class="btn bad" type="submit" formaction="/recipes/bulk/reject"
+              data-confirm="Reject the selected version(s)?"
+              data-confirm-title="Reject selected" data-confirm-ok="Reject" data-confirm-variant="danger">
+        Reject Selected</button>
+      <button class="btn soft" type="submit" formaction="/recipes/approve-all-pending"
+              data-confirm="Approve every pending version, not just the selected ones?"
+              data-confirm-title="Approve all" data-confirm-ok="Approve all" data-confirm-variant="warning">
+        Approve All</button>
       {% endif %}
     </div>
   </div>
 
   <div class="isfc-card">
-    <table class="tbl">
+    <table class="tbl" data-no-sort>
       <thead>
-        <tr><th>Code</th><th>Name</th><th>Customer</th><th>Category</th><th>Version</th><th>Food Cost</th><th>Sale Price</th><th>Actions</th></tr>
+        <tr>
+          <th style="width:36px"><input type="checkbox" id="selAll" title="Select all"></th>
+          <th>Code</th><th>Name</th><th>Customer</th><th>Category</th><th>Version</th>
+          <th>Food Cost</th><th>Sale Price</th><th>Actions</th>
+        </tr>
       </thead>
       <tbody>
         {% for r in recipes %}
         <tr>
+          <td><input type="checkbox" class="rowSel" name="recipe_ids" value="{{ r.id }}"></td>
           <td><b>{{ r.recipe_code }}</b></td>
           <td>{{ r.recipe_name }}</td>
           <td>{{ r.customer_name }}</td>
@@ -38,15 +59,44 @@
           <td>{{ '%.2f'|format(r.sale_price or 0) }}</td>
           <td>
             <a class="btn soft" href="/recipes/{{ r.id }}">View</a>
-            <form method="post" action="/recipes/{{ r.id }}/approve" style="display:inline"><button class="btn ok" type="submit">Approve</button></form>
-            <form method="post" action="/recipes/{{ r.id }}/reject" style="display:inline"><button class="btn bad" type="submit">Reject</button></form>
           </td>
         </tr>
         {% else %}
-        <tr><td colspan="8" style="text-align:center;color:#6f8196;padding:28px">No pending recipe versions.</td></tr>
+        <tr><td colspan="9" style="text-align:center;color:#6f8196;padding:28px">No pending recipe versions.</td></tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
+  </form>
+
+  <script>
+    (function () {
+      var all = document.getElementById('selAll');
+      var count = document.getElementById('selCount');
+      function rows() { return document.querySelectorAll('.rowSel'); }
+      function update() {
+        var n = document.querySelectorAll('.rowSel:checked').length;
+        count.textContent = n + ' selected';
+        count.style.display = n ? '' : 'none';
+      }
+      if (all) all.addEventListener('change', function () {
+        rows().forEach(function (c) { c.checked = all.checked; });
+        update();
+      });
+      document.addEventListener('change', function (e) {
+        if (e.target && e.target.classList.contains('rowSel')) update();
+      });
+      // Guard the two "selected" actions — posting an empty selection would
+      // look like a silent no-op.
+      document.getElementById('bulkForm').addEventListener('submit', function (e) {
+        var act = (e.submitter && e.submitter.getAttribute('formaction')) || '';
+        if (act.indexOf('/bulk/') === -1) return;
+        if (!document.querySelectorAll('.rowSel:checked').length) {
+          e.preventDefault();
+          if (window.showToast) showToast('Tick at least one recipe first.', 'warning', 'Nothing selected');
+        }
+      });
+    })();
+  </script>
 </div>
 {% endblock %}

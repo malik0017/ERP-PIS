@@ -1,0 +1,176 @@
+{% extends "layouts/base.html" %}
+{% block title %}{{ t('Inventory Reports') }}{% endblock %}
+{% block content %}
+<div class="container-fluid py-3 isfc-page">
+
+  <div class="isfc-hero mb-4 p-4 rounded-4 text-white d-flex justify-content-between align-items-center flex-wrap gap-3"
+       style="background:linear-gradient(135deg,#132947,#0c91a3)">
+    <div>
+      <h1 class="mb-1 fw-bold text-white"><i class="bi bi-boxes me-2"></i>{{ t('Inventory Reports') }}</h1>
+      <p class="mb-0 opacity-75">
+        {{ t('Supplier spend, stock value, slow movers and reorder exposure — from the ledger, QC-cleared stock only.') }}</p>
+    </div>
+    <a class="btn btn-light btn-sm"
+       href="/reports/inventory/export?date_from={{ filters.date_from }}&date_to={{ filters.date_to }}&slow_days={{ filters.slow_days }}">
+      <i class="bi bi-file-earmark-excel me-1"></i>{{ t('Export All to Excel') }}</a>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-lg-3"><div class="card border h-100"><div class="card-body">
+      <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Purchased (period)') }}</div>
+      <div class="fs-3 fw-bold">{{ '%.2f'|format(totals.ordered_value) }}</div></div></div></div>
+    <div class="col-6 col-lg-3"><div class="card border h-100"><div class="card-body">
+      <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Stock on Hand Value') }}</div>
+      <div class="fs-3 fw-bold text-success">{{ '%.2f'|format(totals.on_hand_value) }}</div></div></div></div>
+    <div class="col-6 col-lg-3"><div class="card border h-100"><div class="card-body">
+      <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Slow-Moving Value') }}</div>
+      <div class="fs-3 fw-bold text-warning">{{ '%.2f'|format(totals.slow_value) }}</div></div></div></div>
+    <div class="col-6 col-lg-3"><div class="card border h-100"><div class="card-body">
+      <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Below Minimum') }}</div>
+      <div class="fs-3 fw-bold text-danger">{{ low|length }}</div></div></div></div>
+  </div>
+
+  <div class="card border mb-4"><div class="card-body py-3">
+    <form method="get" class="row g-2 align-items-end">
+      <div class="col-md-3">
+        <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('From') }}</label>
+        <input type="date" name="date_from" value="{{ filters.date_from }}" class="form-control form-control-sm">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('To') }}</label>
+        <input type="date" name="date_to" value="{{ filters.date_to }}" class="form-control form-control-sm">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('Slow-moving threshold (days)') }}</label>
+        <input type="number" min="7" max="365" name="slow_days" value="{{ filters.slow_days }}" class="form-control form-control-sm">
+      </div>
+      <div class="col-md-3 d-flex gap-2">
+        <button class="btn btn-primary btn-sm flex-grow-1">{{ t('Apply') }}</button>
+        <a href="/reports/inventory" class="btn btn-phoenix-secondary btn-sm">{{ t('Reset') }}</a>
+      </div>
+    </form>
+  </div></div>
+
+  <div class="card border mb-4">
+    <div class="card-header bg-body-highlight fw-bold">{{ t('Supplier Spend & Fill Rate') }}</div>
+    <div class="card-body p-0"><div class="table-responsive">
+      <table class="table table-sm table-hover mb-0" data-isfc-table>
+        <thead class="bg-body-highlight"><tr>
+          <th>{{ t('Supplier') }}</th><th class="text-end">{{ t('POs') }}</th>
+          <th class="text-end">{{ t('Ordered') }}</th><th class="text-end">{{ t('Value') }}</th>
+          <th class="text-end">{{ t('Received') }}</th><th class="text-end">{{ t('Open') }}</th>
+          <th class="text-end">{{ t('Fill %') }}</th></tr></thead>
+        <tbody>
+          {% for s in suppliers %}
+          <tr>
+            <td class="fw-bold">{{ s.supplier_name }}</td>
+            <td class="text-end">{{ s.po_count }}</td>
+            <td class="text-end">{{ '%.3f'|format(s.ordered_qty or 0) }}</td>
+            <td class="text-end">{{ '%.2f'|format(s.ordered_value or 0) }}</td>
+            <td class="text-end">{{ '%.3f'|format(s.received_qty or 0) }}</td>
+            <td class="text-end {% if s.open_qty > 0 %}text-warning fw-bold{% endif %}">{{ '%.3f'|format(s.open_qty) }}</td>
+            <td class="text-end">
+              <span class="badge badge-phoenix badge-phoenix-{{ 'success' if s.fill_rate >= 95 else ('warning' if s.fill_rate >= 70 else 'danger') }}">
+                {{ s.fill_rate }}%</span></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="7" class="text-center text-body-tertiary py-4">{{ t('No purchase orders in this period.') }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div></div>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-lg-6">
+      <div class="card border h-100">
+        <div class="card-header bg-body-highlight fw-bold">{{ t('Stock Value by Supplier') }}</div>
+        <div class="card-body p-0"><div class="table-responsive" style="max-height:420px;overflow:auto">
+          <table class="table table-sm mb-0" data-isfc-table>
+            <thead class="bg-body-highlight position-sticky top-0"><tr>
+              <th>{{ t('Supplier') }}</th><th class="text-end">{{ t('Items') }}</th>
+              <th class="text-end">{{ t('On Hand') }}</th><th class="text-end">{{ t('Value') }}</th>
+              <th class="text-end">{{ t('In QC') }}</th></tr></thead>
+            <tbody>
+              {% for s in stock %}
+              <tr>
+                <td>{{ s.supplier_name }}</td>
+                <td class="text-end">{{ s.item_count }}</td>
+                <td class="text-end">{{ '%.3f'|format(s.on_hand_qty or 0) }}</td>
+                <td class="text-end fw-bold">{{ '%.2f'|format(s.on_hand_value or 0) }}</td>
+                <td class="text-end">{% if s.qc_hold_qty %}<span class="text-warning">{{ '%.3f'|format(s.qc_hold_qty) }}</span>{% else %}—{% endif %}</td>
+              </tr>
+              {% else %}
+              <tr><td colspan="5" class="text-center text-body-tertiary py-4">{{ t('No stock on hand.') }}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div></div>
+        <div class="card-footer bg-body-highlight fs-9 text-body-tertiary">
+          {{ t('In QC is received but not yet usable — it is excluded from On Hand, not added to it.') }}
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-6">
+      <div class="card border h-100">
+        <div class="card-header bg-body-highlight fw-bold">
+          {{ t('Below Minimum — Reorder Shortlist') }}
+          <span class="badge badge-phoenix badge-phoenix-danger">{{ low|length }}</span></div>
+        <div class="card-body p-0"><div class="table-responsive" style="max-height:420px;overflow:auto">
+          <table class="table table-sm mb-0" data-isfc-table>
+            <thead class="bg-body-highlight position-sticky top-0"><tr>
+              <th>{{ t('Item') }}</th><th>{{ t('Supplier') }}</th>
+              <th class="text-end">{{ t('On Hand') }}</th><th class="text-end">{{ t('Min') }}</th>
+              <th class="text-end">{{ t('Short By') }}</th></tr></thead>
+            <tbody>
+              {% for l in low %}
+              <tr class="table-danger">
+                <td><span class="fw-bold">{{ l.ingredient_code }}</span>
+                  <div class="small-muted">{{ l.item_name }}</div></td>
+                <td class="fs-9">{{ l.supplier_name }}</td>
+                <td class="text-end">{{ '%.3f'|format(l.on_hand_qty or 0) }}</td>
+                <td class="text-end">{{ '%.3f'|format(l.min_stock or 0) }}</td>
+                <td class="text-end fw-bold">{{ '%.3f'|format(l.shortfall or 0) }}</td>
+              </tr>
+              {% else %}
+              <tr><td colspan="5" class="text-center text-body-tertiary py-4">
+                {{ t('Nothing below minimum.') }}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card border mt-3">
+    <div class="card-header bg-body-highlight fw-bold">
+      {{ t('Slow Moving — no issue in') }} {{ filters.slow_days }} {{ t('days') }}
+      <span class="badge badge-phoenix badge-phoenix-warning">{{ slow|length }}</span></div>
+    <div class="card-body p-0"><div class="table-responsive" style="max-height:420px;overflow:auto">
+      <table class="table table-sm mb-0" data-isfc-table>
+        <thead class="bg-body-highlight position-sticky top-0"><tr>
+          <th>{{ t('Item') }}</th><th>{{ t('Supplier') }}</th><th>{{ t('Storage') }}</th>
+          <th class="text-end">{{ t('On Hand') }}</th><th class="text-end">{{ t('Value') }}</th>
+          <th>{{ t('Last Issued') }}</th></tr></thead>
+        <tbody>
+          {% for s in slow %}
+          <tr>
+            <td><span class="fw-bold">{{ s.ingredient_code }}</span>
+              <div class="small-muted">{{ s.item_name }}</div></td>
+            <td class="fs-9">{{ s.supplier_name }}</td>
+            <td class="fs-9">{{ s.storage_type or '—' }}</td>
+            <td class="text-end">{{ '%.3f'|format(s.on_hand_qty or 0) }}</td>
+            <td class="text-end fw-bold">{{ '%.2f'|format(s.on_hand_value or 0) }}</td>
+            <td class="fs-9">{{ s.last_out or t('never issued') }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="6" class="text-center text-body-tertiary py-4">{{ t('Nothing slow-moving.') }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div></div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,134 @@
+{% extends "layouts/base.html" %}
+{% block title %}{{ t('Audit Log') }}{% endblock %}
+{% block content %}
+{% set qs = 'date_from=' ~ (filters.date_from or '') ~ '&date_to=' ~ (filters.date_to or '')
+            ~ '&user=' ~ (filters.user or '') ~ '&action=' ~ (filters.action or '')
+            ~ '&category=' ~ (filters.category or '') ~ '&table=' ~ (filters.table or '') %}
+<div class="container-fluid py-3 isfc-page">
+
+  <div class="isfc-hero mb-4 p-4 rounded-4 text-white d-flex justify-content-between align-items-center flex-wrap gap-3"
+       style="background:linear-gradient(135deg,#132947,#0c91a3)">
+    <div>
+      <h1 class="mb-1 fw-bold text-white"><i class="bi bi-shield-check me-2"></i>{{ t('Audit Log') }}</h1>
+      <p class="mb-0 opacity-75">
+        {{ t('Who did what, and when. Logins, approvals, master data changes and stock movements.') }}</p>
+    </div>
+    <a class="btn btn-light" href="/admin/audit/export?{{ qs }}">
+      <i class="bi bi-file-earmark-excel me-1"></i>{{ t('Export') }}</a>
+  </div>
+
+  <div class="card border mb-4"><div class="card-body">
+    <form method="get" class="row g-2 align-items-end">
+      <div class="col-md-2">
+        <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('From') }}</label>
+        <input type="date" name="date_from" value="{{ filters.date_from }}" class="form-control form-control-sm">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('To') }}</label>
+        <input type="date" name="date_to" value="{{ filters.date_to }}" class="form-control form-control-sm">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('Category') }}</label>
+        <select name="category" class="form-select form-select-sm">
+          <option value="">{{ t('All') }}</option>
+          {% for c in categories %}
+          <option value="{{ c }}" {% if filters.category==c %}selected{% endif %}>{{ t(c) }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('User') }}</label>
+        <input name="user" value="{{ filters.user }}" class="form-control form-control-sm"
+               placeholder="{{ t('Any') }}">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('Action contains') }}</label>
+        <input name="action" value="{{ filters.action }}" class="form-control form-control-sm"
+               placeholder="{{ t('e.g. APPROVE') }}">
+      </div>
+      <div class="col-md-2 d-flex gap-2">
+        <button class="btn btn-primary btn-sm flex-grow-1">{{ t('Apply') }}</button>
+        <a href="/admin/audit" class="btn btn-phoenix-secondary btn-sm">{{ t('Reset') }}</a>
+      </div>
+    </form>
+  </div></div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-lg-4">
+      <div class="card border h-100">
+        <div class="card-header bg-body-highlight fw-bold">{{ t('Entries in view') }}</div>
+        <div class="card-body">
+          <div class="fs-2 fw-bold mb-3">{{ summary.total }}</div>
+          {% for name, n in summary.by_category %}
+          <div class="d-flex justify-content-between py-1 border-bottom fs-9">
+            <span>{{ t(name) }}</span><span class="fw-bold">{{ n }}</span></div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-8">
+      <div class="card border h-100">
+        <div class="card-header bg-body-highlight fw-bold">{{ t('Most active users in this window') }}</div>
+        <div class="card-body">
+          {% for user, n in summary.top_users %}
+          <div class="d-flex justify-content-between align-items-center py-1 border-bottom">
+            <span class="fw-bold fs-9">{{ user }}</span>
+            <div class="d-flex align-items-center gap-2" style="width:65%">
+              <div class="progress flex-grow-1" style="height:6px">
+                <div class="progress-bar" style="width: {{ (n / (summary.top_users[0][1] or 1) * 100)|round }}%"></div>
+              </div>
+              <span class="fs-9 text-body-tertiary" style="width:34px;text-align:right">{{ n }}</span>
+            </div>
+          </div>
+          {% else %}
+          <div class="text-body-tertiary fs-9">{{ t('No activity in this window.') }}</div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card border">
+    <div class="card-header bg-body-highlight fw-bold d-flex justify-content-between align-items-center">
+      <span>{{ t('Entries') }}</span>
+      <span class="fs-9 text-body-tertiary">{{ t('Newest first · up to 500 shown') }}</span>
+    </div>
+    <div class="card-body p-0"><div class="table-responsive">
+      <table class="table table-sm table-hover mb-0" data-isfc-table>
+        <thead class="bg-body-highlight"><tr>
+          <th>{{ t('When') }}</th><th>{{ t('User') }}</th><th>{{ t('Action') }}</th>
+          <th>{{ t('Table') }}</th><th class="text-end">{{ t('Record') }}</th>
+        </tr></thead>
+        <tbody>
+          {% for r in rows %}
+          {% set act = (r.action or '')|upper %}
+          <tr>
+            <td class="fs-9 text-nowrap">{{ r.created_at }}</td>
+            <td>
+              <span class="fw-bold fs-9">{{ r.username }}</span>
+              {% if r.full_name %}<div class="small-muted">{{ r.full_name }}</div>{% endif %}
+            </td>
+            <td>
+              <span class="badge badge-phoenix badge-phoenix-{{
+                'success' if 'APPROV' in act else
+                ('danger' if ('REJECT' in act or 'DELETE' in act or 'LOCK' in act) else
+                ('warning' if ('UPDATE' in act or 'EDIT' in act or 'CHANGE' in act) else 'secondary')) }}">
+                {{ r.action }}</span>
+            </td>
+            <td class="fs-9">{{ r.table_name or '—' }}</td>
+            <td class="text-end fs-9">{{ r.record_id if r.record_id is not none else '—' }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="5" class="text-center text-body-tertiary py-5">
+            <i class="bi bi-inbox fs-3 d-block mb-2"></i>
+            {{ t('No audit entries match this filter.') }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div></div>
+    <div class="card-footer bg-body-highlight fs-9 text-body-tertiary">
+      {{ t('Entries are scoped through the acting user — the audit table itself carries no company column, so this is the boundary the schema actually supports.') }}
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,246 @@
+{% extends "layouts/base.html" %}
+{% block title %}{{ t('Store Top-Up Requests') }}{% endblock %}
+{% block content %}
+<div class="container-fluid py-3 isfc-page">
+
+  <div class="isfc-hero mb-4 p-4 rounded-4 text-white d-flex align-items-center justify-content-between flex-wrap gap-3"
+       style="background:linear-gradient(135deg,#132947,#0c91a3)">
+    <div>
+      <h1 class="mb-1 fw-bold text-white"><i class="bi bi-plus-square me-2"></i>{{ t('Store Top-Up Requests') }}</h1>
+      <p class="mb-0 opacity-75">
+        {{ t('When a section needs more than it was issued. The original issuance stays untouched so variance stays measurable.') }}</p>
+    </div>
+    <button class="btn btn-light btn-sm" data-bs-toggle="modal" data-bs-target="#newTopup">
+      <i class="bi bi-plus-lg me-1"></i>{{ t('Request Top-Up') }}</button>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-4">
+      <div class="card border h-100"><div class="card-body">
+        <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Awaiting Store') }}</div>
+        <div class="fs-3 fw-bold text-warning">{{ counts.pending or 0 }}</div>
+      </div></div>
+    </div>
+    <div class="col-4">
+      <div class="card border h-100"><div class="card-body">
+        <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Issued') }}</div>
+        <div class="fs-3 fw-bold text-success">{{ counts.issued or 0 }}</div>
+      </div></div>
+    </div>
+    <div class="col-4">
+      <div class="card border h-100"><div class="card-body">
+        <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Rejected') }}</div>
+        <div class="fs-3 fw-bold text-body-tertiary">{{ counts.rejected or 0 }}</div>
+      </div></div>
+    </div>
+  </div>
+
+  <div class="card border mb-4"><div class="card-body py-3">
+    <form method="get" class="row g-2 align-items-end">
+      <div class="col-md-4">
+        <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('Status') }}</label>
+        <select name="status" class="form-select form-select-sm">
+          {% for s in status_options %}
+          <option value="{{ s }}" {% if filters.status==s %}selected{% endif %}>{{ t(s) }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-md-5">
+        <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('Order') }}</label>
+        <input name="order" value="{{ filters.order }}" class="form-control form-control-sm"
+               placeholder="{{ t('Order number') }}">
+      </div>
+      <div class="col-md-3 d-flex gap-2">
+        <button class="btn btn-primary btn-sm flex-grow-1">{{ t('Apply') }}</button>
+        <a href="/production/topups" class="btn btn-phoenix-secondary btn-sm">{{ t('Reset') }}</a>
+      </div>
+    </form>
+  </div></div>
+
+  <div class="card border">
+    <div class="card-header bg-body-highlight fw-bold">{{ t('Requests') }}
+      <span class="badge badge-phoenix badge-phoenix-secondary">{{ rows|length }}</span></div>
+    <div class="card-body p-4">
+      <div class="table-responsive">
+        <table class="table table-hover mb-0 align-middle" data-isfc-table>
+          <thead class="bg-body-highlight">
+            <tr>
+              <th>{{ t('Request') }}</th><th>{{ t('Order / Section') }}</th><th>{{ t('Ingredient') }}</th>
+              <th class="text-end">{{ t('Already Issued') }}</th><th class="text-end">{{ t('Requested') }}</th>
+              <th class="text-end">{{ t('On Hand') }}</th><th>{{ t('Reason') }}</th>
+              <th class="text-center">{{ t('Status') }}</th><th class="text-end">{{ t('Action') }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in rows %}
+            <tr class="{% if r.status == 'Pending' and not r.can_cover %}table-danger{% endif %}">
+              <td><span class="fw-bold">{{ r.topup_no }}</span>
+                <div class="small-muted">{{ r.requested_by }} · {{ r.requested_at }}</div></td>
+              <td><a href="/production/orders/{{ r.order_no }}" class="text-decoration-none fw-bold">{{ r.order_no }}</a>
+                <div class="small-muted">{{ r.section or '—' }}</div></td>
+              <td>{{ r.ingredient_code }}<div class="small-muted">{{ r.ingredient_name }}</div></td>
+              <td class="text-end">{{ '%.3f'|format(r.originally_issued or 0) }}</td>
+              <td class="text-end fw-bold">{{ '%.3f'|format(r.requested_qty or 0) }} {{ r.uom }}</td>
+              <td class="text-end {% if not r.can_cover %}text-danger fw-bold{% endif %}">{{ r.on_hand }}</td>
+              <td class="fs-9">{{ r.reason or '—' }}
+                {% if r.notes %}<div class="small-muted">{{ r.notes }}</div>{% endif %}</td>
+              <td class="text-center">
+                {% if r.status == 'Pending' %}<span class="badge badge-phoenix badge-phoenix-warning">{{ t('Pending') }}</span>
+                {% elif r.status == 'Issued' %}<span class="badge badge-phoenix badge-phoenix-success">{{ t('Issued') }}</span>
+                  <div class="small-muted">{{ '%.3f'|format(r.approved_qty or 0) }}</div>
+                {% else %}<span class="badge badge-phoenix badge-phoenix-danger">{{ t('Rejected') }}</span>{% endif %}
+                {% if r.decision_note %}<div class="small-muted">{{ r.decision_note }}</div>{% endif %}
+              </td>
+              <td class="text-end">
+                {% if r.status == 'Pending' and can_action('store_issuance', 'edit') %}
+                <div class="d-flex gap-1 justify-content-end">
+                  <form method="post" action="/production/topups/{{ r.topup_no }}/approve" class="d-flex gap-1">
+                    <input type="number" step="0.001" min="0" name="approved_qty"
+                           class="form-control form-control-sm text-end" style="width:90px"
+                           placeholder="{{ r.requested_qty }}">
+                    <button class="btn btn-sm btn-success" {% if not r.can_cover %}disabled
+                            title="{{ t('Not enough stock on hand') }}"{% endif %}>
+                      <i class="bi bi-check2"></i></button>
+                  </form>
+                  <button class="btn btn-sm btn-outline-danger" data-bs-toggle="modal"
+                          data-bs-target="#rej{{ r.id }}"><i class="bi bi-x"></i></button>
+                </div>
+
+                <div class="modal fade" id="rej{{ r.id }}" tabindex="-1">
+                  <div class="modal-dialog"><div class="modal-content">
+                    <form method="post" action="/production/topups/{{ r.topup_no }}/reject">
+                      <div class="modal-header"><h5 class="modal-title">{{ t('Reject') }} {{ r.topup_no }}</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                      <div class="modal-body text-start">
+                        <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary">{{ t('Reason') }}</label>
+                        <textarea name="decision_note" rows="3" class="form-control" required
+                                  placeholder="{{ t('The section will see this') }}"></textarea>
+                      </div>
+                      <div class="modal-footer">
+                        <button type="button" class="btn btn-phoenix-secondary" data-bs-dismiss="modal">{{ t('Cancel') }}</button>
+                        <button class="btn btn-danger">{{ t('Reject') }}</button>
+                      </div>
+                    </form>
+                  </div></div>
+                </div>
+                {% else %}—{% endif %}
+              </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="9" class="text-center text-body-tertiary py-5">
+              <i class="bi bi-inbox fs-3 d-block mb-2"></i>{{ t('No top-up requests in this view.') }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="newTopup" tabindex="-1">
+    <div class="modal-dialog"><div class="modal-content">
+      <form method="post" action="/production/topups/request">
+        <input type="hidden" name="return_to" value="/production/topups">
+        <div class="modal-header"><h5 class="modal-title">{{ t('Request Top-Up') }}</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+        <div class="modal-body">
+          <div class="row g-3">
+            {# Batch 105: searchable pickers, not free text. A typed order
+               number that does not exist creates a request nobody can approve,
+               and the section only finds out later. #}
+            <div class="col-md-6">
+              <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary">{{ t('Order No') }}</label>
+              <input name="order_no" id="topupOrderNo" list="topupOrderList"
+                     class="form-control form-control-sm" autocomplete="off"
+                     placeholder="{{ t('Search order or customer') }}" required>
+              <datalist id="topupOrderList">
+                {% for o in running_orders %}
+                <option value="{{ o.order_no }}">{{ o.customer_name }} · {{ o.status }}{% if o.delivery_date %} · {{ o.delivery_date }}{% endif %}</option>
+                {% endfor %}
+              </datalist>
+              <div class="small-muted fs-10 mt-1">
+                {{ running_orders|length }} {{ t('running order(s) — issued but not yet dispatched') }}</div>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary">{{ t('Section') }}</label>
+              <select name="section" class="form-select form-select-sm">
+                <option value="">{{ t('Use original issuance section') }}</option>
+                {% for s in sections %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
+              </select></div>
+            <div class="col-md-7">
+              <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary">{{ t('Ingredient') }}</label>
+              <input name="ingredient_code" id="topupIngredient" list="topupItemList"
+                     class="form-control form-control-sm" autocomplete="off"
+                     placeholder="{{ t('Pick an order first, then search the ingredient') }}" required>
+              <datalist id="topupItemList"></datalist>
+              <div class="small-muted fs-10 mt-1" id="topupItemHint">
+                {{ t('Only ingredients already issued to that order can be topped up.') }}</div>
+            </div>
+            <div class="col-md-5">
+              <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary">{{ t('Extra Qty') }}</label>
+              <input type="number" step="0.001" min="0" name="requested_qty"
+                     class="form-control form-control-sm" required></div>
+            <div class="col-12">
+              <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary">{{ t('Reason') }}</label>
+              <select name="reason" class="form-select form-select-sm">
+                {% for r in reasons %}<option value="{{ r }}">{{ t(r) }}</option>{% endfor %}
+              </select></div>
+            <div class="col-12">
+              <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary">{{ t('Notes') }}</label>
+              <textarea name="notes" rows="2" class="form-control form-control-sm"></textarea></div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-phoenix-secondary" data-bs-dismiss="modal">{{ t('Cancel') }}</button>
+          <button class="btn btn-primary">{{ t('Send to Store') }}</button>
+        </div>
+      </form>
+    </div></div>
+  </div>
+</div>
+
+{# Batch 105: issued lines per order, so picking an order narrows the
+   ingredient list to what that order was actually given. #}
+<script type="application/json" id="topupIssuedData">
+{{ issued_items | tojson }}
+</script>
+
+<script>
+  (function () {
+    var raw = document.getElementById("topupIssuedData");
+    var items = [];
+    try { items = JSON.parse(raw.textContent || "[]"); } catch (e) { items = []; }
+
+    var orderInput = document.getElementById("topupOrderNo");
+    var itemInput  = document.getElementById("topupIngredient");
+    var itemList   = document.getElementById("topupItemList");
+    var hint       = document.getElementById("topupItemHint");
+    if (!orderInput || !itemList) return;
+
+    function fillItems() {
+      var order = (orderInput.value || "").trim();
+      var subset = items.filter(function (i) { return i.order_no === order; });
+      itemList.innerHTML = "";
+      subset.forEach(function (i) {
+        var o = document.createElement("option");
+        // The VALUE is the code, because that is what the server expects —
+        // the readable name goes in the label so search matches either.
+        o.value = i.ingredient_code;
+        o.textContent = i.ingredient_name + (i.uom ? " (" + i.uom + ")" : "")
+                      + (i.section ? " · " + i.section : "");
+        itemList.appendChild(o);
+      });
+      if (!order) {
+        hint.textContent = "{{ t('Pick an order first.') }}";
+      } else if (!subset.length) {
+        hint.textContent = "{{ t('Nothing was issued to that order yet — there is nothing to top up.') }}";
+      } else {
+        hint.textContent = subset.length + " {{ t('ingredient(s) issued to this order') }}";
+      }
+      itemInput.value = "";
+    }
+
+    orderInput.addEventListener("change", fillItems);
+    orderInput.addEventListener("input", fillItems);
+    fillItems();
+  })();
+</script>
+{% endblock %}

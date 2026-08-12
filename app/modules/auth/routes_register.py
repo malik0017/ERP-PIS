@@ -1,27 +1,4 @@
 # app/modules/auth/routes_register.py
-# =============================================================================
-# Batch 71 — Public self-service registration
-# -----------------------------------------------------------------------------
-# Goal: anyone can register themselves, then log in, place orders and manage
-# them in the customer portal. The old JSON `/api/auth/register` only created a
-# User row with the CUSTOMER role and NO linked customer — so a self-registered
-# user could log in but the portal couldn't resolve them to a customer, and
-# they couldn't place an order.
-#
-# This form-based `POST /register`:
-#   1. validates the input and uniqueness,
-#   2. creates the User (CUSTOMER role),
-#   3. AUTO-CREATES a matching `customers` row,
-#   4. links them via users.customer_code,
-#   5. logs the user straight in and sends them to the portal.
-#
-# Registered in main.py:
-#     from app.modules.auth.routes_register import router as self_register_router
-#     app.include_router(self_register_router)
-#
-# The GET /register page (already in main.py) renders auth/register.html, which
-# this batch rewrites into a real form posting here.
-# =============================================================================
 
 import logging
 import re

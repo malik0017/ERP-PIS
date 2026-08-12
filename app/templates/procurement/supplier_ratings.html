@@ -1,0 +1,96 @@
+{% extends "layouts/base.html" %}
+{% block title %}Supplier Ratings{% endblock %}
+{% block content %}
+<div class="container-fluid py-3 isfc-page">
+  <div class="isfc-hero mb-4 p-4 rounded-4 text-white d-flex align-items-center justify-content-between flex-wrap gap-3"
+       style="background:linear-gradient(135deg,#132947,#0c91a3)">
+    <div>
+      <h1 class="mb-1 fw-bold"><i class="bi bi-star-fill me-2"></i>{{ t('Supplier Ratings') }}</h1>
+      <p class="mb-0 opacity-75">{{ t('Rate performance to inform who gets picked when a purchase order is raised — highest-rated suppliers now sort first in every PO supplier dropdown.') }}</p>
+    </div>
+  </div>
+
+  <div class="card border">
+    <div class="card-body p-0">
+      <table class="table table-hover mb-0">
+        <thead class="bg-body-highlight">
+          <tr>
+            <th>{{ t('Supplier') }}</th><th>{{ t('Category') }}</th>
+            <th class="text-center">{{ t('POs') }}</th><th class="text-end">{{ t('Total Value') }}</th>
+            <th>{{ t('Rating') }}</th><th>{{ t('Notes') }}</th><th>{{ t('Last Updated') }}</th><th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in rows %}
+          <tr>
+            <td><b>{{ r.supplier_name }}</b><br><span class="small-muted">{{ r.supplier_code }}</span></td>
+            <td>{{ r.category or '—' }}</td>
+            <td class="text-center">{{ r.po_count }}</td>
+            <td class="text-end">{{ '%.2f'|format(r.total_value or 0) }}</td>
+            <td>
+              {% if r.rating %}
+                {% for i in range(1,6) %}<i class="bi {{ 'bi-star-fill text-warning' if i <= r.rating else 'bi-star text-body-tertiary' }}"></i>{% endfor %}
+              {% else %}<span class="small-muted">{{ t('Not rated') }}</span>{% endif %}
+            </td>
+            <td class="small-muted">{{ r.rating_notes or '—' }}</td>
+            <td class="small-muted">{% if r.rating_updated_at %}{{ r.rating_updated_at }} · {{ r.rating_updated_by }}{% else %}—{% endif %}</td>
+            <td>
+              <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#rateModal{{ loop.index }}">
+                <i class="bi bi-pencil me-1"></i>{{ t('Rate') }}</button>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="8" class="text-center text-body-tertiary py-5">{{ t('No suppliers found.') }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+{% for r in rows %}
+<div class="modal fade" id="rateModal{{ loop.index }}" tabindex="-1">
+  <div class="modal-dialog">
+    <form method="post" action="/procurement/suppliers/{{ r.supplier_code }}/rating" class="modal-content">
+      <div class="modal-header"><h5 class="modal-title">{{ t('Rate') }} {{ r.supplier_name }}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <label class="form-label fw-bold">{{ t('Rating') }}</label>
+        <div class="star-rating-input mb-3" data-target="rateInput{{ loop.index }}">
+          {% for i in range(1,6) %}
+          <i class="bi bi-star star-choice" data-value="{{ i }}" style="font-size:1.6rem;cursor:pointer;color:#cbd5e1;{% if r.rating and i <= r.rating %}color:#f5b301;{% endif %}"></i>
+          {% endfor %}
+        </div>
+        <input type="hidden" name="rating" id="rateInput{{ loop.index }}" value="{{ r.rating or 0 }}">
+        <label class="form-label fw-bold">{{ t('Notes') }}</label>
+        <textarea class="form-control" name="notes" rows="3" placeholder="{{ t('e.g. reliable on price, occasionally late on delivery') }}">{{ r.rating_notes or '' }}</textarea>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">{{ t('Close') }}</button>
+        <button type="submit" class="btn btn-primary fw-bold">{{ t('Save Rating') }}</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endfor %}
+
+<style>.star-choice.selected, .star-choice:hover { color: #f5b301 !important; }</style>
+<script>
+document.querySelectorAll('.star-rating-input').forEach(function (group) {
+  var input = document.getElementById(group.dataset.target);
+  var stars = group.querySelectorAll('.star-choice');
+  function paint(val) {
+    stars.forEach(function (s) {
+      var filled = +s.dataset.value <= val;
+      s.classList.toggle('bi-star-fill', filled);
+      s.classList.toggle('bi-star', !filled);
+      s.style.color = filled ? '#f5b301' : '#cbd5e1';
+    });
+  }
+  paint(+input.value);
+  stars.forEach(function (s) {
+    s.addEventListener('click', function () { input.value = s.dataset.value; paint(+s.dataset.value); });
+  });
+});
+</script>
+{% endblock %}

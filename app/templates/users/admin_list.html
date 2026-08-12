@@ -2,50 +2,102 @@
 {% block title %}Users & Access{% endblock %}
 {% block content %}
 <div class="container-fluid py-4">
-  <div class="pis-hero mb-3"><h1 class="mb-1">Users, Roles & Security</h1>
+  <div class="pis-hero mb-3">
+    <h1 class="mb-1">Users, Roles & Security</h1>
   </div>
 
   <div class="row g-3 mb-3">
-    <div class="col-md-3"><div class="pis-card p-3"><small class="text-secondary fw-bold">TOTAL USERS</small><h2>{{ users|length }}</h2></div></div>
-    <div class="col-md-3"><div class="pis-card p-3"><small class="text-secondary fw-bold">ACTIVE</small><h2>{{ users|selectattr('is_active')|list|length }}</h2></div></div>
-    <div class="col-md-3"><div class="pis-card p-3"><small class="text-secondary fw-bold">LOCKED</small><h2>{{ users|selectattr('locked_until')|list|length }}</h2></div></div>
-    <div class="col-md-3"><div class="pis-card p-3"><small class="text-secondary fw-bold">2FA ENABLED</small><h2>{{ users|selectattr('two_factor_enabled')|list|length }}</h2></div></div>
+    <div class="col-md-3">
+      <div class="pis-card p-3"><small class="text-secondary fw-bold">TOTAL USERS</small>
+        <h2>{{ users|length }}</h2>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="pis-card p-3"><small class="text-secondary fw-bold">ACTIVE</small>
+        <h2>{{ users|selectattr('is_active')|list|length }}</h2>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="pis-card p-3"><small class="text-secondary fw-bold">LOCKED</small>
+        <h2>{{ users|selectattr('locked_until')|list|length }}</h2>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="pis-card p-3"><small class="text-secondary fw-bold">2FA ENABLED</small>
+        <h2>{{ users|selectattr('two_factor_enabled')|list|length }}</h2>
+      </div>
+    </div>
   </div>
 
   <div class="pis-card p-4 mb-3">
-    <div class="d-flex justify-content-between align-items-center mb-3"><div><h4 class="mb-1">Create New User</h4>
-    </div><a href="/admin/audit-logs" class="btn btn-outline-secondary">Audit Logs</a></div>
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <div>
+        <h4 class="mb-1">Create New User</h4>
+      </div><a href="/admin/audit-logs" class="btn btn-outline-secondary">Audit Logs</a>
+    </div>
     <form method="post" action="/admin/users/create" class="row g-2 align-items-end">
-      <div class="col-md-2"><label class="form-label">Username</label><input name="username" class="form-control" required></div>
-      <div class="col-md-3"><label class="form-label">Email</label><input name="email" type="email" class="form-control" required></div>
-      <div class="col-md-3"><label class="form-label">Full Name</label><input name="full_name" class="form-control"></div>
-      <div class="col-md-2"><label class="form-label">Role</label><select name="role_id" class="form-select" required>{% for r in roles %}<option value="{{ r.id }}">{{ r.name }}</option>{% endfor %}</select></div>
-      <div class="col-md-2"><label class="form-label">Temp Password</label><input name="password" class="form-control" value="admin123"></div>
+      <div class="col-md-2"><label class="form-label">Username</label><input name="username" class="form-control"
+          required></div>
+      <div class="col-md-3"><label class="form-label">Email</label><input name="email" type="email" class="form-control"
+          required></div>
+      <div class="col-md-3"><label class="form-label">Full Name</label><input name="full_name" class="form-control">
+      </div>
+      <div class="col-md-2"><label class="form-label">Role</label><select name="role_id" class="form-select" required>{%
+          for r in roles %}<option value="{{ r.id }}">{{ r.name }}</option>{% endfor %}</select></div>
+      <div class="col-md-2"><label class="form-label">Temp Password</label><input name="password" class="form-control"
+          value="admin123"></div>
       <div class="col-12"><button class="btn btn-theme">Create User</button></div>
     </form>
   </div>
 
   <div class="pis-card p-4">
-    <div class="d-flex justify-content-between align-items-center mb-3"><div><h4 class="mb-0">User List</h4>
-    </div><input id="userSearch" class="form-control w-auto" placeholder="Search users..." oninput="filterUserRows()"></div>
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <div>
+        <h4 class="mb-0">User List</h4>
+      </div><input id="userSearch" class="form-control w-auto" placeholder="Search users..." oninput="filterUserRows()">
+    </div>
     <div class="table-responsive">
       <table class="table table-sm align-middle" id="usersTable">
-        <thead><tr><th>ID</th><th>User</th><th>Email</th><th>Role</th><th>Active</th><th>Locked Until</th><th>Attempts</th><th>2FA</th><th>Last Login</th><th>Actions</th></tr></thead>
+        <thead>
+          <tr>
+            <!-- <th>ID</th> -->
+            <th>User</th>
+            <th>Email</th>
+            <th>Role</th>
+            <th>Active</th>
+            <th>Locked Until</th>
+            <th>Attempts</th>
+            <th>2FA</th>
+            <th>Last Login</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
         <tbody>
           {% for u in users %}
           <tr>
-            <td>{{ u.id }}</td>
+            <!-- <td>{{ u.id }}</td> -->
             <td><strong>{{ u.username }}</strong><br><small class="text-secondary">{{ u.full_name }}</small></td>
-            <td>{{ u.email }}</td><td><span class="badge bg-info-subtle text-info-emphasis">{{ u.role_name }}</span></td>
-            <td>{% if u.is_active %}<span class="badge bg-success-subtle text-success-emphasis">Yes</span>{% else %}<span class="badge bg-danger-subtle text-danger-emphasis">No</span>{% endif %}</td>
-            <td>{{ u.locked_until or '-' }}</td><td>{{ u.failed_login_attempts or 0 }}</td><td>{% if u.two_factor_enabled %}<span class='badge bg-success-subtle text-success-emphasis'>Enabled</span>{% elif u.two_factor_setup_required %}<span class='badge bg-warning-subtle text-warning-emphasis'>Pending</span><br><small>{{ u.two_factor_setup_expires_at or '' }}</small>{% else %}Disabled{% endif %}</td><td>{{ u.last_login or '-' }}</td>
+            <td>{{ u.email }}</td>
+            <td><span class="badge bg-info-subtle text-info-emphasis">{{ u.role_name }}</span></td>
+            <td>{% if u.is_active %}<span class="badge bg-success-subtle text-success-emphasis">Yes</span>{% else
+              %}<span class="badge bg-danger-subtle text-danger-emphasis">No</span>{% endif %}</td>
+            <td>{{ u.locked_until or '-' }}</td>
+            <td>{{ u.failed_login_attempts or 0 }}</td>
+            <td>{% if u.two_factor_enabled %}<span
+                class='badge bg-success-subtle text-success-emphasis'>Enabled</span>{% elif u.two_factor_setup_required
+              %}<span class='badge bg-warning-subtle text-warning-emphasis'>Pending</span><br><small>{{
+                u.two_factor_setup_expires_at or '' }}</small>{% else %}Disabled{% endif %}</td>
+            <td>{{ u.last_login or '-' }}</td>
             <td class="text-nowrap">
               <a href="/admin/users/{{ u.id }}/edit" class="btn btn-sm btn-outline-dark">Edit</a>
               <a href="/admin/users/{{ u.id }}/access" class="btn btn-sm btn-primary">Access</a>
-              <form method="post" action="/admin/users/{{ u.id }}/unlock" class="d-inline"><button class="btn btn-sm btn-success">Unlock</button></form>
+              <form method="post" action="/admin/users/{{ u.id }}/unlock" class="d-inline"><button
+                  class="btn btn-sm btn-success">Unlock</button></form>
               <form method="post" action="/admin/users/{{ u.id }}/reset-password" class="d-inline"
-                    data-confirm="Reset {{ u.username }}'s password to admin123 and force a password change on next login?"
-                    data-confirm-title="Reset Password" data-confirm-ok="Reset Password" data-confirm-variant="warning"><input type="hidden" name="new_password" value="admin123"><button class="btn btn-sm btn-warning">Reset</button></form>
+                data-confirm="Reset {{ u.username }}'s password to admin123 and force a password change on next login?"
+                data-confirm-title="Reset Password" data-confirm-ok="Reset Password" data-confirm-variant="warning">
+                <input type="hidden" name="new_password" value="admin123"><button
+                  class="btn btn-sm btn-warning">Reset</button></form>
             </td>
           </tr>
           {% endfor %}
@@ -55,9 +107,9 @@
   </div>
 </div>
 <script>
-function filterUserRows(){
-  const q=(document.getElementById('userSearch').value||'').toLowerCase();
-  document.querySelectorAll('#usersTable tbody tr').forEach(tr=>{tr.style.display=tr.innerText.toLowerCase().includes(q)?'':'none'});
-}
+  function filterUserRows() {
+    const q = (document.getElementById('userSearch').value || '').toLowerCase();
+    document.querySelectorAll('#usersTable tbody tr').forEach(tr => { tr.style.display = tr.innerText.toLowerCase().includes(q) ? '' : 'none' });
+  }
 </script>
 {% endblock %}
