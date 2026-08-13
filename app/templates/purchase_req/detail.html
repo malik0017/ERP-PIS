@@ -49,6 +49,51 @@
   </div>
   {% endif %}
 
+  {# Batch 111: the approval ladder. Shown BEFORE the first signature too, so
+     a reviewer knows how many approvals this requisition needs rather than
+     finding out after they sign. #}
+  {% if approval_chain and approval_chain|length > 1 %}
+  <div class="card border mb-3">
+    <div class="card-header bg-body-highlight fw-bold d-flex justify-content-between align-items-center">
+      <span><i class="bi bi-diagram-2 me-1"></i>{{ t('Approval Chain') }}</span>
+      <span class="fs-9 text-body-tertiary">
+        {{ t('Value') }} {{ '%.2f'|format(pr.estimated_value or 0) }} —
+        {{ approval_chain|length }} {{ t('approvals required') }}</span>
+    </div>
+    <div class="card-body">
+      <div class="d-flex flex-wrap gap-2 align-items-stretch">
+        {% for st in approval_chain %}
+        <div class="border rounded p-2 flex-grow-1 {{ 'border-success' if st.status == 'Approved' else '' }}"
+             style="min-width:190px">
+          <div class="d-flex justify-content-between align-items-center">
+            <span class="badge badge-phoenix badge-phoenix-{{ 'success' if st.status == 'Approved' else 'secondary' }}">
+              {{ t('Step') }} {{ st.step_no }}</span>
+            {% if st.status == 'Approved' %}
+            <i class="bi bi-check-circle-fill text-success"></i>
+            {% else %}
+            <i class="bi bi-hourglass text-body-tertiary"></i>
+            {% endif %}
+          </div>
+          <div class="fw-bold mt-1 fs-9">{{ st.required_role }}</div>
+          {% if st.status == 'Approved' %}
+          <div class="small-muted">{{ st.approved_by }}{% if st.approved_role %} ({{ st.approved_role }}){% endif %}</div>
+          <div class="small-muted">{{ st.approved_at }}</div>
+          {% else %}
+          <div class="small-muted">{{ t('Awaiting approval') }}</div>
+          {% endif %}
+        </div>
+        {% if not loop.last %}
+        <div class="d-flex align-items-center text-body-tertiary"><i class="bi bi-arrow-right"></i></div>
+        {% endif %}
+        {% endfor %}
+      </div>
+      <div class="fs-9 text-body-tertiary mt-2">
+        {{ t('Steps must be signed in order, by different people. Whoever raised the requisition cannot approve it beyond the first step.') }}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
   {% if pr.justification %}
   <div class="card border mb-3"><div class="card-body py-2 fs-9">
     <span class="text-body-tertiary text-uppercase fw-bold me-2">{{ t('Justification') }}</span>{{ pr.justification }}

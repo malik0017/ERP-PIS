@@ -1,0 +1,103 @@
+{% extends "layouts/base.html" %}
+{% block title %}{{ t('New GL Account') }}{% endblock %}
+{% block content %}
+<div class="container-fluid py-3 isfc-page">
+  <div class="isfc-hero mb-4 p-4 rounded-4 text-white"
+       style="background:linear-gradient(135deg,#132947,#0c91a3)">
+    <h1 class="mb-1 fw-bold text-white"><i class="bi bi-plus-square me-2"></i>{{ t('New GL Account') }}</h1>
+    <p class="mb-0 opacity-75">{{ t('Pick where it belongs, then confirm the GL code.') }}</p>
+  </div>
+
+  <form method="post" action="/finance/coa/new">
+    <div class="card border mb-3">
+      <div class="card-header bg-body-highlight fw-bold">{{ t('1. Where does it belong?') }}</div>
+      <div class="card-body">
+        <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary">{{ t('Class › Group › Subgroup') }}</label>
+        <select id="pathSel" class="form-select form-select-sm" required>
+          <option value="">{{ t('Select the position in the chart') }}</option>
+          {% for p in paths %}
+          <option value="{{ loop.index0 }}"
+                  data-cc="{{ p.class_code }}" data-cn="{{ p.class_name }}"
+                  data-gc="{{ p.group_code }}" data-gn="{{ p.group_name }}"
+                  data-sc="{{ p.subgroup_code }}" data-sn="{{ p.subgroup_name }}"
+                  data-type="{{ p.account_type }}" data-next="{{ p.suggested }}">
+            {{ p.label }}
+          </option>
+          {% endfor %}
+        </select>
+        <div class="fs-9 text-body-tertiary mt-2">
+          {{ t('Only positions that already exist are offered — free-typing a class is how a chart ends up with "Assets", "assets" and "Asset " as three different classes.') }}
+        </div>
+
+        <input type="hidden" name="class_code" id="cc"><input type="hidden" name="class_name" id="cn">
+        <input type="hidden" name="group_code" id="gc"><input type="hidden" name="group_name" id="gn">
+        <input type="hidden" name="subgroup_code" id="sc"><input type="hidden" name="subgroup_name" id="sn">
+      </div>
+    </div>
+
+    <div class="card border mb-3">
+      <div class="card-header bg-body-highlight fw-bold">{{ t('2. The account') }}</div>
+      <div class="card-body">
+        <div class="row g-3">
+          <div class="col-md-3">
+            <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary">{{ t('GL Account Code') }}</label>
+            <input name="account_code" id="glcode" class="form-control form-control-sm" required
+                   placeholder="{{ t('e.g. 11222') }}">
+            <div class="fs-9 text-body-tertiary mt-1" id="codeHint">
+              {{ t('Suggested from the highest existing code in that subgroup.') }}</div>
+          </div>
+          <div class="col-md-2">
+            <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary">{{ t('Account Seq') }}</label>
+            <input name="account_seq" id="aseq" class="form-control form-control-sm" placeholder="{{ t('e.g. 22') }}">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary">{{ t('Account Name') }}</label>
+            <input name="account_name" class="form-control form-control-sm" required>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary">{{ t('Type') }}</label>
+            <select name="account_type" id="atype" class="form-select form-select-sm">
+              {% for t_ in types %}<option value="{{ t_ }}">{{ t_ }}</option>{% endfor %}
+            </select>
+            <div class="fs-9 text-body-tertiary mt-1">{{ t('Set from the class you chose.') }}</div>
+          </div>
+        </div>
+
+        <div class="alert alert-subtle-warning fs-9 mt-3 mb-0">
+          <i class="bi bi-info-circle me-1"></i>
+          <strong>{{ t('The GL code is never auto-corrected.') }}</strong>
+          {{ t('In your chart, 9 of 203 accounts do not follow the class+group+subgroup+sequence pattern — so the code you enter is taken as given. It is only checked for uniqueness.') }}
+        </div>
+      </div>
+    </div>
+
+    <div class="d-flex gap-2">
+      <button class="btn btn-primary"><i class="bi bi-check2-circle me-1"></i>{{ t('Create Account') }}</button>
+      <a href="/finance/coa/tree" class="btn btn-phoenix-secondary">{{ t('Cancel') }}</a>
+    </div>
+  </form>
+</div>
+
+<script>
+  document.getElementById('pathSel').addEventListener('change', function () {
+    var o = this.options[this.selectedIndex];
+    if (!o || !o.dataset.cc) return;
+    ['cc','cn','gc','gn','sc','sn'].forEach(function (k) {
+      document.getElementById(k).value = o.dataset[k] || '';
+    });
+    var next = o.dataset.next || '';
+    var code = document.getElementById('glcode');
+    if (next && !code.value) code.value = next;
+    document.getElementById('codeHint').textContent =
+      next ? '{{ t("Next free code in this subgroup:") }} ' + next
+           : '{{ t("No numeric siblings — enter the code manually.") }}';
+    var t = (o.dataset.type || '').toUpperCase();
+    var sel = document.getElementById('atype');
+    for (var i = 0; i < sel.options.length; i++) {
+      if (sel.options[i].value === t) { sel.selectedIndex = i; break; }
+    }
+    // Account sequence is the tail of the GL code in the common pattern.
+    if (next && next.length > 2) document.getElementById('aseq').value = next.slice(-2);
+  });
+</script>
+{% endblock %}

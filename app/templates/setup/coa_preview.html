@@ -1,0 +1,116 @@
+{% extends "layouts/base.html" %}
+{% block title %}{{ t('Chart of Accounts — Preview') }}{% endblock %}
+{% block content %}
+<div class="container-fluid py-3 isfc-page">
+  <div class="isfc-hero mb-4 p-4 rounded-4 text-white"
+       style="background:linear-gradient(135deg,#132947,#0c91a3)">
+    <h1 class="mb-1 fw-bold text-white"><i class="bi bi-diagram-3 me-2"></i>{{ t('Chart of Accounts — Preview') }}</h1>
+    <p class="mb-0 opacity-75">{{ filename }} — {{ t('nothing has been written yet.') }}</p>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-lg-3"><div class="card border h-100"><div class="card-body">
+      <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Accounts in File') }}</div>
+      <div class="fs-3 fw-bold">{{ row_count }}</div></div></div></div>
+    <div class="col-6 col-lg-3"><div class="card border h-100"><div class="card-body">
+      <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('New') }}</div>
+      <div class="fs-3 fw-bold text-success">{{ inserts }}</div></div></div></div>
+    <div class="col-6 col-lg-3"><div class="card border h-100"><div class="card-body">
+      <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Updated') }}</div>
+      <div class="fs-3 fw-bold text-info">{{ updates }}</div></div></div></div>
+    <div class="col-6 col-lg-3"><div class="card border h-100"><div class="card-body">
+      <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Not in File (demo)') }}</div>
+      <div class="fs-3 fw-bold text-warning">{{ obsolete|length }}</div></div></div></div>
+  </div>
+
+  {% if problems %}
+  <div class="alert alert-subtle-danger">
+    <h6 class="alert-heading">{{ t('Rows that will be skipped') }}</h6>
+    <ul class="mb-0 fs-9">{% for p in problems[:20] %}<li>{{ p }}</li>{% endfor %}</ul>
+  </div>
+  {% endif %}
+
+  {% if retypes %}
+  <div class="alert alert-subtle-warning">
+    <h6 class="alert-heading"><i class="bi bi-exclamation-triangle me-1"></i>{{ t('Account type changes') }}</h6>
+    <p class="fs-9 mb-2">
+      {{ t('These accounts already exist with a DIFFERENT type. Changing a type changes which statement the account appears on, and reinterprets every posting ever made to it.') }}</p>
+    <ul class="mb-0 fs-9">
+      {% for r in retypes[:15] %}<li>{{ r.account_code }} — {{ r.account_name }} → {{ r.account_type }}</li>{% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  <div class="card border mb-4">
+    <div class="card-header bg-body-highlight fw-bold">{{ t('By Account Type') }}</div>
+    <div class="card-body d-flex gap-4 flex-wrap">
+      {% for typ, n in by_type %}
+      <div><span class="badge badge-phoenix badge-phoenix-primary">{{ typ }}</span>
+        <strong class="ms-2">{{ n }}</strong></div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="card border mb-4">
+    <div class="card-header bg-body-highlight fw-bold">
+      {{ t('Accounts') }} <span class="badge badge-phoenix badge-phoenix-secondary">{{ row_count }}</span>
+      {% if row_count > 400 %}<span class="fs-9 text-body-tertiary ms-2">{{ t('showing first 400') }}</span>{% endif %}
+    </div>
+    <div class="card-body p-0"><div class="table-responsive" style="max-height:460px;overflow:auto">
+      <table class="table table-sm mb-0" data-isfc-table>
+        <thead class="bg-body-highlight position-sticky top-0"><tr>
+          <th>{{ t('GL Code') }}</th><th>{{ t('Account') }}</th><th>{{ t('Class') }}</th>
+          <th>{{ t('Group') }}</th><th>{{ t('Type') }}</th><th>{{ t('Action') }}</th></tr></thead>
+        <tbody>
+          {% for r in rows %}
+          <tr class="{{ 'table-warning' if r.retype else '' }}">
+            <td class="fw-bold">{{ r.account_code }}</td>
+            <td>{{ r.account_name }}</td>
+            <td class="fs-9">{{ r.klass }}</td>
+            <td class="fs-9">{{ r.group }}{% if r.sub_group %} · {{ r.sub_group }}{% endif %}</td>
+            <td><span class="badge badge-phoenix badge-phoenix-secondary">{{ r.account_type }}</span></td>
+            <td><span class="badge badge-phoenix badge-phoenix-{{ 'success' if r.action=='insert' else 'info' }}">
+              {{ t(r.action) }}</span>{% if r.retype %} <span class="badge badge-phoenix badge-phoenix-warning">{{ t('type change') }}</span>{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div></div>
+  </div>
+
+  <div class="card border">
+    <div class="card-body">
+      <form method="post" action="/setup/import/coa/commit" enctype="multipart/form-data">
+        <div class="alert alert-subtle-info fs-9">
+          <strong>{{ t('Re-select the same file to confirm.') }}</strong>
+          {{ t('The preview does not keep the upload, so nothing can be imported by an accidental refresh.') }}
+        </div>
+        <input type="file" name="file" accept=".xlsx,.xlsm" required class="form-control form-control-sm mb-3">
+
+        <div class="form-check mb-2">
+          <input class="form-check-input" type="checkbox" name="replace" id="replace" checked>
+          <label class="form-check-label" for="replace">
+            <strong>{{ t('Deactivate the demo accounts not in this file') }}</strong>
+            <div class="fs-9 text-body-tertiary">
+              {{ obsolete|length }} {{ t('account(s) would be deactivated.') }}
+              {% if blocked %}
+              <span class="text-warning">
+                {{ blocked|length }} {{ t('of them carry journal postings and will be KEPT regardless — deleting them would orphan history.') }}</span>
+              {% endif %}
+            </div>
+          </label>
+        </div>
+
+        <div class="d-flex gap-2 mt-3">
+          <button class="btn btn-primary"
+                  data-confirm="{{ t('Import') }} {{ row_count }} {{ t('accounts now?') }}"
+                  data-confirm-title="{{ t('Import Chart of Accounts') }}"
+                  data-confirm-ok="{{ t('Import') }}" data-confirm-variant="primary">
+            <i class="bi bi-check2-circle me-1"></i>{{ t('Import Chart of Accounts') }}</button>
+          <a href="/setup/import" class="btn btn-phoenix-secondary">{{ t('Cancel') }}</a>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

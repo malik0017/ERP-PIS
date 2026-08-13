@@ -1,0 +1,111 @@
+{% extends "layouts/base.html" %}
+{% block title %}{{ t('Opening Stock — Preview') }}{% endblock %}
+{% block content %}
+<div class="container-fluid py-3 isfc-page">
+  <div class="isfc-hero mb-4 p-4 rounded-4 text-white"
+       style="background:linear-gradient(135deg,#132947,#0c91a3)">
+    <h1 class="mb-1 fw-bold text-white"><i class="bi bi-boxes me-2"></i>{{ t('Opening Stock — Preview') }}</h1>
+    <p class="mb-0 opacity-75">{{ filename }} — {{ t('nothing has been posted yet.') }}</p>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-lg-3"><div class="card border h-100"><div class="card-body">
+      <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Lot Balances') }}</div>
+      <div class="fs-3 fw-bold">{{ totals.lines }}</div>
+      <div class="small-muted">{{ totals.distinct_items }} {{ t('distinct items') }}</div></div></div></div>
+    <div class="col-6 col-lg-3"><div class="card border h-100"><div class="card-body">
+      <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Will Post') }}</div>
+      <div class="fs-3 fw-bold text-success">{{ totals.matched }}</div></div></div></div>
+    <div class="col-6 col-lg-3"><div class="card border h-100"><div class="card-body">
+      <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('No Matching Ingredient') }}</div>
+      <div class="fs-3 fw-bold text-danger">{{ totals.unmatched }}</div></div></div></div>
+    <div class="col-6 col-lg-3"><div class="card border h-100"><div class="card-body">
+      <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Stock Value') }}</div>
+      <div class="fs-3 fw-bold text-info">{{ '%.2f'|format(totals.value) }}</div></div></div></div>
+  </div>
+
+  {% if totals.already_loaded %}
+  <div class="alert alert-subtle-danger">
+    <i class="bi bi-exclamation-octagon me-1"></i>
+    <strong>{{ totals.already_loaded }} {{ t('opening stock movements already exist.') }}</strong>
+    {{ t('Loading again will DOUBLE your stock. Only proceed if you have deliberately cleared the previous load.') }}
+  </div>
+  {% endif %}
+
+  {% if unmatched_codes %}
+  <div class="alert alert-subtle-warning">
+    <h6 class="alert-heading">{{ t('Material codes not found in Master Data → Ingredients') }}</h6>
+    <p class="fs-9 mb-2">
+      {{ t('These rows will be SKIPPED, not created. An ingredient record carries UOM, cost, supplier and storage type — inventing one from a stock line would give you an item with none of that, which then breaks costing and shortage checks.') }}
+      {{ t('Add them to the ingredient master first, then re-run this import.') }}</p>
+    <div class="fs-9" style="max-height:140px;overflow:auto">
+      {% for c in unmatched_codes %}<span class="badge badge-phoenix badge-phoenix-danger me-1 mb-1">{{ c }}</span>{% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="card border mb-4">
+    <div class="card-header bg-body-highlight fw-bold">
+      {{ t('Will be posted to the ledger') }}
+      <span class="badge badge-phoenix badge-phoenix-success">{{ totals.matched }}</span></div>
+    <div class="card-body p-0"><div class="table-responsive" style="max-height:420px;overflow:auto">
+      <table class="table table-sm mb-0" data-isfc-table>
+        <thead class="bg-body-highlight position-sticky top-0"><tr>
+          <th>{{ t('Code') }}</th><th>{{ t('Item') }}</th><th>{{ t('Lot / Barcode') }}</th>
+          <th class="text-end">{{ t('Qty') }}</th><th>{{ t('UOM') }}</th>
+          <th class="text-end">{{ t('Unit Cost') }}</th><th class="text-end">{{ t('Value') }}</th></tr></thead>
+        <tbody>
+          {% for r in rows %}
+          <tr>
+            <td class="fw-bold fs-9">{{ r.code }}</td>
+            <td class="fs-9">{{ r.name }}</td>
+            <td class="fs-9 small-muted">{{ r.lot or '—' }}</td>
+            <td class="text-end">{{ '%.3f'|format(r.qty) }}</td>
+            <td class="fs-9">{{ r.uom }}</td>
+            <td class="text-end">{{ '%.4f'|format(r.unit_cost) }}</td>
+            <td class="text-end">{{ '%.2f'|format(r.value) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div></div>
+  </div>
+
+  <div class="card border">
+    <div class="card-body">
+      <form method="post" action="/setup/import/stock/commit" enctype="multipart/form-data">
+        <div class="alert alert-subtle-info fs-9">
+          <strong>{{ t('Re-select the same file to confirm.') }}</strong>
+          {{ t('The preview does not keep the upload, so nothing can be posted by an accidental refresh.') }}
+        </div>
+        <div class="row g-2 align-items-end mb-3">
+          <div class="col-md-6">
+            <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('File') }}</label>
+            <input type="file" name="file" accept=".xlsx,.xlsm" required class="form-control form-control-sm">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('As-of date') }}</label>
+            <input type="date" name="as_of" class="form-control form-control-sm">
+          </div>
+        </div>
+        <div class="form-check mb-3">
+          <input class="form-check-input" type="checkbox" name="skip_existing" id="guard" checked>
+          <label class="form-check-label" for="guard">
+            <strong>{{ t('Stop if opening stock already exists') }}</strong>
+            <div class="fs-9 text-body-tertiary">
+              {{ t('Leave this ticked. It is the only thing preventing a double load, which silently doubles every balance.') }}</div>
+          </label>
+        </div>
+        <div class="d-flex gap-2">
+          <button class="btn btn-primary"
+                  data-confirm="{{ t('Post') }} {{ totals.matched }} {{ t('lot balance(s) to the stock ledger?') }}"
+                  data-confirm-title="{{ t('Load Opening Stock') }}"
+                  data-confirm-ok="{{ t('Post to Ledger') }}" data-confirm-variant="primary">
+            <i class="bi bi-check2-circle me-1"></i>{{ t('Post Opening Stock') }}</button>
+          <a href="/setup/import" class="btn btn-phoenix-secondary">{{ t('Cancel') }}</a>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

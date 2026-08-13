@@ -1,0 +1,94 @@
+{% extends "layouts/base.html" %}
+{% block title %}{{ t('Go-Live Data Import') }}{% endblock %}
+{% block content %}
+<div class="container-fluid py-3 isfc-page">
+
+  <div class="isfc-hero mb-4 p-4 rounded-4 text-white"
+       style="background:linear-gradient(135deg,#132947,#0c91a3)">
+    <h1 class="mb-1 fw-bold text-white"><i class="bi bi-database-add me-2"></i>{{ t('Go-Live Data Import') }}</h1>
+    <p class="mb-0 opacity-75">
+      {{ t('Load your real Chart of Accounts and opening stock. Both show a preview before anything is written.') }}</p>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-lg-3"><div class="card border h-100"><div class="card-body">
+      <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('GL Accounts') }}</div>
+      <div class="fs-3 fw-bold">{{ stats.accounts }}</div></div></div></div>
+    <div class="col-6 col-lg-3"><div class="card border h-100"><div class="card-body">
+      <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Journal Lines Posted') }}</div>
+      <div class="fs-3 fw-bold {{ 'text-warning' if stats.journals else '' }}">{{ stats.journals }}</div></div></div></div>
+    <div class="col-6 col-lg-3"><div class="card border h-100"><div class="card-body">
+      <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Ingredients in Master') }}</div>
+      <div class="fs-3 fw-bold">{{ stats.ingredients }}</div></div></div></div>
+    <div class="col-6 col-lg-3"><div class="card border h-100"><div class="card-body">
+      <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Opening Stock Rows') }}</div>
+      <div class="fs-3 fw-bold {{ 'text-success' if stats.opening_rows else 'text-body-tertiary' }}">{{ stats.opening_rows }}</div></div></div></div>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-lg-6">
+      <div class="card border h-100">
+        <div class="card-header bg-body-highlight fw-bold">
+          <i class="bi bi-diagram-3 me-1"></i>{{ t('1. Chart of Accounts') }}</div>
+        <div class="card-body">
+          <p class="fs-9 text-body-tertiary">
+            {{ t('A one-time structural load. The Chart of Accounts defines what the ledger can post to, so changing it after postings exist would silently reinterpret historical statements.') }}
+          </p>
+          <div class="alert alert-subtle-info py-2 fs-9">
+            <strong>{{ t('Expected columns:') }}</strong>
+            Class · Group · Sub Group · GL Code · Account
+          </div>
+          {% if stats.journals %}
+          <div class="alert alert-subtle-warning py-2 fs-9">
+            <i class="bi bi-exclamation-triangle me-1"></i>
+            {{ stats.journals }} {{ t('journal line(s) already posted. Accounts carrying postings will never be removed or deactivated, whatever you choose.') }}
+          </div>
+          {% endif %}
+          <form method="post" action="/setup/import/coa/preview" enctype="multipart/form-data">
+            <input type="file" name="file" accept=".xlsx,.xlsm" required class="form-control form-control-sm mb-2">
+            <button class="btn btn-primary btn-sm w-100">
+              <i class="bi bi-search me-1"></i>{{ t('Preview Chart of Accounts') }}</button>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-6">
+      <div class="card border h-100">
+        <div class="card-header bg-body-highlight fw-bold">
+          <i class="bi bi-boxes me-1"></i>{{ t('2. Opening Stock') }}</div>
+        <div class="card-body">
+          <p class="fs-9 text-body-tertiary">
+            {{ t('Your Current Inventory Report is lot-level stock balances, not an item master. Each row is posted to the stock ledger as an opening movement carrying its barcode as the lot number — so valuation, shortage checks and reorder all work with no special cases.') }}
+          </p>
+          <div class="alert alert-subtle-info py-2 fs-9">
+            <strong>{{ t('Expected columns:') }}</strong>
+            Barcode · Received Date · Material Code · Material Name · Issue Unit Name · Cost Unit · Total Qty · Total Price
+          </div>
+          <div class="alert alert-subtle-warning py-2 fs-9">
+            <i class="bi bi-info-circle me-1"></i>
+            {{ t('Material codes must already exist in Master Data → Ingredients. Rows with no matching ingredient are reported, not silently created.') }}
+          </div>
+          <form method="post" action="/setup/import/stock/preview" enctype="multipart/form-data">
+            <input type="file" name="file" accept=".xlsx,.xlsm" required class="form-control form-control-sm mb-2">
+            <button class="btn btn-primary btn-sm w-100">
+              <i class="bi bi-search me-1"></i>{{ t('Preview Opening Stock') }}</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card border mt-3">
+    <div class="card-header bg-body-highlight fw-bold">{{ t('Recommended order') }}</div>
+    <div class="card-body fs-9">
+      <ol class="mb-0 ps-3">
+        <li>{{ t('Import the Chart of Accounts first — with Replace ticked, to retire the demo accounts.') }}</li>
+        <li>{{ t('Confirm Master Data → Ingredients contains every material code you are about to load stock for.') }}</li>
+        <li>{{ t('Import Opening Stock with an as-of date. Check Inventory → Stock afterwards.') }}</li>
+        <li>{{ t('Only then start transacting. Opening stock loaded after receipts exist will double-count.') }}</li>
+      </ol>
+    </div>
+  </div>
+</div>
+{% endblock %}

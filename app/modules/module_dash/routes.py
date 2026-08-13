@@ -141,11 +141,11 @@ MODULE_DASHBOARDS: dict[str, dict] = {
         "icon": "shopping-bag",
         "kpis": [
             ("Open POs", "SELECT COUNT(*) FROM purchase_orders WHERE COALESCE(status,'') NOT IN ('Closed','Cancelled')", ""),
-            ("Total POs", "SELECT COUNT(*) FROM purchase_orders", ""),
+            ("Total POs", "SELECT COUNT(*) FROM purchase_orders WHERE 1=1 {range}", ""),
             # Batch 87 fix: "grns" isn't a real table (the real one is
             # grn_receipts) — this silently returned 0 the same way the
             # Inventory cockpit's broken queries did.
-            ("GRNs", "SELECT COUNT(*) FROM grn_receipts", ""),
+            ("GRNs", "SELECT COUNT(*) FROM grn_receipts WHERE 1=1 {range}", ""),
             ("Suppliers", "SELECT COUNT(*) FROM suppliers", ""),
         ],
         "links": [
@@ -389,10 +389,29 @@ async def module_dashboard(request: Request, key: str, db: Session = Depends(get
         range_key = "3m"
     days = RANGES[range_key]
 
-    kpis = [
-        {"label": label, "value": _n(db, sql), "hint": hint}
-        for (label, sql, hint) in cfg["kpis"]
-    ]
+    # ------------------------------------------------------------------
+    # Batch 111 — KPI CARDS NOW HONOUR THE PERIOD FILTER.
+    #
+    # The slicer already applied to charts (any SQL containing "{range}"),
+    # but the KPI cards ran their SQL untouched. So switching from 3 Months
+    # to 7 Days redrew every chart and left the cards showing all-time
+    # figures — the cards and the charts beneath them described different
+    # periods, with nothing on screen saying so.
+    #
+    # A KPI opts in by putting {range} in its SQL, exactly like a chart. One
+    # that genuinely should stay all-time (master data counts, stock on hand
+    # right now) simply omits it and is labelled "all time" in the UI, so the
+    # distinction is visible rather than assumed.
+    # ------------------------------------------------------------------
+    kpis = []
+    for (label, sql, hint) in cfg["kpis"]:
+        ranged = "{range}" in sql
+        if ranged:
+            col = cfg.get("kpi_range_col", "created_at")
+            cond = f" AND {col} >= DATE_SUB(CURDATE(), INTERVAL {days} DAY)" if days else ""
+            sql = sql.replace("{range}", cond)
+        kpis.append({"label": label, "value": _n(db, sql), "hint": hint,
+                     "ranged": ranged})
     for k in kpis:
         k["value"] = int(k["value"]) if float(k["value"]).is_integer() else round(k["value"], 2)
 
@@ -414,7 +433,11 @@ async def module_dashboard(request: Request, key: str, db: Session = Depends(get
         if labels:
             charts.append({"title": cc["title"], "labels": labels, "values": values,
                            "default": cc.get("default", "hbar"),
-                           "has_range": "{range}" in cc["sql"]})
+                           "has_range": "{range}" in cc["sql"],
+                           # Batch 111: chart-level unit/note feed the richer
+                           # tooltips added in Batch 107.
+                           "unit": cc.get("unit", ""),
+                           "note": cc.get("note", "")})
 
     links = [
         {"title": t, "url": u, "area": a, "icon": i}
@@ -433,6 +456,9 @@ async def module_dashboard(request: Request, key: str, db: Session = Depends(get
         "links": links,
         "module_key": key,
         "range_key": range_key,
+        # Batch 111: human label for the badge on each KPI card.
+        "range_label": {"7d": "7 days", "1m": "1 month", "3m": "3 months",
+                        "1y": "1 year", "all": "all time"}.get(range_key, range_key),
         "has_range": has_range,
         "ranges": [("7d", "7 Days"), ("1m", "1 Month"), ("3m", "3 Months"), ("1y", "1 Year"), ("all", "Max")],
     })

@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import RedirectResponse
@@ -441,9 +442,22 @@ def pr_detail(request: Request, pr_no: str, db: Session = Depends(get_db)):
     for k in suggestions:
         suggestions[k] = suggestions[k][:3]
 
+    from app.core import approval_chain as _ac
+    _ac.ensure_schema(db)
+    chain = _ac.get_chain(db, "purchase_requisition", pr_no)
+    if not chain and pr["status"] == "Pending":
+        # Show the ladder BEFORE the first signature, so the reviewer knows how
+        # many approvals this requisition will need rather than discovering it
+        # after signing.
+        steps = _ac.tier_for(db, float(pr.get("estimated_value") or 0), cid)
+        chain = [{"step_no": i, "required_role": r, "status": "Pending",
+                  "approved_by": None, "approved_at": None}
+                 for i, r in enumerate(steps, start=1)]
+
     return render(request, "purchase_req/detail.html", {
         "pr": pr, "lines": lines, "suppliers": suppliers,
         "suggestions": suggestions,
+        "approval_chain": chain,
         "page_title": f"Requisition {pr_no}",
     })
 
@@ -469,6 +483,41 @@ async def pr_approve(request: Request, pr_no: str, db: Session = Depends(get_db)
         return RedirectResponse(
             f"/purchase-requisitions/{pr_no}?toast=warning&title=Already reviewed"
             f"&msg=This requisition is already {pr['status']}.", status_code=303)
+
+    # ------------------------------------------------------------------
+    # Batch 111 — approval hierarchy by value.
+    #
+    # Until now one signature approved a requisition of any size. The chain
+    # is built from the requisition's own estimated value, so a small one
+    # still clears in a single step and nothing slows down, while a large one
+    # now needs every step in its tier, signed by different people, in order.
+    # ------------------------------------------------------------------
+    from app.core import approval_chain as _ac
+    chain = _ac.build_chain(db, "purchase_requisition", pr_no,
+                            float(pr.get("estimated_value") or 0), cid)
+    ok, why = _ac.can_approve(chain,
+                              request.session.get("user_id"),
+                              _user(request),
+                              request.session.get("user_role") or request.session.get("role") or "",
+                              raised_by=pr.get("requested_by") or "")
+    if not ok:
+        return RedirectResponse(
+            f"/purchase-requisitions/{pr_no}?toast=warning&title={quote('Cannot approve yet')}"
+            f"&msg={quote(why)}", status_code=303)
+
+    ok, msg, chain = _ac.approve_step(
+        db, "purchase_requisition", pr_no,
+        request.session.get("user_id"), _user(request),
+        request.session.get("user_role") or request.session.get("role") or "",
+        note=(form.get("reason") or "").strip())
+
+    # Only the FINAL signature moves the requisition to Approved. An
+    # intermediate one records the step and leaves it Pending, which is what
+    # makes the tier meaningful rather than decorative.
+    if not _ac.is_complete(chain):
+        return RedirectResponse(
+            f"/purchase-requisitions/{pr_no}?toast=success&title={quote('Step Approved')}"
+            f"&msg={quote(msg)}", status_code=303)
 
     # Per-line approved quantity — Procurement can approve less than asked
     # (partial approval is standard practice: budget, MOQ, or a pending
@@ -527,6 +576,12 @@ async def pr_reject(request: Request, pr_no: str, db: Session = Depends(get_db))
         WHERE pr_no = :p
     """), {"by": _user(request), "at": datetime.utcnow(), "r": reason[:500], "p": pr_no})
     db.commit()
+
+    # Batch 111: clear any partial approvals so a resubmission starts from
+    # step 1 instead of inheriting signatures given to a version that was
+    # then rejected.
+    from app.core import approval_chain as _ac
+    _ac.reset_chain(db, "purchase_requisition", pr_no)
     return RedirectResponse(
         f"/purchase-requisitions/{pr_no}?toast=warning&title=Rejected"
         f"&msg={pr_no} rejected — no Purchase Order will be raised from it.", status_code=303)

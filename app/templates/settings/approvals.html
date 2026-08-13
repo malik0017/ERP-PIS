@@ -1,0 +1,133 @@
+{% extends "layouts/base.html" %}
+{% block title %}{{ t('Approval Hierarchy') }}{% endblock %}
+{% block content %}
+<div class="container-fluid py-3 isfc-page">
+
+  <div class="isfc-hero mb-4 p-4 rounded-4 text-white"
+       style="background:linear-gradient(135deg,#132947,#0c91a3)">
+    <h1 class="mb-1 fw-bold text-white"><i class="bi bi-diagram-2 me-2"></i>{{ t('Approval Hierarchy') }}</h1>
+    <p class="mb-0 opacity-75">
+      {{ t('How many signatures a document needs, based on what it is worth.') }}</p>
+  </div>
+
+  <div class="alert alert-subtle-info">
+    <strong>{{ t('How it works') }}</strong>
+    <ul class="mb-0 fs-9 mt-1">
+      <li>{{ t('A document finds its tier by value, then needs every step in that tier, in order.') }}</li>
+      <li>{{ t('Steps must be signed by different people — one person cannot sign two steps.') }}</li>
+      <li>{{ t('Whoever raised the document cannot approve it beyond the first step.') }}</li>
+      <li>{{ t('A more senior role can cover a junior step, but that still counts as one step.') }}</li>
+      <li>{{ t('The tier is locked at the first signature, so editing the value afterwards cannot change how many approvals it needs.') }}</li>
+    </ul>
+  </div>
+
+  <div class="card border mb-3">
+    <div class="card-body">
+      <form method="post" action="/settings/approvals/save" id="tierForm">
+        <input type="hidden" name="doc_type" value="{{ doc_type }}">
+
+        <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+          <div>
+            <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('Document type') }}</label>
+            <select class="form-select form-select-sm" style="width:260px"
+                    onchange="location.href='/settings/approvals?doc_type='+this.value">
+              {% for key, label in doc_types %}
+              <option value="{{ key }}" {% if doc_type==key %}selected{% endif %}>{{ t(label) }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <button type="button" class="btn btn-phoenix-primary btn-sm" id="addTier">
+            <i class="bi bi-plus-lg me-1"></i>{{ t('Add Tier') }}</button>
+        </div>
+
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-0" data-no-sort>
+            <thead class="bg-body-highlight">
+              <tr>
+                <th style="width:170px">{{ t('From value') }}</th>
+                <th style="width:170px">{{ t('Up to (exclusive)') }}</th>
+                <th>{{ t('Approval steps, in order (comma separated)') }}</th>
+                <th style="width:56px"></th>
+              </tr>
+            </thead>
+            <tbody id="tierRows">
+              {% for t_ in tiers %}
+              <tr>
+                <td><input type="number" step="0.01" min="0" name="min_value"
+                           value="{{ '%.2f'|format(t_.min_value or 0) }}" class="form-control form-control-sm"></td>
+                <td><input type="number" step="0.01" min="0" name="max_value"
+                           value="{{ '%.2f'|format(t_.max_value) if t_.max_value is not none else '' }}"
+                           placeholder="{{ t('blank = no upper limit') }}" class="form-control form-control-sm"></td>
+                <td><input name="steps" value="{{ t_.steps }}" class="form-control form-control-sm"
+                           list="roleList" placeholder="SUPERVISOR,MANAGER"></td>
+                <td class="text-center">
+                  <button type="button" class="btn btn-sm btn-outline-danger rm">&times;</button></td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+
+        <datalist id="roleList">
+          {% for r in roles %}<option value="{{ r }}"></option>{% endfor %}
+        </datalist>
+
+        <div class="fs-9 text-body-tertiary mt-2">
+          {{ t('Upper bounds are exclusive: a tier ending at 5,000 covers up to but not including 5,000, and the next starts exactly at 5,000. Each tier must end where the next begins, and the highest must have no upper limit — otherwise some value has no approval path. Checked before saving.') }}
+        </div>
+
+        <div class="d-flex gap-2 mt-3">
+          <button class="btn btn-primary"><i class="bi bi-save me-1"></i>{{ t('Save Ladder') }}</button>
+          <a href="/settings/approvals?doc_type={{ doc_type }}" class="btn btn-phoenix-secondary">{{ t('Reset') }}</a>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  {% if in_flight %}
+  <div class="card border">
+    <div class="card-header bg-body-highlight fw-bold">
+      {{ t('Part-way through approval') }}
+      <span class="badge badge-phoenix badge-phoenix-warning">{{ in_flight|length }}</span>
+    </div>
+    <div class="card-body p-0"><div class="table-responsive">
+      <table class="table table-sm mb-0" data-isfc-table>
+        <thead class="bg-body-highlight"><tr>
+          <th>{{ t('Document') }}</th><th class="text-end">{{ t('Value') }}</th>
+          <th class="text-end">{{ t('Progress') }}</th></tr></thead>
+        <tbody>
+          {% for d in in_flight %}
+          <tr>
+            <td><a href="/purchase-requisitions/{{ d.doc_no }}" class="fw-bold text-decoration-none">{{ d.doc_no }}</a></td>
+            <td class="text-end">{{ '%.2f'|format(d.doc_value or 0) }}</td>
+            <td class="text-end">{{ d.done_steps }} / {{ d.total_steps }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div></div>
+    <div class="card-footer bg-body-highlight fs-9 text-body-tertiary">
+      {{ t('These keep the ladder they started with. Changing tiers above affects new documents only.') }}
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+<script>
+  (function () {
+    var body = document.getElementById('tierRows');
+    document.getElementById('addTier').addEventListener('click', function () {
+      var tr = document.createElement('tr');
+      tr.innerHTML =
+        '<td><input type="number" step="0.01" min="0" name="min_value" class="form-control form-control-sm"></td>' +
+        '<td><input type="number" step="0.01" min="0" name="max_value" class="form-control form-control-sm" placeholder="{{ t("blank = no upper limit") }}"></td>' +
+        '<td><input name="steps" list="roleList" class="form-control form-control-sm" placeholder="SUPERVISOR,MANAGER"></td>' +
+        '<td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger rm">&times;</button></td>';
+      body.appendChild(tr);
+    });
+    body.addEventListener('click', function (e) {
+      if (e.target.classList.contains('rm')) e.target.closest('tr').remove();
+    });
+  })();
+</script>
+{% endblock %}

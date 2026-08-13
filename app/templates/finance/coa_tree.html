@@ -1,0 +1,139 @@
+{% extends "layouts/base.html" %}
+{% block title %}{{ t('Chart of Accounts') }}{% endblock %}
+{% block content %}
+<div class="container-fluid py-3 isfc-page">
+
+  <div class="isfc-hero mb-4 p-4 rounded-4 text-white d-flex justify-content-between align-items-center flex-wrap gap-3"
+       style="background:linear-gradient(135deg,#132947,#0c91a3)">
+    <div>
+      <h1 class="mb-1 fw-bold text-white"><i class="bi bi-diagram-3 me-2"></i>{{ t('Chart of Accounts') }}</h1>
+      <p class="mb-0 opacity-75">
+        {{ t('Class › Group › Subgroup › Account — the structure your statements are grouped by.') }}</p>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+      <a class="btn btn-light btn-sm" href="/finance/coa/new">
+        <i class="bi bi-plus-lg me-1"></i>{{ t('New Account') }}</a>
+      <a class="btn btn-light btn-sm" href="/setup/import">
+        <i class="bi bi-upload me-1"></i>{{ t('Import') }}</a>
+      <a class="btn btn-phoenix-secondary btn-sm" href="/finance/coa">{{ t('Flat View') }}</a>
+    </div>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-lg-3"><div class="card border h-100"><div class="card-body">
+      <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Accounts') }}</div>
+      <div class="fs-3 fw-bold">{{ totals.accounts }}</div></div></div></div>
+    <div class="col-6 col-lg-3"><div class="card border h-100"><div class="card-body">
+      <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('With Postings') }}</div>
+      <div class="fs-3 fw-bold text-info">{{ totals.posted }}</div></div></div></div>
+    <div class="col-6 col-lg-3"><div class="card border h-100"><div class="card-body">
+      <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Unclassified / Demo') }}</div>
+      <div class="fs-3 fw-bold {{ 'text-warning' if totals.demo else 'text-success' }}">{{ totals.demo }}</div></div></div></div>
+    <div class="col-6 col-lg-3"><div class="card border h-100"><div class="card-body">
+      <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('By Type') }}</div>
+      <div class="fs-9 mt-1">
+        {% for typ, n in totals.by_type %}
+        <span class="badge badge-phoenix badge-phoenix-secondary me-1 mb-1">{{ typ }} {{ n }}</span>
+        {% endfor %}
+      </div></div></div></div>
+  </div>
+
+  {% if demo_accounts %}
+  <div class="alert alert-subtle-warning d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <div>
+      <strong><i class="bi bi-exclamation-triangle me-1"></i>
+        {{ demo_accounts|length }} {{ t('account(s) have no hierarchy') }}</strong>
+      <div class="fs-9 mt-1">
+        {{ t('These are the seeded demo accounts. Accounts carrying journal postings will be deactivated rather than deleted — removing one would orphan its journal lines and break every historical statement.') }}
+      </div>
+      <div class="fs-9 mt-1">
+        {% for d in demo_accounts[:12] %}
+        <span class="badge badge-phoenix badge-phoenix-secondary me-1">{{ d.account_code }} {{ d.account_name }}</span>
+        {% endfor %}
+      </div>
+    </div>
+    {% if can_action('finance', 'delete') %}
+    <form method="post" action="/finance/coa/purge-demo"
+          data-confirm="{{ t('Remove the demo accounts? Any with journal postings will be deactivated instead of deleted.') }}"
+          data-confirm-title="{{ t('Clear demo accounts') }}" data-confirm-ok="{{ t('Clear') }}"
+          data-confirm-variant="danger">
+      <button class="btn btn-outline-danger btn-sm">
+        <i class="bi bi-trash me-1"></i>{{ t('Clear Demo Accounts') }}</button>
+    </form>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <div class="card border mb-4"><div class="card-body py-3">
+    <form method="get" class="row g-2 align-items-end">
+      <div class="col-md-6">
+        <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('Search') }}</label>
+        <input name="search" value="{{ filters.search }}" class="form-control form-control-sm"
+               placeholder="{{ t('Code, account, class, group or subgroup') }}">
+      </div>
+      <div class="col-md-3">
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" name="inactive" value="1" id="inact"
+                 {% if filters.inactive %}checked{% endif %}>
+          <label class="form-check-label fs-9" for="inact">{{ t('Include inactive') }}</label>
+        </div>
+      </div>
+      <div class="col-md-3 d-flex gap-2">
+        <button class="btn btn-primary btn-sm flex-grow-1">{{ t('Apply') }}</button>
+        <a href="/finance/coa/tree" class="btn btn-phoenix-secondary btn-sm">{{ t('Reset') }}</a>
+      </div>
+    </form>
+  </div></div>
+
+  {% for c in tree %}
+  <div class="card border mb-3">
+    <div class="card-header bg-body-highlight d-flex justify-content-between align-items-center">
+      <span class="fw-bold fs-7">
+        <i class="bi bi-folder2-open me-1"></i>{{ c.code }} · {{ c.name }}</span>
+      <span>
+        <span class="badge badge-phoenix badge-phoenix-secondary">{{ c.count }} {{ t('accounts') }}</span>
+        <span class="badge badge-phoenix badge-phoenix-{{ 'success' if c.balance >= 0 else 'danger' }} ms-1">
+          {{ '%.2f'|format(c.balance) }}</span>
+      </span>
+    </div>
+    <div class="card-body p-0">
+      {% for g in c.groups %}
+      <div class="px-3 py-2 border-bottom bg-body-highlight bg-opacity-50">
+        <span class="fw-bold fs-9">{{ g.code }} · {{ g.name }}</span>
+        <span class="small-muted ms-2">{{ g.count }} {{ t('accounts') }} · {{ '%.2f'|format(g.balance) }}</span>
+      </div>
+      {% for sg in g.subgroups %}
+      <div class="px-4 py-1 fs-9 text-body-tertiary border-bottom">
+        <i class="bi bi-arrow-return-right me-1"></i>{{ sg.code }} {{ sg.name }}
+        <span class="ms-1">({{ sg.count }})</span>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-sm mb-0" data-no-sort>
+          <tbody>
+            {% for a in sg.accounts %}
+            <tr class="{{ '' if a.is_active else 'opacity-50' }}">
+              <td style="width:110px" class="ps-5 fw-bold fs-9">{{ a.account_code }}</td>
+              <td>{{ a.account_name }}
+                {% if not a.is_active %}<span class="badge badge-phoenix badge-phoenix-secondary ms-1">{{ t('inactive') }}</span>{% endif %}
+              </td>
+              <td style="width:110px"><span class="badge badge-phoenix badge-phoenix-secondary">{{ a.account_type }}</span></td>
+              <td style="width:110px" class="text-end fs-9">{{ '%.2f'|format(a.debit or 0) }}</td>
+              <td style="width:110px" class="text-end fs-9">{{ '%.2f'|format(a.credit or 0) }}</td>
+              <td style="width:120px" class="text-end fw-bold">{{ '%.2f'|format(a.balance) }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endfor %}
+      {% endfor %}
+    </div>
+  </div>
+  {% else %}
+  <div class="alert alert-subtle-info">
+    <i class="bi bi-info-circle me-1"></i>
+    {{ t('No accounts yet. Import your Chart of Accounts from System → Go-Live Data Import.') }}
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

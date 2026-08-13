@@ -27,7 +27,17 @@
     <div class="col-sm-6 col-xl-3">
       <div class="card h-100 isfc-kpi-card">
         <div class="card-body">
-          <p class="text-body-tertiary text-uppercase fs-10 mb-1">{{ t(k.label) }}</p>
+          <p class="text-body-tertiary text-uppercase fs-10 mb-1 d-flex justify-content-between align-items-start gap-2">
+            <span>{{ t(k.label) }}</span>
+            {# Batch 111: every card now states which period it covers. The
+               cards used to show all-time figures while the charts below them
+               followed the slicer, and nothing on screen said so. #}
+            {% if k.ranged %}
+            <span class="badge badge-phoenix badge-phoenix-info fs-10">{{ range_label }}</span>
+            {% else %}
+            <span class="badge badge-phoenix badge-phoenix-secondary fs-10">{{ t('all time') }}</span>
+            {% endif %}
+          </p>
           <h2 class="mb-1 text-body-emphasis">{{ k.value }}</h2>
           <p class="fs-9 text-body-tertiary mb-0">{{ t(k.hint) }}</p>
         </div>
@@ -82,7 +92,7 @@
           {% if c.has_range %}<span class="badge badge-phoenix badge-phoenix-info">{{ t('Period filtered') }}</span>{% endif %}
         </div>
         <div class="card-body">
-          <div data-isfc-chart="{{ c.default }}"
+          <div data-isfc-chart="{{ c.default }}"{% if c.unit %} data-unit="{{ c.unit }}"{% endif %}{% if c.note %} data-note="{{ c.note }}"{% endif %}
                data-types="hbar,bar,line,area,pie,donut"
                data-labels='{{ c['labels'] | tojson }}'
                data-values='{{ c['values'] | tojson }}'

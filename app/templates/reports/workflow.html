@@ -63,7 +63,7 @@
       <div class="rows">
         <div class="wf-chip"><span>{{ t('Customers') }}</span><b>{{ phases.customers }}</b></div>
         <div class="wf-chip"><span>{{ t('Suppliers') }}</span><b>{{ phases.suppliers }}</b></div>
-        <div class="wf-chip"><span>{{ t('Items / SKU') }}</span><b>{{ phases.items }}</b></div>
+        <div class="wf-chip"><span>{{ t('Items / SKU') }}</span><b>{{ phases['items'] }}</b></div>
         <div class="wf-chip"><span>{{ t('GL accounts') }}</span><b>{{ phases.coa }}</b></div>
       </div>
     </div>
@@ -80,7 +80,7 @@
       <div class="num">03 · {{ t('Inventory') }}</div>
       <h5>{{ t('Warehouse · Issuance') }}</h5>
       <div class="rows">
-        <div class="wf-chip"><span>{{ t('Items in stock') }}</span><b>{{ phases.items }}</b></div>
+        <div class="wf-chip"><span>{{ t('Items in stock') }}</span><b>{{ phases['items'] }}</b></div>
         <div class="wf-chip"><span>{{ t('Orders issued') }}</span><b>{{ phases.issues }}</b></div>
       </div>
     </div>

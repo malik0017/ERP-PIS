@@ -189,7 +189,7 @@ def reorder_screen(request: Request, db: Session = Depends(get_db)):
         "filters": {"lead_days": lead, "window": window,
                     "safety": safety, "supplier": supplier},
         "totals": {
-            "items": len(rows),
+            "item_count": len(rows),   # Batch 108: NOT "items" — see reorder.html
             "critical": sum(1 for r in rows if r["urgency"] == "critical"),
             "value": round(sum(r["est_value"] for r in rows), 2),
         },

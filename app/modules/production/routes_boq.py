@@ -265,7 +265,10 @@ def preview_boq(request: Request, db: Session = Depends(get_db)):
         e["items"].add(x["ingredient_code"])
         e["qty"] += float(x["required_qty"] or 0)
     customers_summary = sorted(
-        [{"customer": k, "orders": len(v["orders"]), "items": len(v["items"]),
+        # Batch 108: the key is "item_count", NOT "items" — in Jinja, {{ x.items }}
+        # resolves to the dict's built-in .items METHOD before it looks for a key
+        # of that name, and prints "<built-in method items of dict object ...>".
+        [{"customer": k, "orders": len(v["orders"]), "item_count": len(v["items"]),
           "qty": round(v["qty"], 3)} for k, v in by_customer.items()],
         key=lambda r: -r["qty"])
 
