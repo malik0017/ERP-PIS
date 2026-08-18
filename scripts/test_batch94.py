@@ -163,6 +163,22 @@ def login(client):
     client.cookies.set("isfc_session", cookie)
 
 
+def client_for_user(user_id, username, role):
+    """A separate signed-in client, for chain steps that need another person."""
+    import base64 as _b64, json as _json, itsdangerous as _its
+    from app.config import SECRET_KEY as _SK
+    c = TestClient(app)
+    d = {"user_id": user_id, "username": username, "user_role": role,
+         "role": role, "company_id": 1}
+    sg = _its.TimestampSigner(str(_SK))
+    c.cookies.set("isfc_session",
+                  sg.sign(_b64.b64encode(_json.dumps(d).encode())).decode())
+    _g, _p = c.get, c.post
+    c.get = lambda *a, **k: _g(*a, allow_redirects=False, **k)
+    c.post = lambda *a, **k: _p(*a, allow_redirects=False, **k)
+    return c
+
+
 def main():
     db = SessionLocal()
     seed(db)
@@ -262,6 +278,27 @@ def main():
     r = client.post(f"/purchase-requisitions/{pr_no}/approve",
                     data={"line_id": str(line_id), "approved_qty": ""})
     check("approve redirects", r.status_code == 303)
+
+    # Batch 112: Batch 111 introduced the value-based approval chain, so ONE
+    # signature no longer necessarily completes a requisition. This test was
+    # written when it did. Rather than assert the old contract, walk whatever
+    # chain the tier engine built — using a different user for each step,
+    # because separation of duties is the point of the feature.
+    from app.core import approval_chain as _ac
+    _chain = _ac.get_chain(db, "purchase_requisition", pr_no)
+    _extra = 0
+    for _step in _chain:
+        if _step["status"] == "Approved":
+            continue
+        _uid = 900 + _step["step_no"]
+        _c2 = client_for_user(_uid, f"approver{_step['step_no']}", "ADMIN")
+        _c2.post(f"/purchase-requisitions/{pr_no}/approve",
+                 data={"line_id": str(line_id), "approved_qty": ""})
+        _extra += 1
+    db.commit()
+    if _extra:
+        print(f"    (chain required {len(_chain)} signatures; "
+              f"{_extra} extra applied by other users)")
     st = db.execute(text("SELECT status FROM purchase_requisitions WHERE pr_no=:p"), {"p": pr_no}).scalar()
     check("PR now Approved", st == "Approved", str(st))
     check("approving still created NO purchase order",

@@ -52,6 +52,37 @@
   {# Batch 111: the approval ladder. Shown BEFORE the first signature too, so
      a reviewer knows how many approvals this requisition needs rather than
      finding out after they sign. #}
+  {# Batch 114: budget position, shown BEFORE approval. The number an
+     approver needs is not "what is the budget" but "what is left after this
+     one" — so that is what is shown. #}
+  {% if budget_check and budget_check.has_budget %}
+  {% set bl = budget_check.line %}
+  <div class="alert alert-subtle-{{ 'danger' if bl.breaches else ('warning' if bl.pct_after >= (bl.warn_pct or 85)|float else 'success') }} mb-3">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+      <div>
+        <strong>
+          {% if bl.breaches %}<i class="bi bi-exclamation-octagon me-1"></i>{{ t('Over budget') }}
+          {% elif bl.pct_after >= (bl.warn_pct or 85)|float %}<i class="bi bi-exclamation-triangle me-1"></i>{{ t('Near the limit') }}
+          {% else %}<i class="bi bi-check-circle me-1"></i>{{ t('Within budget') }}{% endif %}
+        </strong>
+        <span class="ms-2">{{ bl.level_name or bl.level_code }}</span>
+        <div class="fs-9 mt-1">
+          {{ t('Budget') }} {{ '%.2f'|format(bl.amount or 0) }} ·
+          {{ t('spent') }} {{ '%.2f'|format(bl.actual) }} ·
+          {{ t('committed') }} {{ '%.2f'|format(bl.committed) }} ·
+          <strong>{{ t('remaining after this requisition') }}
+            {{ '%.2f'|format(bl.after) }}</strong> ({{ bl.pct_after }}% {{ t('used') }})
+        </div>
+        {% if bl.blocks %}
+        <div class="fs-9 mt-1 fw-bold">
+          {{ t('This budget line is set to BLOCK — approval will be refused until the budget is raised.') }}</div>
+        {% endif %}
+      </div>
+      <a href="/finance/budget" class="btn btn-sm btn-phoenix-secondary">{{ t('Open budget') }}</a>
+    </div>
+  </div>
+  {% endif %}
+
   {% if approval_chain and approval_chain|length > 1 %}
   <div class="card border mb-3">
     <div class="card-header bg-body-highlight fw-bold d-flex justify-content-between align-items-center">

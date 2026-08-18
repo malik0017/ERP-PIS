@@ -226,7 +226,7 @@ def _read_recipe_master_rows(recipe_ws) -> tuple[dict[str, dict[str, Any]], int]
             "category": _s(_get(recipe_ws, row, headers, "Category")),
             # Batch 101: Day is what drives the Frsh weekly menu. Read it here
             # too so both import paths behave the same.
-            "day_of_week": _s(_get(recipe_ws, row, headers, "Day")),
+            "day_of_week": _s(_get(recipe_ws, row, headers, "Day", "Days")),
             "has_sub_recipe": _b(_get(recipe_ws, row, headers, "Has Sub Recipe?", "Has Sub Recipe")),
             "linked_sub_recipe_code": _code(_get(recipe_ws, row, headers, "Sub Recipe ID", "Sub Recipe Ref")),
             "linked_sub_recipe_name": _s(_get(recipe_ws, row, headers, "Sub Recipe Name")),
@@ -276,7 +276,7 @@ def _read_recipe_rows_from_ingredients(line_ws) -> tuple[dict[str, dict[str, Any
             # 55 of them lost their category on import even though it was
             # sitting in the file.
             "category": _s(_get(line_ws, row, headers, "Category")),
-            "day_of_week": _s(_get(line_ws, row, headers, "Day")),
+            "day_of_week": _s(_get(line_ws, row, headers, "Day", "Days")),
             "has_sub_recipe": False,
             "linked_sub_recipe_code": _code(_get(line_ws, row, headers, "Sub Recipe ID", "Sub Recipe Ref")),
             "linked_sub_recipe_name": None,

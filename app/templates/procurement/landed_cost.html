@@ -1,0 +1,82 @@
+{% extends "layouts/base.html" %}
+{% block title %}{{ t('Landed Cost') }}{% endblock %}
+{% block content %}
+<div class="container-fluid py-3 isfc-page">
+  <div class="isfc-hero mb-4 p-4 rounded-4 text-white"
+       style="background:linear-gradient(135deg,#132947,#0c91a3)">
+    <h1 class="mb-1 fw-bold text-white"><i class="bi bi-truck me-2"></i>{{ t('Landed Cost') }}</h1>
+    <p class="mb-0 opacity-75">
+      {{ t('Freight, duty and clearing added to the goods, so food cost and stock value are the real numbers.') }}</p>
+  </div>
+
+  <div class="alert alert-subtle-info fs-9">
+    <i class="bi bi-info-circle me-1"></i>
+    {{ t('The supplier invoice price is not what an item costs you. On imported dry stores, landed charges are routinely 8–15% on top — ignore them and every margin you quote is wrong by roughly that much.') }}
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-lg-4"><div class="card border h-100"><div class="card-body">
+      <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Receipts') }}</div>
+      <div class="fs-3 fw-bold">{{ totals.receipts }}</div></div></div></div>
+    <div class="col-6 col-lg-4"><div class="card border h-100"><div class="card-body">
+      <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('With Charges') }}</div>
+      <div class="fs-3 fw-bold text-info">{{ totals.with_charges }}</div></div></div></div>
+    <div class="col-6 col-lg-4"><div class="card border h-100"><div class="card-body">
+      <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Charges Recorded') }}</div>
+      <div class="fs-3 fw-bold text-success">{{ '%.2f'|format(totals.charge_value) }}</div></div></div></div>
+  </div>
+
+  <div class="card border mb-3"><div class="card-body py-3">
+    <form method="get" class="row g-2 align-items-end">
+      <div class="col-md-9">
+        <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('Search') }}</label>
+        <input name="search" value="{{ filters.search }}" class="form-control form-control-sm"
+               placeholder="{{ t('GRN, PO or supplier') }}"></div>
+      <div class="col-md-3 d-flex gap-2">
+        <button class="btn btn-primary btn-sm flex-grow-1">{{ t('Apply') }}</button>
+        <a href="/procurement/landed-cost" class="btn btn-phoenix-secondary btn-sm">{{ t('Reset') }}</a></div>
+    </form>
+  </div></div>
+
+  <div class="card border">
+    <div class="card-header bg-body-highlight fw-bold">{{ t('Goods Receipts') }}
+      <span class="badge badge-phoenix badge-phoenix-secondary">{{ receipts|length }}</span></div>
+    <div class="card-body p-0"><div class="table-responsive">
+      <table class="table table-sm table-hover mb-0 align-middle" data-isfc-table>
+        <thead class="bg-body-highlight"><tr>
+          <th>{{ t('GRN') }}</th><th>{{ t('Supplier') }}</th><th>{{ t('Date') }}</th>
+          <th class="text-end">{{ t('Lines') }}</th><th class="text-end">{{ t('Goods Value') }}</th>
+          <th class="text-end">{{ t('Charges') }}</th><th class="text-end">{{ t('Uplift') }}</th>
+          <th class="text-end">{{ t('Action') }}</th></tr></thead>
+        <tbody>
+          {% for r in receipts %}
+          <tr>
+            <td><span class="fw-bold">{{ r.grn_no }}</span>
+              {% if r.po_no %}<div class="small-muted">{{ r.po_no }}</div>{% endif %}</td>
+            <td class="fs-9">{{ r.supplier_name or '—' }}</td>
+            <td class="fs-9">{{ r.grn_date or '—' }}</td>
+            <td class="text-end">{{ r.line_count }}</td>
+            <td class="text-end">{{ '%.2f'|format(r.goods_value or 0) }}</td>
+            <td class="text-end">
+              {% if r.charge_total %}<span class="fw-bold">{{ '%.2f'|format(r.charge_total) }}</span>
+              {% else %}<span class="text-body-tertiary">—</span>{% endif %}</td>
+            <td class="text-end">
+              {% if r.uplift_pct %}
+              <span class="badge badge-phoenix badge-phoenix-{{ 'danger' if r.uplift_pct > 20 else ('warning' if r.uplift_pct > 10 else 'success') }}">
+                {{ r.uplift_pct }}%</span>
+              {% else %}—{% endif %}</td>
+            <td class="text-end">
+              <a class="btn btn-sm {{ 'btn-phoenix-secondary' if r.applied_count else 'btn-primary' }}"
+                 href="/procurement/landed-cost/{{ r.grn_no }}">
+                {{ t('Applied') if r.applied_count else t('Add Costs') }}</a></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="8" class="text-center text-body-tertiary py-5">
+            <i class="bi bi-inbox fs-3 d-block mb-2"></i>{{ t('No goods receipts found.') }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div></div>
+  </div>
+</div>
+{% endblock %}

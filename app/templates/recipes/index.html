@@ -469,6 +469,11 @@
                             <th>RECIPE NAME</th>
                             <th>CATEGORY</th>
                             <th>CUSTOMER</th>
+                            {# Batch 116: Brand and Day were imported but never
+                               displayed, so the weekly menu was invisible on
+                               the screen people actually work from. #}
+                            <th>BRAND</th>
+                            <th>DAY</th>
                             <th>VERSION</th>
                             <th>STATUS</th>
                             <th>PORTIONS</th>
@@ -493,6 +498,12 @@
                             </td>
                             <td>{{ r.category or "—" }}</td>
                             <td>{{ r.customer_name or "—" }}</td>
+                            <td>{{ r.brand_name or "—" }}</td>
+                            <td>
+                              {% if r.day_of_week %}
+                              <span class="badge badge-phoenix badge-phoenix-info">{{ r.day_of_week }}</span>
+                              {% else %}—{% endif %}
+                            </td>
                             <td>V{{ r.version }}</td>
 
                             <td>

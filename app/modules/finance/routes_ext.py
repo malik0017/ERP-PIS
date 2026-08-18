@@ -83,8 +83,20 @@ def chart_of_accounts(request: Request, db: Session = Depends(get_db)):
         GROUP BY a.id, a.account_code, a.account_name, a.account_type
         ORDER BY a.account_code
     """), {"cid": cid}).mappings().all()
+    # Batch 116 — send /finance/coa to the HIERARCHY view.
+    #
+    # Batch 110 built the Class > Group > Subgroup > Account browser and the
+    # guided New Account form, but the menu still pointed here — so the flat
+    # 200-row list and the two-field "new account" box were what people
+    # actually saw, and the hierarchy work was invisible.
+    #
+    # The flat renderer is kept, reachable at /finance/coa?flat=1, because a
+    # single sortable list is genuinely better when you are hunting one code.
+    if request.query_params.get("flat") != "1":
+        return RedirectResponse("/finance/coa/tree", status_code=302)
+
     return render(request, "finance/coa.html", {
-        "accounts": accounts, "page_title": "Chart of Accounts",
+        "accounts": accounts, "page_title": "Chart of Accounts (flat)",
     })
 
 

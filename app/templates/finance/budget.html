@@ -1,0 +1,212 @@
+{% extends "layouts/base.html" %}
+{% block title %}{{ t('Budget Control') }}{% endblock %}
+{% block content %}
+<div class="container-fluid py-3 isfc-page">
+
+  <div class="isfc-hero mb-4 p-4 rounded-4 text-white d-flex justify-content-between align-items-center flex-wrap gap-3"
+       style="background:linear-gradient(135deg,#132947,#0c91a3)">
+    <div>
+      <h1 class="mb-1 fw-bold text-white"><i class="bi bi-wallet2 me-2"></i>{{ t('Budget Control') }}</h1>
+      <p class="mb-0 opacity-75">
+        {{ t('Budget by class, group, subgroup or single account — with committed spend counted before it is posted.') }}</p>
+    </div>
+    <a class="btn btn-light btn-sm" href="/finance/budget/export?year={{ year }}">
+      <i class="bi bi-file-earmark-excel me-1"></i>{{ t('Export') }}</a>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-lg-3"><div class="card border h-100"><div class="card-body">
+      <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Budget') }}</div>
+      <div class="fs-4 fw-bold">{{ '%.2f'|format(totals.budget) }}</div></div></div></div>
+    <div class="col-6 col-lg-3"><div class="card border h-100"><div class="card-body">
+      <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Actual (posted)') }}</div>
+      <div class="fs-4 fw-bold text-info">{{ '%.2f'|format(totals.actual) }}</div></div></div></div>
+    <div class="col-6 col-lg-3"><div class="card border h-100"><div class="card-body">
+      <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Committed') }}</div>
+      <div class="fs-4 fw-bold text-warning">{{ '%.2f'|format(totals.committed) }}</div>
+      <div class="small-muted">{{ t('approved but not posted') }}</div></div></div></div>
+    <div class="col-6 col-lg-3"><div class="card border h-100"><div class="card-body">
+      <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Available') }}</div>
+      <div class="fs-4 fw-bold {{ 'text-danger' if totals.available < 0 else 'text-success' }}">
+        {{ '%.2f'|format(totals.available) }}</div></div></div></div>
+  </div>
+
+  <div class="alert alert-subtle-info fs-9">
+    <i class="bi bi-info-circle me-1"></i>
+    <strong>{{ t('Why "committed" is the number that matters.') }}</strong>
+    {{ t('A budget that tracks only posted spend always looks healthier than it is — money is already promised to approved requisitions and open purchase orders that have not been invoiced yet. Available subtracts both, so it tells you what you can still safely commit.') }}
+  </div>
+
+  <div class="card border mb-3"><div class="card-body py-3">
+    <form method="get" class="row g-2 align-items-end">
+      <div class="col-md-3">
+        <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('Fiscal year') }}</label>
+        <select name="year" class="form-select form-select-sm">
+          {% for y in years %}<option value="{{ y }}" {% if year==y %}selected{% endif %}>{{ y }}</option>{% endfor %}
+        </select></div>
+      <div class="col-md-3">
+        <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('Period') }}</label>
+        <select name="period" class="form-select form-select-sm">
+          <option value="">{{ t('All periods') }}</option>
+          {% for p, label in periods %}
+          <option value="{{ p }}" {% if period==p %}selected{% endif %}>{{ t(label) }}</option>{% endfor %}
+        </select></div>
+      <div class="col-md-3"><button class="btn btn-primary btn-sm w-100">{{ t('Apply') }}</button></div>
+    </form>
+  </div></div>
+
+  <div class="row g-3">
+    <div class="col-lg-4">
+      <div class="card border h-100">
+        <div class="card-header bg-body-highlight fw-bold">{{ t('Add or update a budget line') }}</div>
+        <div class="card-body">
+          <form method="post" action="/finance/budget/save">
+            <input type="hidden" name="fiscal_year" value="{{ year }}">
+            <div class="mb-2">
+              <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('Budget at') }}</label>
+              <select name="level" id="lvl" class="form-select form-select-sm">
+                {% for k, label in levels %}<option value="{{ k }}">{{ t(label) }}</option>{% endfor %}
+              </select>
+              <div class="fs-9 text-body-tertiary mt-1">
+                {{ t('Spend rolls up — a posting to one account consumes its subgroup, group and class budgets at the same time.') }}
+              </div>
+            </div>
+            <div class="mb-2">
+              <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('Which one') }}</label>
+              <select name="level_code" id="code" class="form-select form-select-sm" required></select>
+              <input type="hidden" name="level_name" id="lname">
+            </div>
+            <div class="row g-2">
+              <div class="col-6">
+                <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('Period') }}</label>
+                <select name="period" class="form-select form-select-sm">
+                  {% for p, label in periods %}<option value="{{ p }}">{{ t(label) }}</option>{% endfor %}
+                </select></div>
+              <div class="col-6">
+                <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('Amount') }}</label>
+                <input type="number" step="0.01" min="0" name="amount" class="form-control form-control-sm" required></div>
+              <div class="col-6">
+                <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('Warn at %') }}</label>
+                <input type="number" step="1" min="1" max="100" name="warn_pct" value="85"
+                       class="form-control form-control-sm"></div>
+              <div class="col-6 d-flex align-items-end">
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" name="block_over" id="blk">
+                  <label class="form-check-label fs-9" for="blk">{{ t('Block if over') }}</label>
+                </div></div>
+              <div class="col-12">
+                <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('Notes') }}</label>
+                <input name="notes" class="form-control form-control-sm"></div>
+              <div class="col-12">
+                <button class="btn btn-primary btn-sm w-100">
+                  <i class="bi bi-save me-1"></i>{{ t('Save Budget Line') }}</button></div>
+            </div>
+            <div class="fs-9 text-body-tertiary mt-2">
+              {{ t('"Block if over" stops approval outright. Left unticked, the approver is warned with the figure and decides — which is usually what a business wants.') }}
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-8">
+      <div class="card border h-100">
+        <div class="card-header bg-body-highlight fw-bold d-flex justify-content-between align-items-center">
+          <span>{{ t('Budget Lines') }} {{ year }}
+            <span class="badge badge-phoenix badge-phoenix-secondary">{{ rows|length }}</span></span>
+          <span>
+            {% if totals.over %}<span class="badge badge-phoenix badge-phoenix-danger">{{ totals.over }} {{ t('over') }}</span>{% endif %}
+            {% if totals.warn %}<span class="badge badge-phoenix badge-phoenix-warning ms-1">{{ totals.warn }} {{ t('near limit') }}</span>{% endif %}
+          </span>
+        </div>
+        <div class="card-body p-0"><div class="table-responsive">
+          <table class="table table-sm mb-0 align-middle" data-isfc-table>
+            <thead class="bg-body-highlight"><tr>
+              <th>{{ t('Budget Line') }}</th><th>{{ t('Period') }}</th>
+              <th class="text-end">{{ t('Budget') }}</th><th class="text-end">{{ t('Actual') }}</th>
+              <th class="text-end">{{ t('Committed') }}</th><th class="text-end">{{ t('Available') }}</th>
+              <th style="width:140px">{{ t('Used') }}</th><th></th></tr></thead>
+            <tbody>
+              {% for r in rows %}
+              <tr class="{{ 'table-danger' if r.state=='over' else ('table-warning' if r.state=='warn' else '') }}">
+                <td>
+                  <span class="fw-bold fs-9">{{ r.level_name or r.level_code }}</span>
+                  <div class="small-muted">{{ t(r.level) }} · {{ r.account_count }} {{ t('accounts') }}</div>
+                </td>
+                <td class="fs-9">{{ r.period }}</td>
+                <td class="text-end">{{ '%.2f'|format(r.amount or 0) }}</td>
+                <td class="text-end">{{ '%.2f'|format(r.actual) }}</td>
+                <td class="text-end text-warning">{{ '%.2f'|format(r.committed) }}</td>
+                <td class="text-end fw-bold {{ 'text-danger' if r.available < 0 else 'text-success' }}">
+                  {{ '%.2f'|format(r.available) }}</td>
+                <td>
+                  <div class="progress" style="height:7px">
+                    <div class="progress-bar {{ 'bg-danger' if r.state=='over' else ('bg-warning' if r.state=='warn' else 'bg-success') }}"
+                         style="width: {{ 100 if r.used_pct > 100 else r.used_pct }}%"></div>
+                  </div>
+                  <span class="fs-10 text-body-tertiary">{{ r.used_pct }}%{% if r.block_over %} · {{ t('blocking') }}{% endif %}</span>
+                </td>
+                <td class="text-end">
+                  {% if can_action('finance','delete') %}
+                  <form method="post" action="/finance/budget/{{ r.id }}/delete"
+                        data-confirm="{{ t('Delete this budget line?') }}" data-confirm-title="{{ t('Delete') }}"
+                        data-confirm-ok="{{ t('Delete') }}" data-confirm-variant="danger">
+                    <button class="btn btn-sm btn-outline-danger py-0 px-1">&times;</button></form>
+                  {% endif %}
+                </td>
+              </tr>
+              {% else %}
+              <tr><td colspan="8" class="text-center text-body-tertiary py-5">
+                <i class="bi bi-wallet2 fs-3 d-block mb-2"></i>
+                {{ t('No budget lines for this year. Add one on the left.') }}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div></div>
+        <div class="card-footer bg-body-highlight fs-9 text-body-tertiary">
+          {{ t('Committed is apportioned across budget lines by share, because requisitions and purchase orders do not carry a GL account. It is an estimate — but an approximate commitment is far more useful than none.') }}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  (function () {
+    var data = {
+      "class": {{ classes|tojson }},
+      "group": {{ groups|tojson }},
+      "subgroup": {{ subgroups|tojson }},
+      "account": {}
+    };
+    var lvl = document.getElementById('lvl');
+    var code = document.getElementById('code');
+    var lname = document.getElementById('lname');
+
+    function fill() {
+      var map = data[lvl.value] || {};
+      code.innerHTML = '';
+      var keys = Object.keys(map).sort();
+      if (!keys.length) {
+        var o = document.createElement('option');
+        o.value = ''; o.textContent = '{{ t("Nothing available — import the Chart of Accounts first") }}';
+        code.appendChild(o);
+        return;
+      }
+      keys.forEach(function (k) {
+        var o = document.createElement('option');
+        o.value = k; o.textContent = map[k];
+        code.appendChild(o);
+      });
+      sync();
+    }
+    function sync() {
+      var o = code.options[code.selectedIndex];
+      lname.value = o ? o.textContent : '';
+    }
+    lvl.addEventListener('change', fill);
+    code.addEventListener('change', sync);
+    fill();
+  })();
+</script>
+{% endblock %}

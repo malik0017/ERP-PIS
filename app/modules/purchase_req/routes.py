@@ -442,6 +442,12 @@ def pr_detail(request: Request, pr_no: str, db: Session = Depends(get_db)):
     for k in suggestions:
         suggestions[k] = suggestions[k][:3]
 
+    try:
+        from app.modules.finance.routes_budget import check_budget
+        budget_check = check_budget(db, cid, float(pr.get("estimated_value") or 0))
+    except Exception:
+        budget_check = {"has_budget": False}
+
     from app.core import approval_chain as _ac
     _ac.ensure_schema(db)
     chain = _ac.get_chain(db, "purchase_requisition", pr_no)
@@ -458,6 +464,7 @@ def pr_detail(request: Request, pr_no: str, db: Session = Depends(get_db)):
         "pr": pr, "lines": lines, "suppliers": suppliers,
         "suggestions": suggestions,
         "approval_chain": chain,
+        "budget_check": budget_check,
         "page_title": f"Requisition {pr_no}",
     })
 
@@ -504,6 +511,34 @@ async def pr_approve(request: Request, pr_no: str, db: Session = Depends(get_db)
         return RedirectResponse(
             f"/purchase-requisitions/{pr_no}?toast=warning&title={quote('Cannot approve yet')}"
             f"&msg={quote(why)}", status_code=303)
+
+    # ------------------------------------------------------------------
+    # Batch 114 — budget check at the moment of approval.
+    #
+    # This is the whole point of budgets living in the ERP rather than a
+    # spreadsheet: the constraint is applied while it is still free to say no,
+    # not discovered next month when the money is gone.
+    #
+    # A breach only BLOCKS when the budget line was explicitly set to block.
+    # Otherwise the approver is warned with the figure and decides — which is
+    # what most businesses actually want, because a hard block on a legitimate
+    # urgent purchase just teaches people to route around the system.
+    # ------------------------------------------------------------------
+    try:
+        from app.modules.finance.routes_budget import check_budget
+        _bud = check_budget(db, cid, float(pr.get("estimated_value") or 0))
+        if _bud.get("has_budget") and _bud["line"].get("blocks"):
+            _line = _bud["line"]
+            _label = _line.get("level_name") or _line.get("level_code")
+            _over = abs(float(_line.get("after") or 0))
+            _msg = (f"{_label} would be over budget by {_over:.2f}. "
+                    "This budget line is set to block, so approval is refused.")
+            return RedirectResponse(
+                f"/purchase-requisitions/{pr_no}?toast=danger"
+                f"&title={quote('Over budget')}&msg={quote(_msg)}",
+                status_code=303)
+    except Exception:
+        pass   # a budget problem must never stop legitimate approval
 
     ok, msg, chain = _ac.approve_step(
         db, "purchase_requisition", pr_no,

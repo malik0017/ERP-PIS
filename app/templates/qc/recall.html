@@ -1,0 +1,214 @@
+{% extends "layouts/base.html" %}
+{% block title %}{{ t('Batch Recall Trace') }}{% endblock %}
+{% block content %}
+<div class="container-fluid py-3 isfc-page">
+
+  <div class="isfc-hero mb-4 p-4 rounded-4 text-white d-flex justify-content-between align-items-center flex-wrap gap-3"
+       style="background:linear-gradient(135deg,#132947,#0c91a3)">
+    <div>
+      <h1 class="mb-1 fw-bold text-white"><i class="bi bi-search me-2"></i>{{ t('Batch Recall Trace') }}</h1>
+      <p class="mb-0 opacity-75">
+        {{ t('Where a lot came from, and which customers received food made from it.') }}</p>
+    </div>
+    {% if detail %}
+    <a class="btn btn-light" href="/qc/recall/export?lot={{ lot }}">
+      <i class="bi bi-file-earmark-excel me-1"></i>{{ t('Export Trace') }}</a>
+    {% endif %}
+  </div>
+
+  <div class="card border mb-4"><div class="card-body">
+    <form method="get" class="row g-2 align-items-end">
+      <div class="col-md-9">
+        <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">
+          {{ t('Lot number, item code or item name') }}</label>
+        <input name="q" value="{{ q }}" class="form-control"
+               placeholder="{{ t('e.g. 16102029111927400, or Chicken') }}" autofocus>
+      </div>
+      <div class="col-md-3 d-flex gap-2">
+        <button class="btn btn-primary flex-grow-1"><i class="bi bi-search me-1"></i>{{ t('Trace') }}</button>
+        <a href="/qc/recall" class="btn btn-phoenix-secondary">{{ t('Clear') }}</a>
+      </div>
+    </form>
+  </div></div>
+
+  {% if results %}
+  <div class="card border mb-4">
+    <div class="card-header bg-body-highlight fw-bold">{{ t('Matching lots') }}
+      <span class="badge badge-phoenix badge-phoenix-secondary">{{ results|length }}</span></div>
+    <div class="card-body p-0"><div class="table-responsive">
+      <table class="table table-sm table-hover mb-0" data-isfc-table>
+        <thead class="bg-body-highlight"><tr>
+          <th>{{ t('Lot') }}</th><th>{{ t('Item') }}</th>
+          <th class="text-end">{{ t('Received') }}</th><th class="text-end">{{ t('Issued') }}</th>
+          <th class="text-end">{{ t('On Hand') }}</th><th>{{ t('Last Movement') }}</th><th></th></tr></thead>
+        <tbody>
+          {% for r in results %}
+          {% set onhand = (r.qty_in or 0) - (r.qty_out or 0) %}
+          <tr>
+            <td class="fw-bold fs-9">{{ r.lot_no }}</td>
+            <td class="fs-9">{{ r.inventory_code }}<div class="small-muted">{{ r.item_name }}</div></td>
+            <td class="text-end">{{ '%.3f'|format(r.qty_in or 0) }}</td>
+            <td class="text-end">{{ '%.3f'|format(r.qty_out or 0) }}</td>
+            <td class="text-end fw-bold {{ 'text-success' if onhand > 0 else 'text-body-tertiary' }}">
+              {{ '%.3f'|format(onhand) }}</td>
+            <td class="fs-9">{{ r.last_seen }}</td>
+            <td class="text-end">
+              <a class="btn btn-sm btn-primary" href="/qc/recall?lot={{ r.lot_no }}">{{ t('Trace') }}</a></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div></div>
+  </div>
+  {% elif q and not detail %}
+  <div class="alert alert-subtle-warning">
+    <i class="bi bi-exclamation-triangle me-1"></i>
+    {{ t('No lots match that search. Lot numbers are captured at goods receipt and on opening stock.') }}
+  </div>
+  {% endif %}
+
+  {% if detail %}
+  {% set s = detail.summary %}
+  <div class="alert alert-subtle-danger">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
+      <div>
+        <h5 class="alert-heading mb-1">{{ t('Lot') }} {{ s.lot_no }}</h5>
+        <div>{{ s.inventory_code }} — {{ s.item_name }}</div>
+        <div class="fs-9 mt-1">
+          {{ t('Received') }} {{ '%.3f'|format(s.qty_in or 0) }} ·
+          {{ t('Issued') }} {{ '%.3f'|format(s.qty_out or 0) }} ·
+          <strong>{{ t('Still on hand') }} {{ '%.3f'|format(s.on_hand) }}</strong>
+        </div>
+      </div>
+      <div class="text-end">
+        <div class="fs-2 fw-bold text-danger">{{ detail.affected_customers|length }}</div>
+        <div class="fs-9">{{ t('customers potentially affected') }}</div>
+      </div>
+    </div>
+    {% if s.on_hand > 0 %}
+    <hr>
+    <strong><i class="bi bi-exclamation-octagon me-1"></i>
+      {{ '%.3f'|format(s.on_hand) }} {{ t('is still in stock — quarantine it first.') }}</strong>
+    {% endif %}
+  </div>
+
+  {% if detail.affected_customers %}
+  <div class="card border mb-3">
+    <div class="card-header bg-body-highlight fw-bold">{{ t('Customers to contact') }}</div>
+    <div class="card-body">
+      {% for c in detail.affected_customers %}
+      <span class="badge badge-phoenix badge-phoenix-danger me-1 mb-1 fs-9">{{ c }}</span>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="row g-3">
+    <div class="col-lg-5">
+      <div class="card border h-100">
+        <div class="card-header bg-body-highlight fw-bold">
+          <i class="bi bi-arrow-left-circle me-1"></i>{{ t('Where it came from') }}
+          <span class="badge badge-phoenix badge-phoenix-success ms-1">{{ t('lot-exact') }}</span></div>
+        <div class="card-body p-0">
+          <table class="table table-sm mb-0">
+            <tbody>
+              {% for r in detail.receipts %}
+              <tr><td>
+                <div class="fw-bold">{{ r.supplier_name or t('Unknown supplier') }}</div>
+                <div class="fs-9">{{ t('GRN') }} {{ r.grn_no }}{% if r.po_no %} · {{ r.po_no }}{% endif %}</div>
+                <div class="fs-9 small-muted">
+                  {{ r.grn_date }} · {{ '%.3f'|format(r.received_qty or 0) }} {{ r.uom }}
+                  @ {{ '%.4f'|format(r.unit_price or 0) }}</div>
+                {% if r.qc_decision %}
+                <span class="badge badge-phoenix badge-phoenix-{{ 'success' if r.qc_decision in ['Passed','Auto-Released'] else 'danger' }} mt-1">
+                  {{ t('QC') }}: {{ r.qc_decision }}</span>
+                {% endif %}
+              </td></tr>
+              {% else %}
+              <tr><td class="text-center text-body-tertiary py-4">
+                {{ t('No goods receipt carries this lot — it may be opening stock.') }}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% if detail.siblings %}
+        <div class="card-footer bg-body-highlight">
+          <div class="fs-9 fw-bold mb-1">{{ t('Also on that receipt') }}</div>
+          <div class="fs-9">
+            {% for sb in detail.siblings %}
+            <span class="badge badge-phoenix badge-phoenix-secondary me-1 mb-1">{{ sb.item_name }}</span>
+            {% endfor %}
+          </div>
+          <div class="small-muted mt-1">
+            {{ t('If the supplier is the source, these may be affected too.') }}</div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="col-lg-7">
+      <div class="card border h-100">
+        <div class="card-header bg-body-highlight fw-bold d-flex justify-content-between align-items-center">
+          <span><i class="bi bi-arrow-right-circle me-1"></i>{{ t('Where it went') }}</span>
+          <span class="badge badge-phoenix badge-phoenix-warning">{{ t('ingredient-level') }}</span></div>
+        <div class="card-body p-0"><div class="table-responsive" style="max-height:400px;overflow:auto">
+          <table class="table table-sm mb-0" data-isfc-table>
+            <thead class="bg-body-highlight position-sticky top-0"><tr>
+              <th>{{ t('Order') }}</th><th>{{ t('Customer') }}</th>
+              <th>{{ t('Delivery') }}</th><th>{{ t('Status') }}</th>
+              <th class="text-end">{{ t('Issued') }}</th></tr></thead>
+            <tbody>
+              {% for o in detail.orders %}
+              <tr>
+                <td><a href="/production/orders/{{ o.order_no }}" class="fw-bold fs-9 text-decoration-none">{{ o.order_no }}</a>
+                  {% if o.section %}<div class="small-muted">{{ o.section }}</div>{% endif %}</td>
+                <td class="fs-9">{{ o.customer_name or '—' }}
+                  {% if o.brand %}<div class="small-muted">{{ o.brand }}</div>{% endif %}</td>
+                <td class="fs-9">{{ o.delivery_date or '—' }}</td>
+                <td><span class="badge badge-phoenix badge-phoenix-{{ 'success' if o.status == 'Delivered' else 'secondary' }} fs-10">
+                  {{ o.status or '—' }}</span></td>
+                <td class="text-end">{{ '%.3f'|format(o.issued_qty or 0) }}</td>
+              </tr>
+              {% else %}
+              <tr><td colspan="5" class="text-center text-body-tertiary py-4">
+                {{ t('No orders consumed this ingredient in the window this lot was available.') }}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div></div>
+        <div class="card-footer bg-body-highlight fs-9">
+          <strong class="text-warning"><i class="bi bi-info-circle me-1"></i>{{ t('Scope of the forward trace') }}</strong>
+          <div class="text-body-tertiary mt-1">
+            {{ t('Store issuance records which INGREDIENT went to an order, not which LOT. This lists every order that consumed the ingredient while this lot was available — a superset of those truly affected. For a recall that is the safe direction to be wrong in: some listed orders may have used a different lot, but no affected order should be missing.') }}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card border mt-3">
+    <div class="card-header bg-body-highlight fw-bold">{{ t('Movement history') }}</div>
+    <div class="card-body p-0"><div class="table-responsive" style="max-height:320px;overflow:auto">
+      <table class="table table-sm mb-0" data-isfc-table>
+        <thead class="bg-body-highlight position-sticky top-0"><tr>
+          <th>{{ t('When') }}</th><th>{{ t('Type') }}</th><th>{{ t('Reference') }}</th>
+          <th class="text-end">{{ t('In') }}</th><th class="text-end">{{ t('Out') }}</th>
+          <th>{{ t('Note') }}</th></tr></thead>
+        <tbody>
+          {% for m in detail.movements %}
+          <tr>
+            <td class="fs-9 text-nowrap">{{ m.when_ }}</td>
+            <td><span class="badge badge-phoenix badge-phoenix-secondary fs-10">{{ m.movement_type }}</span></td>
+            <td class="fs-9">{{ m.reference_no or '—' }}</td>
+            <td class="text-end">{% if m.qty_in %}{{ '%.3f'|format(m.qty_in) }}{% else %}—{% endif %}</td>
+            <td class="text-end">{% if m.qty_out %}{{ '%.3f'|format(m.qty_out) }}{% else %}—{% endif %}</td>
+            <td class="fs-9 small-muted">{{ m.remarks or '' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div></div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -46,6 +46,58 @@ _DAY_INDEX = {"Monday": 0, "Tuesday": 1, "Wednesday": 2, "Thursday": 3,
               "Friday": 4, "Saturday": 5, "Sunday": 6}
 
 
+# =============================================================================
+# Batch 117 — MATCHING A WEEKDAY AGAINST REAL MENU DATA
+#
+# Frsh stores one weekday per recipe: "Sunday". SMC does not. Its 157 recipes
+# use six different shapes in the same column:
+#
+#     Sunday                  a single day
+#     Daily / Daily Course    available every day
+#     Mon & Fri               two days
+#     Sunday & Wed & Thu      three days, mixed full names and abbreviations
+#     As per Order            made only on request
+#     (blank)                 no menu day
+#
+# An equality test (day_of_week = 'Monday') matches only the first shape, which
+# is why picking a date showed nothing for SMC: 41 of the 157 recipes are
+# multi-day or daily, and every one of them was invisible.
+#
+# So the match is by CONTAINMENT of the three-letter stem, plus an explicit
+# rule for "Daily". The stems Sun/Mon/Tue/Wed/Thu/Fri/Sat are mutually
+# distinct, so containment cannot produce a false positive between weekdays —
+# "Thursday" contains "Thu" and nothing else.
+#
+# "As per Order" and blanks are deliberately EXCLUDED. A recipe made only on
+# request is not on the day's standard menu, and offering it as though it were
+# would have the kitchen planning production for something nobody scheduled.
+# =============================================================================
+DAY_STEM = {
+    "Monday": "Mon", "Tuesday": "Tue", "Wednesday": "Wed", "Thursday": "Thu",
+    "Friday": "Fri", "Saturday": "Sat", "Sunday": "Sun",
+}
+
+
+def _day_clause(day: str, params: dict, col: str = "r.day_of_week") -> str:
+    """SQL that is true when `col` covers the given weekday."""
+    stem = DAY_STEM.get((day or "").strip().title())
+    if not stem:
+        return "1=0"
+    params["daystem"] = f"%{stem}%"
+    return (f"(COALESCE({col}, '') LIKE :daystem "
+            f"OR UPPER(COALESCE({col}, '')) LIKE 'DAILY%')")
+
+
+def expand_days(raw: str) -> list[str]:
+    """Which weekdays a stored value covers — used for the 'days available' hint."""
+    v = (raw or "").strip()
+    if not v:
+        return []
+    if v.upper().startswith("DAILY"):
+        return list(DAY_STEM)
+    return [full for full, stem in DAY_STEM.items() if stem.lower() in v.lower()]
+
+
 def ensure_schema(db: Session) -> None:
     """Add customers.is_menu_driven if missing.
 
@@ -132,6 +184,43 @@ def menu_keys(db: Session, customer_name: str, brand: str, cid: int) -> list[str
         v = (v or "").strip()
         if v and v.lower() not in [k.lower() for k in keys]:
             keys.append(v)
+    # Batch 116 — CUSTOMER GROUPS.
+    #
+    # Frsh worked because the brand sat in the customer name as "(FRSH)".
+    # SMC does not follow that pattern: six separate customers
+    # ("SMC 1 -(Olaya) Cafeteria", "Cafeteria Smc2", "Accounting Department
+    # Smc1"...) all order from ONE recipe set stored as customer_name = "SMC".
+    #
+    # So the group has to be derived from the words in the customer name, not
+    # from a bracketed token. Every word is offered as a candidate key, and a
+    # trailing digit is stripped — "Smc2" and "SMC1" both become "SMC", which
+    # is what the recipes are actually filed under.
+    #
+    # This is deliberately generous: menu_keys feeds an IN() lookup against
+    # recipes.customer_name, so an extra candidate that matches nothing simply
+    # does not appear. A missing candidate, by contrast, means the Day field
+    # never shows and the whole flow silently degrades to manual typing —
+    # which is exactly the Frsh bug from Batch 103, repeated.
+    # Generic words are excluded. "Cafeteria", "Company", "Department" appear
+    # in many unrelated customer names, so allowing them as group keys would
+    # make two customers share a menu purely because both are cafeterias —
+    # a silent cross-contamination that is much worse than the Day field not
+    # appearing. Brand-like tokens (SMC, FRSH, G360) are short and distinctive;
+    # that is what this is meant to catch.
+    _GENERIC = {
+        "cafeteria", "company", "department", "foundation", "restaurant",
+        "kitchen", "catering", "services", "service", "trading", "group",
+        "center", "centre", "branch", "main", "office", "hospital", "school",
+        "camp", "site", "the", "and", "for", "ltd", "llc", "est", "co",
+    }
+    for _word in _re.findall(r"[A-Za-z][A-Za-z0-9]{1,}", customer_name or ""):
+        if _word.lower() in _GENERIC:
+            continue
+        for _cand in (_word, _re.sub(r"\d+$", "", _word)):
+            _cand = _cand.strip()
+            if len(_cand) >= 3 and _cand.lower() not in [k.lower() for k in keys]:
+                keys.append(_cand)
+
     bare = _re.sub(r"\s*\([^)]*\)\s*", " ", customer_name or "").strip()
     if bare and bare.lower() not in [k.lower() for k in keys]:
         keys.append(bare)
@@ -225,7 +314,13 @@ def customer_mode(request: Request, customer: str = "", brand: str = "",
                   AND COALESCE(approval_status, 'Approved') = 'Approved'
                 GROUP BY day_of_week
             """), params).mappings().all()
-            counts = {str(r["d"]).strip().title(): int(r["n"]) for r in rows}
+            # Batch 117: "Mon & Fri" and "Daily" each cover several weekdays,
+            # so a raw GROUP BY would list them as if they were days in their
+            # own right. Expand them into the weekdays they actually cover.
+            counts: dict = {}
+            for r in rows:
+                for d in expand_days(str(r["d"] or "")):
+                    counts[d] = counts.get(d, 0) + int(r["n"])
             days = [{"day": d, "recipe_count": counts.get(d, 0)}
                     for d in DAYS if counts.get(d, 0) > 0]
         except Exception:
@@ -289,8 +384,8 @@ def menu_recipes(request: Request, customer: str = "", day: str = "",
     if keys:
         where.append(_key_clause(keys, params, "r.customer_name"))
     if day:
-        where.append("r.day_of_week = :day")
-        params["day"] = day
+        # Batch 117: containment, not equality — see _day_clause.
+        where.append(_day_clause(day, params))
     if q:
         where.append("(r.recipe_code LIKE :q OR r.recipe_name LIKE :q)")
         params["q"] = f"%{q}%"
@@ -413,6 +508,37 @@ def customer_defaults(request: Request, customer: str = "", code: str = "",
     except Exception:
         pass
 
+    # Batch 116 — learn the brand/channel from SIBLING customers in the same
+    # group, not just from this customer's own history.
+    #
+    # A brand-new SMC cafeteria has no orders of its own, so the previous
+    # lookup found nothing and the buyer had to type "Gourmet 360" and
+    # "Corporate" by hand every time. But its five siblings have ordered
+    # dozens of times, and they all use the same brand and channel — that is
+    # what makes them a group. So the group's most common values are used.
+    if not brand_code or not channel_code:
+        try:
+            keys = menu_keys(db, customer, "", cid)
+            if keys:
+                params: dict = {"cid": cid}
+                clause = _key_clause(keys, params, "c.customer_name")
+                sib = db.execute(text(f"""
+                    SELECT COALESCE(o.brand,'') AS brand, COALESCE(o.channel,'') AS channel,
+                           COUNT(*) AS n
+                    FROM customer_orders o
+                    JOIN customers c ON c.customer_name = o.customer_name
+                    WHERE {clause}
+                      AND (o.company_id = :cid OR o.company_id IS NULL)
+                      AND (COALESCE(o.brand,'') <> '' OR COALESCE(o.channel,'') <> '')
+                    GROUP BY o.brand, o.channel
+                    ORDER BY n DESC LIMIT 1
+                """), params).mappings().first()
+                if sib:
+                    brand_name = brand_name or sib.get("brand", "")
+                    channel_name = channel_name or sib.get("channel", "")
+        except Exception:
+            pass
+
     if not brand_code or not channel_code:
         learned = _learned_defaults(db, customer, cid)
         brand_name = brand_name or learned.get("brand", "")
@@ -443,12 +569,12 @@ def customer_defaults(request: Request, customer: str = "", code: str = "",
             keys = menu_keys(db, customer, brand_name, cid)
             params: dict = {}
             clause = _key_clause(keys, params)
-            days = [str(r[0]).strip().title() for r in db.execute(text(f"""
+            days = [d for r in db.execute(text(f"""
                 SELECT DISTINCT day_of_week FROM recipes
                 WHERE {clause} AND COALESCE(day_of_week,'') <> ''
                   AND COALESCE(is_active,1) = 1
                   AND COALESCE(approval_status,'Approved') = 'Approved'
-            """), params).all()]
+            """), params).all() for d in expand_days(str(r[0] or ""))]
         except Exception:
             days = []
 
@@ -483,8 +609,9 @@ def recipes_for_date(request: Request, customer: str = "", brand: str = "",
 
     day = d.strftime("%A")           # Monday .. Sunday
     keys = menu_keys(db, customer, brand, cid)
-    params: dict = {"day": day}
+    params: dict = {}
     clause = _key_clause(keys, params, "r.customer_name")
+    day_sql = _day_clause(day, params)
 
     try:
         rows = db.execute(text(f"""
@@ -496,7 +623,7 @@ def recipes_for_date(request: Request, customer: str = "", brand: str = "",
                    COALESCE(r.weight_per_portion_g, 0) AS weight_per_portion_g
             FROM recipes r
             WHERE {clause}
-              AND r.day_of_week = :day
+              AND {day_sql}
               AND COALESCE(r.is_active, 1) = 1
               AND COALESCE(r.approval_status, 'Approved') = 'Approved'
             ORDER BY r.category, r.recipe_name

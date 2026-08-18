@@ -1,0 +1,158 @@
+{% extends "layouts/base.html" %}
+{% block title %}{{ t('Landed Cost') }} {{ receipt.grn_no }}{% endblock %}
+{% block content %}
+<div class="container-fluid py-3 isfc-page">
+  <div class="isfc-hero mb-4 p-4 rounded-4 text-white d-flex justify-content-between align-items-center flex-wrap gap-3"
+       style="background:linear-gradient(135deg,#132947,#0c91a3)">
+    <div>
+      <h1 class="mb-1 fw-bold text-white"><i class="bi bi-truck me-2"></i>{{ receipt.grn_no }}</h1>
+      <p class="mb-0 opacity-75">
+        {{ receipt.supplier_name or t('No supplier') }}
+        {% if receipt.po_no %} · {{ receipt.po_no }}{% endif %}
+        {% if receipt.grn_date %} · {{ receipt.grn_date }}{% endif %}</p>
+    </div>
+    <a href="/procurement/landed-cost" class="btn btn-light btn-sm">{{ t('Back') }}</a>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-lg-3"><div class="card border h-100"><div class="card-body">
+      <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Goods Value') }}</div>
+      <div class="fs-4 fw-bold">{{ '%.2f'|format(totals.goods_value) }}</div></div></div></div>
+    <div class="col-6 col-lg-3"><div class="card border h-100"><div class="card-body">
+      <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Landed Charges') }}</div>
+      <div class="fs-4 fw-bold text-info">{{ '%.2f'|format(totals.charge_total) }}</div></div></div></div>
+    <div class="col-6 col-lg-3"><div class="card border h-100"><div class="card-body">
+      <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Total Landed') }}</div>
+      <div class="fs-4 fw-bold text-success">{{ '%.2f'|format(totals.landed_total) }}</div></div></div></div>
+    <div class="col-6 col-lg-3"><div class="card border h-100"><div class="card-body">
+      <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Cost Uplift') }}</div>
+      <div class="fs-4 fw-bold {{ 'text-danger' if totals.uplift_pct > 20 else 'text-warning' }}">
+        {{ totals.uplift_pct }}%</div></div></div></div>
+  </div>
+
+  {% if applied %}
+  <div class="alert alert-subtle-success d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <div><i class="bi bi-check-circle me-1"></i>
+      <strong>{{ t('Applied.') }}</strong>
+      {{ t('Receipt costs, stock valuation and ingredient standard costs have been updated.') }}</div>
+    {% if can_action('procurement', 'edit') %}
+    <form method="post" action="/procurement/landed-cost/{{ receipt.grn_no }}/reverse"
+          data-confirm="{{ t('Reverse this allocation and restore the original invoice costs? The charges return to draft so you can correct and re-apply.') }}"
+          data-confirm-title="{{ t('Reverse allocation') }}" data-confirm-ok="{{ t('Reverse') }}"
+          data-confirm-variant="warning">
+      <button class="btn btn-outline-warning btn-sm">
+        <i class="bi bi-arrow-counterclockwise me-1"></i>{{ t('Reverse') }}</button>
+    </form>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <div class="row g-3">
+    <div class="col-lg-5">
+      <div class="card border h-100">
+        <div class="card-header bg-body-highlight fw-bold">{{ t('Charges') }}</div>
+        <div class="card-body p-0">
+          <table class="table table-sm mb-0">
+            <thead class="bg-body-highlight"><tr>
+              <th>{{ t('Type') }}</th><th>{{ t('Method') }}</th>
+              <th class="text-end">{{ t('Amount') }}</th><th></th></tr></thead>
+            <tbody>
+              {% for c in charges %}
+              <tr>
+                <td class="fs-9"><span class="fw-bold">{{ c.charge_type }}</span>
+                  {% if c.reference %}<div class="small-muted">{{ c.reference }}</div>{% endif %}</td>
+                <td><span class="badge badge-phoenix badge-phoenix-secondary fs-10">{{ c.method }}</span></td>
+                <td class="text-end fw-bold">{{ '%.2f'|format(c.amount or 0) }}</td>
+                <td class="text-center">
+                  {% if c.status != 'Applied' and can_action('procurement','delete') %}
+                  <form method="post" action="/procurement/landed-cost/{{ receipt.grn_no }}/charge/{{ c.id }}/delete" class="d-inline">
+                    <button class="btn btn-sm btn-outline-danger py-0 px-1">&times;</button></form>
+                  {% else %}<i class="bi bi-lock text-body-tertiary"></i>{% endif %}</td>
+              </tr>
+              {% else %}
+              <tr><td colspan="4" class="text-center text-body-tertiary py-4">{{ t('No charges yet.') }}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% if not applied and can_action('procurement','add') %}
+        <div class="card-footer">
+          <form method="post" action="/procurement/landed-cost/{{ receipt.grn_no }}/charge">
+            <div class="row g-2">
+              <div class="col-6">
+                <label class="form-label fs-10 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('Charge') }}</label>
+                <select name="charge_type" class="form-select form-select-sm">
+                  {% for ct in charge_types %}<option value="{{ ct }}">{{ t(ct) }}</option>{% endfor %}
+                </select></div>
+              <div class="col-6">
+                <label class="form-label fs-10 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('Amount') }}</label>
+                <input type="number" step="0.01" min="0" name="amount" class="form-control form-control-sm" required></div>
+              <div class="col-12">
+                <label class="form-label fs-10 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('Allocate') }}</label>
+                <select name="method" class="form-select form-select-sm">
+                  {% for key, label, hint in methods %}
+                  <option value="{{ key }}">{{ t(label) }} — {{ t(hint) }}</option>{% endfor %}
+                </select></div>
+              <div class="col-12">
+                <input name="reference" class="form-control form-control-sm"
+                       placeholder="{{ t('Invoice / reference (optional)') }}"></div>
+              <div class="col-12">
+                <button class="btn btn-phoenix-primary btn-sm w-100">
+                  <i class="bi bi-plus-lg me-1"></i>{{ t('Add Charge') }}</button></div>
+            </div>
+          </form>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="col-lg-7">
+      <div class="card border h-100">
+        <div class="card-header bg-body-highlight fw-bold d-flex justify-content-between align-items-center">
+          <span>{{ t('Allocation') }}{% if not applied %} <span class="fs-9 text-body-tertiary">({{ t('preview') }})</span>{% endif %}</span>
+          {% if charges and not applied and can_action('procurement','edit') %}
+          <form method="post" action="/procurement/landed-cost/{{ receipt.grn_no }}/apply"
+                data-confirm="{{ t('Apply this allocation? Receipt costs, stock valuation and ingredient standard costs will be updated. It can be reversed.') }}"
+                data-confirm-title="{{ t('Apply landed cost') }}" data-confirm-ok="{{ t('Apply') }}"
+                data-confirm-variant="primary">
+            <button class="btn btn-primary btn-sm">
+              <i class="bi bi-check2-circle me-1"></i>{{ t('Apply to Stock') }}</button>
+          </form>
+          {% endif %}
+        </div>
+        <div class="card-body p-0"><div class="table-responsive">
+          <table class="table table-sm mb-0" data-isfc-table>
+            <thead class="bg-body-highlight"><tr>
+              <th>{{ t('Item') }}</th><th class="text-end">{{ t('Qty') }}</th>
+              <th class="text-end">{{ t('Invoice Cost') }}</th>
+              <th class="text-end">{{ t('Allocated') }}</th>
+              <th class="text-end">{{ t('Landed Cost') }}</th>
+              <th class="text-end">{{ t('Uplift') }}</th></tr></thead>
+            <tbody>
+              {% for l in lines %}
+              <tr>
+                <td><span class="fw-bold fs-9">{{ l.inventory_code }}</span>
+                  <div class="small-muted">{{ l.item_name }}{% if l.lot_no %} · {{ t('lot') }} {{ l.lot_no }}{% endif %}</div></td>
+                <td class="text-end">{{ '%.3f'|format(l.received_qty or 0) }}</td>
+                <td class="text-end">{{ '%.4f'|format(l.unit_price or 0) }}</td>
+                <td class="text-end text-info">{{ '%.2f'|format(l.allocated or 0) }}</td>
+                <td class="text-end fw-bold">{{ '%.4f'|format(l.landed_unit_cost or 0) }}</td>
+                <td class="text-end">
+                  <span class="badge badge-phoenix badge-phoenix-{{ 'danger' if l.uplift_pct > 20 else ('warning' if l.uplift_pct > 10 else 'secondary') }}">
+                    {{ l.uplift_pct }}%</span></td>
+              </tr>
+              {% else %}
+              <tr><td colspan="6" class="text-center text-body-tertiary py-4">
+                {{ t('This receipt has no lines.') }}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div></div>
+        <div class="card-footer bg-body-highlight fs-9 text-body-tertiary">
+          {{ t('Each charge is allocated by its own method — freight by weight, duty by value. Allocating a whole document one way overstates expensive items and understates cheap heavy ones.') }}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -43,6 +43,26 @@
         <div class="col-md-3"><div class="text-body-tertiary fw-bold text-uppercase fs-10">Category</div><div class="fw-black fs-7">{{ recipe.category or '-' }}</div></div>
         <div class="col-md-3"><div class="text-body-tertiary fw-bold text-uppercase fs-10">Lines</div><div class="fw-black fs-7">{{ recipe.lines|length }}</div></div>
       </div>
+      {# Batch 116: brand, menu day, portion weight and yield were all imported
+         and none were shown, so the detail page could not answer the two
+         questions people open it for — which brand owns this recipe, and which
+         day of the weekly menu it belongs to. #}
+      <div class="row g-3 mt-1">
+        <div class="col-md-3"><div class="text-body-tertiary fw-bold text-uppercase fs-10">Brand</div>
+          <div class="fw-black fs-7">{{ recipe.brand_name or '-' }}</div></div>
+        <div class="col-md-3"><div class="text-body-tertiary fw-bold text-uppercase fs-10">Menu Day</div>
+          <div class="fw-black fs-7">
+            {% if recipe.day_of_week %}
+            <span class="badge badge-phoenix badge-phoenix-info">{{ recipe.day_of_week }}</span>
+            {% else %}-{% endif %}
+          </div></div>
+        <div class="col-md-3"><div class="text-body-tertiary fw-bold text-uppercase fs-10">Weight / Portion</div>
+          <div class="fw-black fs-7">
+            {% if recipe.weight_per_portion_g %}{{ recipe.weight_per_portion_g }} g{% else %}-{% endif %}</div></div>
+        <div class="col-md-3"><div class="text-body-tertiary fw-bold text-uppercase fs-10">Yield / Wastage</div>
+          <div class="fw-black fs-7">
+            {{ recipe.std_yield_pct or 0 }}% / {{ recipe.target_wastage_pct or 0 }}%</div></div>
+      </div>
     </div>
   </div>
 

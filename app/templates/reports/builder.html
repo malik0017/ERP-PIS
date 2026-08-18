@@ -1,0 +1,243 @@
+{% extends "layouts/base.html" %}
+{% block title %}{{ t('Report Builder') }}{% endblock %}
+{% block content %}
+<div class="container-fluid py-3 isfc-page">
+
+  <div class="isfc-hero mb-4 p-4 rounded-4 text-white d-flex justify-content-between align-items-center flex-wrap gap-3"
+       style="background:linear-gradient(135deg,#132947,#0c91a3)">
+    <div>
+      <h1 class="mb-1 fw-bold text-white"><i class="bi bi-table me-2"></i>{{ t('Report Builder') }}</h1>
+      <p class="mb-0 opacity-75">
+        {{ t('Build your own reports — pick the columns, filters and totals you need, then save them for reuse.') }}</p>
+    </div>
+    {% if report_name %}<span class="badge badge-phoenix badge-phoenix-light fs-8">{{ report_name }}</span>{% endif %}
+  </div>
+
+  {% if error %}
+  <div class="alert alert-subtle-danger fs-9"><i class="bi bi-exclamation-triangle me-1"></i>{{ error }}</div>
+  {% endif %}
+
+  <form method="post" action="/reports/builder/run" id="rb">
+    <div class="row g-3">
+      <div class="col-lg-4">
+        <div class="card border mb-3">
+          <div class="card-header bg-body-highlight fw-bold">{{ t('1. What data?') }}</div>
+          <div class="card-body">
+            <select name="dataset" class="form-select form-select-sm"
+                    onchange="location.href='/reports/builder?dataset='+this.value">
+              {% for k, label in datasets.items() %}
+              <option value="{{ k }}" {% if ds_key==k %}selected{% endif %}>{{ t(label) }}</option>
+              {% endfor %}
+            </select>
+            <div class="fs-9 text-body-tertiary mt-2">
+              {{ t('Changing the data source resets the columns below.') }}</div>
+          </div>
+        </div>
+
+        <div class="card border mb-3">
+          <div class="card-header bg-body-highlight fw-bold">{{ t('2. Columns') }}</div>
+          <div class="card-body" style="max-height:260px;overflow:auto">
+            {% for key, c in columns.items() %}
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" name="column" value="{{ key }}"
+                     id="col_{{ key }}" {% if not cfg.columns or key in cfg.columns %}checked{% endif %}>
+              <label class="form-check-label fs-9" for="col_{{ key }}">{{ t(c.label) }}</label>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+
+        <div class="card border mb-3">
+          <div class="card-header bg-body-highlight fw-bold">{{ t('3. Group & total') }}</div>
+          <div class="card-body" style="max-height:240px;overflow:auto">
+            <div class="fs-9 text-body-tertiary mb-2">
+              {{ t('Tick a column to group by it. Then choose how the number columns should be totalled.') }}</div>
+            {% for key, c in columns.items() %}
+            {% if c.type == 'text' %}
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" name="group_by" value="{{ key }}"
+                     id="g_{{ key }}" {% if cfg.group_by and key in cfg.group_by %}checked{% endif %}>
+              <label class="form-check-label fs-9" for="g_{{ key }}">{{ t(c.label) }}</label>
+            </div>
+            {% endif %}
+            {% endfor %}
+            <hr class="my-2">
+            {% for key, c in columns.items() %}
+            {% if c.type in ['number','money'] %}
+            <div class="d-flex align-items-center gap-2 mb-1">
+              <input type="hidden" name="agg_col" value="{{ key }}">
+              <span class="fs-9 flex-grow-1">{{ t(c.label) }}</span>
+              <select name="agg_{{ key }}" class="form-select form-select-sm" style="width:110px">
+                {% for a, alabel in aggs.items() %}
+                <option value="{{ a }}" {% if cfg.aggs and cfg.aggs.get(key)==a %}selected{% endif %}>{{ t(alabel) }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            {% endif %}
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+
+      <div class="col-lg-8">
+        <div class="card border mb-3">
+          <div class="card-header bg-body-highlight fw-bold d-flex justify-content-between align-items-center">
+            <span>{{ t('4. Filters') }}</span>
+            <button type="button" class="btn btn-sm btn-phoenix-primary" id="addF">
+              <i class="bi bi-plus-lg me-1"></i>{{ t('Add filter') }}</button>
+          </div>
+          <div class="card-body">
+            <div id="filters">
+              {% for f in cfg.filters or [] %}
+              <div class="row g-2 mb-2 frow">
+                <div class="col-4"><select name="f_col" class="form-select form-select-sm">
+                  {% for key, c in columns.items() %}
+                  <option value="{{ key }}" {% if f.column==key %}selected{% endif %}>{{ t(c.label) }}</option>
+                  {% endfor %}</select></div>
+                <div class="col-3"><select name="f_op" class="form-select form-select-sm">
+                  {% for k, label in ops.items() %}
+                  <option value="{{ k }}" {% if f.op==k %}selected{% endif %}>{{ t(label) }}</option>
+                  {% endfor %}</select></div>
+                <div class="col-4"><input name="f_val" value="{{ f.value }}" class="form-control form-control-sm"></div>
+                <div class="col-1"><button type="button" class="btn btn-sm btn-outline-danger rmF">&times;</button></div>
+              </div>
+              {% endfor %}
+            </div>
+            <div class="row g-2 mt-2">
+              <div class="col-md-4">
+                <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('Sort by') }}</label>
+                <select name="sort" class="form-select form-select-sm">
+                  <option value="">{{ t('None') }}</option>
+                  {% for key, c in columns.items() %}
+                  <option value="{{ key }}" {% if cfg.sort==key %}selected{% endif %}>{{ t(c.label) }}</option>
+                  {% endfor %}
+                </select></div>
+              <div class="col-md-3">
+                <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('Direction') }}</label>
+                <select name="sort_dir" class="form-select form-select-sm">
+                  <option value="asc" {% if cfg.sort_dir!='desc' %}selected{% endif %}>{{ t('Ascending') }}</option>
+                  <option value="desc" {% if cfg.sort_dir=='desc' %}selected{% endif %}>{{ t('Descending') }}</option>
+                </select></div>
+              <div class="col-md-2">
+                <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('Max rows') }}</label>
+                <input type="number" name="limit" min="1" max="5000" value="{{ cfg.limit or 500 }}"
+                       class="form-control form-control-sm"></div>
+              <div class="col-md-3 d-flex align-items-end">
+                <button class="btn btn-primary btn-sm w-100">
+                  <i class="bi bi-play-fill me-1"></i>{{ t('Run Report') }}</button></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card border">
+          <div class="card-header bg-body-highlight fw-bold d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <span>{{ t('Result') }}
+              {% if rows %}<span class="badge badge-phoenix badge-phoenix-secondary">{{ rows|length }}</span>{% endif %}</span>
+            {% if rows %}
+            <div class="d-flex gap-2">
+              <button class="btn btn-sm btn-phoenix-secondary" formaction="/reports/builder/export">
+                <i class="bi bi-file-earmark-excel me-1"></i>{{ t('Excel') }}</button>
+              <input name="name" class="form-control form-control-sm" style="width:170px"
+                     placeholder="{{ t('Save as…') }}" value="{{ report_name or '' }}">
+              <button class="btn btn-sm btn-primary" formaction="/reports/builder/save">
+                <i class="bi bi-save me-1"></i>{{ t('Save') }}</button>
+            </div>
+            {% endif %}
+          </div>
+          <div class="card-body p-0">
+            {% if rows %}
+            <div class="table-responsive" style="max-height:460px;overflow:auto">
+              <table class="table table-sm table-hover mb-0" data-isfc-table>
+                <thead class="bg-body-highlight position-sticky top-0"><tr>
+                  {% for m in meta %}<th class="{{ 'text-end' if m.type in ['number','money'] }}">{{ t(m.label) }}</th>{% endfor %}
+                </tr></thead>
+                <tbody>
+                  {% for r in rows %}
+                  <tr>{% for m in meta %}
+                    <td class="{{ 'text-end' if m.type in ['number','money'] }}">
+                      {% if m.type == 'money' %}{{ '%.2f'|format(r[m.key] or 0) }}
+                      {% elif m.type == 'number' %}{{ '%.3f'|format(r[m.key] or 0) }}
+                      {% else %}{{ r[m.key] if r[m.key] is not none else '—' }}{% endif %}
+                    </td>{% endfor %}</tr>
+                  {% endfor %}
+                </tbody>
+                {% if totals %}
+                <tfoot class="bg-body-highlight"><tr>
+                  {% for m in meta %}
+                  <th class="{{ 'text-end' if m.type in ['number','money'] }}">
+                    {% if m.key in totals %}{{ '%.2f'|format(totals[m.key]) }}
+                    {% elif loop.first %}{{ t('Total') }}{% endif %}</th>
+                  {% endfor %}
+                </tr></tfoot>
+                {% endif %}
+              </table>
+            </div>
+            {% else %}
+            <div class="text-center text-body-tertiary py-5">
+              <i class="bi bi-table fs-3 d-block mb-2"></i>
+              {{ t('Pick your columns and press Run Report.') }}</div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+  </form>
+
+  {% if saved %}
+  <div class="card border mt-3">
+    <div class="card-header bg-body-highlight fw-bold">{{ t('Saved Reports') }}</div>
+    <div class="card-body p-0"><div class="table-responsive">
+      <table class="table table-sm table-hover mb-0" data-isfc-table>
+        <thead class="bg-body-highlight"><tr>
+          <th>{{ t('Name') }}</th><th>{{ t('Data') }}</th><th>{{ t('Created by') }}</th>
+          <th>{{ t('Updated') }}</th><th class="text-end">{{ t('Action') }}</th></tr></thead>
+        <tbody>
+          {% for s in saved %}
+          <tr>
+            <td class="fw-bold">{{ s.name }}
+              {% if s.is_shared %}<span class="badge badge-phoenix badge-phoenix-info ms-1">{{ t('shared') }}</span>{% endif %}</td>
+            <td class="fs-9">{{ datasets.get(s.dataset, s.dataset) }}</td>
+            <td class="fs-9">{{ s.created_by or '—' }}</td>
+            <td class="fs-9">{{ s.updated_at }}</td>
+            <td class="text-end">
+              <a href="/reports/builder/open/{{ s.id }}" class="btn btn-sm btn-phoenix-primary">{{ t('Open') }}</a>
+              {% if can_action('reports','delete') %}
+              <form method="post" action="/reports/builder/delete/{{ s.id }}" class="d-inline"
+                    data-confirm="{{ t('Delete this saved report?') }}" data-confirm-title="{{ t('Delete') }}"
+                    data-confirm-ok="{{ t('Delete') }}" data-confirm-variant="danger">
+                <button class="btn btn-sm btn-outline-danger">&times;</button></form>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div></div>
+  </div>
+  {% endif %}
+</div>
+
+<script>
+  (function () {
+    var wrap = document.getElementById('filters');
+    var cols = {{ columns.keys()|list|tojson }};
+    var labels = {{ columns|tojson }};
+    var ops = {{ ops|tojson }};
+    document.getElementById('addF').addEventListener('click', function () {
+      var d = document.createElement('div');
+      d.className = 'row g-2 mb-2 frow';
+      var c = '<div class="col-4"><select name="f_col" class="form-select form-select-sm">';
+      cols.forEach(function (k) { c += '<option value="' + k + '">' + labels[k].label + '</option>'; });
+      c += '</select></div><div class="col-3"><select name="f_op" class="form-select form-select-sm">';
+      Object.keys(ops).forEach(function (k) { c += '<option value="' + k + '">' + ops[k] + '</option>'; });
+      c += '</select></div><div class="col-4"><input name="f_val" class="form-control form-control-sm"></div>' +
+           '<div class="col-1"><button type="button" class="btn btn-sm btn-outline-danger rmF">&times;</button></div>';
+      d.innerHTML = c;
+      wrap.appendChild(d);
+    });
+    wrap.addEventListener('click', function (e) {
+      if (e.target.classList.contains('rmF')) e.target.closest('.frow').remove();
+    });
+  })();
+</script>
+{% endblock %}

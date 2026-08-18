@@ -186,6 +186,10 @@ from app.modules.procurement.routes_match import router as match_router        #
 from app.modules.setup.routes_import import router as setup_import_router      # Batch 109
 from app.modules.finance.routes_coa import router as coa_router                # Batch 110
 from app.modules.settings.routes_approval import router as approval_router     # Batch 111
+from app.modules.procurement.routes_landed import router as landed_router      # Batch 112
+from app.modules.qc.routes_recall import router as recall_router               # Batch 112
+from app.modules.reports.routes_builder import router as rbuilder_router       # Batch 113
+from app.modules.finance.routes_budget import router as budget_router          # Batch 114
 app.include_router(recipes_excel_router)
 app.include_router(recipes_bulk_router)
 app.include_router(inv_reports_router)
@@ -196,6 +200,10 @@ app.include_router(reorder_router)
 app.include_router(match_router)
 app.include_router(coa_router)
 app.include_router(approval_router)
+app.include_router(landed_router)
+app.include_router(recall_router)
+app.include_router(rbuilder_router)
+app.include_router(budget_router)
 app.include_router(setup_import_router)
 app.include_router(recipes_router)
 app.include_router(dashboard_router)
