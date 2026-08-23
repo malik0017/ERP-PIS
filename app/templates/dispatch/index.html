@@ -198,7 +198,7 @@
         <div>
           <h4 class="mb-1"><a href="/production/orders/{{ r.order_no }}">{{ r.order_no }}</a> · {{ r.customer_name or
             'Customer' }}</h4>
-          <div class="text-muted">Dispatch No: {{ r.dispatch_no }} · Created {{ r.created_at }}</div>
+          <div class="text-muted">Dispatch No: {{ r.dispatch_no }} · Created {{ r.created_at }}{% if r.packed_bags %} · <strong>{{ r.packed_bags }} bag(s)</strong>{% endif %}</div>
         </div>
         <div class="d-flex align-items-center gap-2">
           <a href="/dispatch/{{ r.id }}/delivery-note" target="_blank" class="btn btn-phoenix-primary btn-sm"><i class="bi bi-truck me-1"></i>Delivery Note</a>

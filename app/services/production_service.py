@@ -728,31 +728,91 @@ def finalize_store_issuance(db: Session, order_no: str, issued_by: str) -> list[
                 )
                 db.add(inv)
 
-        tx = KitchenSectionTransaction(
-            company_id=getattr(line, "company_id", None),
-            order_no=line.order_no,
-            order_line_id=line.order_line_id,
-            recipe_no=line.recipe_no,
-            recipe_name=line.recipe_name,
-            ingredient_code=line.ingredient_code,
-            ingredient_name=line.ingredient_name,
-            standard_uom=line.standard_uom,
-            from_section="Store",
-            current_section=line.issue_to_section,
-            to_section=next_section,
-            route_step_no=step_no,
-            route_template=_dump_route(route),
-            issued_qty_standard=issued_qty,
-            received_qty_standard=0,
-            processed_qty_standard=0,
-            waste_qty_standard=0,
-            returned_qty_standard=0,
-            transferred_qty_standard=0,
-            balance_qty_standard=issued_qty,
-            transaction_status="Pending Receive",
+        # ------------------------------------------------------------------
+        # Batch 120: UPSERT the section transaction instead of blindly
+        # inserting a new one.
+        #
+        # The old code always did db.add(tx). Re-issue clears line.finalized,
+        # so finalize re-runs and created a SECOND kitchen_section_transactions
+        # row for the same line — the "ingredient shown twice" bug — and could
+        # also strand a row under the wrong section (e.g. Cold Kitchen showing
+        # nothing). We now match an existing transaction for this exact line and
+        # update it in place; only genuinely new lines are inserted.
+        #
+        # Match key: (order_no, order_line_id, ingredient_code). order_line_id is
+        # the strongest key; ingredient_code disambiguates when line ids are null.
+        # We only re-target section fields when the transaction has NOT yet been
+        # received/processed downstream, so we never rewrite work already done in
+        # a kitchen section.
+        # ------------------------------------------------------------------
+        existing = (
+            db.query(KitchenSectionTransaction)
+            .filter(
+                KitchenSectionTransaction.order_no == line.order_no,
+                KitchenSectionTransaction.ingredient_code == line.ingredient_code,
+            )
         )
-        db.add(tx)
-        created.append(tx)
+        if line.order_line_id is not None:
+            existing = existing.filter(
+                KitchenSectionTransaction.order_line_id == line.order_line_id
+            )
+        existing = existing.first()
+
+        if existing:
+            downstream_touched = (
+                _num(getattr(existing, "received_qty_standard", 0)) > 0
+                or _num(getattr(existing, "processed_qty_standard", 0)) > 0
+                or _num(getattr(existing, "transferred_qty_standard", 0)) > 0
+            )
+            existing.recipe_no = line.recipe_no
+            existing.recipe_name = line.recipe_name
+            existing.ingredient_name = line.ingredient_name
+            existing.standard_uom = line.standard_uom
+            existing.issued_qty_standard = issued_qty
+            # Balance = issued minus whatever has already moved downstream, so a
+            # corrected (higher/lower) issue reflects correctly without dropping
+            # progress the kitchen already recorded.
+            _consumed = (
+                _num(getattr(existing, "received_qty_standard", 0))
+                + _num(getattr(existing, "transferred_qty_standard", 0))
+                + _num(getattr(existing, "waste_qty_standard", 0))
+            )
+            existing.balance_qty_standard = max(issued_qty - _consumed, 0)
+            if not downstream_touched:
+                # safe to re-target the section the store now chose
+                existing.from_section = "Store"
+                existing.current_section = line.issue_to_section
+                existing.to_section = next_section
+                existing.route_step_no = step_no
+                existing.route_template = _dump_route(route)
+                existing.transaction_status = "Pending Receive"
+            created.append(existing)
+        else:
+            tx = KitchenSectionTransaction(
+                company_id=getattr(line, "company_id", None),
+                order_no=line.order_no,
+                order_line_id=line.order_line_id,
+                recipe_no=line.recipe_no,
+                recipe_name=line.recipe_name,
+                ingredient_code=line.ingredient_code,
+                ingredient_name=line.ingredient_name,
+                standard_uom=line.standard_uom,
+                from_section="Store",
+                current_section=line.issue_to_section,
+                to_section=next_section,
+                route_step_no=step_no,
+                route_template=_dump_route(route),
+                issued_qty_standard=issued_qty,
+                received_qty_standard=0,
+                processed_qty_standard=0,
+                waste_qty_standard=0,
+                returned_qty_standard=0,
+                transferred_qty_standard=0,
+                balance_qty_standard=issued_qty,
+                transaction_status="Pending Receive",
+            )
+            db.add(tx)
+            created.append(tx)
 
     order = db.query(CustomerOrder).filter(CustomerOrder.order_no == order_no).first()
     if order:

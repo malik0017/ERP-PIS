@@ -3,7 +3,7 @@
 {% block content %}
 <div class="container-fluid py-3 isfc-page">
   <div class="isfc-hero mb-4 p-4 rounded-4 text-white"
-       style="background:linear-gradient(135deg,#132947,#0c91a3)">
+       style="background:linear-gradient(135deg,#08243d,#1e5bb8)">
     <h1 class="mb-1 fw-bold text-white"><i class="bi bi-truck me-2"></i>{{ t('Landed Cost') }}</h1>
     <p class="mb-0 opacity-75">
       {{ t('Freight, duty and clearing added to the goods, so food cost and stock value are the real numbers.') }}</p>
@@ -53,7 +53,7 @@
           <tr>
             <td><span class="fw-bold">{{ r.grn_no }}</span>
               {% if r.po_no %}<div class="small-muted">{{ r.po_no }}</div>{% endif %}</td>
-            <td class="fs-9">{{ r.supplier_name or '—' }}</td>
+            <td class="fs-9"><strong>{{ r.supplier_name or '—' }}</strong></td>
             <td class="fs-9">{{ r.grn_date or '—' }}</td>
             <td class="text-end">{{ r.line_count }}</td>
             <td class="text-end">{{ '%.2f'|format(r.goods_value or 0) }}</td>

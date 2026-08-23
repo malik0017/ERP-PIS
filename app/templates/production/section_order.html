@@ -3,7 +3,7 @@
   {% set active_step = 'Kitchen' %}{% set active_kitchen = section %}{% include 'partials/process_status_row.html' %}
 
 <style>
-.pis-hero{background:linear-gradient(135deg,#132947,#0c91a3);border-radius:22px;color:#fff;padding:26px 30px;box-shadow:0 18px 40px rgba(15,80,97,.18)}
+.pis-hero{background:linear-gradient(135deg,#08243d,#1e5bb8);border-radius:22px;color:#fff;padding:26px 30px;box-shadow:0 18px 40px rgba(15,80,97,.18)}
 .pis-card{background:#fff;border:1px solid #dce8f2;border-radius:18px;box-shadow:0 12px 28px rgba(15,30,50,.06)}
 .pis-kpi{padding:16px 18px}.pis-kpi span{display:block;color:#6b7f95;font-size:12px;text-transform:uppercase;font-weight:800;letter-spacing:.05em}.pis-kpi b{font-size:22px;color:#132947}
 .pis-chip{display:inline-flex;align-items:center;border-radius:999px;background:#edf5fb;color:#18314f;padding:6px 11px;font-weight:800;font-size:12px}
@@ -40,7 +40,7 @@ tr.locked .lock-note{color:#11783f;font-weight:800}
 <div class="container-fluid py-3">
   <div class="pis-hero mb-4">
     <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
-      <div>
+      <div class="flex-grow-1">
         <span class="pis-chip mb-3">{{ section }} Workstation</span>
         <h2 class="mb-1">Receiving &amp; Processing: {{ order_no }}</h2>
         <p class="mb-1 opacity-75">Step 1 — Receive the store-issued quantity. Step 2 — Process, record wastage/returns and transfer to the next section. Transferred lines lock automatically.</p>
@@ -52,15 +52,26 @@ tr.locked .lock-note{color:#11783f;font-weight:800}
           {% if order and order.cooking_date %}<span class="delivery-badge"><i class="bi bi-fire me-1"></i> Cooking: {{ order.cooking_date }} {{ order.cooking_time or '' }}</span>{% endif %}
         </div>
       </div>
-      <div class="d-flex gap-2 flex-wrap">
-        <a class="pis-btn pis-soft" href="/production/section/{{ section_slug }}">Back to {{ section }} Orders</a>
-        <a class="pis-btn" style="background:#fff;color:#132947;font-weight:800" href="/production/kitchen/{{ section_slug }}/{{ order_no }}"><i class="bi bi-fire"></i> Production View</a>
-        <a class="pis-btn pis-soft" href="/production/section/{{ section_slug }}/orders/{{ order_no }}?export=csv"><i class="bi bi-download"></i> Download CSV</a>
+      {# Batch 121: action buttons pinned top-right in a single row (image 3). #}
+      <div class="d-flex gap-2 flex-nowrap align-items-start">
+        <a class="pis-btn pis-soft text-nowrap" href="/production/section/{{ section_slug }}">Back to {{ section }} Orders</a>
+        <a class="pis-btn text-nowrap" style="background:#fff;color:#132947;font-weight:800" href="/production/kitchen/{{ section_slug }}/{{ order_no }}"><i class="bi bi-fire"></i> Production View</a>
+        <a class="pis-btn pis-soft text-nowrap" href="/production/section/{{ section_slug }}/orders/{{ order_no }}?export=csv"><i class="bi bi-download"></i> Download CSV</a>
       </div>
     </div>
   </div>
 
   {% if error %}<div class="alert alert-warning">{{ error }}</div>{% endif %}
+
+  {# Batch 121: kitchen step-lock banner. Once the order is past Kitchen (QC/
+     Packing/Dispatch), this section is view-only — rows still show for review. #}
+  {% set _k_locked = order and stage_locked(order.status, 'kitchen') %}
+  {% if _k_locked %}
+  <div class="alert alert-warning d-flex align-items-center gap-2" role="alert">
+    <i class="bi bi-lock-fill"></i>
+    <div>{{ stage_lock_reason(order.status, 'kitchen') }}</div>
+  </div>
+  {% endif %}
 
   <div class="pis-card p-3 mb-3">
     <div class="row g-3">
@@ -71,12 +82,16 @@ tr.locked .lock-note{color:#11783f;font-weight:800}
       <div class="col-md-1"><div class="pis-kpi"><span>Balance</span><b>{{ '%.2f'|format(totals.balance or 0) }}</b></div></div>
       <div class="col-md-2"><div class="pis-kpi"><span>Completed</span><b>{{ totals.completed }} / {{ totals.lines }}</b></div></div>
     </div>
+    {% if not _k_locked %}
     <form method="post" action="/production/section/{{ section_slug }}/orders/{{ order_no }}/receive-all" class="mt-2"
           data-confirm="Receive the full store-issued quantity for every pending line in this order?"
           data-confirm-title="Receive All Pending Lines" data-confirm-ok="Receive All" data-confirm-variant="success">
       <button class="pis-btn pis-success">Receive All Pending Lines</button>
       <span class="small-muted ms-2">Use this when the section physically receives the full store-issued quantity.</span>
     </form>
+    {% else %}
+    <div class="mt-2 small-muted"><i class="bi bi-eye"></i> View-only — this step is complete. Use Download CSV above to extract a report.</div>
+    {% endif %}
   </div>
 
   {% if section == 'Bakery/Pastry' %}

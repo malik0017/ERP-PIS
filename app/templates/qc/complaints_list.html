@@ -3,7 +3,7 @@
 {% block content %}
 <div class="container-fluid py-3 isfc-page">
   <div class="isfc-hero mb-4 p-4 rounded-4 text-white d-flex align-items-center justify-content-between flex-wrap gap-3"
-       style="background:linear-gradient(135deg,#132947,#0c91a3)">
+       style="background:linear-gradient(135deg,#08243d,#1e5bb8)">
     <div>
       <h1 class="mb-1 fw-bold"><i class="bi bi-chat-square-dots me-2"></i>{{ t('Customer Complaints') }}</h1>
       <p class="mb-0 opacity-75">{{ t('The fourth quality gate — closing the loop after delivery, traced back to batch, section, and shift.') }}</p>
@@ -50,7 +50,7 @@
           <tr>
             <td><a href="/qc/complaints/{{ r.complaint_no }}" class="fw-bold text-decoration-none">{{ r.complaint_no }}</a></td>
             <td>{% if r.order_no %}<a href="/production/orders/{{ r.order_no }}">{{ r.order_no }}</a>{% else %}—{% endif %}</td>
-            <td>{{ r.customer_name or '—' }}</td>
+            <td><strong>{{ r.customer_name or '—' }}</strong></td>
             <td>{{ r.category or '—' }}</td>
             <td>
               {% if r.status == 'Open' %}<span class="badge badge-phoenix badge-phoenix-warning">Open</span>

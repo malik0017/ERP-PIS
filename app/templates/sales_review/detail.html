@@ -5,7 +5,7 @@
 <div class="container-fluid py-3 isfc-page">
 
   <div class="isfc-hero mb-4 p-4 rounded-4 text-white d-flex align-items-center justify-content-between flex-wrap gap-3"
-       style="background:linear-gradient(135deg,#132947,#0c91a3)">
+       style="background:linear-gradient(135deg,#08243d,#1e5bb8)">
     <div>
       <h1 class="mb-1 fw-bold text-white"><i class="bi bi-clipboard-check me-2"></i>{{ order.order_no }}</h1>
       <p class="mb-0 opacity-75">
@@ -56,8 +56,10 @@
             <tbody>
               {% for l in lines %}
               <tr>
-                <td><span class="fw-bold">{{ l.recipe_no }}</span>
-                  <div class="small-muted">{{ l.recipe_name }}</div></td>
+                <td>
+                  <div class="fw-bold">{{ l.recipe_name }}</div>
+                  <span class="small-muted">{{ l.recipe_no }}</span>  
+                </td>
                 <td class="text-end">{{ l.required_portions }}</td>
                 <td class="text-end">{{ '%.2f'|format(l.selling_price_per_portion or 0) }}</td>
                 <td class="text-end">{{ '%.2f'|format((l.required_portions or 0) * (l.selling_price_per_portion or 0)) }}</td>
@@ -83,15 +85,20 @@
           <div class="table-responsive" style="max-height:420px;overflow:auto">
             <table class="table table-sm mb-0" data-isfc-table>
               <thead class="bg-body-highlight position-sticky top-0">
-                <tr><th>{{ t('Ingredient') }}</th><th class="text-end">{{ t('Required') }}</th>
+                <tr>
+                  <th>{{ t('Ingredient') }}</th>
+                  <th class="text-end">{{ t('Required') }}</th>
                   <th class="text-end">{{ t('On Hand') }}</th><th class="text-end">{{ t('Short By') }}</th>
-                  <th class="text-center">{{ t('Status') }}</th></tr>
+                  <th class="text-center">{{ t('Status') }}</th>
+                </tr>
               </thead>
               <tbody>
                 {% for c in coverage %}
                 <tr class="{% if c.verdict == 'SHORT' %}table-danger{% elif c.verdict == 'EMPTY' %}table-warning{% endif %}">
-                  <td><span class="fw-bold">{{ c.inventory_code }}</span>
-                    <div class="small-muted">{{ c.item_name }}</div></td>
+                  <td>
+                    <div class="fw-bold">{{ c.item_name }}</div>
+                    <span class="small-muted">{{ c.inventory_code }}</span>
+                  </td>
                   <td class="text-end">{% if c.required_qty is not none %}{{ c.required_qty }} {{ c.uom }}{% else %}—{% endif %}</td>
                   <td class="text-end">{{ c.on_hand }} {{ c.uom }}</td>
                   <td class="text-end">{% if c.shortfall %}<span class="text-danger fw-bold">{{ c.shortfall }}</span>{% else %}—{% endif %}</td>

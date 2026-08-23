@@ -58,7 +58,13 @@
   {% endif %}
 
   {# key | access | href | icon | color(hex) | title | tag #}
+  {# Batch 119: Sales was missing from the launcher entirely, even though it is
+     where the whole order-to-cash chain starts. Placed first because it is the
+     screen most people open first. A Jinja comment cannot sit INSIDE a {% set %}
+     expression — that is a syntax error, not a comment. #}
   {% set catalog = [
+    ('sales', can_access('order_portal') or can_access('sales_review'),
+      '/orders/portal', 'cart', '#22c55e', 'Sales', 'Requisitions · Orders'),
     ('procurement', can_access('procurement'),
       '/module/procurement/dashboard', 'bag', '#f59e0b', 'Procurement', 'PO · GRN · AP'),
     ('inventory', can_access('inventory_valuation'),

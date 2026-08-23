@@ -33,6 +33,15 @@ def _inject_common_context(context: dict[str, Any] | None) -> dict[str, Any]:
             data.setdefault("module_enabled", lambda key: _mod_enabled(request, key))
         except Exception:
             data.setdefault("module_enabled", lambda key: True)
+        # Batch 121: pipeline step-locking helpers, available in every template.
+        # `stage_locked(status, stage)` -> bool; `stage_lock_reason(...)` -> str.
+        try:
+            from app.core.stage_lock import is_stage_locked as _sl, lock_reason as _slr
+            data.setdefault("stage_locked", lambda status, stage: _sl(status, stage))
+            data.setdefault("stage_lock_reason", lambda status, stage: _slr(status, stage))
+        except Exception:
+            data.setdefault("stage_locked", lambda status, stage: False)
+            data.setdefault("stage_lock_reason", lambda status, stage: "")
         # Expose username/role for the launcher header/footer.
         try:
             data.setdefault("session_username", request.session.get("username"))

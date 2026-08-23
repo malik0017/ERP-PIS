@@ -7,7 +7,7 @@
 <div class="container-fluid py-3 isfc-page">
 
   <div class="isfc-hero mb-4 p-4 rounded-4 text-white d-flex justify-content-between align-items-center flex-wrap gap-3"
-       style="background:linear-gradient(135deg,#132947,#0c91a3)">
+       style="background:linear-gradient(135deg,#08243d,#1e5bb8)">
     <div>
       <h1 class="mb-1 fw-bold text-white"><i class="bi bi-list-check me-2"></i>{{ t('Bill of Quantity') }}</h1>
       <p class="mb-0 opacity-75">
@@ -151,7 +151,7 @@
             <tr>
               <td class="fs-9">{{ r.delivery_date or '—' }}</td>
               <td class="fw-bold fs-9">{{ r.order_no }}</td>
-              <td class="fs-9">{{ r.customer_name }}</td>
+              <td class="fs-9"><strong>{{ r.customer_name }}</strong></td>
               <td class="fs-9">{{ r.recipe_no }}</td>
               <td class="fs-9">{{ r.item_name }}</td>
               <td class="text-end">{{ '%.3f'|format(r.required_qty or 0) }}</td>

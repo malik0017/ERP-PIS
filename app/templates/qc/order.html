@@ -252,7 +252,8 @@
         this can't be skipped, since a Pass/Hold/Reject decision has to reflect product that was actually received and inspected.</div>
     </div>
     {% endif %}
-    <form method="post" action="/qc/orders/{{ order.order_no }}/submit">
+    <form method="post" action="/qc/orders/{{ order.order_no }}/submit"
+          id="qcSubmitForm" data-pending="{{ pending_receive|length }}" data-total="{{ txs|length }}">
       <div class="form-grid">
         <div><label>Check Type</label><select name="check_type">
             <option>Final QC</option>
@@ -288,4 +289,30 @@
     </form>
   </div>
 </div>
+{# Batch 121: QC submit guard. If any line is still unreceived, block with a
+   clear popup asking to receive lines first. Otherwise ask for a final
+   confirmation of the Pass/Hold/Reject decision. #}
+<script>
+(function () {
+  var form = document.getElementById('qcSubmitForm');
+  if (!form) return;
+  form.addEventListener('submit', function (e) {
+    var pending = parseInt(form.getAttribute('data-pending') || '0', 10);
+    var total = parseInt(form.getAttribute('data-total') || '0', 10);
+    if (pending > 0) {
+      e.preventDefault();
+      alert('Cannot submit yet — ' + pending + ' of ' + total +
+            ' QC line(s) still show 0 received quantity.\n\n' +
+            'Please click "Receive All QC Lines" (or receive each line) first. ' +
+            'A QC decision must reflect product that was actually received and inspected.');
+      return false;
+    }
+    var decision = (form.querySelector('[name="qc_status"]') || {}).value || 'Passed';
+    if (!confirm('Submit final QC decision: ' + decision + '?\n\nThis will lock the QC step and move the order to the next stage.')) {
+      e.preventDefault();
+      return false;
+    }
+  });
+})();
+</script>
 {% endblock %}

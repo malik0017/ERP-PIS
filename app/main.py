@@ -458,6 +458,20 @@ async def startup_event():
     except Exception as exc:
         logger.error(f"Startup schema check failed (purchase_requisitions): {exc}")
 
+    # Batch 121: packing_dispatch.packed_bags — the packer records physical
+    # bag/tray count; Dispatch reads it. Needs to exist before packing save.
+    try:
+        from app.database.session import SessionLocal
+        from app.modules.packing.routes import ensure_schema as _packing_schema
+        _db = SessionLocal()
+        try:
+            _packing_schema(_db)
+            logger.info("Verified packing_dispatch.packed_bags schema")
+        finally:
+            _db.close()
+    except Exception as exc:
+        logger.error(f"Startup schema check failed (packed_bags): {exc}")
+
     # Batch 94: top-up requests and the QC sampling config, same startup
     # migration reasoning as everything above it.
     try:

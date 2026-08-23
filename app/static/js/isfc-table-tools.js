@@ -37,6 +37,61 @@
     document.body.appendChild(a); a.click(); a.remove();
   }
 
+  // ---- PDF export (Batch 120) -------------------------------------------
+  // Lazy-load jsPDF + autoTable once, on first click, so pages that never
+  // export PDF pay zero cost. Reuses tableToRows(table, true) so the PDF
+  // honours the quick-filter AND the Columns show/hide state, exactly like CSV.
+  var _pdfLibReady = null;
+  function loadScript(src) {
+    return new Promise(function (resolve, reject) {
+      var s = document.createElement('script');
+      s.src = src; s.async = true;
+      s.onload = resolve; s.onerror = function () { reject(new Error('load failed: ' + src)); };
+      document.head.appendChild(s);
+    });
+  }
+  function ensurePdfLib() {
+    if (_pdfLibReady) return _pdfLibReady;
+    if (window.jspdf && window.jspdf.jsPDF) { _pdfLibReady = Promise.resolve(); return _pdfLibReady; }
+    _pdfLibReady = loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js')
+      .then(function () {
+        return loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js');
+      });
+    return _pdfLibReady;
+  }
+  function downloadPDF(table, name, title, btn) {
+    var old = btn ? btn.innerHTML : '';
+    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>'; }
+    ensurePdfLib().then(function () {
+      var jsPDF = window.jspdf.jsPDF;
+      var rows = tableToRows(table, true);
+      if (!rows.length) { throw new Error('nothing to export'); }
+      var head = [rows[0]];
+      var body = rows.slice(1);
+      var landscape = rows[0].length > 6;
+      var doc = new jsPDF({ orientation: landscape ? 'landscape' : 'portrait', unit: 'pt', format: 'a4' });
+      var dir = document.documentElement.getAttribute('dir') || 'ltr';
+      doc.setFontSize(13);
+      doc.text(String(title || 'Export'), 40, 34);
+      doc.setFontSize(8); doc.setTextColor(120);
+      doc.text(new Date().toLocaleString() + '  \u00b7  ISFC ERP', 40, 48);
+      doc.autoTable({
+        head: head, body: body, startY: 60,
+        styles: { fontSize: 7, cellPadding: 3, overflow: 'linebreak',
+                  halign: dir === 'rtl' ? 'right' : 'left' },
+        headStyles: { fillColor: [71, 85, 105], textColor: 255, fontSize: 7 },
+        alternateRowStyles: { fillColor: [245, 248, 252] },
+        margin: { left: 40, right: 40 },
+      });
+      doc.save((name || 'export') + '.pdf');
+    }).catch(function (e) {
+      console.error('PDF export failed', e);
+      alert('PDF export is unavailable (could not load the PDF library). Please check your connection.');
+    }).finally(function () {
+      if (btn) { btn.disabled = false; btn.innerHTML = old; }
+    });
+  }
+
   function copyTable(table, btn) {
     var tsv = tableToRows(table, true).map(function (r) { return r.join('\t'); }).join('\n');
     navigator.clipboard.writeText(tsv).then(function () {
@@ -112,6 +167,16 @@
     csvBtn.innerHTML = '<i class="bi bi-filetype-csv me-1"></i>CSV';
     csvBtn.addEventListener('click', function () { downloadCSV(table, title.replace(/\W+/g, '_')); });
     spacer.appendChild(csvBtn);
+
+    // PDF (Batch 120) — same data as CSV, honours filter + column visibility
+    var pdfBtn = document.createElement('button');
+    pdfBtn.className = 'btn btn-sm btn-phoenix-danger';
+    pdfBtn.innerHTML = '<i class="bi bi-filetype-pdf me-1"></i>PDF';
+    pdfBtn.title = 'Download as PDF';
+    pdfBtn.addEventListener('click', function () {
+      downloadPDF(table, title.replace(/\W+/g, '_'), title, pdfBtn);
+    });
+    spacer.appendChild(pdfBtn);
 
     // Copy
     var copyBtn = document.createElement('button');

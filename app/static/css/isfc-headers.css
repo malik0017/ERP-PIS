@@ -1,0 +1,67 @@
+/* =========================================================================
+ * ISFC PIMS — isfc-headers.css  (Batch 120)
+ * Single global override layer that neutralises the teal / teal-gradient
+ * SECTION BAND HEADERS to a uniform corporate gray, project-wide.
+ *
+ * Rationale (per Malik): the teal band headers (Order Book & Margin, Master
+ * Data Depth, Money on the Order Book, Production Control, Store Issuance,
+ * Needs Attention, and the various `.pis-hero` / teal `card-header` bands)
+ * read as inconsistent against the rest of the UI. This file remaps them to a
+ * neutral slate-gray gradient in ONE place instead of editing every template.
+ *
+ * Loaded AFTER the theme + polish + density layers so it wins the cascade.
+ * The big page HERO banners (the dark navy→blue page titles) are intentionally
+ * NOT touched — only the secondary teal *section* bands.
+ *
+ * Dark-mode safe: uses a slightly deeper slate under [data-bs-theme="dark"].
+ * ========================================================================= */
+
+:root {
+  /* Batch 121: section bands are dark NAVY (image 12), matching the
+     'Needs Attention' style the client approved — not the Batch 120 gray. */
+  --isfc-band-a: #1e3a5f;   /* navy-600 */
+  --isfc-band-b: #0f2038;   /* navy-800 */
+  --isfc-band-fg: #ffffff;
+  /* retarget the legacy teal token to a muted navy-slate */
+  --isfc-teal: #2c4a6e;
+}
+
+/* ---- dashboard / command-center section bands ------------------------- */
+.exec-section {
+  background: linear-gradient(135deg, var(--isfc-band-b), var(--isfc-band-a)) !important;
+  color: var(--isfc-band-fg) !important;
+}
+.exec-section h5,
+.exec-section span { color: var(--isfc-band-fg) !important; }
+
+/* ---- teal "hero" sub-bands used across production templates ------------ */
+/* Matches inline gradients that end in teal-ish blues (#0c91a3 / #12a39f /
+ * #0fb6cf / #08798b). We can't rewrite inline styles from CSS by value, so
+ * templates that used a shared class are covered here; the remaining inline
+ * ones are handled by the template edits. This class is applied by those
+ * edits so they share one gray definition. */
+.isfc-band-gray,
+.pis-hero.isfc-band-gray,
+.card-header.isfc-band-gray {
+  background: linear-gradient(135deg, var(--isfc-band-b), var(--isfc-band-a)) !important;
+  color: var(--isfc-band-fg) !important;
+  border: 0 !important;
+}
+.isfc-band-gray h1, .isfc-band-gray h2, .isfc-band-gray h3,
+.isfc-band-gray h4, .isfc-band-gray h5, .isfc-band-gray h6,
+.isfc-band-gray p, .isfc-band-gray span, .isfc-band-gray small {
+  color: var(--isfc-band-fg) !important;
+}
+
+/* ---- teal KPI accent → gray ------------------------------------------- */
+.kpi-teal { --kpi-accent: #64748b !important; }
+
+/* ---- dark mode: deepen the band so it doesn't glow ---------------------- */
+[data-bs-theme="dark"] {
+  --isfc-band-a: #1a3050;
+  --isfc-band-b: #0a1626;
+}
+[data-bs-theme="dark"] .exec-section,
+[data-bs-theme="dark"] .isfc-band-gray {
+  background: linear-gradient(135deg, var(--isfc-band-b), var(--isfc-band-a)) !important;
+}

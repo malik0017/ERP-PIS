@@ -107,29 +107,10 @@ async def sales_reject_order(request: Request, order_no: str, db: Session = Depe
         db.commit()
     return RedirectResponse(f"/production/orders/{order_no}?toast=warning&title=Rejected&msg=Order rejected — it will not proceed to Head Chef", status_code=303)
 
-# Batch 94: the module-level import of Procurement internals that Batch 86
-# added here is gone — this module no longer creates purchase orders at all,
-# so the import was dead weight AND a standing circular-import hazard
-# (production -> procurement at import time). The Purchase Requisition module
-# it now uses instead is imported lazily inside the one route that needs it.
-
 
 @router.post("/orders/{order_no}/generate-shortage-po")
 async def generate_shortage_pr(request: Request, order_no: str, db: Session = Depends(get_db)):
-    """Batch 94 — this route now raises a Purchase REQUISITION, not a PO.
-
-    Batch 86 created live Purchase Orders straight from a shortage. That
-    meant anyone who could view a shortage could commit the company to a
-    purchase without Procurement ever seeing it — no supplier decision, no
-    pricing, no approval. A PO is a commitment; only Procurement makes
-    commitments. What a shortage legitimately produces is a REQUEST.
-
-    The URL is deliberately unchanged so the existing button on the order
-    detail screen (and any bookmark or muscle memory) keeps working rather
-    than 404-ing; only the behaviour and the wording changed. Duplicate
-    protection added too: raising the same shortage five times because the
-    page was refreshed created five real POs before.
-    """
+    
     require_action(request, "production_orders", "edit")
     from app.modules.purchase_req.routes import create_requisition, ensure_schema as _pr_ensure
     _pr_ensure(db)
@@ -596,16 +577,10 @@ async def create_order_form(
     except ValueError as exc:
         return redirect_with_error("/production/orders", str(exc))
 
-    # Batch 94: this used to land on /production/orders (which redirects to
-    # Head Chef Planning). Now that a new order is correctly held at
-    # sales_review_status='Pending', that screen deliberately no longer shows
-    # it — so the person who just submitted an order would have been sent to
-    # a page where their own order was invisible. Sending them to the review
-    # queue instead, which is where the order actually is.
     return RedirectResponse(
-        f"/sales-requests?toast=success&title=Request Submitted"
-        f"&msg=Request {order.order_no} submitted for sales review. It reaches Head Chef Planning only after approval.",
-        status_code=HTTP_303_SEE_OTHER)
+    f"/sales-requests?toast=success&title=Request Submitted",
+    status_code=HTTP_303_SEE_OTHER
+)
 
 
 @router.get("/orders/{order_no}")
@@ -644,6 +619,32 @@ async def order_detail(request: Request, order_no: str, db: Session = Depends(ge
             "txs": txs,
             "recipe_meta": recipe_meta,
             "shortages": shortages,
+            # ==========================================================
+            # Batch 119 — THE BOM BUTTON BUG.
+            #
+            # order_detail.html gates the whole "BOM Generation & Store
+            # Release" block on `is_approved`, and gates the head-chef
+            # schedule form on `sales_pending` / `sales_rejected`. None of
+            # the three were ever passed into the template.
+            #
+            # In Jinja an undefined name is FALSY, not an error. So
+            # `{% if not is_approved %}` was permanently true: the schedule
+            # form showed forever and the BOM / Release-to-Store block could
+            # never render — no matter how many times the Head Chef approved.
+            # That is why approving the cooking schedule appeared to do
+            # nothing.
+            #
+            # This is the failure mode that makes undefined-name-is-falsy
+            # dangerous: no error, no log line, just a button that never
+            # appears.
+            # ==========================================================
+            "is_approved": (order.status or "") in (
+                "Head Chef Approved", "BOM Generated", "Store Pending",
+                "In Production", "QC In Progress", "Packing",
+                "Out for Delivery", "Delivered",
+            ),
+            "sales_pending": (order.sales_review_status or "") == "Pending",
+            "sales_rejected": (order.sales_review_status or "") == "Rejected",
             # Batch 97: pass the already-scoped order rather than making the
             # helper look it up again.
             "flow_status": _order_flow_status(db, order_no, order=order),
@@ -845,6 +846,19 @@ async def update_store_issue(
 
     # ---- Re-issue AUDIT TRAIL: snapshot the line BEFORE the change ----
     before = db.query(StoreIssuanceLine).filter(StoreIssuanceLine.id == line_id).first()
+
+    # Batch 121: STEP-LOCK. If the order has already moved past the Store stage
+    # (into Kitchen/QC/Packing/Dispatch), store issuance is view-only.
+    if before is not None:
+        from app.core.stage_lock import is_stage_locked, lock_reason
+        _ord = db.query(CustomerOrder).filter(CustomerOrder.order_no == before.order_no).first()
+        _status = getattr(_ord, "status", "") if _ord else ""
+        if is_stage_locked(_status, "store"):
+            from urllib.parse import quote as _q
+            return RedirectResponse(
+                f"/production/orders/{before.order_no}/store-issuance?toast=warning&title={_q('Step Locked')}&msg={_q(lock_reason(_status, 'store'))}",
+                status_code=HTTP_303_SEE_OTHER)
+
     old_qty = float(getattr(before, "input_material_issued", 0) or 0) if before else 0
     old_uom = getattr(before, "issued_uom", "") if before else ""
     old_section = getattr(before, "issue_to_section", "") if before else ""
@@ -906,11 +920,25 @@ async def reissue_store_line(request: Request, line_id: int, db: Session = Depen
     if not line:
         raise HTTPException(404, "Store issuance line not found")
     order = db.query(CustomerOrder).filter(CustomerOrder.order_no == line.order_no).first()
-    if order and (order.status or "") not in ("Store Pending", "BOM Generated", "Head Chef Approved", "In Production"):
-        return redirect_with_error("/production/store-issuance", f"Order {line.order_no} is already {order.status} — reissue not allowed.")
+    # Batch 121: use the centralised step-lock. Store is view-only once the
+    # order has advanced into Kitchen/QC/Packing/Dispatch.
+    from app.core.stage_lock import is_stage_locked, lock_reason
+    _status = getattr(order, "status", "") if order else ""
+    if is_stage_locked(_status, "store"):
+        from urllib.parse import quote as _q
+        return redirect_with_error(
+            "/production/store-issuance",
+            lock_reason(_status, "store"))
     line.finalized = False
     db.commit()
-    return RedirectResponse(f"/production/store-issuance?toast=success&title=Re-issue&msg=Line {line_id} reopened for editing", status_code=HTTP_303_SEE_OTHER)
+    # Batch 121: return to the per-ORDER line page (where the store keeper is
+    # actually working), not the whole-queue list. Clearer, colored message.
+    from urllib.parse import quote as _q
+    _msg = _q(f"{line.ingredient_name} reopened for editing — adjust the issue qty and press Save.")
+    return RedirectResponse(
+        f"/production/orders/{line.order_no}/store-issuance?toast=warning&title={_q('Line Reopened')}&msg={_msg}#line-{line_id}",
+        status_code=HTTP_303_SEE_OTHER,
+    )
 
 
 @router.post("/orders/{order_no}/finalize-store")
@@ -1119,6 +1147,15 @@ async def section_order_page(request: Request, section_name: str, order_no: str,
 async def receive_section_order_all(request: Request, section_name: str, order_no: str, db: Session = Depends(get_db)):
     require_action(request, "kitchen", "edit")
     section = _section_from_slug(section_name)
+    # Batch 121: STEP-LOCK — kitchen is view-only once the order is past it.
+    _ord = db.query(CustomerOrder).filter(CustomerOrder.order_no == order_no).first()
+    _status = getattr(_ord, "status", "") if _ord else ""
+    from app.core.stage_lock import is_stage_locked, lock_reason
+    if is_stage_locked(_status, "kitchen"):
+        from urllib.parse import quote as _q
+        return RedirectResponse(
+            f"/production/section/{_section_slug(section)}/orders/{order_no}?toast=warning&title={_q('Step Locked')}&msg={_q(lock_reason(_status, 'kitchen'))}",
+            status_code=HTTP_303_SEE_OTHER)
     txs = db.query(KitchenSectionTransaction).filter(
         KitchenSectionTransaction.current_section == section,
         KitchenSectionTransaction.order_no == order_no,
@@ -1185,6 +1222,17 @@ async def bulk_transfer_section_order(request: Request, section_name: str, order
             f"/production/section/{_section_slug(section)}/orders/{order_no}",
             "Select at least one received line to process.")
 
+    # Batch 121: STEP-LOCK. Once the order has moved past Kitchen (into QC/
+    # Packing/Dispatch), kitchen sections are view-only.
+    from app.core.stage_lock import is_stage_locked, lock_reason
+    _ord = db.query(CustomerOrder).filter(CustomerOrder.order_no == order_no).first()
+    _status = getattr(_ord, "status", "") if _ord else ""
+    if is_stage_locked(_status, "kitchen"):
+        from urllib.parse import quote as _q
+        return RedirectResponse(
+            f"/production/section/{_section_slug(section)}/orders/{order_no}?toast=warning&title={_q('Step Locked')}&msg={_q(lock_reason(_status, 'kitchen'))}",
+            status_code=HTTP_303_SEE_OTHER)
+
     user = current_user_name(request)
     ok, failed = 0, 0
     for tx_id in tx_ids:
@@ -1202,12 +1250,19 @@ async def bulk_transfer_section_order(request: Request, section_name: str, order
         except ValueError:
             failed += 1
 
-    msg = f"{ok} line(s) processed and transferred"
+    # Batch 121: the old message never said WHERE the lines went, which read as
+    # "wrong" when the chef had picked a specific destination. Name it clearly.
+    dest = next_section if next_section else "each line's own next section"
+    if ok:
+        msg = f"{ok} line(s) processed and transferred to {dest}."
+    else:
+        msg = "No lines were transferred."
     if failed:
-        msg += f", {failed} skipped (already locked or not receivable)"
+        msg += f" {failed} skipped (already locked or not yet received)."
     kind = "success" if ok else "warning"
+    from urllib.parse import quote as _q
     return RedirectResponse(
-        f"/production/section/{_section_slug(section)}/orders/{order_no}?toast={kind}&title=Bulk+Process&msg={msg}",
+        f"/production/section/{_section_slug(section)}/orders/{order_no}?toast={kind}&title={_q('Process & Transfer')}&msg={_q(msg)}",
         status_code=HTTP_303_SEE_OTHER)
 
 
@@ -1227,6 +1282,16 @@ async def transfer_tx(
     require_action(request, "kitchen", "edit")
     tx = db.query(KitchenSectionTransaction).filter(KitchenSectionTransaction.id == tx_id).first()
     fallback_section = tx.current_section.replace("/", "-") if tx else "Hot-Kitchen"
+
+    # Batch 121: STEP-LOCK — kitchen is view-only once the order is past it.
+    if tx is not None:
+        from app.core.stage_lock import is_stage_locked, lock_reason
+        _ord = db.query(CustomerOrder).filter(CustomerOrder.order_no == tx.order_no).first()
+        _status = getattr(_ord, "status", "") if _ord else ""
+        if is_stage_locked(_status, "kitchen"):
+            return redirect_with_error(
+                f"/production/section/{fallback_section}/orders/{tx.order_no}",
+                lock_reason(_status, "kitchen"))
 
     # Batch 94: server-side twin of the client-side check — editing
     # Transfer away from the full amount needs a reason on record, and
@@ -1421,7 +1486,7 @@ async def store_issuance_by_section_export(request: Request, db: Session = Depen
     on-screen view, giving an orderwise download by filtering to one order)."""
     require_area(request, "store_issuance")
     section_filter = (request.query_params.get("section") or "").strip()
-    show = (request.query_params.get("show") or "pending").strip()
+    show = (request.query_params.get("show") or "all").strip()
     order_filter = (request.query_params.get("order") or "").strip()
     customer_filter = (request.query_params.get("customer") or "").strip()
     date_from = (request.query_params.get("date_from") or "").strip()
@@ -1474,6 +1539,67 @@ async def store_issuance_by_section_export(request: Request, db: Session = Depen
                           r["recipe_no"], r["recipe_name"], r["ingredient_code"], r["ingredient_name"],
                           r["required_qty"], r["issued_qty"], r["uom"], r["issuance_status"], r["finalized"]])
     output.seek(0)
+
+    # Batch 121: PDF export — same consolidated section/table data as the CSV.
+    export_fmt = (request.query_params.get("format") or "csv").strip().lower()
+    if export_fmt == "pdf":
+        try:
+            from reportlab.lib import colors
+            from reportlab.lib.pagesizes import A4, landscape
+            from reportlab.lib.units import mm
+            from reportlab.platypus import (SimpleDocTemplate, Table, TableStyle,
+                                            Paragraph, Spacer)
+            from reportlab.lib.styles import getSampleStyleSheet
+
+            buf = io.BytesIO()
+            doc = SimpleDocTemplate(buf, pagesize=landscape(A4),
+                                    leftMargin=12 * mm, rightMargin=12 * mm,
+                                    topMargin=12 * mm, bottomMargin=12 * mm)
+            styles = getSampleStyleSheet()
+            elems = [
+                Paragraph("Store Issuance — Consolidated Picking List", styles["Title"]),
+                Paragraph(
+                    f"Section: {section_filter or 'All sections'} &nbsp;·&nbsp; "
+                    f"Show: {show} &nbsp;·&nbsp; Generated: {date.today().isoformat()} &nbsp;·&nbsp; ISFC ERP",
+                    styles["Normal"]),
+                Spacer(1, 6 * mm),
+            ]
+            head = ["Section", "Order", "Customer", "Recipe", "Ingredient",
+                    "Required", "Issued", "UOM", "Status"]
+            data = [head]
+            for r in rows:
+                data.append([
+                    r["section"], r["order_no"], r["customer_name"] or "",
+                    f'{r["recipe_no"] or ""} {r["recipe_name"] or ""}'.strip(),
+                    f'{r["ingredient_code"] or ""} {r["ingredient_name"] or ""}'.strip(),
+                    f'{float(r["required_qty"] or 0):.2f}',
+                    f'{float(r["issued_qty"] or 0):.2f}',
+                    r["uom"], r["issuance_status"],
+                ])
+            tbl = Table(data, repeatRows=1)
+            tbl.setStyle(TableStyle([
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1e3a5f")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("FONTSIZE", (0, 0), (-1, -1), 6.5),
+                ("FONTSIZE", (0, 0), (-1, 0), 7),
+                ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#d8e2ef")),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f5f8fc")]),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 3),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 3),
+            ]))
+            elems.append(tbl)
+            doc.build(elems)
+            buf.seek(0)
+            pfname = f"store-issuance_{section_filter or 'all-sections'}_{date.today().isoformat()}.pdf".replace(" ", "-").replace("/", "-")
+            return StreamingResponse(iter([buf.getvalue()]), media_type="application/pdf",
+                                     headers={"Content-Disposition": f"attachment; filename={pfname}"})
+        except Exception as exc:
+            # Never let a PDF library issue block the store keeper — fall back to CSV.
+            import logging as _logging
+            _logging.getLogger("isfc.production").warning(
+                "By-section PDF export failed, falling back to CSV: %s", exc)
+
     fname = f"store-issuance_{section_filter or 'all-sections'}_{date.today().isoformat()}.csv".replace(" ", "-").replace("/", "-")
     return StreamingResponse(iter(['\ufeff' + output.getvalue()]), media_type="text/csv",
                              headers={"Content-Disposition": f"attachment; filename={fname}"})
@@ -1510,7 +1636,7 @@ async def quick_issue_store_line(request: Request, line_id: int, db: Session = D
 async def store_issuance_by_section(request: Request, db: Session = Depends(get_db)):
     require_area(request, "store_issuance")
     section_filter = (request.query_params.get("section") or "").strip()
-    show = (request.query_params.get("show") or "pending").strip()  # pending | all
+    show = (request.query_params.get("show") or "all").strip()  # Batch 121: default to all lines
     order_filter = (request.query_params.get("order") or "").strip()
     customer_filter = (request.query_params.get("customer") or "").strip()
     date_from = (request.query_params.get("date_from") or "").strip()

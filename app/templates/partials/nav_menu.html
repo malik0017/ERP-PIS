@@ -8,23 +8,17 @@
     {"title": "Sale Requisitions", "url": "/orders/portal", "area": "order_portal", "feather": "shopping-cart", "match": "/orders/portal"},
     {"title": "Immediate Order", "url": "/orders/portal/immediate", "area": "immediate_order", "feather": "zap", "match": "/orders/portal/immediate"},
     {"title": "Sales Requests", "url": "/sales-requests", "area": "sales_review", "feather": "check-square", "match": "/sales-requests"},
+  ]},
+  {"key": "customer_portal", "title": "Customer Portal", "icon": "uil-user-check", "children": [
     {"title": "Customer Portal", "url": "/my", "area": "customer_portal", "feather": "user-check"},
     {"title": "Place New Order", "url": "/my/orders/new", "area": "customer_portal", "feather": "plus-circle"},
     {"title": "My Orders", "url": "/my/orders", "area": "customer_portal", "feather": "list"},
     {"title": "My Subscriptions", "url": "/my/subscriptions", "area": "customer_portal", "feather": "repeat", "match": "/my/subscriptions"},
     {"title": "Account Statement", "url": "/my/statement", "area": "customer_portal", "feather": "file-text"},
   ]},
-  {"key": "recipes", "title": "Recipes", "icon": "uil-book-open", "children": [
-    {"title": "Recipes & Costing", "url": "/recipes", "area": "recipe_list", "feather": "book-open"},
-    {"title": "Prepare Recipe", "url": "/recipes/prepare", "area": "recipe_prepare", "feather": "edit-3"},
-  ]},
-  {"key": "procurement", "title": "Procurement", "icon": "uil-shop", "children": [
-    {"title": "Procurement Cockpit", "url": "/module/procurement/dashboard", "area": "procurement", "feather": "bar-chart-2"},
-    {"title": "Purchase Requisitions", "url": "/purchase-requisitions", "area": "purchase_requisition", "feather": "file-text", "match": "/purchase-requisitions"},
-    {"title": "Purchase Orders & GRN", "url": "/procurement", "area": "procurement", "feather": "shopping-bag", "match": "/procurement"},
-    {"title": "Three-Way Match", "url": "/procurement/three-way-match", "area": "procurement", "feather": "check-square", "match": "/procurement/three-way-match"},
-    {"title": "Landed Cost", "url": "/procurement/landed-cost", "area": "procurement", "feather": "truck", "match": "/procurement/landed-cost"},
-    {"title": "Supplier Ratings", "url": "/procurement/suppliers/ratings", "area": "procurement", "feather": "star", "match": "/procurement/suppliers/ratings"},
+  {"key": "production", "title": "Planning", "icon": "uil-processor", "children": [
+    {"title": "Planning Cockpit", "url": "/module/production/dashboard", "area": "dashboard", "feather": "activity"},
+    {"title": "Head Chef Planning", "url": "/production/head-chef", "area": "head_chef", "feather": "user-check"},
   ]},
   {"key": "inventory", "title": "Inventory", "icon": "uil-box", "children": [
     {"title": "Inventory Cockpit", "url": "/module/inventory/dashboard", "area": "inventory_valuation", "feather": "bar-chart-2"},
@@ -34,10 +28,6 @@
     {"title": "Store Issuance", "url": "/production/store-issuance", "area": "store_issuance", "feather": "package", "match": "/production/store-issuance", "match2": "store-issuance"},
     {"title": "Issuance by Section", "url": "/production/store-issuance/by-section", "area": "store_issuance", "feather": "layers"},
     {"title": "Top-Up Requests", "url": "/production/topups", "area": "store_issuance", "feather": "plus-square", "match": "/production/topups"},
-  ]},
-  {"key": "production", "title": "Production", "icon": "uil-processor", "children": [
-    {"title": "Production Cockpit", "url": "/module/production/dashboard", "area": "dashboard", "feather": "activity"},
-    {"title": "Head Chef Planning", "url": "/production/head-chef", "area": "head_chef", "feather": "user-check"},
   ]},
   {"key": "kitchen", "title": "Kitchen", "icon": "uil-fire", "children": [
     {"title": "All Section Summary", "url": "/production/kitchen-summary", "area": "kitchen_summary", "feather": "layers"},
@@ -57,6 +47,14 @@
   {"key": "logistics", "title": "Packing", "icon": "uil-truck", "children": [
     {"title": "Trayline / Packing", "url": "/packing", "area": "packing", "feather": "package", "match": "/packing"},
     {"title": "Dispatch / Delivery", "url": "/dispatch", "area": "dispatch", "feather": "truck", "match": "/dispatch"},
+  ]},
+  {"key": "procurement", "title": "Procurement", "icon": "uil-shop", "children": [
+    {"title": "Procurement Cockpit", "url": "/module/procurement/dashboard", "area": "procurement", "feather": "bar-chart-2"},
+    {"title": "Purchase Requisitions", "url": "/purchase-requisitions", "area": "purchase_requisition", "feather": "file-text", "match": "/purchase-requisitions"},
+    {"title": "Purchase Orders & GRN", "url": "/procurement", "area": "procurement", "feather": "shopping-bag", "match": "/procurement"},
+    {"title": "Three-Way Match", "url": "/procurement/three-way-match", "area": "procurement", "feather": "check-square", "match": "/procurement/three-way-match"},
+    {"title": "Landed Cost", "url": "/procurement/landed-cost", "area": "procurement", "feather": "truck", "match": "/procurement/landed-cost"},
+    {"title": "Supplier Ratings", "url": "/procurement/suppliers/ratings", "area": "procurement", "feather": "star", "match": "/procurement/suppliers/ratings"},
   ]},
   {"key": "finance", "title": "Finance", "icon": "uil-dollar-sign", "children": [
     {"title": "Finance Cockpit", "url": "/module/finance/dashboard", "area": "finance", "feather": "bar-chart-2"},
@@ -103,6 +101,10 @@
     {"title": "Recipe Missing Data", "url": "/recipes/missing-data", "area": "recipe_missing", "feather": "alert-triangle"},
     {"title": "Recipe Approvals", "url": "/recipes/pending", "area": "recipe_approvals", "feather": "check-square"},
     {"title": "Master Archive", "url": "/masters/archive", "area": "master_data", "feather": "archive"},
+  ]},
+  {"key": "recipes", "title": "Recipes", "icon": "uil-book-open", "children": [
+    {"title": "Recipes & Costing", "url": "/recipes", "area": "recipe_list", "feather": "book-open"},
+    {"title": "Prepare Recipe", "url": "/recipes/prepare", "area": "recipe_prepare", "feather": "edit-3"},
   ]},
   {"key": "system", "title": "System", "icon": "uil-setting", "children": [
     {"title": "Users & Access", "url": "/admin/users", "area": "users", "feather": "users", "match": "/admin/users"},

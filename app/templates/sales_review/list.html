@@ -4,7 +4,7 @@
 <div class="container-fluid py-3 isfc-page">
 
   <div class="isfc-hero mb-4 p-4 rounded-4 text-white d-flex align-items-center justify-content-between flex-wrap gap-3"
-       style="background:linear-gradient(135deg,#132947,#0c91a3)">
+       style="background:linear-gradient(135deg,#08243d,#1e5bb8)">
     <div>
       <h1 class="mb-1 fw-bold text-white"><i class="bi bi-clipboard-check me-2"></i>{{ t('Sales Requests') }}</h1>
     </div>
@@ -97,11 +97,14 @@
             {% set review = o.sales_review_status or 'Approved' %}
             <tr>
               <td>
-                <a href="/sales-requests/{{ o.order_no }}" class="fw-bold text-decoration-none">{{ o.order_no }}</a>
-                <div class="small-muted">{{ o.order_date }}{% if o.brand %} · {{ o.brand }}{% endif %}</div>
+                {# Batch 120: date + brand promoted to bold on top, request no. below. #}
+                <div class="fw-bold">{{ o.order_date }}{% if o.brand %} · {{ o.brand }}{% endif %}</div>
+                <a href="/sales-requests/{{ o.order_no }}" class="small-muted text-decoration-none">{{ o.order_no }}</a>
               </td>
               <td>
-                {{ o.customer_name or '—' }}
+                {# Batch 119: the customer is what a reviewer scans for; the
+                   order number is a reference they read afterwards. #}
+                <strong>{{ o.customer_name or '—' }}</strong>
                 {% if o.channel %}<div class="small-muted">{{ o.channel }}</div>{% endif %}
               </td>
               <td>

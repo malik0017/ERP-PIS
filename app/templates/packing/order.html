@@ -112,6 +112,16 @@
     <p>Current status: {{ row.dispatch_status }} · Next process after packing: Dispatch / Delivery</p>
   </div>
   {% set active_step = 'Packing' %}{% include 'partials/process_status_row.html' %}
+  {# Batch 121: packing step-lock. Once the order is dispatched, packing is
+     view-only. Use the order status if present, else the dispatch row status. #}
+  {% set _p_status = order.status if order else row.dispatch_status %}
+  {% set _p_locked = stage_locked(_p_status, 'packing') %}
+  {% if _p_locked %}
+  <div class="alert alert-warning d-flex align-items-center gap-2" role="alert">
+    <i class="bi bi-lock-fill"></i>
+    <div>{{ stage_lock_reason(_p_status, 'packing') }}</div>
+  </div>
+  {% endif %}
   <div class="grid">
     <div class="panel">
       <h3>Pack Order</h3>
@@ -119,22 +129,29 @@
             data-planned="{{ order.total_planned_portions if order else (row.packed_portions or 0) }}">
         <div class="form-grid">
           <div><label>Packed Portions</label><input class="form-control" name="packed_portions" id="packedInput" type="number"
-              step="0.01" value="{{ row.packed_portions or (order.total_planned_portions if order else 0) }}"></div>
+              step="0.01" value="{{ row.packed_portions or (order.total_planned_portions if order else 0) }}" {% if _p_locked %}readonly{% endif %}></div>
           <div><label>Rejected Portions <span class="text-body-tertiary" title="Auto = Planned − Packed, editable">(auto)</span></label>
             <input class="form-control" name="rejected_portions" id="rejectedInput" type="number"
-              step="0.01" value="{{ row.rejected_portions or 0 }}"></div>
+              step="0.01" value="{{ row.rejected_portions or 0 }}" {% if _p_locked %}readonly{% endif %}></div>
+          {# Batch 121: physical bag/tray count — flows through to Dispatch. #}
+          <div><label>Number of Bags</label><input class="form-control" name="packed_bags" type="number"
+              min="0" step="1" value="{{ row.packed_bags or '' }}" placeholder="e.g. 12" {% if _p_locked %}readonly{% endif %}></div>
           <div><label>Packing / Dispatch Date</label><input class="form-control" name="dispatch_date" type="date"
-              value="{{ row.dispatch_date or '' }}"></div>
-          <div><label>Packing Status</label><select class="form-select" name="packing_status">
+              value="{{ row.dispatch_date or '' }}" {% if _p_locked %}readonly{% endif %}></div>
+          <div><label>Packing Status</label><select class="form-select" name="packing_status" {% if _p_locked %}disabled{% endif %}>
               <option>Packing Pending</option>
               <option value="Packing In Progress">Packing In Progress</option>
               <option value="Packed" selected>Packed</option>
             </select></div>
           <div style="grid-column:1/-1"><label>Packing Remarks</label><input class="form-control" name="remarks"
-              value="{{ row.remarks or '' }}" placeholder="Trayline / packing notes"></div>
+              value="{{ row.remarks or '' }}" placeholder="Trayline / packing notes" {% if _p_locked %}readonly{% endif %}></div>
         </div>
+        {% if not _p_locked %}
         <button class="btn-main mt-3" type="submit"><i class="bi bi-check2-circle"></i> Save Packing and Release to
           Dispatch</button>
+        {% else %}
+        <div class="mt-3 text-body-tertiary"><i class="bi bi-eye"></i> View-only — this order has already been dispatched.</div>
+        {% endif %}
       </form>
     </div>
     <div class="panel">

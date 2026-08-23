@@ -1,7 +1,7 @@
 {% extends "layouts/base.html" %}
 {% block content %}
 <style>
-.bom-page{padding:12px 0 28px}.bom-hero{background:radial-gradient(circle at 92% 8%,rgba(255,255,255,.24),transparent 16%),linear-gradient(135deg,#102542,#315efb 55%,#0fb6cf);color:#fff;border-radius:22px;padding:22px 26px;margin-bottom:18px;box-shadow:0 14px 30px rgba(6,63,82,.18)}.bom-hero h2{margin:0;font-weight:900}.bom-hero p{margin:6px 0 0;color:#dcf8ff}.bom-card{background:#fff;border:1px solid #dce8f2;border-radius:18px;box-shadow:0 10px 26px rgba(15,30,50,.06);padding:16px;margin-bottom:16px}.bom-actions{display:flex;gap:8px;flex-wrap:wrap}.bom-actions a{border-radius:10px;padding:9px 12px;background:#eaf2f8;color:#142a46;text-decoration:none;font-weight:800}.bom-actions a.active{background:#3874ff;color:#fff}.bom-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.bom-kpi{background:#f8fbfd;border:1px solid #dce8f2;border-radius:16px;padding:14px}.bom-kpi span{display:block;color:#6f8196;font-size:12px;font-weight:700}.bom-kpi strong{font-size:24px;color:#142a46}.bom-table-wrap{overflow-x:auto}.bom-table{width:100%;border-collapse:separate;border-spacing:0;font-size:13px}.bom-table th{background:#eef5fa;color:#142a46;text-align:left;padding:11px;border-bottom:1px solid #dce8f2;white-space:nowrap}.bom-table td{padding:10px 11px;border-bottom:1px solid #edf3f8;vertical-align:top;color:#173b55}.bom-table tr:hover td{background:#f9fcff}.bom-group{font-weight:900;color:#3874ff}.bom-code{font-weight:800;color:#142a46}.bom-muted{color:#6f8196}.bom-pill{display:inline-block;border-radius:999px;background:#edf7fa;color:#0d6978;padding:4px 8px;font-size:12px;font-weight:800}.bom-right{text-align:right}.bom-toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.bom-search{border:1px solid #cbdbea;border-radius:10px;padding:9px 11px;min-width:260px}@media(max-width:900px){.bom-kpis{grid-template-columns:1fr 1fr}}@media(max-width:600px){.bom-kpis{grid-template-columns:1fr}}
+.bom-page{padding:12px 0 28px}.bom-hero{background:radial-gradient(circle at 92% 8%,rgba(255,255,255,.24),transparent 16%),linear-gradient(135deg,#08243d,#1e5bb8);color:#fff;border-radius:22px;padding:22px 26px;margin-bottom:18px;box-shadow:0 14px 30px rgba(6,63,82,.18)}.bom-hero h2{margin:0;font-weight:900}.bom-hero p{margin:6px 0 0;color:#dcf8ff}.bom-card{background:#fff;border:1px solid #dce8f2;border-radius:18px;box-shadow:0 10px 26px rgba(15,30,50,.06);padding:16px;margin-bottom:16px}.bom-actions{display:flex;gap:8px;flex-wrap:wrap}.bom-actions a{border-radius:10px;padding:9px 12px;background:#eaf2f8;color:#142a46;text-decoration:none;font-weight:800}.bom-actions a.active{background:#3874ff;color:#fff}.bom-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.bom-kpi{background:#f8fbfd;border:1px solid #dce8f2;border-radius:16px;padding:14px}.bom-kpi span{display:block;color:#6f8196;font-size:12px;font-weight:700}.bom-kpi strong{font-size:24px;color:#142a46}.bom-table-wrap{overflow-x:auto}.bom-table{width:100%;border-collapse:separate;border-spacing:0;font-size:13px}.bom-table th{background:#eef5fa;color:#142a46;text-align:left;padding:11px;border-bottom:1px solid #dce8f2;white-space:nowrap}.bom-table td{padding:10px 11px;border-bottom:1px solid #edf3f8;vertical-align:top;color:#173b55}.bom-table tr:hover td{background:#f9fcff}.bom-group{font-weight:900;color:#3874ff}.bom-code{font-weight:800;color:#142a46}.bom-muted{color:#6f8196}.bom-pill{display:inline-block;border-radius:999px;background:#edf7fa;color:#0d6978;padding:4px 8px;font-size:12px;font-weight:800}.bom-right{text-align:right}.bom-toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.bom-search{border:1px solid #cbdbea;border-radius:10px;padding:9px 11px;min-width:260px}@media(max-width:900px){.bom-kpis{grid-template-columns:1fr 1fr}}@media(max-width:600px){.bom-kpis{grid-template-columns:1fr}}
 </style>
 <div class="bom-page">
   <div class="bom-hero">
@@ -21,7 +21,8 @@
     <div class="bom-actions">
       <a href="/production/orders/{{ order_no }}">Back to Order</a>
       <a href="/production/orders/{{ order_no }}/bom-report?group_by={{ group_by }}&export=csv">Download CSV</a>
-      <a href="/production/orders/{{ order_no }}/bom-report?group_by={{ group_by }}&export=json" target="_blank">JSON Export</a>
+      {# Batch 120: JSON Export removed; PDF download added in its place. #}
+      <a href="javascript:void(0)" id="bomPdfBtn" class="active">Download PDF</a>
     </div>
   </div>
 
@@ -83,5 +84,50 @@ document.getElementById('bomSearch')?.addEventListener('input', function(){
     tr.style.display = tr.innerText.toLowerCase().includes(q) ? '' : 'none';
   });
 });
+</script>
+{# Batch 120: BOM PDF export. Reuses jsPDF (lazy-loaded) and includes the
+   order + customer name in the document header, as requested. #}
+<script>
+(function () {
+  var btn = document.getElementById('bomPdfBtn');
+  if (!btn) return;
+  var meta = {
+    order: {{ order_no|tojson }},
+    customer: {{ (order.customer_name or '')|tojson }},
+    brand: {{ (order.brand or '')|tojson }}
+  };
+  function loadScript(src){return new Promise(function(res,rej){var s=document.createElement('script');s.src=src;s.onload=res;s.onerror=function(){rej(new Error(src));};document.head.appendChild(s);});}
+  var ready=null;
+  function ensure(){if(ready)return ready;if(window.jspdf&&window.jspdf.jsPDF){ready=Promise.resolve();return ready;}ready=loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js').then(function(){return loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js');});return ready;}
+  btn.addEventListener('click', function () {
+    var old = btn.textContent; btn.textContent = 'Preparing…';
+    ensure().then(function () {
+      var jsPDF = window.jspdf.jsPDF;
+      var table = document.getElementById('bomTable');
+      var head = [], body = [];
+      table.querySelectorAll('thead th').forEach(function(){});
+      var ths = []; table.querySelectorAll('thead th').forEach(function(th){ths.push((th.innerText||'').trim());});
+      head = [ths];
+      table.querySelectorAll('tbody tr').forEach(function(tr){
+        if (tr.style.display === 'none') return;
+        var row = []; tr.querySelectorAll('td').forEach(function(td){row.push((td.innerText||'').trim().replace(/\s+/g,' '));});
+        if (row.length) body.push(row);
+      });
+      var doc = new jsPDF({orientation:'landscape',unit:'pt',format:'a4'});
+      doc.setFontSize(14); doc.text('Customer-wise BOM', 40, 34);
+      doc.setFontSize(9); doc.setTextColor(90);
+      doc.text('Order: ' + meta.order + '   Customer: ' + (meta.customer || '-') + '   Brand: ' + (meta.brand || '-'), 40, 50);
+      doc.setTextColor(140); doc.setFontSize(8);
+      doc.text(new Date().toLocaleString() + '  ·  ISFC ERP', 40, 62);
+      doc.autoTable({head:head, body:body, startY:72,
+        styles:{fontSize:6.5,cellPadding:2.5,overflow:'linebreak'},
+        headStyles:{fillColor:[71,85,105],textColor:255,fontSize:6.5},
+        alternateRowStyles:{fillColor:[245,248,252]},
+        margin:{left:40,right:40}});
+      doc.save('BOM_' + meta.order + '.pdf');
+    }).catch(function(e){console.error(e);alert('Could not load the PDF library.');})
+      .finally(function(){btn.textContent = old;});
+  });
+})();
 </script>
 {% endblock %}

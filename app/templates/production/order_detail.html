@@ -1,12 +1,12 @@
 {% extends "layouts/base.html" %}
 {% block content %}
 {# Batch 90 fix: this was hardcoded to 'BOM' unconditionally, so the top
-   step row always highlighted "3 BOM" regardless of the order's actual
-   stage — confirmed exactly reproducing the screenshots (an order still
-   at "Submitted"/Head Chef review showing BOM as active). Computed now
-   from the same signals the second, correctly-working stage tracker
-   further down this page already uses (bom/issuance/txs existence +
-   order.status), instead of a fixed string. #}
+step row always highlighted "3 BOM" regardless of the order's actual
+stage — confirmed exactly reproducing the screenshots (an order still
+at "Submitted"/Head Chef review showing BOM as active). Computed now
+from the same signals the second, correctly-working stage tracker
+further down this page already uses (bom/issuance/txs existence +
+order.status), instead of a fixed string. #}
 {% set _ostatus = (order.status or '')|trim|lower %}
 {% if flow_status.packing_count %}{% set active_step = 'Packing' %}
 {% elif _ostatus in ['out for delivery','dispatched','delivered'] %}{% set active_step = 'Dispatch' %}
@@ -21,7 +21,7 @@
 {% include 'partials/process_status_row.html' %}
 <style>
   .od-hero {
-    background: linear-gradient(135deg, #132947, #0d8da0);
+    background: linear-gradient(135deg, #08243d, #1e5bb8);
     border-radius: 22px;
     color: #fff;
     padding: 22px 26px;
@@ -80,6 +80,25 @@
   .od-soft {
     background: #edf5fb;
     color: #142a46
+  }
+
+  /* Batch 121: uniform document-action buttons. All three share one neutral
+     base; the step that is COMPLETE flips to an active green "done" state. */
+  .od-step {
+    background: #eef2f7;
+    color: #1f2d45;
+    border: 1px solid #d7e0ec;
+  }
+  .od-step:hover { background: #e2e9f2; }
+  .od-step.od-done {
+    background: #16a34a;
+    color: #fff;
+    border-color: #16a34a;
+  }
+  .od-step.od-current {
+    background: #315efb;
+    color: #fff;
+    border-color: #315efb;
   }
 
   .od-disabled {
@@ -152,22 +171,25 @@
     border-radius: 14px;
     padding: 12px;
     color: #173b55;
-    font-weight: 800
+    font-weight: 800;
   }
 </style>
 <div class="container-fluid py-3">
   <div class="od-hero mb-3">
     <div class="d-flex justify-content-between flex-wrap gap-2">
       <div>
-        <h2 class="mb-1">Production Order Document: {{ order.order_no }}</h2>
-        <p class="mb-0 opacity-75">{{ order.customer_name }} · {{ order.brand or '-' }} · {{ order.channel or '-' }} ·
+        <h2 class="mb-1">Production Order Document: {{ order.customer_name }} </h2>
+        <p class="mb-0 opacity-75"> {{ order.order_no }} · {{ order.brand or '-' }} · {{ order.channel or '-' }} ·
           Delivery: {{ order.required_delivery_date or '-' }} {{ order.required_delivery_time or '' }}</p>
       </div><a href="/production/orders" class="od-btn od-soft">Back to Orders</a>
     </div>
   </div>
-  {% if error %}<div class="alert alert-warning">{{ error }}</div>{% endif %}
-  <div class="od-card">
-    <div class="doc-step"><span class="done">1 Order Submitted</span><span
+  {% if error %}
+  <div class="alert alert-warning">{{ error }}</div>
+  {% endif %}
+  <!-- <idv class="od-card">
+    <div class="doc-step"><span class="done">1 Order Submitted</span>
+      <span
         class="{% if order.status in ['Head Chef Approved','BOM Generated','Store Pending','In Production','Packing Pending','Packed','Out for Delivery','Dispatched'] %}done{% elif order.status == 'Submitted' %}now{% endif %}">2
         Head Chef Approval</span><span
         class="{% if bom %}done{% elif order.status == 'Head Chef Approved' %}now{% endif %}">3 BOM</span><span
@@ -177,7 +199,7 @@
         class="{% if flow_status.packing_count %}done{% endif %}">7 Packing</span><span
         class="{% if order.status in ['Out for Delivery','Dispatched','Delivered'] %}done{% endif %}">8 Dispatch</span>
     </div>
-  </div>
+  </idv> -->
   <div class="row g-3 mb-3">
     <div class="col-md-3">
       <div class="od-card od-kpi"><span>Total Portions Ordered</span><b>{{ '%.2f'|format(order.total_planned_portions or
@@ -196,52 +218,62 @@
           }}</b></div>
     </div>
   </div>
-  {# ==================================================================
-     STAGE 1 - HEAD CHEF SCHEDULE APPROVAL
-     Shown ONLY while the order is still 'Submitted'. The BOM / Store
-     actions live on Stage 2 and appear after approval, so the Head Chef
-     screen and the BOM screen are now two separate stages.
-     ================================================================== #}
-  {% set is_approved = order.status != 'Submitted' %}
-  {% set sales_pending = order.sales_review_status == 'Pending' %}
-  {% set sales_rejected = order.sales_review_status == 'Rejected' %}
 
   <div class="od-card">
     <div class="flow-msg mb-3"><strong>Current status:</strong> {{ order.status }} </div>
 
     {% if sales_pending or sales_rejected %}
-    {# Batch 88: the Sale Requisition approval screen — a check on the
-       raw order itself, before it's ever visible to the Head Chef.
-       Distinct from the Head Chef's own scheduling approval further
-       down, which stays hidden until this passes. #}
     <div class="{{ 'sales-review-card rejected' if sales_rejected else 'sales-review-card' }} mb-3">
       <style>
         .sales-review-card {
-          background: #eef6f7; border: 1px solid #cfe4e6; border-left: 4px solid #0c91a3;
-          border-radius: 12px; padding: 18px 22px; color: #16333a;
+          background: #eef6f7;
+          border: 1px solid #cfe4e6;
+          border-left: 4px solid #475569;
+          border-radius: 12px;
+          padding: 18px 22px;
+          color: #16333a;
         }
-        .sales-review-card.rejected { background: #fbeeee; border-color: #f0d3d3; border-left-color: #c0392b; color: #4a1f1f; }
-        [data-bs-theme="dark"] .sales-review-card { background: #12242a; border-color: #1e3a3f; color: #cfe6e9; }
-        [data-bs-theme="dark"] .sales-review-card.rejected { background: #2a1616; border-color: #4a2323; color: #e9cfcf; }
+
+        .sales-review-card.rejected {
+          background: #fbeeee;
+          border-color: #f0d3d3;
+          border-left-color: #c0392b;
+          color: #4a1f1f;
+        }
+
+        [data-bs-theme="dark"] .sales-review-card {
+          background: #12242a;
+          border-color: #1e3a3f;
+          color: #cfe6e9;
+        }
+
+        [data-bs-theme="dark"] .sales-review-card.rejected {
+          background: #2a1616;
+          border-color: #4a2323;
+          color: #e9cfcf;
+        }
       </style>
       <div class="d-flex align-items-center gap-2 mb-2">
         <i class="bi {{ 'bi-x-circle-fill' if sales_rejected else 'bi-clipboard-check' }} fs-5"></i>
         <strong>
-          {% if sales_rejected %}This order was rejected at sales review{% else %}Sales review required before this order goes to the Head Chef{% endif %}
+          {% if sales_rejected %}This order was rejected at sales review{% else %}Sales review required before this
+          order goes to the Head Chef{% endif %}
         </strong>
       </div>
       {% if sales_rejected %}
       <p class="mb-0 small">Rejected by {{ order.sales_reviewed_by or 'a reviewer' }} on {{ order.sales_reviewed_at }}.
         {% if order.sales_review_reason %}<br><strong>Reason:</strong> {{ order.sales_review_reason }}{% endif %}</p>
       {% else %}
-      <p class="small text-body-tertiary mb-3">Confirm this order should actually proceed — customer, quantities, delivery date — before it commits any kitchen planning or material.</p>
+      <p class="small text-body-tertiary mb-3">Confirm this order should actually proceed — customer, quantities,
+        delivery date — before it commits any kitchen planning or material.</p>
       <div class="d-flex gap-2">
         <form method="post" action="/production/orders/{{ order.order_no }}/sales-approve"
-              data-confirm="Approve this order for Head Chef planning?" data-confirm-title="Approve Order"
-              data-confirm-ok="Approve" data-confirm-variant="success">
+          data-confirm="Approve this order for Head Chef planning?" data-confirm-title="Approve Order"
+          data-confirm-ok="Approve" data-confirm-variant="success">
           <button class="btn btn-sm btn-success fw-bold"><i class="bi bi-check2-circle me-1"></i>Approve Order</button>
         </form>
-        <button type="button" class="btn btn-sm btn-outline-danger fw-bold" data-bs-toggle="modal" data-bs-target="#salesRejectModal">
+        <button type="button" class="btn btn-sm btn-outline-danger fw-bold" data-bs-toggle="modal"
+          data-bs-target="#salesRejectModal">
           <i class="bi bi-x-circle me-1"></i>Reject
         </button>
       </div>
@@ -250,51 +282,42 @@
     {% endif %}
 
     {# ==================================================================
-       Batch 95: the full shortage TABLE was removed from this screen.
+    Batch 95: the full shortage TABLE was removed from this screen.
 
-       Batch 80 put it here because this was the only place an approver
-       could see it. Batch 94 changed that: the Sales Requests screen
-       (/sales-requests) now shows full ingredient coverage — Available /
-       Short / Empty for every line — as part of the approve/reject
-       decision, which is where that decision is actually made now.
+    Batch 80 put it here because this was the only place an approver
+    could see it. Batch 94 changed that: the Sales Requests screen
+    (/sales-requests) now shows full ingredient coverage — Available /
+    Short / Empty for every line — as part of the approve/reject
+    decision, which is where that decision is actually made now.
 
-       Leaving the table here duplicated ~15 rows of the same data on a
-       screen whose job is the Head Chef's COOKING SCHEDULE, pushing the
-       actual schedule form below the fold. The reviewer has already seen
-       the shortage before this order ever reached Head Chef.
+    Leaving the table here duplicated ~15 rows of the same data on a
+    screen whose job is the Head Chef's COOKING SCHEDULE, pushing the
+    actual schedule form below the fold. The reviewer has already seen
+    the shortage before this order ever reached Head Chef.
 
-       What stays: a one-line summary plus the requisition action, so a
-       Head Chef who spots a problem at scheduling time can still raise a
-       requisition without navigating away. The detail lives one click
-       away on the sales request.
-       ================================================================== #}
-    {% if shortages %}
-    <div class="alert alert-warning d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3 py-2">
-      <div class="d-flex align-items-center gap-2">
-        <i class="bi bi-exclamation-triangle-fill"></i>
-        <span><strong>{{ shortages|length }}</strong> {{ t('ingredient(s) short for this order.') }}
-          <a href="/sales-requests/{{ order.order_no }}" class="alert-link">{{ t('View full stock check') }}</a></span>
-      </div>
-      {% if can_action('production_orders', 'edit') %}
-      <form method="post" action="/production/orders/{{ order.order_no }}/generate-shortage-po"
-            data-confirm="{{ t('Raise a purchase requisition for the') }} {{ shortages|length }} {{ t('short ingredient(s)? This sends a request to Procurement for review — it does not order anything.') }}"
-            data-confirm-title="{{ t('Raise Purchase Requisition') }}" data-confirm-ok="{{ t('Raise Requisition') }}"
-            data-confirm-variant="warning" class="m-0">
-        <button class="btn btn-sm btn-warning fw-bold">
-          <i class="bi bi-file-earmark-plus me-1"></i>{{ t('Raise Requisition') }}</button>
-      </form>
-      {% endif %}
-    </div>
-    {% endif %}
+    What stays: a one-line summary plus the requisition action, so a
+    Head Chef who spots a problem at scheduling time can still raise a
+    requisition without navigating away. The detail lives one click
+    away on the sales request.
+    ================================================================== #}
+    {# Batch 119: the shortage banner is removed from the Head Chef screen.
+
+       The stock check belongs to Sales Review, which runs it against
+       QC-cleared stock and raises the purchase requisition from there.
+       Repeating it here showed the Head Chef a number they cannot act on,
+       plus a "Raise Requisition" button duplicating the one Procurement
+       already owns — and two people raising the same requisition for the
+       same shortage is worse than neither doing it. #}
 
     {% if not sales_pending and not sales_rejected %}
     {% if not is_approved %}
     <h5>Head Chef Cooking & Material Schedule Approval</h5>
-    <div class="flow-msg mb-3"><strong>Order details:</strong> {{ order.customer_name }} · {{ order.brand or '-' }} · {{ order.channel or '-' }} · Customer Delivery: {{ order.required_delivery_date or '-' }} {{ order.required_delivery_time or '' }}</div>
-    <p class="text-muted">Customer requested delivery date/time remains fixed. Head Chef only confirms cooking and material receiving schedule before BOM generation. <strong>BOM and Store actions unlock after approval.</strong></p>
+    <div class="flow-msg mb-3"><strong>Order details:</strong> {{ order.customer_name }} · {{ order.brand or '-' }} · {{
+      order.channel or '-' }} · Customer Delivery Date: {{ order.required_delivery_date or '-' }} {{
+      order.required_delivery_time or '' }}</div>
     <form method="post" action="/production/orders/{{ order.order_no }}/approve-plan" class="row g-2 align-items-end"
-          data-confirm="Approve the cooking schedule and move this order to BOM stage?"
-          data-confirm-title="Approve Cooking Schedule" data-confirm-ok="Approve" data-confirm-variant="success">
+      data-confirm="Approve the cooking schedule and move this order to BOM stage?"
+      data-confirm-title="Approve Cooking Schedule" data-confirm-ok="Approve" data-confirm-variant="success">
       <div class="col-md-3"><label class="od-label">Cooking Date</label><input class="od-input" type="date"
           name="cooking_date" value="{{ order.cooking_date or '' }}" required></div>
       <div class="col-md-3"><label class="od-label">Cooking Time</label><input class="od-input" type="time"
@@ -307,26 +330,37 @@
     </form>
     {% else %}
     {# ================================================================
-       STAGE 2 - BOM GENERATION & STORE RELEASE (after approval)
-       Head Chef generates the BOM here; once released, the store keeper
-       continues on the Store Issuance screen.
-       ================================================================ #}
+    STAGE 2 - BOM GENERATION & STORE RELEASE (after approval)
+    Head Chef generates the BOM here; once released, the store keeper
+    continues on the Store Issuance screen.
+    ================================================================ #}
     <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
       <h5 class="mb-0">BOM Generation & Store Release</h5>
-      <span class="pis-chip" style="background:#dff8e9;color:#087b2e;border-radius:999px;padding:6px 12px;font-weight:800;font-size:12px">
-        Schedule approved · Cooking: {{ order.cooking_date or '-' }} {{ order.cooking_time or '' }} · Material: {{ order.material_receiving_date or '-' }} {{ order.material_receiving_time or '' }}
+      <span class="pis-chip"
+        style="background:#dff8e9;color:#087b2e;border-radius:999px;padding:6px 12px;font-weight:800;font-size:12px">
+        Schedule approved · Cooking: {{ order.cooking_date or '-' }} {{ order.cooking_time or '' }} · Material: {{
+        order.material_receiving_date or '-' }} {{ order.material_receiving_time or '' }}
       </span>
     </div>
-    <div class="d-flex gap-2 flex-wrap align-items-center mb-2"><strong>Document Actions:</strong>
+    {# Batch 121: "Document Actions" promoted to a heading; the three step
+       buttons now share one uniform style. The COMPLETED step shows green
+       (od-done); the next actionable step shows blue (od-current). #}
+    {% set _bom_done = bom %}
+    {% set _released = issuance %}
+    <h6 class="fw-bold text-uppercase text-body-tertiary mb-2" style="letter-spacing:.05em">Document Actions</h6>
+    <div class="d-flex gap-2 flex-wrap align-items-center mb-2">
       <form method="post" action="/production/orders/{{ order.order_no }}/generate-bom" style="display:inline"><button
-          class="od-btn od-warning" {% if order.status not in ['Head Chef Approved','BOM Generated','Store Pending','In
-          Production'] %}disabled{% endif %}>2. Generate BOM</button></form>
+          class="od-btn od-step {% if _bom_done %}od-done{% elif not _bom_done %}od-current{% endif %}"
+          {% if order.status not in ['Head Chef Approved', 'BOM Generated', 'Store Pending', 'In Production'] %}disabled{% endif %}>
+          {% if _bom_done %}<i class="bi bi-check2"></i> {% endif %}2. Generate BOM</button></form>
       <form method="post" action="/production/orders/{{ order.order_no }}/release-store" style="display:inline"
-            data-confirm="Release this BOM to the store? The store keeper will see it on the Store Issuance screen."
-            data-confirm-title="Release BOM to Store" data-confirm-ok="Release" data-confirm-variant="primary"><button
-          class="od-btn od-primary" {% if not bom or issuance %}disabled{% endif %}>3. Release BOM to Store</button>
-      </form><a class="od-btn od-soft" href="/production/orders/{{ order.order_no }}/store-issuance">4. Open Store
-        Issuance</a>
+        data-confirm="Release this BOM to the store? The store keeper will see it on the Store Issuance screen."
+        data-confirm-title="Release BOM to Store" data-confirm-ok="Release" data-confirm-variant="primary"><button
+          class="od-btn od-step {% if _released %}od-done{% elif _bom_done and not _released %}od-current{% endif %}"
+          {% if not bom or issuance %}disabled{% endif %}>
+          {% if _released %}<i class="bi bi-check2"></i> {% endif %}3. Release BOM to Store</button>
+      </form><a class="od-btn od-step {% if _released %}od-current{% endif %}"
+        href="/production/orders/{{ order.order_no }}/store-issuance">4. Open Store Issuance</a>
     </div>
     {% endif %}
     {% endif %}
@@ -348,7 +382,9 @@
   <div class="row g-3">
     <div class="col-lg-12">
       <div class="od-card table-responsive">
-        <div class="d-flex justify-content-between flex-wrap gap-2 align-items-start"><h5>Order Lines</h5></div>
+        <div class="d-flex justify-content-between flex-wrap gap-2 align-items-start">
+          <h5>Order Lines</h5>
+        </div>
         <table class="table table-sm table-bordered od-table">
           <tr>
             <th>#</th>
@@ -361,7 +397,8 @@
             <td>{{ l.line_no }}</td>
             <td>{{ l.recipe_no }} - {{ l.recipe_name }}</td>
             <td>{{ l.required_portions }}</td>
-            {% set rm = recipe_meta.get(l.recipe_no) if recipe_meta is defined else None %}<td>{{ rm.standard_portions if rm else '1' }}</td>
+            {% set rm = recipe_meta.get(l.recipe_no) if recipe_meta is defined else None %}<td>{{ rm.standard_portions
+              if rm else '1' }}</td>
             <td>{{ '%.2f'|format(l.planned_batches or 0) }}</td>
             <td>{{ '%.2f'|format(l.selling_price_per_portion or 0) }}</td>
           </tr>{% endfor %}
@@ -401,11 +438,14 @@
 <div class="modal fade" id="salesRejectModal" tabindex="-1">
   <div class="modal-dialog">
     <form method="post" action="/production/orders/{{ order.order_no }}/sales-reject" class="modal-content">
-      <div class="modal-header"><h5 class="modal-title">Reject Order</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-header">
+        <h5 class="modal-title">Reject Order</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
       <div class="modal-body">
         <label class="form-label fw-bold">Reason</label>
-        <textarea class="form-control" name="reason" rows="3" placeholder="Optional but helpful for whoever submitted this order"></textarea>
+        <textarea class="form-control" name="reason" rows="3"
+          placeholder="Optional but helpful for whoever submitted this order"></textarea>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>

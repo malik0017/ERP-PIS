@@ -4,7 +4,7 @@
 
 <style>
   .pis-hero {
-    background: linear-gradient(135deg, #0f5061, #0c91a3);
+    background: linear-gradient(135deg,#08243d,#1e5bb8);
     border-radius: 22px;
     color: #fff;
     padding: 28px 32px;
@@ -219,7 +219,7 @@
           <tr class="order-card">
             <td><strong>{{ o.order_no }}</strong><br><span class="text-muted small">{{ o.total_lines }} lines</span>
             </td>
-            <td>{{ o.customer_name or '-' }}</td>
+            <td><strong>{{ o.customer_name or '-' }}</strong></td>
             <td>{{ o.brand or '-' }}</td>
             <td>{{ o.delivery_date or '-' }}{% if o.delivery_time %} {{ o.delivery_time }}{% endif %}</td>
             <td style="min-width:220px">

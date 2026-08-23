@@ -106,7 +106,12 @@ active_step|lower|trim %}
     ('Kitchen','/production/section/Bakery-Pastry','5'), ('QC','/qc','6'),
     ('Packing','/packing','7'), ('Dispatch','/dispatch','8') ] %} {% for name,
     url, no in steps %}
-    <a href="{{ url }}" class="{% if _as == name|lower %}active{% endif %}"><small>{{ no }}</small> {{ name }}</a>
+    {# Batch 120: the multiline tuple above embeds a newline+spaces inside some
+       names (e.g. 'Head\n    Chef'), so name|lower never equalled 'head chef'
+       and the active pill silently failed on the Head Chef / Order stages.
+       Normalise both sides to single-spaced lowercase before comparing. #}
+    {% set _nm = name|lower|replace('\n',' ')|trim %}{% set _nm = _nm.split()|join(' ') %}
+    <a href="{{ url }}" class="{% if _as == _nm %}active{% endif %}"><small>{{ no }}</small> {{ name.split()|join(' ') }}</a>
     {% endfor %}
   </div>
   {% if _as == 'kitchen' or show_kitchen_subflow|default(false) %}

@@ -266,7 +266,21 @@ def qc_submit(
             url=f"/qc/orders/{order_no}",
             category="qc_" + status.lower(),
         )
-    return RedirectResponse("/qc", status_code=HTTP_303_SEE_OTHER)
+    # Batch 121: professional, decision-aware success toast on redirect.
+    if status == "Passed":
+        _msg = f"QC {qc.qc_no} passed (score {overall_score}/10). Order {order_no} released to Packing."
+        _title = "QC Passed"
+    elif status == "Rejected":
+        _msg = f"QC {qc.qc_no} rejected. Order {order_no} is blocked pending correction."
+        _title = "QC Rejected"
+    else:
+        _msg = f"QC {qc.qc_no} placed on hold. Order {order_no} is blocked pending review."
+        _title = "QC Hold"
+    from urllib.parse import quote as _q
+    return RedirectResponse(
+        f"/qc?toast=success&title={_q(_title)}&msg={_q(_msg)}",
+        status_code=HTTP_303_SEE_OTHER,
+    )
 
 def _ensure_incoming_qc_schema(db: Session) -> None:
     try:

@@ -1,7 +1,7 @@
 {% extends "layouts/base.html" %}
 {% block content %}
 <style>
-.si-hero{background:linear-gradient(135deg,#132947,#0c91a3);border-radius:22px;color:#fff;padding:24px 28px}
+.si-hero{background:linear-gradient(135deg,#08243d,#1e5bb8);border-radius:22px;color:#fff;padding:24px 28px}
 .si-card{background:#fff;border:1px solid #dce8f2;border-radius:18px;box-shadow:0 12px 28px rgba(15,30,50,.06)}
 .si-sec-head{background:#edf5fb;border-radius:14px;padding:14px 18px}
 .si-tag{display:inline-block;border-radius:999px;padding:4px 12px;font-weight:800;font-size:12px}
@@ -36,8 +36,10 @@
         <i class="bi bi-chevron-down"></i>
       </button>
       <div class="d-flex gap-2 flex-wrap">
-        <a class="btn btn-outline-secondary btn-sm fw-bold" href="/production/store-issuance/by-section/export?section={{ filters.section }}&show={{ filters.show }}&order={{ filters.order }}&customer={{ filters.customer }}&date_from={{ filters.date_from }}&date_to={{ filters.date_to }}">
+        <a class="btn btn-outline-secondary btn-sm fw-bold" href="/production/store-issuance/by-section/export?format=csv&section={{ filters.section }}&show={{ filters.show }}&order={{ filters.order }}&customer={{ filters.customer }}&date_from={{ filters.date_from }}&date_to={{ filters.date_to }}">
           <i class="bi bi-download"></i> Download CSV (current filters)</a>
+        <a class="btn btn-outline-danger btn-sm fw-bold" href="/production/store-issuance/by-section/export?format=pdf&section={{ filters.section }}&show={{ filters.show }}&order={{ filters.order }}&customer={{ filters.customer }}&date_from={{ filters.date_from }}&date_to={{ filters.date_to }}">
+          <i class="bi bi-filetype-pdf"></i> Download PDF (current filters)</a>
       </div>
     </div>
     <div class="si-filter-body {% if filters_active %}show{% endif %}" id="siFilterBody">
@@ -81,8 +83,10 @@
       <div class="d-flex gap-2 flex-wrap align-items-center">
         <span class="si-tag si-pending">{{ g.pending }} pending line(s)</span>
         <span class="si-tag si-done">Required {{ '%.2f'|format(g.total_required) }} · Issued {{ '%.2f'|format(g.total_issued) }}</span>
-        <a class="btn btn-outline-secondary btn-sm" href="/production/store-issuance/by-section/export?section={{ g.section }}&show={{ filters.show }}" title="Download this section only">
+        <a class="btn btn-outline-secondary btn-sm" href="/production/store-issuance/by-section/export?format=csv&section={{ g.section }}&show={{ filters.show }}" title="Download this section only">
           <i class="bi bi-download"></i> Section CSV</a>
+        <a class="btn btn-outline-danger btn-sm" href="/production/store-issuance/by-section/export?format=pdf&section={{ g.section }}&show={{ filters.show }}" title="Download this section as PDF">
+          <i class="bi bi-filetype-pdf"></i> Section PDF</a>
       </div>
     </div>
 
@@ -111,7 +115,7 @@
         <tr class="{% if l.finalized %}table-success{% endif %}">
           <td><strong>{{ l.delivery_date or '—' }}</strong><br><span class="text-secondary small">{{ l.delivery_time }}</span></td>
           <td>{{ l.order_no }}</td>
-          <td>{{ l.customer_name }}</td>
+          <td><strong>{{ l.customer_name }}</strong></td>
           <td>{{ l.recipe_no }}<br><span class="text-secondary small">{{ l.recipe_name }}</span></td>
           <td><strong>{{ l.ingredient_code }}</strong><br>{{ l.ingredient_name }}</td>
           <td class="text-end">{{ '%.3f'|format(l.required_qty or 0) }} {{ l.uom }}</td>

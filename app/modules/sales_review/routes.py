@@ -245,7 +245,7 @@ async def approve(request: Request, order_no: str, db: Session = Depends(get_db)
     target = f"/sales-requests/{nxt}" if nxt else "/sales-requests"
     return RedirectResponse(
         f"{target}?toast=success&title=Approved"
-        f"&msg={order_no} approved — now visible to Head Chef Planning."
+        f"&msg={order_no} approved"
         + ("" if nxt else " No more requests pending."),
         status_code=303)
 

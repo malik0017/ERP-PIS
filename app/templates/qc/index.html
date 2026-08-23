@@ -201,7 +201,7 @@
         <tbody>
           {% for o in pending_orders %}<tr>
             <td><strong>{{ o.order_no }}</strong></td>
-            <td>{{ o.customer_name }}</td>
+            <td><strong>{{ o.customer_name }}</strong></td>
             <td>{{ o.brand }}</td>
             <td>{{ o.delivery_date }} {{ o.delivery_time or '' }}</td>
             <td>{{ o.total_lines }}</td>

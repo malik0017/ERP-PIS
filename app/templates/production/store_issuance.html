@@ -3,7 +3,7 @@
 {% set active_step = 'Store' %}{% include 'partials/process_status_row.html' %}
 <style>
   .si-hero {
-    background: linear-gradient(135deg, #132947, #0d8da0);
+    background: linear-gradient(135deg, #08243d, #1e5bb8);
     border-radius: 22px;
     color: #fff;
     padding: 24px 28px;
@@ -159,8 +159,8 @@
         class="filter-chip" href="/production/store-issuance?status=In Production">In Production</a><a
         class="filter-chip" href="/production/store-issuance">All</a></div>
     <form method="get" class="isfc-filter-line mb-3">
-      <div><label class="si-label">Cooking From</label><input type="date" class="si-input" name="date_from" value="{{ filters.date_from or '' }}"></div>
-      <div><label class="si-label">Cooking To</label><input type="date" class="si-input" name="date_to" value="{{ filters.date_to or '' }}"></div>
+      <div><label class="si-label">From</label><input type="date" class="si-input" name="date_from" value="{{ filters.date_from or '' }}"></div>
+      <div><label class="si-label">To</label><input type="date" class="si-input" name="date_to" value="{{ filters.date_to or '' }}"></div>
       <div><label class="si-label">Order Status</label><select class="si-input" name="status">
           <option value="">All</option>{% for st in ['BOM Generated','Store Pending','In Production','Packing Pending','Packed'] %}<option value="{{ st }}" {% if filters.status==st %}selected{% endif %}>{{ st }}</option>{% endfor %}
         </select></div>
@@ -185,7 +185,7 @@
         </thead>
         <tbody>{% for o in orders %}{% set lm = line_map.get(o.order_no) if line_map is defined else None %}<tr>
             <td><strong>{{ o.order_no }}</strong></td>
-            <td>{{ o.customer_name }}</td>
+            <td><strong>{{ o.customer_name }}</strong></td>
             <td>{{ o.brand or '-' }}</td>
             <td>{{ o.cooking_date or o.required_delivery_date or '-' }} {{ o.cooking_time or o.required_delivery_time or
               '' }}</td>
@@ -213,6 +213,14 @@
           later from section workstations.</div>
       </div><a href="/production/store-issuance" class="si-btn si-soft">Back to Store Queue</a>
     </div>
+    {# Batch 121: step-lock banner. When the order has moved past Store, this
+       screen is view-only — the rows still render for review/report extract. #}
+    {% if order and stage_locked(order.status, 'store') %}
+    <div class="alert alert-warning d-flex align-items-center gap-2 mb-3" role="alert">
+      <i class="bi bi-lock-fill"></i>
+      <div>{{ stage_lock_reason(order.status, 'store') }}</div>
+    </div>
+    {% endif %}
     <div class="table-responsive">
       <table class="table table-sm table-bordered align-middle si-table">
         <thead>
@@ -242,10 +250,12 @@
             <td><input form="issue-form-{{ l.id }}" class="form-control form-control-sm" name="issued_uom"
                 value="{{ l.issued_uom or l.standard_uom }}" {% if l.finalized %}readonly{% endif %}></td>
             <td><select form="issue-form-{{ l.id }}" class="form-select form-select-sm" name="issue_to_section" {% if l.finalized %}disabled{% endif %}>{% for sec in
-                ['Thawing','Cutting','Butchery','Marination','Hot Kitchen','Cold Kitchen','Bakery/Pastry','QC','Packing'] %}<option {% if l.issue_to_section==sec %}selected{% endif %}>{{ sec }}</option>{% endfor %}</select></td>
+                ['Cutting','Butchery','Marination','Hot Kitchen','Cold Kitchen','Bakery/Pastry'] %}<option {% if l.issue_to_section==sec %}selected{% endif %}>{{ sec }}</option>{% endfor %}</select></td>
             <td><span class="si-status {% if l.finalized %}si-issued{% elif l.issuance_status == 'Issued' %}si-issued{% elif l.issuance_status == 'Short Issued' %}si-short{% else %}si-pending{% endif %}">{% if l.finalized %}Locked / Issued{% else %}{{ l.issuance_status }}{% endif %}</span></td>
             <td>
-              {% if l.finalized %}
+              {% if order and stage_locked(order.status, 'store') %}
+                <a class="btn btn-sm btn-phoenix-secondary" href="/production/orders/{{ order.order_no }}/store-issuance/history" title="This step is locked — view/report only"><i class="bi bi-eye"></i> View</a>
+              {% elif l.finalized %}
                 <form method="post" action="/production/store-issuance/{{ l.id }}/reissue" class="d-inline"><button class="btn btn-sm btn-warning">Re-Issue/Edit</button></form>
               {% else %}
                 <form id="issue-form-{{ l.id }}" method="post" action="/production/store-issuance/{{ l.id }}/update">

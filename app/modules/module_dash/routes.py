@@ -336,7 +336,7 @@ MODULE_DASHBOARDS: dict[str, dict] = {
     },
     "production": {
         "area": "dashboard",
-        "title": "Production Intelligence Dashboard",
+        "title": "Head Chef Dashboard",
         "subtitle": "",
         "icon": "activity",
         "kpis": [
@@ -346,10 +346,10 @@ MODULE_DASHBOARDS: dict[str, dict] = {
             ("Dispatched", "SELECT COUNT(*) FROM packing_dispatch WHERE dispatch_status IN ('Out for Delivery','Delivered','Dispatched','Closed')", "delivery documents"),
         ],
         "links": [
-            ("Command Center (Classic)", "/dashboard", "dashboard", "monitor"),
+            # ("Command Center (Classic)", "/dashboard", "dashboard", "monitor"),
             ("Production Orders", "/production/orders", "production_orders", "clipboard"),
             ("Store Issuance", "/production/store-issuance", "store_issuance", "box"),
-            ("Relationship Tree", "/reports/relationship-tree", "relationship", "git-branch"),
+            # ("Relationship Tree", "/reports/relationship-tree", "relationship", "git-branch"),
         ],
         "charts": [
             {"title": "Order Pipeline by Status",
@@ -390,6 +390,34 @@ async def module_dashboard(request: Request, key: str, db: Session = Depends(get
     days = RANGES[range_key]
 
     # ------------------------------------------------------------------
+    # Batch 121 — ABSOLUTE date-range filter (From / To).
+    #
+    # The relative slicer (7d/1m/3m…) is kept, but the cockpit now also
+    # accepts explicit date_from / date_to. When either is supplied it
+    # OVERRIDES the relative range and drives every {range} KPI and chart,
+    # so the whole page reflects the chosen window. Dates are validated to
+    # YYYY-MM-DD to keep them injection-safe before going into SQL.
+    # ------------------------------------------------------------------
+    import re as _re
+    def _valid_date(s):
+        s = (s or "").strip()
+        return s if _re.fullmatch(r"\d{4}-\d{2}-\d{2}", s) else ""
+    date_from = _valid_date(request.query_params.get("date_from"))
+    date_to = _valid_date(request.query_params.get("date_to"))
+    use_abs = bool(date_from or date_to)
+
+    def _range_cond(col):
+        """Return the SQL AND-condition for the active window on `col`."""
+        if use_abs:
+            parts = []
+            if date_from:
+                parts.append(f" AND {col} >= '{date_from} 00:00:00'")
+            if date_to:
+                parts.append(f" AND {col} <= '{date_to} 23:59:59'")
+            return "".join(parts)
+        return f" AND {col} >= DATE_SUB(CURDATE(), INTERVAL {days} DAY)" if days else ""
+
+    # ------------------------------------------------------------------
     # Batch 111 — KPI CARDS NOW HONOUR THE PERIOD FILTER.
     #
     # The slicer already applied to charts (any SQL containing "{range}"),
@@ -408,8 +436,7 @@ async def module_dashboard(request: Request, key: str, db: Session = Depends(get
         ranged = "{range}" in sql
         if ranged:
             col = cfg.get("kpi_range_col", "created_at")
-            cond = f" AND {col} >= DATE_SUB(CURDATE(), INTERVAL {days} DAY)" if days else ""
-            sql = sql.replace("{range}", cond)
+            sql = sql.replace("{range}", _range_cond(col))
         kpis.append({"label": label, "value": _n(db, sql), "hint": hint,
                      "ranged": ranged})
     for k in kpis:
@@ -422,8 +449,7 @@ async def module_dashboard(request: Request, key: str, db: Session = Depends(get
         sql = cc["sql"]
         if "{range}" in sql:
             col = cc.get("range_col", "created_at")
-            cond = f" AND {col} >= DATE_SUB(CURDATE(), INTERVAL {days} DAY)" if days else ""
-            sql = sql.replace("{range}", cond)
+            sql = sql.replace("{range}", _range_cond(col))
         rows = _rows(db, sql)
         labels = [str(r.get("label", "")) for r in rows]
         values = [float(r.get("value") or 0) for r in rows]
@@ -461,4 +487,8 @@ async def module_dashboard(request: Request, key: str, db: Session = Depends(get
                         "1y": "1 year", "all": "all time"}.get(range_key, range_key),
         "has_range": has_range,
         "ranges": [("7d", "7 Days"), ("1m", "1 Month"), ("3m", "3 Months"), ("1y", "1 Year"), ("all", "Max")],
+        # Batch 121: absolute date filter state
+        "date_from": date_from,
+        "date_to": date_to,
+        "use_abs": use_abs,
     })

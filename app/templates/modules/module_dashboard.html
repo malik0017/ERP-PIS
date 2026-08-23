@@ -74,10 +74,26 @@
     <span class="text-body-tertiary fs-9 text-uppercase fw-bold">{{ t('Period') }}</span>
     <div class="btn-group btn-group-sm gap-2" role="group">
       {% for rk, rlabel in ranges %}
-      <a class="btn {{ 'btn-primary' if rk == range_key else 'btn-phoenix-secondary' }}"
+      <a class="btn {{ 'btn-primary' if (rk == range_key and not use_abs) else 'btn-phoenix-secondary' }}"
          href="?range={{ rk }}">{{ t(rlabel) }}</a>
       {% endfor %}
     </div>
+
+    {# Batch 121: absolute From/To date filter. When set it overrides the
+       relative period above and drives every KPI card and chart on the page. #}
+    <form method="get" class="d-flex align-items-center gap-2 flex-wrap ms-lg-3">
+      <span class="text-body-tertiary fs-9 text-uppercase fw-bold">{{ t('From') }}</span>
+      <input type="date" name="date_from" value="{{ date_from }}"
+             class="form-control form-control-sm" style="max-width:160px">
+      <span class="text-body-tertiary fs-9 text-uppercase fw-bold">{{ t('To') }}</span>
+      <input type="date" name="date_to" value="{{ date_to }}"
+             class="form-control form-control-sm" style="max-width:160px">
+      <button type="submit" class="btn btn-sm btn-primary">{{ t('Apply') }}</button>
+      {% if use_abs %}
+      <a href="?range={{ range_key }}" class="btn btn-sm btn-phoenix-secondary">{{ t('Clear') }}</a>
+      <span class="badge badge-phoenix badge-phoenix-info">{{ t('Date filtered') }}</span>
+      {% endif %}
+    </form>
   </div>
   {% endif %}
 

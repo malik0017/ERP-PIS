@@ -294,7 +294,7 @@
           else 'done') %}<tr>
             <td><a href="/production/orders/{{ o.order_no }}"><strong>{{ o.order_no }}</strong></a></td>
             <td>{{ o.order_date or '-' }}</td>
-            <td>{{ o.customer_name }}</td>
+            <td><strong>{{ o.customer_name }}</strong></td>
             <td>{{ o.brand or '-' }}</td>
             <td>{{ o.channel or '-' }}</td>
             <td>{{ o.required_delivery_date or '-' }} {{ o.required_delivery_time or '' }}</td>

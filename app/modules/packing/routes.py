@@ -28,6 +28,24 @@ def _redirect_with_error(url: str, message: str) -> RedirectResponse:
     return RedirectResponse(f"{url}{sep}error={message}", status_code=HTTP_303_SEE_OTHER)
 
 
+def ensure_schema(db: Session) -> None:
+    """Batch 121 — add packed_bags to packing_dispatch so the packer can
+    record how many physical bags/trays go out. Surfaced later on Dispatch.
+    Verified via information_schema first (CREATE INDEX IF NOT EXISTS is not
+    supported on MySQL/MariaDB; plain column add is fine and idempotent)."""
+    try:
+        exists = db.execute(text("""
+            SELECT COUNT(*) FROM information_schema.columns
+            WHERE table_schema = DATABASE() AND table_name = 'packing_dispatch'
+              AND column_name = 'packed_bags'
+        """)).scalar()
+        if not exists:
+            db.execute(text("ALTER TABLE packing_dispatch ADD COLUMN packed_bags INT NULL"))
+            db.commit()
+    except Exception:
+        db.rollback()
+
+
 @router.get("", response_class=HTMLResponse)
 def packing_dashboard(request: Request, db: Session = Depends(get_db)):
     require_area(request, "packing")
@@ -103,6 +121,7 @@ def update_packing(
     packing_id: int,
     packed_portions: float = Form(0),
     rejected_portions: float = Form(0),
+    packed_bags: Optional[int] = Form(None),
     dispatch_date: Optional[str] = Form(None),
     packing_status: str = Form("Packed"),
     remarks: str = Form(""),
@@ -112,10 +131,26 @@ def update_packing(
     row = db.query(PackingDispatch).filter(PackingDispatch.id == packing_id).first()
     if not row:
         return _redirect_with_error("/packing", "Packing record not found.")
+
+    # Batch 121: STEP-LOCK — packing is view-only once the order is dispatched.
+    from app.core.stage_lock import is_stage_locked, lock_reason
+    _order = db.query(CustomerOrder).filter(CustomerOrder.order_no == row.order_no).first()
+    _status = getattr(_order, "status", "") if _order else ""
+    if is_stage_locked(_status, "packing"):
+        return _redirect_with_error("/packing", lock_reason(_status, "packing"))
     if packing_status not in {"Packing Pending", "Packing In Progress", "Packed"}:
         packing_status = "Packed"
     row.packed_portions = packed_portions
     row.rejected_portions = rejected_portions
+    # Batch 121: persist bag count (column added via ensure_schema). Written
+    # with raw SQL so it works even if the ORM model attribute isn't present.
+    try:
+        db.execute(
+            text("UPDATE packing_dispatch SET packed_bags = :b WHERE id = :i"),
+            {"b": int(packed_bags) if packed_bags not in (None, "") else None, "i": packing_id},
+        )
+    except Exception:
+        db.rollback()
     row.dispatch_date = _parse_date(dispatch_date) or row.dispatch_date
     row.dispatch_status = packing_status
     row.remarks = remarks or row.remarks
@@ -124,4 +159,8 @@ def update_packing(
     if order:
         order.status = packing_status
     db.commit()
-    return RedirectResponse("/packing", status_code=HTTP_303_SEE_OTHER)
+    from urllib.parse import quote as _q
+    _bags = f" · {int(packed_bags)} bag(s)" if packed_bags not in (None, "") else ""
+    return RedirectResponse(
+        f"/packing?toast=success&title={_q('Packing Saved')}&msg={_q(f'{row.order_no} packed{_bags}, released to Dispatch.')}",
+        status_code=HTTP_303_SEE_OTHER)

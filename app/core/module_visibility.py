@@ -144,6 +144,21 @@ MODULE_CATALOG: list[dict] = [
         "default": True,     # kept on so admins never lock themselves out
         "areas": {"users", "audit"},
     },
+    {
+        # Batch 120: Sales was rendered by the launcher template but had NO
+        # catalog entry, so module_enabled("sales") fell through to False and
+        # the card never appeared. Sales is where order-to-cash begins, so it
+        # defaults ON. Its areas are the sales/portal ordering surfaces.
+        "key": "sales",
+        "label": "Sales & Orders",
+        "icon": "cart",
+        "color": "success",
+        "default": True,
+        "areas": {
+            "order_portal", "sales_review", "immediate_order",
+            "my_orders", "account_statement", "sale_requisitions",
+        },
+    },
 ]
 
 MODULE_KEYS = [m["key"] for m in MODULE_CATALOG]
