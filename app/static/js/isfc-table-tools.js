@@ -64,7 +64,21 @@
     if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>'; }
     ensurePdfLib().then(function () {
       var jsPDF = window.jspdf.jsPDF;
-      var rows = tableToRows(table, true);
+      // Batch 122: the jsPDF core font (Helvetica) is Latin-1 only. Sortable
+      // headers carry sort-arrow glyphs (▲▼↑↓⇅) plus non-breaking / zero-width
+      // spaces that rendered as garbage ("!Å") in the PDF header. Strip those
+      // and any remaining non-Latin1 codepoints for the PDF output only (CSV /
+      // clipboard keep full unicode).
+      function pdfClean(s) {
+        return String(s == null ? '' : s)
+          .replace(/[\u25B2\u25BC\u25B4\u25BE\u2191\u2193\u21C5\u2195\uFFFD]/g, '') // sort arrows
+          .replace(/[\u00A0\u200B\u200C\u200D\uFEFF]/g, ' ')                        // nbsp / zero-width
+          .replace(/[^\x00-\xFF]/g, '')                                              // non-Latin1
+          .replace(/\s+/g, ' ')
+          .trim();
+      }
+      var rawRows = tableToRows(table, true);
+      var rows = rawRows.map(function (r) { return r.map(pdfClean); });
       if (!rows.length) { throw new Error('nothing to export'); }
       var head = [rows[0]];
       var body = rows.slice(1);
@@ -72,7 +86,7 @@
       var doc = new jsPDF({ orientation: landscape ? 'landscape' : 'portrait', unit: 'pt', format: 'a4' });
       var dir = document.documentElement.getAttribute('dir') || 'ltr';
       doc.setFontSize(13);
-      doc.text(String(title || 'Export'), 40, 34);
+      doc.text(pdfClean(title || 'Export'), 40, 34);
       doc.setFontSize(8); doc.setTextColor(120);
       doc.text(new Date().toLocaleString() + '  \u00b7  ISFC ERP', 40, 48);
       doc.autoTable({

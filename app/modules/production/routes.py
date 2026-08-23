@@ -847,18 +847,10 @@ async def update_store_issue(
     # ---- Re-issue AUDIT TRAIL: snapshot the line BEFORE the change ----
     before = db.query(StoreIssuanceLine).filter(StoreIssuanceLine.id == line_id).first()
 
-    # Batch 121: STEP-LOCK. If the order has already moved past the Store stage
-    # (into Kitchen/QC/Packing/Dispatch), store issuance is view-only.
-    if before is not None:
-        from app.core.stage_lock import is_stage_locked, lock_reason
-        _ord = db.query(CustomerOrder).filter(CustomerOrder.order_no == before.order_no).first()
-        _status = getattr(_ord, "status", "") if _ord else ""
-        if is_stage_locked(_status, "store"):
-            from urllib.parse import quote as _q
-            return RedirectResponse(
-                f"/production/orders/{before.order_no}/store-issuance?toast=warning&title={_q('Step Locked')}&msg={_q(lock_reason(_status, 'store'))}",
-                status_code=HTTP_303_SEE_OTHER)
-
+    # Batch 122: the store keeper may correct an issued quantity via Re-Issue at
+    # any time (the upsert path prevents duplicate rows). The Batch 121 store
+    # view-only gate is intentionally NOT applied here; kitchen/QC/packing steps
+    # still lock downstream.
     old_qty = float(getattr(before, "input_material_issued", 0) or 0) if before else 0
     old_uom = getattr(before, "issued_uom", "") if before else ""
     old_section = getattr(before, "issue_to_section", "") if before else ""
@@ -920,15 +912,8 @@ async def reissue_store_line(request: Request, line_id: int, db: Session = Depen
     if not line:
         raise HTTPException(404, "Store issuance line not found")
     order = db.query(CustomerOrder).filter(CustomerOrder.order_no == line.order_no).first()
-    # Batch 121: use the centralised step-lock. Store is view-only once the
-    # order has advanced into Kitchen/QC/Packing/Dispatch.
-    from app.core.stage_lock import is_stage_locked, lock_reason
-    _status = getattr(order, "status", "") if order else ""
-    if is_stage_locked(_status, "store"):
-        from urllib.parse import quote as _q
-        return redirect_with_error(
-            "/production/store-issuance",
-            lock_reason(_status, "store"))
+    # Batch 122: Re-Issue is always available to the store keeper for quantity
+    # corrections; the upsert path keeps a single row per ingredient.
     line.finalized = False
     db.commit()
     # Batch 121: return to the per-ORDER line page (where the store keeper is

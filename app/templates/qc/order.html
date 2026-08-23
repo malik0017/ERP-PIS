@@ -176,14 +176,14 @@
            is received, amber with the outstanding balance when it isn't. #}
         {% set _all_received = (totals.balance_qty or 0) <= 0.0001 and (totals.received_qty or 0) > 0 %}
         {% if _all_received %}
-        <div class="text-success"><i class="bi bi-check-circle-fill me-1"></i>
+        <!-- <div class="text-success"><i class="bi bi-check-circle-fill me-1"></i>
           {{ t('All lines received — a QC decision can be submitted.') }}</div>
-        {% else %}
-        <div class="text-warning"><i class="bi bi-exclamation-triangle-fill me-1"></i>
-          {{ t('Balance outstanding') }}: <strong>{{ '%.2f'|format(totals.balance_qty or 0) }}</strong>.
-          {{ t('Receive every line before a QC decision can be submitted.') }}</div>
-        {% endif %}
-      </div>
+          {% else %}
+          <div class="text-warning"><i class="bi bi-exclamation-triangle-fill me-1"></i>
+            {{ t('Balance outstanding') }}: <strong>{{ '%.2f'|format(totals.balance_qty or 0) }}</strong>.
+            {{ t('Receive every line before a QC decision can be submitted.') }}</div>
+          {% endif %}
+        </div> -->
       {% if not _all_received %}
       <form method="post" action="/qc/orders/{{ order.order_no }}/receive-all"><button class="btn-pro btn-blue"
           type="submit"><i class="bi bi-box-arrow-in-down"></i> {{ t('Receive All QC Lines') }}</button></form>
@@ -296,22 +296,57 @@
 (function () {
   var form = document.getElementById('qcSubmitForm');
   if (!form) return;
+
+  // Batch 122: replace the browser's native confirm()/alert() (the ugly
+  // "localhost:8000 says" dialog) with a clean in-page toast + modal confirm.
+  function toast(msg, kind) {
+    var wrap = document.createElement('div');
+    wrap.style.cssText = 'position:fixed;top:20px;right:20px;z-index:2000;max-width:420px;';
+    wrap.innerHTML =
+      '<div class="alert alert-' + (kind || 'warning') + ' shadow d-flex align-items-start gap-2 mb-0" role="alert">' +
+      '<i class="bi bi-' + (kind === 'danger' ? 'exclamation-octagon' : 'exclamation-triangle') + '-fill mt-1"></i>' +
+      '<div>' + msg + '</div></div>';
+    document.body.appendChild(wrap);
+    setTimeout(function () { wrap.remove(); }, 6000);
+  }
+
+  function modalConfirm(title, msg, onOk) {
+    var back = document.createElement('div');
+    back.style.cssText = 'position:fixed;inset:0;background:rgba(15,30,50,.5);z-index:2050;display:flex;align-items:center;justify-content:center;padding:20px;';
+    back.innerHTML =
+      '<div class="card shadow-lg" style="max-width:440px;width:100%;border-radius:16px;overflow:hidden">' +
+        '<div class="card-body p-4">' +
+          '<h5 class="fw-bold mb-2">' + title + '</h5>' +
+          '<p class="text-body-secondary mb-4">' + msg + '</p>' +
+          '<div class="d-flex justify-content-end gap-2">' +
+            '<button type="button" class="btn btn-phoenix-secondary" data-x>Cancel</button>' +
+            '<button type="button" class="btn btn-success" data-ok>Confirm</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(back);
+    function close() { back.remove(); }
+    back.querySelector('[data-x]').addEventListener('click', close);
+    back.addEventListener('click', function (e) { if (e.target === back) close(); });
+    back.querySelector('[data-ok]').addEventListener('click', function () { close(); onOk(); });
+  }
+
+  var confirmed = false;
   form.addEventListener('submit', function (e) {
+    if (confirmed) return; // second, programmatic submit — let it through
+    e.preventDefault();
     var pending = parseInt(form.getAttribute('data-pending') || '0', 10);
     var total = parseInt(form.getAttribute('data-total') || '0', 10);
     if (pending > 0) {
-      e.preventDefault();
-      alert('Cannot submit yet — ' + pending + ' of ' + total +
-            ' QC line(s) still show 0 received quantity.\n\n' +
-            'Please click "Receive All QC Lines" (or receive each line) first. ' +
-            'A QC decision must reflect product that was actually received and inspected.');
-      return false;
+      toast('Cannot submit yet — <strong>' + pending + ' of ' + total +
+            '</strong> QC line(s) still show 0 received. Please receive every line first; a QC decision must reflect product that was actually received and inspected.',
+            'warning');
+      return;
     }
     var decision = (form.querySelector('[name="qc_status"]') || {}).value || 'Passed';
-    if (!confirm('Submit final QC decision: ' + decision + '?\n\nThis will lock the QC step and move the order to the next stage.')) {
-      e.preventDefault();
-      return false;
-    }
+    modalConfirm('Submit final QC decision: ' + decision + '?',
+                 'This will lock the QC step and move the order to the next stage.',
+                 function () { confirmed = true; form.submit(); });
   });
 })();
 </script>

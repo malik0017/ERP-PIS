@@ -35,6 +35,49 @@
     </div>
   </div>
 
+  {# Batch 122: inline "How it works" guide for the Top-Up flow (client asked
+     for guidance on this screen). Collapsible so it doesn't crowd daily use. #}
+  <div class="card border mb-4" style="border-left:4px solid #1e5bb8">
+    <div class="card-body py-3">
+      <div class="d-flex justify-content-between align-items-center" role="button"
+           data-bs-toggle="collapse" data-bs-target="#topupGuide" aria-expanded="false">
+        <h6 class="mb-0 fw-bold"><i class="bi bi-info-circle me-2 text-primary"></i>{{ t('How Store Top-Up Requests work') }}</h6>
+        <i class="bi bi-chevron-down"></i>
+      </div>
+      <div class="collapse mt-3" id="topupGuide">
+        <p class="text-body-secondary mb-3">
+          A <strong>top-up</strong> is used when a kitchen section discovers it needs
+          <em>more</em> of an ingredient than the store originally issued — for example,
+          extra wastage during prep, or a recount. The original store issuance is
+          <strong>never changed</strong>, so the variance between what was planned and
+          what was actually consumed stays measurable and auditable.
+        </p>
+        <div class="row g-3">
+          <div class="col-md-3"><div class="d-flex gap-2">
+            <span class="badge bg-primary rounded-circle" style="width:26px;height:26px;line-height:20px">1</span>
+            <div><div class="fw-bold">{{ t('Section requests') }}</div>
+            <div class="small text-body-secondary">The kitchen section (or the store keeper on their behalf) clicks <strong>Request Top-Up</strong>, picks the order, section and ingredient, and enters the extra quantity needed with a reason.</div></div>
+          </div></div>
+          <div class="col-md-3"><div class="d-flex gap-2">
+            <span class="badge bg-warning rounded-circle" style="width:26px;height:26px;line-height:20px">2</span>
+            <div><div class="fw-bold">{{ t('Awaiting store') }}</div>
+            <div class="small text-body-secondary">The request lands here in <strong>Pending</strong>. The store checks on-hand stock (shown in the <em>On Hand</em> column) before deciding.</div></div>
+          </div></div>
+          <div class="col-md-3"><div class="d-flex gap-2">
+            <span class="badge bg-success rounded-circle" style="width:26px;height:26px;line-height:20px">3</span>
+            <div><div class="fw-bold">{{ t('Store issues or rejects') }}</div>
+            <div class="small text-body-secondary">The store keeper <strong>Issues</strong> the top-up (stock is deducted and posted to the ledger as a separate top-up movement) or <strong>Rejects</strong> it with a note.</div></div>
+          </div></div>
+          <div class="col-md-3"><div class="d-flex gap-2">
+            <span class="badge bg-info rounded-circle" style="width:26px;height:26px;line-height:20px">4</span>
+            <div><div class="fw-bold">{{ t('Variance stays visible') }}</div>
+            <div class="small text-body-secondary">Because the original issuance is untouched, reports show exactly how much extra each section consumed beyond plan.</div></div>
+          </div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="card border mb-4"><div class="card-body py-3">
     <form method="get" class="row g-2 align-items-end">
       <div class="col-md-4">

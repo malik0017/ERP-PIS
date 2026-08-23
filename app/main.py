@@ -427,6 +427,42 @@ def _ensure_recipe_menu_columns() -> None:
 _ensure_recipe_menu_columns()
 
 
+def _ensure_packing_bags_column() -> None:
+    """Batch 122 — add packing_dispatch.packed_bags if missing, AT IMPORT TIME.
+
+    Root cause of the 500s in Batch 121: the ORM model gained `packed_bags`,
+    but the migration only ran in the startup event — which fires AFTER the app
+    can serve requests, and is skipped entirely if an earlier guard raised or if
+    the running process was never restarted. Every `db.query(PackingDispatch)`
+    then failed with 'Unknown column packed_bags'. Following the day_of_week
+    pattern, this guard runs at import, before any router is live, and is
+    idempotent so repeat calls cost one cheap information_schema lookup.
+    """
+    try:
+        from app.database.session import SessionLocal as _SL
+        from sqlalchemy import text as _t
+        _db = _SL()
+        try:
+            has = _db.execute(_t("""
+                SELECT COUNT(*) FROM information_schema.columns
+                WHERE table_schema = DATABASE() AND table_name = 'packing_dispatch'
+                  AND column_name = 'packed_bags'
+            """)).scalar()
+            if not has:
+                _db.execute(_t("ALTER TABLE packing_dispatch ADD COLUMN packed_bags INT NULL"))
+                _db.commit()
+                logger.info("Added packing_dispatch.packed_bags")
+        finally:
+            _db.close()
+    except Exception as exc:
+        logger.error(f"Schema guard failed (packing_dispatch.packed_bags): {exc}")
+
+
+# Run immediately at import — the packed_bags column is read by the packing,
+# dispatch AND QC-pass flows, so it must exist before any of them is hit.
+_ensure_packing_bags_column()
+
+
 @app.on_event("startup")
 async def startup_event():
     logger.info("Application startup complete")

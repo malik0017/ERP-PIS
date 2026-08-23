@@ -237,6 +237,7 @@
           data-food="{{ r.food_cost_per_portion or 0 }}"
           data-sale="{{ r.sale_price_per_portion or 0 }}"
           data-bom="{{ r.bom_lines or 0 }}"
+          data-category="{{ r.category or '' }}"
         ></option>
         {% endfor %}
       </datalist>
@@ -266,6 +267,7 @@
           <thead>
             <tr>
               <th>{{ t('Recipe Code & Name') }}</th>
+              <th style="width:160px">{{ t('Category') }}</th>
               <th style="width:150px" class="text-end">{{ t('Quantity Ordered') }}</th>
               <th style="width:56px"></th>
             </tr>
@@ -287,6 +289,8 @@
                    committing to without opening the recipe in another tab. #}
                 <small class="recipe-info text-body-tertiary d-block mt-1"></small>
               </td>
+              {# Batch 122: category column, auto-filled from the picked recipe. #}
+              <td><span class="recipe-category badge badge-phoenix badge-phoenix-secondary">—</span></td>
               <td>
                 <input
                   class="sap-input text-end"
@@ -489,6 +493,9 @@
     // render identically.
     const info = line.querySelector(".recipe-info");
     if (info) info.textContent = "";
+    // Batch 122: fill the category badge from the picked recipe's datalist option.
+    const catEl = line.querySelector(".recipe-category");
+    if (catEl) catEl.textContent = (opt?.dataset.category && opt.dataset.category.trim()) || "—";
   }
   function removeLine(btn) {
     const rows = document.querySelectorAll(".order-line");

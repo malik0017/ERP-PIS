@@ -213,14 +213,7 @@
           later from section workstations.</div>
       </div><a href="/production/store-issuance" class="si-btn si-soft">Back to Store Queue</a>
     </div>
-    {# Batch 121: step-lock banner. When the order has moved past Store, this
-       screen is view-only — the rows still render for review/report extract. #}
-    {% if order and stage_locked(order.status, 'store') %}
-    <div class="alert alert-warning d-flex align-items-center gap-2 mb-3" role="alert">
-      <i class="bi bi-lock-fill"></i>
-      <div>{{ stage_lock_reason(order.status, 'store') }}</div>
     </div>
-    {% endif %}
     <div class="table-responsive">
       <table class="table table-sm table-bordered align-middle si-table">
         <thead>
@@ -253,9 +246,13 @@
                 ['Cutting','Butchery','Marination','Hot Kitchen','Cold Kitchen','Bakery/Pastry'] %}<option {% if l.issue_to_section==sec %}selected{% endif %}>{{ sec }}</option>{% endfor %}</select></td>
             <td><span class="si-status {% if l.finalized %}si-issued{% elif l.issuance_status == 'Issued' %}si-issued{% elif l.issuance_status == 'Short Issued' %}si-short{% else %}si-pending{% endif %}">{% if l.finalized %}Locked / Issued{% else %}{{ l.issuance_status }}{% endif %}</span></td>
             <td>
-              {% if order and stage_locked(order.status, 'store') %}
-                <a class="btn btn-sm btn-phoenix-secondary" href="/production/orders/{{ order.order_no }}/store-issuance/history" title="This step is locked — view/report only"><i class="bi bi-eye"></i> View</a>
-              {% elif l.finalized %}
+              {# Batch 122: the store keeper can always Re-Issue/Edit a line to
+                 correct a quantity — the upsert path (Batch 120) updates the
+                 existing ingredient in place, so re-issuing never creates a 2nd
+                 or 3rd row. The Batch 121 store view-only gate was too strict
+                 for the store keeper's own correction workflow and is removed
+                 here; downstream steps (kitchen/QC/packing) still lock. #}
+              {% if l.finalized %}
                 <form method="post" action="/production/store-issuance/{{ l.id }}/reissue" class="d-inline"><button class="btn btn-sm btn-warning">Re-Issue/Edit</button></form>
               {% else %}
                 <form id="issue-form-{{ l.id }}" method="post" action="/production/store-issuance/{{ l.id }}/update">

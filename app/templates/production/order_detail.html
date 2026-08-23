@@ -7,17 +7,13 @@ at "Submitted"/Head Chef review showing BOM as active). Computed now
 from the same signals the second, correctly-working stage tracker
 further down this page already uses (bom/issuance/txs existence +
 order.status), instead of a fixed string. #}
+{# Batch 122: this page IS the Production Order / BOM document. Previously the
+   active tab was computed from the order's FURTHEST stage, so an order that had
+   reached Packing showed the "Packing" pill highlighted while the user was
+   plainly on the order/BOM document — confusing. The page's own identity is the
+   BOM/Order document, so the active pill is fixed to 'BOM'. #}
 {% set _ostatus = (order.status or '')|trim|lower %}
-{% if flow_status.packing_count %}{% set active_step = 'Packing' %}
-{% elif _ostatus in ['out for delivery','dispatched','delivered'] %}{% set active_step = 'Dispatch' %}
-{% elif flow_status.qc_count %}{% set active_step = 'QC' %}
-{% elif txs %}{% set active_step = 'Kitchen' %}
-{% elif issuance %}{% set active_step = 'Store' %}
-{% elif bom %}{% set active_step = 'BOM' %}
-{% elif _ostatus == 'head chef approved' %}{% set active_step = 'BOM' %}
-{% elif _ostatus == 'submitted' %}{% set active_step = 'Head Chef' %}
-{% else %}{% set active_step = 'Order' %}
-{% endif %}
+{% set active_step = 'BOM' %}
 {% include 'partials/process_status_row.html' %}
 <style>
   .od-hero {

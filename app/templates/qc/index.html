@@ -226,6 +226,9 @@
           <tr>
             <th>QC No</th>
             <th>Order</th>
+            <th>Customer</th>
+            <th>Brand</th>
+            <th>Category</th>
             <th>Type</th>
             <th>Status</th>
             <th>Score</th>
@@ -238,6 +241,9 @@
           {% for r in rows %}<tr>
             <td>{{ r.qc_no }}</td>
             <td><a href="/production/orders/{{ r.order_no }}">{{ r.order_no }}</a></td>
+            <td><strong>{{ r.customer_name or '—' }}</strong></td>
+            <td>{{ r.brand or '—' }}</td>
+            <td>{{ r.category or '—' }}</td>
             <td>{{ r.check_type }}</td>
             <td><span
                 class="pill {% if r.qc_status=='Passed' %}ok{% elif r.qc_status=='Rejected' %}danger{% else %}warn{% endif %}">{{
@@ -247,7 +253,7 @@
             <td>{{ r.checked_at or '' }}</td>
             <td>{{ r.issue_found or '—' }}</td>
           </tr>{% else %}<tr>
-            <td colspan="8" class="empty">No QC checks recorded yet.</td>
+            <td colspan="11" class="empty">No QC checks recorded yet.</td>
           </tr>{% endfor %}
         </tbody>
       </table>

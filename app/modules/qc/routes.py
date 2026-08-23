@@ -75,12 +75,28 @@ def qc_dashboard(request: Request, db: Session = Depends(get_db)):
     to_date = (q.get("to_date") or "").strip()
     status_f = (q.get("status") or "").strip()
     pending_orders = _qc_orders(db, search=search, from_date=from_date, to_date=to_date)
-    hq = db.query(QCCheck)
+    # Batch 122: QC History now shows customer / brand / category by joining
+    # customer_orders, instead of the bare QCCheck rows (image 15).
+    hist_where = "1=1"
+    hist_params: dict = {}
     if status_f:
-        hq = hq.filter(QCCheck.qc_status == status_f)
+        hist_where += " AND k.qc_status = :st"
+        hist_params["st"] = status_f
     if search:
-        hq = hq.filter(QCCheck.order_no.like(f"%{search}%"))
-    rows = hq.order_by(QCCheck.id.desc()).limit(200).all()
+        hist_where += " AND k.order_no LIKE :sr"
+        hist_params["sr"] = f"%{search}%"
+    rows = db.execute(text(f"""
+        SELECT k.qc_no, k.order_no, k.check_type, k.qc_status, k.overall_score,
+               k.checked_by, k.checked_at, k.issue_found,
+               COALESCE(co.customer_name, '') AS customer_name,
+               COALESCE(co.brand, '') AS brand,
+               COALESCE(NULLIF(co.channel,''), co.order_type, '') AS category
+        FROM qc_checks k
+        LEFT JOIN customer_orders co ON co.order_no = k.order_no
+        WHERE {hist_where}
+        ORDER BY k.id DESC
+        LIMIT 200
+    """), hist_params).mappings().all()
     summary = {
         "pending_orders": len(pending_orders),
         "pending_lines": sum(int(r.get("total_lines") or 0) for r in pending_orders),

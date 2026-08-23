@@ -901,6 +901,11 @@ def transfer_transaction(
 
     if next_section and transfer > 0:
         tx.transaction_status = "Transferred"
+        # Batch 122 FIX: the locked row must record where it ACTUALLY went, not
+        # the stale route-derived value. Previously tx.to_section kept its old
+        # value, so a line transferred to QC / Cold Kitchen / Trayline still
+        # displayed "sent to Hot Kitchen". Set it to the real destination.
+        tx.to_section = next_section
         new_tx = KitchenSectionTransaction(
             company_id=getattr(tx, "company_id", None),
             order_no=tx.order_no,

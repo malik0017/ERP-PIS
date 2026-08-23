@@ -83,6 +83,10 @@
       <div class="d-flex gap-2 flex-wrap align-items-center">
         <span class="si-tag si-pending">{{ g.pending }} pending line(s)</span>
         <span class="si-tag si-done">Required {{ '%.2f'|format(g.total_required) }} · Issued {{ '%.2f'|format(g.total_issued) }}</span>
+        {# Batch 122: one header button to jump to the full Store Issuance queue,
+           replacing the per-row Open buttons. #}
+        <a class="btn btn-primary btn-sm fw-bold" href="/production/store-issuance" title="Open the full Store Issuance queue">
+          <i class="bi bi-box-arrow-up-right"></i> Open in Store Issuance</a>
         <a class="btn btn-outline-secondary btn-sm" href="/production/store-issuance/by-section/export?format=csv&section={{ g.section }}&show={{ filters.show }}" title="Download this section only">
           <i class="bi bi-download"></i> Section CSV</a>
         <a class="btn btn-outline-danger btn-sm" href="/production/store-issuance/by-section/export?format=pdf&section={{ g.section }}&show={{ filters.show }}" title="Download this section as PDF">
@@ -123,7 +127,9 @@
           <td>{% if l.finalized %}<span class="si-tag si-done">Locked / Issued</span>{% else %}<span class="si-tag si-pending">{{ l.issuance_status }}</span>{% endif %}</td>
           <td class="text-nowrap">
             <div class="d-flex gap-1">
-              <a class="btn btn-sm btn-outline-primary" href="/production/orders/{{ l.order_no }}/store-issuance" title="Open the full order-level issuance form">Open</a>
+              {# Batch 122: per-row "Open" buttons removed (there was one on every
+                 line). A single "Open in Store Issuance" button now lives in the
+                 section header. Quick Issue stays for the on-page fast path. #}
               {% if not l.finalized %}
               <form method="post" action="/production/store-issuance/{{ l.id }}/quick-issue"
                     data-confirm="Issue {{ '%.3f'|format(l.required_qty or 0) }} {{ l.uom }} of {{ l.ingredient_name }} to {{ g.section }} now?"
@@ -131,6 +137,8 @@
                 <button class="btn btn-sm btn-success si-quick-issue" title="Issue the full required quantity now, without leaving this page">
                   <i class="bi bi-lightning-charge-fill"></i> Quick Issue</button>
               </form>
+              {% else %}
+              <span class="text-secondary small"><i class="bi bi-lock-fill"></i> Issued</span>
               {% endif %}
             </div>
           </td>
