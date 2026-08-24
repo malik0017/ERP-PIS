@@ -122,7 +122,7 @@
       <div>
         <h2 class="mb-1">Store Issuance Control</h2>
       </div>
-      <div><a class="btn btn-light fw-bold" href="/production/store-issuance/by-section"><i class="bi bi-layers me-1"></i> Issuance by Section</a></div>
+      <div><a class="btn btn-light fw-bold" href="/production/store-issuance/by-section{% if order %}?order={{ order.order_no }}{% endif %}"><i class="bi bi-layers me-1"></i> Issuance by Section</a></div>
     </div>
   </div>
   {% if error %}<div class="alert alert-warning">{{ error }}</div>{% endif %}
@@ -255,7 +255,8 @@
               {% if l.finalized %}
                 <form method="post" action="/production/store-issuance/{{ l.id }}/reissue" class="d-inline"><button class="btn btn-sm btn-warning">Re-Issue/Edit</button></form>
               {% else %}
-                <form id="issue-form-{{ l.id }}" method="post" action="/production/store-issuance/{{ l.id }}/update">
+                <form id="issue-form-{{ l.id }}" method="post" action="/production/store-issuance/{{ l.id }}/update"
+                      onsubmit="var b=this.querySelector('button');b.disabled=true;b.classList.remove('btn-primary');b.classList.add('btn-success');b.innerHTML='<span class=&quot;spinner-border spinner-border-sm me-1&quot;></span>Saving…';">
                   <input type="hidden" name="lot_no" value=""><input type="hidden" name="supplier_name" value=""><input type="hidden" name="store_remarks" value="">
                   <button class="btn btn-sm btn-primary">Save</button>
                 </form>

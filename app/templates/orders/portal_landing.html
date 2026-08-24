@@ -1,0 +1,86 @@
+{% extends "layouts/base.html" %} {% block content %}
+<style>
+  .req-hero {
+    background: linear-gradient(135deg, #08243d, #1e5bb8);
+    color: #fff; border-radius: 18px; padding: 26px 30px; margin-bottom: 26px;
+  }
+  .cust-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 18px;
+  }
+  .cust-card {
+    position: relative;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 14px;
+    background: #fff; border: 1px solid #dce8f2; border-radius: 18px;
+    padding: 28px 18px; min-height: 190px;
+    text-decoration: none; color: #142a46;
+    transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease;
+  }
+  .cust-card.active:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 14px 32px rgba(15, 30, 50, .14);
+    border-color: #1e5bb8;
+  }
+  .cust-logo-wrap {
+    height: 90px; width: 100%;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .cust-logo-wrap img { max-height: 82px; max-width: 88%; object-fit: contain; }
+  .cust-name { font-weight: 800; font-size: 16px; text-align: center; }
+  .cust-icon { font-size: 46px; color: #1e5bb8; }
+  .cust-card.disabled {
+    opacity: .6; cursor: not-allowed; background: #f7fafd;
+    border-style: dashed;
+  }
+  .cust-card.placeholder .cust-icon { color: #adb9c7; }
+  .soon-badge {
+    position: absolute; top: 12px; right: 12px;
+    font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em;
+    background: #fef3c7; color: #92660c; border-radius: 999px; padding: 3px 9px;
+  }
+</style>
+
+<div class="container-fluid py-3">
+  <div class="req-hero d-flex align-items-center justify-content-between flex-wrap gap-3">
+    <div>
+      <h1 class="mb-1 fw-bold text-white"><i class="bi bi-cart-plus me-2"></i>{{ t('Sale Requisitions') }}</h1>
+      <p class="mb-0 opacity-75">{{ t('Pick a customer to start a new order. The same 48-hour delivery rule applies here as everywhere else.') }}</p>
+    </div>
+  </div>
+
+  <div class="cust-grid">
+    {% for c in cards %}
+      {% if c.active %}
+        {# Active card → open the order form, preset to this customer (or the
+           immediate-order form for the Immediate card). #}
+        {% set href = '/orders/portal/immediate' if c.immediate else ('/orders/portal/new?customer=' ~ c.key) %}
+        <a class="cust-card active" href="{{ href }}">
+          <div class="cust-logo-wrap">
+            {% if c.logo %}
+              <img src="{{ c.logo }}" alt="{{ c.name }}">
+            {% else %}
+              <i class="bi bi-{{ c.icon or 'shop' }} cust-icon"></i>
+            {% endif %}
+          </div>
+          <div class="cust-name">{{ c.name }}</div>
+        </a>
+      {% else %}
+        {# Coming-soon / placeholder card → non-clickable. #}
+        <div class="cust-card disabled {% if c.placeholder %}placeholder{% endif %}">
+          <span class="soon-badge">{{ t('Coming soon') }}</span>
+          <div class="cust-logo-wrap">
+            {% if c.logo %}
+              <img src="{{ c.logo }}" alt="{{ c.name }}" style="filter:grayscale(.4)">
+            {% else %}
+              <i class="bi bi-{{ c.icon or 'hourglass-split' }} cust-icon"></i>
+            {% endif %}
+          </div>
+          <div class="cust-name">{{ c.name }}</div>
+        </div>
+      {% endif %}
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

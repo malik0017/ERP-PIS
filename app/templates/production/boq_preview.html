@@ -14,7 +14,8 @@
         {{ t('Consolidated material requirement across every order in the filter — expected wastage included.') }}</p>
     </div>
     <div class="d-flex gap-2">
-      <a class="btn btn-light" href="/production/boq/export?{{ qs }}">
+      <a class="btn btn-light" href="/production/boq/export?{{ qs }}"
+         title="Downloads a 3-sheet workbook: (1) Consolidated Pick List — one line per ingredient, totals across all filtered orders with wastage; (2) By-Order detail; (3) By-Customer summary. Give it to the store to pull material in one pass.">
         <i class="bi bi-file-earmark-excel me-1"></i>{{ t('Download Excel') }}</a>
       <a class="btn btn-phoenix-secondary" href="/production/head-chef">{{ t('Back') }}</a>
     </div>
@@ -112,7 +113,9 @@
             <thead class="bg-body-highlight"><tr>
               <th>{{ t('Section') }}</th><th>{{ t('Storage') }}</th><th>{{ t('Item') }}</th>
               <th class="text-end">{{ t('Required') }}</th><th>{{ t('UOM') }}</th>
-              <th class="text-end">{{ t('Orders') }}</th><th class="text-end">{{ t('Est. Value') }}</th>
+              <th class="text-end">{{ t('Orders') }}</th>
+              <th>{{ t('Customers / Orders') }}</th>
+              <th class="text-end">{{ t('Est. Value') }}</th>
             </tr></thead>
             <tbody>
               {% for r in rows %}
@@ -129,6 +132,9 @@
                 <td class="text-end fw-bold">{{ '%.3f'|format(r.required_qty or 0) }}</td>
                 <td class="fs-9">{{ r.uom }}</td>
                 <td class="text-end">{{ r.order_count }}</td>
+                {# Batch 123: show which customers/orders this consolidated line covers. #}
+                <td class="fs-9"><span class="fw-bold">{{ r.customers or '—' }}</span>
+                  <div class="small-muted">{{ r.orders or '' }}</div></td>
                 <td class="text-end">{{ '%.2f'|format((r.required_qty or 0) * (r.unit_cost or 0)) }}</td>
               </tr>
               {% endfor %}

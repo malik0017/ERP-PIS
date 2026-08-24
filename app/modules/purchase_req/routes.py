@@ -583,8 +583,7 @@ async def pr_approve(request: Request, pr_no: str, db: Session = Depends(get_db)
                 url=f"/purchase-requisitions/{pr_no}", category="pr_approved")
 
     return RedirectResponse(
-        f"/purchase-requisitions/{pr_no}?toast=success&title=Approved"
-        f"&msg={pr_no} approved. Convert it to a Purchase Order when supplier and pricing are settled.",
+        f"/purchase-requisitions/{pr_no}?toast=success&title=Approved",
         status_code=303)
 
 

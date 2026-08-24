@@ -92,6 +92,10 @@ def consolidated(db: Session, f: dict, cid: int) -> list[dict]:
                    SUM(COALESCE(b.total_required_with_waste_standard,
                                 b.required_qty_standard, 0))  AS required_qty,
                    COUNT(DISTINCT b.order_no)                   AS order_count,
+                   -- Batch 123: show WHO/WHICH orders this consolidated pull is
+                   -- for, so the store isn't looking at anonymous totals.
+                   GROUP_CONCAT(DISTINCT o.customer_name ORDER BY o.customer_name SEPARATOR ', ') AS customers,
+                   GROUP_CONCAT(DISTINCT b.order_no ORDER BY b.order_no SEPARATOR ', ') AS orders,
                    MAX(COALESCE(b.unit_cost_standard, i.unit_cost_standard, 0)) AS unit_cost
             FROM bom_lines b
             JOIN customer_orders o ON o.order_no = b.order_no

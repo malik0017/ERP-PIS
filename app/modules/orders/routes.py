@@ -95,10 +95,43 @@ def _master_dropdown_context(db: Session, company_id: int = 1) -> dict:
 
 @router.get("/portal", response_class=HTMLResponse)
 def order_portal(request: Request, db: Session = Depends(get_db)):
+    """Batch 123 — Sale Requisitions now opens on a CUSTOMER PICKER: a grid of
+    customer cards (with logos). Clicking an active card opens the order form
+    pre-set for that customer. Only SMC, FRSH and Immediate Order are live for
+    now; the rest are 'coming soon' placeholders."""
+    require_area(request, "order_portal")
+    # Which cards are live. Codes are matched case-insensitively against the
+    # customer master so a card only activates if that customer actually exists.
+    company_id = _company_id_from_session(request)
+    can_immediate = False
+    try:
+        from app.core.rbac import can_access
+        can_immediate = can_access(request, "immediate_order")
+    except Exception:
+        can_immediate = False
+    cards = [
+        {"key": "smc",       "name": "SMC",        "logo": "/static/img/customers/smc.png",       "active": True,  "match": ["SMC", "SMC1"]},
+        {"key": "frsh",      "name": "FRSH",       "logo": "/static/img/customers/frsh.png",      "active": True,  "match": ["FRSH", "FRSH1"]},
+        {"key": "immediate", "name": "Immediate Order", "logo": None, "icon": "lightning-charge-fill", "active": can_immediate, "immediate": True},
+        {"key": "dietworld", "name": "Diet World", "logo": "/static/img/customers/dietworld.jpg", "active": False},
+        {"key": "afya",      "name": "Afya",       "logo": "/static/img/customers/afya.jpg",      "active": False},
+        {"key": "soon1",     "name": "Coming Soon", "logo": None, "icon": "hourglass-split", "active": False, "placeholder": True},
+        {"key": "soon2",     "name": "Coming Soon", "logo": None, "icon": "hourglass-split", "active": False, "placeholder": True},
+        {"key": "soon3",     "name": "Coming Soon", "logo": None, "icon": "hourglass-split", "active": False, "placeholder": True},
+    ]
+    return render(request, "orders/portal_landing.html",
+                  {"page_title": "Sale Requisitions", "cards": cards})
+
+
+@router.get("/portal/new", response_class=HTMLResponse)
+def order_portal_new(request: Request, db: Session = Depends(get_db)):
+    """The actual order form. Reachable from a customer card; an optional
+    ?customer=CODE preset filters/locks the customer selection."""
     require_area(request, "order_portal")
     company_id = _company_id_from_session(request)
     context = _master_dropdown_context(db, company_id)
-    context.update({"page_title": "Sale Requisitions"})
+    preset = (request.query_params.get("customer") or "").strip()
+    context.update({"page_title": "Sale Requisitions", "preset_customer": preset})
     return render(request, "orders/portal.html", context)
 
 

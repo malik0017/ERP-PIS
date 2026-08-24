@@ -1,8 +1,6 @@
 {% set active_step = active_step|default('') %} {% set active_kitchen =
-active_kitchen|default('') %} {# Normalize once so 'Hot-Kitchen', 'hot kitchen',
-'Hot Kitchen' all match. #} {% set _ak = active_kitchen|lower|replace('-', ' ')|replace('/', ' ')|trim %}{% set _ak =
-_ak.split()|join(' ') %} {% set _as =
-active_step|lower|trim %}
+active_kitchen|default('') %} {% set _ak = active_kitchen|lower|replace('-', ' ')|replace('/', ' ')|trim %}{% set _ak =
+_ak.split()|join(' ') %} {% set _as = active_step|lower|trim %}
 <style>
   .pis-flow-wrap {
     margin: 12px 0 18px;
@@ -99,17 +97,13 @@ active_step|lower|trim %}
 </style> 
 <div class="container-fluid py-3">
   <div class="pis-flow-wrap">
-  <div class="pis-process-row" aria-label="SAP/Odoo style order process status">
+  <div class="pis-process-row" aria-label="Style order process status">
     {% set steps = [ ('Order','/orders/portal','1'), ('Head
     Chef','/production/head-chef','2'), ('BOM','/production/orders','3'),
     ('Store','/production/store-issuance','4'),
     ('Kitchen','/production/section/Bakery-Pastry','5'), ('QC','/qc','6'),
     ('Packing','/packing','7'), ('Dispatch','/dispatch','8') ] %} {% for name,
     url, no in steps %}
-    {# Batch 120: the multiline tuple above embeds a newline+spaces inside some
-       names (e.g. 'Head\n    Chef'), so name|lower never equalled 'head chef'
-       and the active pill silently failed on the Head Chef / Order stages.
-       Normalise both sides to single-spaced lowercase before comparing. #}
     {% set _nm = name|lower|replace('\n',' ')|trim %}{% set _nm = _nm.split()|join(' ') %}
     <a href="{{ url }}" class="{% if _as == _nm %}active{% endif %}"><small>{{ no }}</small> {{ name.split()|join(' ') }}</a>
     {% endfor %}

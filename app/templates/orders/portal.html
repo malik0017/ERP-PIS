@@ -250,6 +250,18 @@
         <span class="small-muted" id="menuHint"></span>
       </div>
 
+      {# Batch 123: realtime recipe search. Filters the recipe rows as you type —
+         no button, no reload. Matches on both recipe CODE and NAME. #}
+      <div class="mb-2">
+        <div class="input-group">
+          <!-- <span class="input-group-text bg-white"><i class="bi bi-search"></i></span> -->
+          <input type="text" id="recipeFilter" class="sap-input" style="border-radius:0 10px 10px 0"
+                 placeholder="{{ t('Search recipe code or name — filters as you type') }}"
+                 oninput="filterRecipeRows(this.value)" autocomplete="off">
+        </div>
+        <small class="small-muted" id="recipeFilterHint"></small>
+      </div>
+
       {# ==================================================================
          Batch 103 — ONE REAL TABLE.
 
@@ -570,6 +582,49 @@
       + String(min.getMonth() + 1).padStart(2, "0") + "-"
       + String(min.getDate()).padStart(2, "0");
     dEl.setAttribute("min", iso);
+  })();
+
+  // Batch 123: realtime recipe row filter (image 1). Hides order-line rows whose
+  // recipe display value doesn't contain the query. Case-insensitive, matches
+  // code + name. Empty query shows everything.
+  function filterRecipeRows(q) {
+    q = (q || "").trim().toLowerCase();
+    var rows = document.querySelectorAll("#portal-lines .order-line");
+    var shown = 0;
+    rows.forEach(function (row) {
+      var disp = row.querySelector(".recipe-display");
+      var cat = row.querySelector(".recipe-category");
+      var hay = ((disp && disp.value) || "") + " " + ((cat && cat.textContent) || "");
+      var match = !q || hay.toLowerCase().indexOf(q) !== -1;
+      row.style.display = match ? "" : "none";
+      if (match) shown++;
+    });
+    var hint = document.getElementById("recipeFilterHint");
+    if (hint) hint.textContent = q ? (shown + " match(es)") : "";
+  }
+
+  // Batch 123: preset the customer when arriving from a customer card
+  // (/orders/portal/new?customer=smc). Matches the card key against the
+  // customer datalist by code or name and locks the field.
+  (function presetCustomer() {
+    var preset = {{ (preset_customer or '')|tojson }};
+    if (!preset) return;
+    var input = document.getElementById("customer_display");
+    var list = document.getElementById("customerList");
+    if (!input || !list) return;
+    var target = preset.toLowerCase();
+    var opts = list.querySelectorAll("option");
+    for (var i = 0; i < opts.length; i++) {
+      var code = (opts[i].dataset.code || "").toLowerCase();
+      var name = (opts[i].dataset.name || "").toLowerCase();
+      var val = (opts[i].value || "").toLowerCase();
+      if (code.indexOf(target) !== -1 || name.indexOf(target) !== -1 || val.indexOf(target) !== -1) {
+        input.value = opts[i].value;
+        // fire the change binding used elsewhere
+        input.dispatchEvent(new Event("change", { bubbles: true }));
+        break;
+      }
+    }
   })();
 </script>
 {% endblock %}

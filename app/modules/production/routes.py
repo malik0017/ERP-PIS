@@ -919,9 +919,9 @@ async def reissue_store_line(request: Request, line_id: int, db: Session = Depen
     # Batch 121: return to the per-ORDER line page (where the store keeper is
     # actually working), not the whole-queue list. Clearer, colored message.
     from urllib.parse import quote as _q
-    _msg = _q(f"{line.ingredient_name} reopened for editing — adjust the issue qty and press Save.")
+    # _msg = _q(f"{line.ingredient_name} reopened for editing — adjust the issue qty and press Save.")
     return RedirectResponse(
-        f"/production/orders/{line.order_no}/store-issuance?toast=warning&title={_q('Line Reopened')}&msg={_msg}#line-{line_id}",
+        f"/production/orders/{line.order_no}/store-issuance?toast=warning&title={_q('Line Reopened')}#line-{line_id}",
         status_code=HTTP_303_SEE_OTHER,
     )
 
@@ -1497,7 +1497,7 @@ async def store_issuance_by_section_export(request: Request, db: Session = Depen
         where += " AND COALESCE(co.required_delivery_date,'') <= :dt"
         params["dt"] = date_to
 
-    rows = db.execute(text(f"""
+    raw_rows = db.execute(text(f"""
         SELECT s.issue_to_section AS section, s.order_no, co.customer_name,
                s.recipe_no, s.recipe_name, s.ingredient_code, s.ingredient_name,
                COALESCE(s.required_qty_with_waste_standard, s.required_qty_standard, 0) AS required_qty,
@@ -1514,15 +1514,69 @@ async def store_issuance_by_section_export(request: Request, db: Session = Depen
         LIMIT 5000
     """), params).mappings().all()
 
+    # ------------------------------------------------------------------
+    # Batch 123 FIX (images 9,10): these buttons are labelled "Consolidated
+    # picking list" but were dumping every raw store-issuance line. Consolidate
+    # by (section, ingredient) — sum required + issued, and collect the distinct
+    # orders/customers so the store still sees who the pull is for. The raw dump
+    # is still available with ?consolidated=0 if ever needed.
+    # ------------------------------------------------------------------
+    consolidated = (request.query_params.get("consolidated") or "1").strip() != "0"
+    if consolidated:
+        agg: dict = {}
+        for r in raw_rows:
+            key = (r["section"], r["ingredient_code"], r["uom"])
+            if key not in agg:
+                agg[key] = {
+                    "section": r["section"], "ingredient_code": r["ingredient_code"],
+                    "ingredient_name": r["ingredient_name"], "uom": r["uom"],
+                    "required_qty": 0.0, "issued_qty": 0.0,
+                    "orders": set(), "customers": set(),
+                    "all_finalized": True,
+                }
+            a = agg[key]
+            a["required_qty"] += float(r["required_qty"] or 0)
+            a["issued_qty"] += float(r["issued_qty"] or 0)
+            if r["order_no"]:
+                a["orders"].add(r["order_no"])
+            if r["customer_name"]:
+                a["customers"].add(r["customer_name"])
+            if not int(r["finalized"] or 0):
+                a["all_finalized"] = False
+        rows = []
+        for a in sorted(agg.values(), key=lambda x: (x["section"] or "", x["ingredient_name"] or "")):
+            rows.append({
+                "section": a["section"],
+                "ingredient_code": a["ingredient_code"],
+                "ingredient_name": a["ingredient_name"],
+                "uom": a["uom"],
+                "required_qty": a["required_qty"],
+                "issued_qty": a["issued_qty"],
+                "orders": ", ".join(sorted(a["orders"])),
+                "customers": ", ".join(sorted(a["customers"])),
+                "issuance_status": "Issued" if a["all_finalized"] else "Partial / Pending",
+            })
+    else:
+        rows = [dict(r) for r in raw_rows]
+
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["Section", "Order", "Customer", "Delivery Date", "Recipe Code", "Recipe Name",
-                      "Ingredient Code", "Ingredient Name", "Required Qty", "Issued Qty", "UOM",
-                      "Status", "Finalized"])
-    for r in rows:
-        writer.writerow([r["section"], r["order_no"], r["customer_name"], r["delivery_date"],
-                          r["recipe_no"], r["recipe_name"], r["ingredient_code"], r["ingredient_name"],
-                          r["required_qty"], r["issued_qty"], r["uom"], r["issuance_status"], r["finalized"]])
+    if consolidated:
+        writer.writerow(["Section", "Ingredient Code", "Ingredient Name",
+                          "Total Required", "Total Issued", "UOM",
+                          "Orders", "Customers", "Status"])
+        for r in rows:
+            writer.writerow([r["section"], r["ingredient_code"], r["ingredient_name"],
+                              f'{r["required_qty"]:.3f}', f'{r["issued_qty"]:.3f}', r["uom"],
+                              r["orders"], r["customers"], r["issuance_status"]])
+    else:
+        writer.writerow(["Section", "Order", "Customer", "Delivery Date", "Recipe Code", "Recipe Name",
+                          "Ingredient Code", "Ingredient Name", "Required Qty", "Issued Qty", "UOM",
+                          "Status", "Finalized"])
+        for r in rows:
+            writer.writerow([r["section"], r["order_no"], r["customer_name"], r["delivery_date"],
+                              r["recipe_no"], r["recipe_name"], r["ingredient_code"], r["ingredient_name"],
+                              r["required_qty"], r["issued_qty"], r["uom"], r["issuance_status"], r["finalized"]])
     output.seek(0)
 
     # Batch 121: PDF export — same consolidated section/table data as the CSV.
@@ -1542,25 +1596,34 @@ async def store_issuance_by_section_export(request: Request, db: Session = Depen
                                     topMargin=12 * mm, bottomMargin=12 * mm)
             styles = getSampleStyleSheet()
             elems = [
-                Paragraph("Store Issuance — Consolidated Picking List", styles["Title"]),
+                Paragraph("Store Issuance — " + ("Consolidated Picking List" if consolidated else "Full Line Detail"), styles["Title"]),
                 Paragraph(
                     f"Section: {section_filter or 'All sections'} &nbsp;·&nbsp; "
                     f"Show: {show} &nbsp;·&nbsp; Generated: {date.today().isoformat()} &nbsp;·&nbsp; ISFC ERP",
                     styles["Normal"]),
                 Spacer(1, 6 * mm),
             ]
-            head = ["Section", "Order", "Customer", "Recipe", "Ingredient",
+            head = ["Section", "Ingredient Code", "Ingredient", "Total Required",
+                    "Total Issued", "UOM", "Orders", "Customers", "Status"] if consolidated else \
+                   ["Section", "Order", "Customer", "Recipe", "Ingredient",
                     "Required", "Issued", "UOM", "Status"]
             data = [head]
             for r in rows:
-                data.append([
-                    r["section"], r["order_no"], r["customer_name"] or "",
-                    f'{r["recipe_no"] or ""} {r["recipe_name"] or ""}'.strip(),
-                    f'{r["ingredient_code"] or ""} {r["ingredient_name"] or ""}'.strip(),
-                    f'{float(r["required_qty"] or 0):.2f}',
-                    f'{float(r["issued_qty"] or 0):.2f}',
-                    r["uom"], r["issuance_status"],
-                ])
+                if consolidated:
+                    data.append([
+                        r["section"], r["ingredient_code"], r["ingredient_name"] or "",
+                        f'{r["required_qty"]:.3f}', f'{r["issued_qty"]:.3f}', r["uom"],
+                        r["orders"], r["customers"], r["issuance_status"],
+                    ])
+                else:
+                    data.append([
+                        r["section"], r["order_no"], r["customer_name"] or "",
+                        f'{r["recipe_no"] or ""} {r["recipe_name"] or ""}'.strip(),
+                        f'{r["ingredient_code"] or ""} {r["ingredient_name"] or ""}'.strip(),
+                        f'{float(r["required_qty"] or 0):.2f}',
+                        f'{float(r["issued_qty"] or 0):.2f}',
+                        r["uom"], r["issuance_status"],
+                    ])
             tbl = Table(data, repeatRows=1)
             tbl.setStyle(TableStyle([
                 ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1e3a5f")),

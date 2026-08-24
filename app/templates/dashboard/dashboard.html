@@ -633,7 +633,7 @@
 {% set max_section_cost = (top_bom_sections | map(attribute='cost') | max) if top_bom_sections else 1 %}
 {% set max_category_cost = (bom_category_cost | map(attribute='cost') | max) if bom_category_cost else 1 %}
 {% set max_store = (store_status | map(attribute='total') | max) if store_status else 1 %}
-<div class="exec-page container-fluid px-4">
+<div class="exec-page container-fluid ">
   <div class="exec-hero d-flex justify-content-between align-items-center flex-wrap gap-3">
     <div>
       <h1>{{ t('Production Intelligence') }}</h1>
@@ -643,12 +643,12 @@
       <i class="bi bi-grid-3x3-gap me-1"></i>{{ t('Module Launcher') }}</a>
   </div>
 
-
-  <div class="exec-section">
-    <h5>{{ t('Order Book &amp; Margin') }}</h5>
+  <div class="card shadow-none border mb-3" data-component-card="data-component-card">
+    <div class="card-header p-3 border-bottom bg-body">
+    <h4>{{ t('Order Book &amp; Margin') }}</h4>
     <span>{{ t('What is committed, what it is worth, and how much of it is moving') }}</span>
   </div>
-  <div class="kpi-grid" style="border-radius:0 0 14px 14px;padding-top:14px">
+  <div class="kpi-grid p-4" style="border-radius:0 0 14px 14px;padding-top:14px">
     <div class="kpi-card kpi-indigo">
       <span class="kpi-ico"><i class="bi bi-cart-check"></i></span>
       <span class="kpi-body"><span class="label">{{ t('Open Orders') }}</span>
@@ -673,12 +673,14 @@
         <strong class="value">{{ '%.0f'|format(kpis.store_progress_pct or 0) }}%</strong>
         <span class="hint">{{ kpis.store_finalized }} {{ t('of') }} {{ kpis.store_lines }} {{ t('lines finalized') }}</span></span></div>
   </div>
+  </div>
 
-  <div class="exec-section">
-    <h5>{{ t('Master Data Depth') }}</h5>
+  <div class="card shadow-none border mb-3" data-component-card="data-component-card">
+    <div class="card-header p-3 border-bottom bg-body">
+    <h4>{{ t('Master Data Depth') }}</h4>
     <span>{{ t('How much of the operation the system actually knows about') }}</span>
   </div>
-  <div class="kpi-grid" style="border-radius:0 0 14px 14px;padding-top:14px">
+  <div class="kpi-grid p-4" style="border-radius:0 0 14px 14px;padding-top:14px">
     <div class="kpi-card kpi-teal">
       <span class="kpi-ico"><i class="bi bi-journal-text"></i></span>
       <span class="kpi-body"><span class="label">{{ t('Active Recipes') }}</span>
@@ -703,7 +705,8 @@
         <strong class="value">{{ kpis.customers }}</strong>
         <span class="hint">{{ t('customers') }} · {{ kpis.suppliers }} {{ t('suppliers') }}</span></span></div>
   </div>
-
+  </div>
+  
 
   <div class="card shadow-none border mb-3" data-component-card="data-component-card">
     <div class="card-header p-3 border-bottom bg-body">
@@ -738,17 +741,19 @@
     </div>
   </div>
 
-
-  <div class="panel mb-3">
-    <h3>Quality & Logistics Readiness</h3>
+   <div class="card shadow-none border mb-3 h-100" data-component-card="data-component-card">
+    <div class="card-header p-3 border-bottom bg-body">
+    <h4>Quality & Logistics Readiness</h4>
     </p>
-    <div class="status-grid">
+    </div>
+    <div class="status-grid p-4">
       <div class="status-tile"><span>Orders Waiting QC</span><strong>{{ kpis.qc_waiting_orders }}</strong></div>
       <div class="status-tile"><span>QC Checks Done</span><strong>{{ kpis.qc_checks }}</strong></div>
       <div class="status-tile"><span>Pending Packing</span><strong>{{ kpis.packing_pending }}</strong></div>
       <div class="status-tile"><span>Pending Dispatch</span><strong>{{ kpis.dispatch_pending }}</strong></div>
       <div class="status-tile"><span>Delivered</span><strong>{{ kpis.delivered_orders }}</strong></div>
     </div>
+  </div>
   </div>
 
   <div class="panel-grid">
@@ -767,16 +772,13 @@
         {% endif %}
       </div>
     </div>
-    <div class="panel">
-      {# Batch 107: exceptions were an undifferentiated list of numbers. They
-         are now ranked by severity with a colour and an explanation of what
-         each one actually blocks — an exception list that does not say why it
-         matters is just another table. #}
-      <div class="exec-section" style="margin-top:0;border-radius:14px 14px 0 0">
-        <h5>{{ t('Needs Attention') }}</h5>
+      <div class="card shadow-none border mb-3 h-100" data-component-card="data-component-card">
+    <div class="card-header p-3 border-bottom bg-body">
+      
+        <h4>{{ t('Needs Attention') }}</h4>
         <span>{{ t('Things standing between an order and the customer') }}</span>
       </div>
-      <div class="action-list pt-3">
+      <div class="action-list p-4">
         {% for item in action_items %}
         <a class="action-item {{ item.level }} exc-row exc-{{ item.level or 'info' }}" href="{{ item.url }}">
           <span class="exc-dot"></span>
@@ -786,11 +788,11 @@
         {% endfor %}
       </div>
 
-      <div class="exec-section" style="border-radius:14px 14px 0 0">
-        <h5>{{ t('Money on the Order Book') }}</h5>
+      <div class="card-header p-3 border-bottom bg-body">
+        <h4>{{ t('Money on the Order Book') }}</h4>
         <span>{{ t('Cost, revenue and the gap between them') }}</span>
       </div>
-      <div class="mini-metrics pt-3">
+      <div class="mini-metrics p-4">
         <div class="mini"><span>{{ t('Food Cost') }}</span>
           <strong>{{ '%.2f'|format(kpis.food_cost or 0) }}</strong></div>
         <div class="mini"><span>{{ t('Selling Value') }}</span>
@@ -803,6 +805,7 @@
       </div>
     </div>
   </div>
+  </div>
 
 
   {# Phoenix search + sortable table for Recent Customer Orders #}
@@ -813,15 +816,6 @@
     <div class="card-body p-0 py-2 ">
       <div id="ordersTableContainer"
         data-list='{"valueNames":["orderNo","customerName","brand","status","deliveryDate","portions","foodCost","saleValue","margin"],"page":10,"pagination":true}'>
-
-        {# Search box #}
-        <!-- <div class="search-box mb-3 px-4 mt-3">
-          <form class="position-relative">
-            <input class="form-control search-input search form-control-sm" type="search"
-              placeholder="Search orders by number, customer, brand..." aria-label="Search" />
-            <span class="fas fa-search search-box-icon"></span>
-          </form>
-        </div> -->
 
         {# Table #}
         <div class="table-responsive scrollbar mx-4">
@@ -922,16 +916,15 @@
   </div>
 
   <div class="panel-grid">
-    <div class="panel dashboard-report-card">
-      {# Batch 107 #}
-      <div class="exec-section" style="margin-top:0;border-radius:14px 14px 0 0">
-        <h5>{{ t('Production Control') }}</h5>
+    <div class="card shadow-none border mb-3 h-100" data-component-card="data-component-card">
+      <div class="card-header p-4 border-bottom bg-body">
+        <h4>{{ t('Production Control') }}</h4>
         <span>{{ t('Open work by stage — click through to the queue') }}</span>
       </div>
-      <a class="dashboard-report-link" href="/production/orders"><strong>Open Production Orders</strong><span>{{ kpis.open_orders }}</span></a>
-      <a class="dashboard-report-link" href="/production/store-issuance"><strong>Store Lines Not Finalized</strong><span>{{ kpis.store_lines - kpis.store_finalized }}</span></a>
-      <a class="dashboard-report-link" href="/qc"><strong>Orders Waiting QC</strong><span>{{ kpis.qc_waiting_orders }}</span></a>
-      <a class="dashboard-report-link" href="/dispatch"><strong>Pending Dispatch</strong><span>{{ kpis.dispatch_pending }}</span></a>
+      <a class="dashboard-report-link m-2" href="/production/orders"><strong>Open Production Orders</strong><span>{{ kpis.open_orders }}</span></a>
+      <a class="dashboard-report-link m-2" href="/production/store-issuance"><strong>Store Lines Not Finalized</strong><span>{{ kpis.store_lines - kpis.store_finalized }}</span></a>
+      <a class="dashboard-report-link m-2" href="/qc"><strong>Orders Waiting QC</strong><span>{{ kpis.qc_waiting_orders }}</span></a>
+      <a class="dashboard-report-link m-2" href="/dispatch"><strong>Pending Dispatch</strong><span>{{ kpis.dispatch_pending }}</span></a>
     </div>
     <div class="panel dashboard-report-card">
       <h3>Recipe Profitability Mix</h3>
@@ -944,12 +937,12 @@
   </div>
 
 <div class="panel-grid">
-  <div class="panel">
-    <div class="exec-section" style="margin-top:0;border-radius:14px 14px 0 0;margin-bottom:14px">
-      <h5>{{ t('Store Issuance') }}</h5>
+    <div class="card shadow-none border mb-3 h-100" data-component-card="data-component-card">
+    <div class="card-header p-4 border-bottom bg-body">
+      <h4>{{ t('Store Issuance') }}</h4>
       <span>{{ t('Material released to the kitchen vs still waiting') }}</span>
     </div>
-    <div class="status-grid">
+    <div class="status-grid p-4">
       {% for row in store_status %}
       <div class="status-tile"><span>{{ row.label }}</span><strong>{{ row.total }}</strong></div>
       {% else %}<div class="muted-empty">No store issuance lines yet.</div>{% endfor %}
@@ -966,7 +959,9 @@
     <div class="isfc-chart-panel" data-unit="recipes" data-note="Recipes held per customer. Concentration here is revenue concentration risk." data-isfc-chart="hbar" data-types="hbar,bar,line,pie,donut"
          data-labels='{{ recipe_customer_mix | map(attribute="label") | list | tojson }}'
          data-values='{{ recipe_customer_mix | map(attribute="total") | list | tojson }}'></div>
-    {% else %}<div class="muted-empty">No recipe customer mix found.</div>{% endif %}
+    {% else %}
+    <div class="muted-empty">No recipe customer mix found.</div>
+    {% endif %}
   </div>
 </div>
 </div>
