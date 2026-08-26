@@ -953,7 +953,7 @@ async def finalize_store(request: Request, order_no: str, db: Session = Depends(
         pass
 
     return RedirectResponse(
-        f"/production/store-issuance?toast=success&title=Store Issue Finalized&msg=Order {order_no}: selected lines locked and material sent to kitchen sections",
+        f"/production/store-issuance?toast=success&title=Store Issue Finalized&msg=Order",
         status_code=HTTP_303_SEE_OTHER)
 
 
@@ -1021,6 +1021,7 @@ async def section_page(request: Request, section_name: str, db: Session = Depend
             COALESCE(MAX(co.brand), '') AS brand,
             COALESCE(MAX(co.required_delivery_date), '') AS delivery_date,
             COALESCE(MAX(co.required_delivery_time), '') AS delivery_time,
+            COALESCE(MAX(co.status), '') AS order_status,
             COUNT(*) AS total_lines,
             SUM(CASE WHEN COALESCE(k.received_qty_standard,0) > 0 THEN 1 ELSE 0 END) AS received_lines,
             SUM(CASE WHEN UPPER(COALESCE(k.transaction_status,'')) LIKE 'COMPLETED%' OR UPPER(COALESCE(k.transaction_status,'')) = 'TRANSFERRED' THEN 1 ELSE 0 END) AS completed_lines,
@@ -1067,6 +1068,7 @@ async def section_page(request: Request, section_name: str, db: Session = Depend
             "received_lines": received_lines,
             "completed_lines": completed_lines,
             "filters": {"search": search, "status": status_filter},
+            "today": date.today().isoformat(),
             "page_title": f"{section} Workstation",
             "error": request.query_params.get("error"),
         },
@@ -1088,8 +1090,11 @@ async def section_order_page(request: Request, section_name: str, order_no: str,
         return redirect_with_error(f"/production/section/{_section_slug(section)}", "No section receiving lines found for this order.")
 
     recipe_groups = []
-    if section == "Bakery/Pastry":
-        recipe_groups = bakery_pastry_consolidated(db, order_no=order_no)
+    # Batch 126: per-recipe bulk processing now applies to Bakery/Pastry,
+    # Cold Kitchen and Hot Kitchen — they all receive separate ingredients but
+    # cook/mix them as a complete recipe batch.
+    if section in ("Bakery/Pastry", "Cold Kitchen", "Hot Kitchen"):
+        recipe_groups = bakery_pastry_consolidated(db, order_no=order_no, section=section)
 
     totals = {
         "lines": len(txs),
@@ -1163,7 +1168,7 @@ async def receive_section_order_all(request: Request, section_name: str, order_n
     db.commit()
     # Batch 19: real feedback instead of a silent redirect.
     if received_n:
-        msg = f"{received_n} line(s) received at full issued quantity" + (f", {skipped_n} already received/completed" if skipped_n else "")
+        msg = f"{received_n}"
         return RedirectResponse(f"/production/section/{_section_slug(section)}/orders/{order_no}?toast=success&title=Received&msg={msg}", status_code=HTTP_303_SEE_OTHER)
     return RedirectResponse(f"/production/section/{_section_slug(section)}/orders/{order_no}?toast=info&title=Nothing to receive&msg=All {skipped_n} line(s) were already received or completed", status_code=HTTP_303_SEE_OTHER)
 
@@ -1370,9 +1375,26 @@ async def process_bakery_recipe(
     waste_qty: float = Form(0),
     next_section: str = Form("Trayline / Packing"),
     remarks: str = Form(""),
+    section: str = Form("Bakery/Pastry"),
+    weight_per_portion: str = Form(""),
+    protein_per_portion: str = Form(""),
     db: Session = Depends(get_db),
 ):
     require_action(request, "kitchen", "edit")
+    # Batch 126: Hot Kitchen weight/protein per portion are captured into the
+    # remark (no schema change) so they carry through to QC/packing history.
+    extra = []
+    if weight_per_portion.strip():
+        extra.append(f"Weight/portion: {weight_per_portion.strip()}g")
+    if protein_per_portion.strip():
+        extra.append(f"Protein/portion: {protein_per_portion.strip()}g")
+    if extra:
+        remarks = (remarks + " | " if remarks else "") + " ".join(extra)
+    # Batch 126: the same recipe-level Process action now serves Bakery/Pastry,
+    # Cold Kitchen and Hot Kitchen. `section` says which one, so we filter the
+    # right transactions and return the user to the right section page.
+    src = section if section in ("Bakery/Pastry", "Cold Kitchen", "Hot Kitchen") else "Bakery/Pastry"
+    back = f"/production/section/{_section_slug(src)}/orders/{order_no}" if src != "Bakery/Pastry" else "/production/bakery-pastry"
     try:
         process_bakery_pastry_recipe(
             db,
@@ -1384,10 +1406,14 @@ async def process_bakery_recipe(
             next_section=next_section,
             user=current_user_name(request),
             remarks=remarks,
+            source_section=src,
         )
     except ValueError as exc:
-        return redirect_with_error("/production/bakery-pastry", str(exc))
-    return RedirectResponse("/production/bakery-pastry", status_code=HTTP_303_SEE_OTHER)
+        return redirect_with_error(back, str(exc))
+    from urllib.parse import quote as _q
+    return RedirectResponse(
+        f"{back}?toast=success&title={_q('Recipe Processed')}&msg={_q(recipe_no + ' output forwarded to ' + next_section)}",
+        status_code=HTTP_303_SEE_OTHER)
 
 
 @router.get("/head-chef")

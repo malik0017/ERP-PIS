@@ -126,7 +126,10 @@
     <div>
       <h1 class="mb-1 fw-bold text-white">
         {% if immediate %}<i class="bi bi-lightning-fill me-2"></i>{{ t('Immediate Order') }}
-        {% else %}<i class="bi bi-cart-plus me-2"></i>{{ t('Sale Requisitions') }}{% endif %}</h1>
+        {% else %}<i class="bi bi-cart-plus me-2"></i>{{ t('Sale Requisitions') }}{% endif %}
+        {# Batch 126: surface the picked customer (e.g. FRSH) in the header so
+           the user always knows which customer this order is for. #}
+        {% if preset_customer %}<span class="badge bg-white text-dark ms-2 align-middle" style="font-size:.5em;vertical-align:middle">{{ preset_customer|upper }}</span>{% endif %}</h1>
       <p class="mb-0 opacity-75">
         {% if immediate %}{{ t('Same order form, same everything — the 48-hour delivery rule does not apply on this screen. Use it only for genuinely urgent orders.') }}
         {% else %}{{ t('Place a new order on behalf of a customer, or for internal production — the same 48-hour delivery rule applies here as everywhere else.') }}{% endif %}</p>
@@ -469,18 +472,23 @@
     });
 
     tbody.innerHTML = "";
-    recipes.forEach(function (rc) {
+    // Batch 124: show recipes grouped/sorted by CATEGORY (all of one category,
+    // then the next) as requested — first category's recipes, then 2nd, etc.
+    var sorted = (recipes || []).slice().sort(function (a, b) {
+      var ca = (a.category || "").toLowerCase(), cb = (b.category || "").toLowerCase();
+      if (ca < cb) return -1; if (ca > cb) return 1;
+      return (a.name || "").localeCompare(b.name || "");
+    });
+    sorted.forEach(function (rc) {
       const tr = template.cloneNode(true);
       tr.querySelector(".recipe-display").value = rc.code + " - " + rc.name;
       tr.querySelector(".recipe-no").value = rc.code;
       tr.querySelector(".recipe-name").value = rc.name;
-      // The recipe is fixed by the menu, so the text box is read-only — the
-      // only thing to fill in is the quantity.
       tr.querySelector(".recipe-display").setAttribute("readonly", "readonly");
-      // Batch 105: the "Main course · price 3.22" line under every row is
-      // gone. On an 8-line menu it tripled the vertical space and repeated
-      // information that belongs on the recipe, not the order form.
       tr.querySelector(".recipe-info").textContent = "";
+      // Batch 124: fill the Category cell from the menu payload.
+      var catEl = tr.querySelector(".recipe-category");
+      if (catEl) catEl.textContent = rc.category || "—";
       const qty = tr.querySelector('input[name="required_portions"]');
       qty.value = typed[rc.code] || 0;
       tbody.appendChild(tr);
@@ -608,22 +616,37 @@
   // customer datalist by code or name and locks the field.
   (function presetCustomer() {
     var preset = {{ (preset_customer or '')|tojson }};
+    var presetInfo = {{ (preset_info or {})|tojson }};
     if (!preset) return;
     var input = document.getElementById("customer_display");
     var list = document.getElementById("customerList");
     if (!input || !list) return;
     var target = preset.toLowerCase();
     var opts = list.querySelectorAll("option");
+    var matched = null;
     for (var i = 0; i < opts.length; i++) {
       var code = (opts[i].dataset.code || "").toLowerCase();
       var name = (opts[i].dataset.name || "").toLowerCase();
       var val = (opts[i].value || "").toLowerCase();
       if (code.indexOf(target) !== -1 || name.indexOf(target) !== -1 || val.indexOf(target) !== -1) {
-        input.value = opts[i].value;
-        // fire the change binding used elsewhere
-        input.dispatchEvent(new Event("change", { bubbles: true }));
-        break;
+        matched = opts[i]; break;
       }
+    }
+    if (matched) {
+      input.value = matched.value;
+      var cn = document.getElementById("customer_name");
+      var co = document.getElementById("customer_no");
+      if (cn) cn.value = matched.dataset.name || matched.value;
+      if (co) co.value = matched.dataset.code || "";
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+      // Batch 124: explicitly (re)trigger weekly-menu detection after the
+      // fields are populated, so FRSH auto-fills brand/channel and shows the
+      // "Weekly menu customer" badge without the user retyping anything.
+      setTimeout(function () {
+        if (typeof loadMenuMode === "function") {
+          loadMenuMode((cn && cn.value) || matched.dataset.name || "");
+        }
+      }, 30);
     }
   })();
 </script>

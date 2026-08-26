@@ -162,5 +162,5 @@ def update_packing(
     from urllib.parse import quote as _q
     _bags = f" · {int(packed_bags)} bag(s)" if packed_bags not in (None, "") else ""
     return RedirectResponse(
-        f"/packing?toast=success&title={_q('Packing Saved')}&msg={_q(f'{row.order_no} packed{_bags}, released to Dispatch.')}",
+        f"/packing?toast=success&title={_q('Packing Saved')}",
         status_code=HTTP_303_SEE_OTHER)

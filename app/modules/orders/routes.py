@@ -69,6 +69,7 @@ def _master_dropdown_context(db: Session, company_id: int = 1) -> dict:
                 COALESCE(r.customer_name,'') AS customer_name,
                 COALESCE(r.brand_name,'') AS brand_name,
                 COALESCE(r.category,'') AS category,
+                COALESCE(r.day_of_week,'') AS day_of_week,
                 r.standard_portions,
                 r.food_cost_per_portion,
                 r.sale_price_per_portion,
@@ -126,12 +127,38 @@ def order_portal(request: Request, db: Session = Depends(get_db)):
 @router.get("/portal/new", response_class=HTMLResponse)
 def order_portal_new(request: Request, db: Session = Depends(get_db)):
     """The actual order form. Reachable from a customer card; an optional
-    ?customer=CODE preset filters/locks the customer selection."""
+    ?customer=CODE preset auto-selects that customer (and, for weekly-menu
+    customers like FRSH, marks the form so day-wise menu loading kicks in)."""
     require_area(request, "order_portal")
     company_id = _company_id_from_session(request)
     context = _master_dropdown_context(db, company_id)
-    preset = (request.query_params.get("customer") or "").strip()
-    context.update({"page_title": "Sale Requisitions", "preset_customer": preset})
+    preset = (request.query_params.get("customer") or "").strip().lower()
+
+    # Batch 124: FRSH is a weekly-menu customer. When the user lands here from
+    # the FRSH card we resolve the real customer/brand/channel codes so the
+    # form is pre-filled, and flag it as a weekly-menu customer so the template
+    # loads that day's recipes automatically once a delivery date is chosen.
+    preset_info = {"key": preset, "weekly_menu": False,
+                   "customer": "", "brand": "", "channel": ""}
+    if preset:
+        # match a customer whose code or name contains the preset key
+        row = db.execute(text("""
+            SELECT customer_code, customer_name FROM customers
+            WHERE company_id = :cid
+              AND (LOWER(customer_code) LIKE :k OR LOWER(customer_name) LIKE :k)
+              AND UPPER(TRIM(COALESCE(status,''))) = 'ACTIVE'
+            ORDER BY (LOWER(customer_name) LIKE :exact) DESC, customer_name ASC
+            LIMIT 1
+        """), {"cid": company_id, "k": f"%{preset}%", "exact": f"{preset}%"}).mappings().first()
+        if row:
+            preset_info["customer"] = f"{row['customer_code']} - {row['customer_name']}"
+        # FRSH uses the weekly day-wise menu
+        if preset == "frsh":
+            preset_info["weekly_menu"] = True
+
+    context.update({"page_title": "Sale Requisitions",
+                    "preset_customer": preset,
+                    "preset_info": preset_info})
     return render(request, "orders/portal.html", context)
 
 

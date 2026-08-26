@@ -558,6 +558,12 @@ def create_store_issuance_from_bom(db: Session, order_no: str) -> list[StoreIssu
             continue
         route = _json_list(bom.route_template)
         first_section = bom.default_issue_section or (route[1] if len(route) > 1 else "Hot Kitchen")
+        # Batch 124: initial section SUGGESTION by item-code prefix. Fresh produce
+        # coded PRD1-* is washed/cut first, so it defaults to Cutting. This only
+        # sets the default — the store keeper can still change it on screen, and
+        # any explicit section on the BOM line still applies to non-PRD1 items.
+        if (bom.ingredient_code or "").upper().startswith("PRD1"):
+            first_section = "Cutting"
         available = (
             db.query(StockLot)
             .filter(StockLot.ingredient_code == bom.ingredient_code, StockLot.status == "Available")
@@ -933,15 +939,17 @@ def transfer_transaction(
     return tx
 
 
-def bakery_pastry_consolidated(db: Session, order_no: str | None = None) -> list[dict[str, Any]]:
-    """Group Bakery/Pastry work at recipe level, not item level.
+def bakery_pastry_consolidated(db: Session, order_no: str | None = None,
+                               section: str = "Bakery/Pastry") -> list[dict[str, Any]]:
+    """Group a section's work at recipe level, not item level.
 
-    Client requirement: Bakery/Pastry receives separate ingredients but processes them
-    as one bulk recipe. Therefore this screen groups by order + recipe and sums all
-    issued/received ingredient quantities for that recipe.
+    Client requirement: Bakery/Pastry (and now Cold Kitchen + Hot Kitchen too)
+    receive separate ingredients but process them as one bulk recipe. This
+    groups by order + recipe and sums all issued/received ingredient quantities
+    for that recipe. `section` defaults to Bakery/Pastry for backward-compat.
     """
     q = db.query(KitchenSectionTransaction).filter(
-        KitchenSectionTransaction.current_section == "Bakery/Pastry"
+        KitchenSectionTransaction.current_section == section
     )
     if order_no:
         q = q.filter(KitchenSectionTransaction.order_no == order_no)
@@ -980,25 +988,26 @@ def process_bakery_pastry_recipe(
     recipe_no: str,
     output_qty: float,
     output_uom: str,
-    waste_qty: float,
     next_section: str,
     user: str,
+    waste_qty: float = 0,
     remarks: str | None = None,
+    source_section: str = "Bakery/Pastry",
 ) -> KitchenSectionTransaction:
-    """Complete Bakery/Pastry bulk processing for one order+recipe.
+    """Complete bulk recipe processing for one order+recipe in a bulk-cook
+    section (Bakery/Pastry, Cold Kitchen or Hot Kitchen — `source_section`).
 
-    Original ingredient transactions are closed as one mixed batch. A new transaction
-    is created for the finished/semi-finished recipe output and forwarded to the
-    selected next kitchen stage, e.g. Trayline/Packing, Packing, Hot Kitchen, Cold
-    Kitchen or QC.
+    Original ingredient transactions are closed as one mixed batch. A new
+    transaction is created for the finished/semi-finished recipe output and
+    forwarded to the selected next kitchen stage.
     """
     txs = db.query(KitchenSectionTransaction).filter(
         KitchenSectionTransaction.order_no == order_no,
         KitchenSectionTransaction.recipe_no == recipe_no,
-        KitchenSectionTransaction.current_section == "Bakery/Pastry",
+        KitchenSectionTransaction.current_section == source_section,
     ).all()
     if not txs:
-        raise ValueError("No Bakery/Pastry transactions found for this recipe/order")
+        raise ValueError(f"No {source_section} transactions found for this recipe/order")
 
     output = _num(output_qty)
     waste = _num(waste_qty)
@@ -1022,14 +1031,14 @@ def process_bakery_pastry_recipe(
         tx.received_at = tx.received_at or now
         tx.processed_at = now
         tx.transferred_at = now
-        tx.transaction_status = "Completed - Mixed in Bakery/Pastry"
+        tx.transaction_status = f"Completed - Mixed in {source_section}"
         tx.section_remarks = remarks
 
     # Keep recipe-level waste on the first ingredient transaction for audit history.
     txs[0].waste_qty_standard = waste
-    txs[0].waste_reason = "Recipe-level Bakery/Pastry wastage"
+    txs[0].waste_reason = f"Recipe-level {source_section} wastage"
 
-    route = ["Bakery/Pastry", next_section, "QC", "Packing", "Dispatch"]
+    route = [source_section, next_section, "QC", "Packing", "Dispatch"]
     recipe_name = txs[0].recipe_name or recipe_no
     next_tx = KitchenSectionTransaction(
         company_id=getattr(txs[0], "company_id", None),
@@ -1040,7 +1049,7 @@ def process_bakery_pastry_recipe(
         ingredient_code=recipe_no,
         ingredient_name=recipe_name,
         standard_uom=output_uom or "Portions",
-        from_section="Bakery/Pastry",
+        from_section=source_section,
         current_section=next_section,
         to_section="QC" if next_section not in {"QC", "Packing", "Dispatch"} else ("Packing" if next_section == "QC" else "Dispatch"),
         route_step_no=1,

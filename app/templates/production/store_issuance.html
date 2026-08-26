@@ -209,8 +209,7 @@
     <div class="d-flex justify-content-between flex-wrap gap-2 mb-3">
       <div>
         <h4>Store Issuance Lines - {{ order.order_no if order else '' }}</h4>
-        <div class="text-muted">Select kitchen section per line. Early prep sections can forward to Hot/Cold/Bakery/QC
-          later from section workstations.</div>
+        <div class="text-muted">Select kitchen section per line.</div>
       </div><a href="/production/store-issuance" class="si-btn si-soft">Back to Store Queue</a>
     </div>
     </div>
@@ -235,15 +234,15 @@
             <td><input class="issue-check" type="checkbox" checked {% if l.finalized %}disabled{% endif %}></td>
             <td>{{ l.ingredient_main_category or '-' }}</td>
             <td>{{ l.ingredient_sub_category or '-' }}</td>
-            <td><strong>{{ l.ingredient_code }}</strong><br>{{ l.ingredient_name }}<br><span class="mini">Recipe: {{
-                l.recipe_no }} - {{ l.recipe_name }}</span></td>
+            <td><strong>{{ l.ingredient_code }}</strong><br><strong>{{ l.ingredient_name }}</strong><br><span class="mini">Recipe: {{
+                l.recipe_no }} - <strong>{{ l.recipe_name }}</strong></span></td>
             <td>{{ '%.4f'|format(l.required_qty_with_waste_standard or 0) }} {{ l.standard_uom }}</td>
             <td><input form="issue-form-{{ l.id }}" class="form-control form-control-sm" type="number" step="0.0001" name="input_material_issued"
                 value="{{ l.input_material_issued if l.input_material_issued is not none else (l.required_qty_with_waste_standard or 0) }}" {% if l.finalized %}readonly{% endif %}></td>
             <td><input form="issue-form-{{ l.id }}" class="form-control form-control-sm" name="issued_uom"
                 value="{{ l.issued_uom or l.standard_uom }}" {% if l.finalized %}readonly{% endif %}></td>
             <td><select form="issue-form-{{ l.id }}" class="form-select form-select-sm" name="issue_to_section" {% if l.finalized %}disabled{% endif %}>{% for sec in
-                ['Cutting','Butchery','Marination','Hot Kitchen','Cold Kitchen','Bakery/Pastry'] %}<option {% if l.issue_to_section==sec %}selected{% endif %}>{{ sec }}</option>{% endfor %}</select></td>
+                ['Cutting','Butchery','Hot Kitchen','Cold Kitchen','Bakery/Pastry'] %}<option {% if l.issue_to_section==sec %}selected{% endif %}>{{ sec }}</option>{% endfor %}</select></td>
             <td><span class="si-status {% if l.finalized %}si-issued{% elif l.issuance_status == 'Issued' %}si-issued{% elif l.issuance_status == 'Short Issued' %}si-short{% else %}si-pending{% endif %}">{% if l.finalized %}Locked / Issued{% else %}{{ l.issuance_status }}{% endif %}</span></td>
             <td>
               {# Batch 122: the store keeper can always Re-Issue/Edit a line to

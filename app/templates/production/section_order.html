@@ -94,9 +94,9 @@ tr.locked .lock-note{color:#11783f;font-weight:800}
     {% endif %}
   </div>
 
-  {% if section == 'Bakery/Pastry' %}
+  {% if section in ['Bakery/Pastry', 'Cold Kitchen', 'Hot Kitchen'] %}
   <div class="pis-card p-3 mb-4">
-    <h4 class="mb-1">Bakery/Pastry Bulk Recipe Processing</h4>
+    <h4 class="mb-1">{{ section }} Bulk Recipe Processing</h4>
     <div class="small-muted mb-3">Ingredients are received separately but mixed and processed as a complete recipe batch. Enter final baked/cooked output at recipe level.</div>
     {% for r in recipe_groups %}
       <div class="recipe-box">
@@ -106,20 +106,26 @@ tr.locked .lock-note{color:#11783f;font-weight:800}
         </div>
         <details class="mb-3"><summary class="fw-bold">View ingredient collection</summary>
           <div class="table-responsive mt-2"><table class="table table-sm"><thead><tr><th>Code</th><th>Ingredient</th><th>Issued</th><th>Received</th><th>UOM</th><th>Status</th></tr></thead><tbody>
-            {% for d in r.details %}<tr><td>{{ d.ingredient_code }}</td><td>{{ d.ingredient_name }}</td><td>{{ d.issued_qty_standard }}</td><td>{{ d.received_qty_standard }}</td><td>{{ d.standard_uom }}</td><td>{{ d.transaction_status }}</td></tr>{% endfor %}
+            {% for d in r.details %}<tr><td>{{ d.ingredient_code }}</td><td><strong>{{ d.ingredient_name }}</strong></td><td>{{ d.issued_qty_standard }}</td><td>{{ d.received_qty_standard }}</td><td>{{ d.standard_uom }}</td><td>{{ d.transaction_status }}</td></tr>{% endfor %}
           </tbody></table></div>
         </details>
         <form method="post" action="/production/bakery-pastry/process" class="row g-2 align-items-end">
           <input type="hidden" name="order_no" value="{{ r.order_no }}"><input type="hidden" name="recipe_no" value="{{ r.recipe_no }}">
+          <input type="hidden" name="section" value="{{ section }}">
           <div class="col-md-2"><label class="fw-bold">Output Qty</label><input class="pis-input" type="number" step="0.0001" min="0" name="output_qty" required></div>
           <div class="col-md-2"><label class="fw-bold">Output UOM</label><select class="pis-input" name="output_uom"><option>Portions</option><option>Pieces</option><option>Kg</option></select></div>
+          {% if section == 'Hot Kitchen' %}
+          {# Batch 126: Hot Kitchen captures cooked weight + protein per portion. #}
+          <div class="col-md-2"><label class="fw-bold">Weight / Portion (g)</label><input class="pis-input" type="number" step="0.01" min="0" name="weight_per_portion"></div>
+          <div class="col-md-2"><label class="fw-bold">Protein / Portion (g)</label><input class="pis-input" type="number" step="0.01" min="0" name="protein_per_portion"></div>
+          {% endif %}
           <div class="col-md-2"><label class="fw-bold">Recipe Waste</label><input class="pis-input" type="number" step="0.0001" min="0" name="waste_qty" value="0"></div>
           <div class="col-md-3"><label class="fw-bold">Forward To</label><select class="pis-input" name="next_section">{% for s in next_sections %}<option>{{ s }}</option>{% endfor %}</select></div>
           <div class="col-md-2"><label class="fw-bold">Remarks</label><input class="pis-input" name="remarks"></div>
           <div class="col-md-1"><button class="pis-btn pis-success w-100">Process</button></div>
         </form>
       </div>
-    {% else %}<div class="text-muted">No Bakery/Pastry recipe groups for this order.</div>{% endfor %}
+    {% else %}<div class="text-muted">No {{ section }} recipe groups received yet — receive ingredient lines below first.</div>{% endfor %}
   </div>
   {% endif %}
 
