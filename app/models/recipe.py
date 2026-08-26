@@ -30,7 +30,7 @@ class Recipe(Base):
     # Batch 101: weekly menu day, read from the "Day" column that already
     # exists in the Recipe Ingredients sheet. Drives the Frsh day-wise
     # ordering flow. Nullable — most customers have no weekly cycle.
-    day_of_week = Column(String(20), nullable=True, index=True)
+    day_of_week = Column(String(120), nullable=True, index=True)
 
     version = Column(Integer, nullable=False, default=1)
     status = Column(String(20), nullable=False, default="ACTIVE")
@@ -109,6 +109,13 @@ class RecipeIngredient(Base):
     inventory_code = Column(String(80), nullable=True, index=True)
     item_name = Column(String(255), nullable=False)
     uom = Column(String(50), nullable=True)
+
+    # Batch 131 — kitchen section this ingredient line is issued to, captured
+    # from the recipe workbook's "Section" column ("Hot Section" etc.). Stored
+    # as the RAW sheet value; it is mapped to a canonical system section at BOM /
+    # store-issuance time via app.core.production_constants.resolve_issue_section.
+    # Added via an import-time schema guard in main.py (raw column, no ORM lag).
+    kitchen_section = Column(String(80), nullable=True)
 
     qty_batch = Column(Numeric(18, 4), nullable=False, default=0)
     portions = Column(Numeric(18, 4), nullable=False, default=1)

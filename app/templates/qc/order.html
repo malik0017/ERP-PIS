@@ -168,16 +168,22 @@
     <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
       <div>
         <h3 class="mb-1">{{ t('QC Receiving Lines') }}</h3>
+        {# Batch 95: the button's purpose was not obvious from the screen, so
+           it read as decorative. It is not — qc/routes.py blocks a QC
+           decision while any line still has zero received qty. That rule
+           existed but was only discoverable by trying to submit and being
+           rejected. Now the state is shown up front: green when everything
+           is received, amber with the outstanding balance when it isn't. #}
         {% set _all_received = (totals.balance_qty or 0) <= 0.0001 and (totals.received_qty or 0) > 0 %}
         {% if _all_received %}
-        <div class="text-success"><i class="bi bi-check-circle-fill me-1"></i>
+        <!-- <div class="text-success"><i class="bi bi-check-circle-fill me-1"></i>
           {{ t('All lines received — a QC decision can be submitted.') }}</div>
           {% else %}
-          <!-- <div class="text-warning"><i class="bi bi-exclamation-triangle-fill me-1"></i>
+          <div class="text-warning"><i class="bi bi-exclamation-triangle-fill me-1"></i>
             {{ t('Balance outstanding') }}: <strong>{{ '%.2f'|format(totals.balance_qty or 0) }}</strong>.
-            {{ t('Receive every line before a QC decision can be submitted.') }}</div> -->
+            {{ t('Receive every line before a QC decision can be submitted.') }}</div>
           {% endif %}
-        </div>
+        </div> -->
       {% if not _all_received %}
       <form method="post" action="/qc/orders/{{ order.order_no }}/receive-all"><button class="btn-pro btn-blue"
           type="submit"><i class="bi bi-box-arrow-in-down"></i> {{ t('Receive All QC Lines') }}</button></form>
@@ -186,6 +192,10 @@
       {% endif %}
     </div>
     <hr>
+    {# Batch 94: this detail table used to always be open, adding a lot of
+       vertical scroll before someone could act. Hidden behind a button
+       by default now, same collapse pattern used for Process & Transfer
+       elsewhere in Kitchen — one click reveals it, nothing lost. #}
     <button type="button" class="btn-pro btn-outline mb-2" id="qcLinesToggle" onclick="toggleQcLines()">
       <i class="bi bi-list-ul"></i> Show Ingredient Lines (<span id="qcLinesCount">{{ txs|length }}</span>) <i class="bi bi-chevron-down"></i>
     </button>
@@ -199,17 +209,24 @@
             <th>Qty</th>
             <th>Received</th>
             <th>Status</th>
+            <th>Wt/Portion (g)</th>
+            <th>Protein/Portion (g)</th>
+            <th>Carb/Portion (g)</th>
             <th>Remarks</th>
           </tr>
         </thead>
-        <tbody>{% for t in txs %}<tr>
+        <tbody>{% for t in tx_rows %}
+          <tr>
             <td>{{ t.recipe_no }}<br><strong>{{ t.recipe_name }}</strong></td>
             <td>{{ t.ingredient_code }}<br>{{ t.ingredient_name }}</td>
             <td>{{ t.from_section or '—' }}</td>
             <td>{{ '%.2f'|format(t.issued_qty_standard or 0) }} {{ t.standard_uom }}</td>
             <td>{{ '%.2f'|format(t.received_qty_standard or 0) }}</td>
             <td>{{ t.transaction_status }}</td>
-            <td>{{ t.section_remarks or '—' }}</td>
+            <td>{{ t.nut_w or '—' }}</td>
+            <td>{{ t.nut_p or '—' }}</td>
+            <td>{{ t.nut_c or '—' }}</td>
+            <td>{{ t.clean_remark or '—' }}</td>
           </tr>{% endfor %}</tbody>
       </table>
     </div>

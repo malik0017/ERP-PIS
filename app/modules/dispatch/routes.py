@@ -59,6 +59,66 @@ def _ensure_delivery_confirmation_schema(db: Session) -> None:
                 db.rollback()
 
 
+@router.get("/logistics", response_class=HTMLResponse)
+def logistics_report(request: Request, db: Session = Depends(get_db)):
+    """Batch 129 — Logistics report: region-wise bag counts by customer
+    (image 13). Groups packing_dispatch by region + customer, summing bags and
+    portions. CSV export supported via ?export=csv."""
+    require_area(request, "dispatch")
+    _ensure_delivery_confirmation_schema(db)
+    q = request.query_params
+    from_date = (q.get("from_date") or "").strip()
+    to_date = (q.get("to_date") or "").strip()
+    where = "1=1"
+    params: dict = {}
+    if from_date:
+        where += " AND dispatch_date >= :fd"; params["fd"] = from_date
+    if to_date:
+        where += " AND dispatch_date <= :td"; params["td"] = to_date
+    rows = db.execute(text(f"""
+        SELECT COALESCE(NULLIF(region,''),'Unassigned') AS region,
+               COALESCE(customer_name,'—') AS customer_name,
+               COUNT(*) AS orders,
+               COALESCE(SUM(packed_bags),0) AS bags,
+               COALESCE(SUM(packed_portions),0) AS portions
+        FROM packing_dispatch
+        WHERE {where}
+        GROUP BY COALESCE(NULLIF(region,''),'Unassigned'), customer_name
+        ORDER BY region, customer_name
+    """), params).mappings().all()
+
+    # group into region -> [customer rows], with region totals
+    regions: dict = {}
+    for r in rows:
+        regions.setdefault(r["region"], {"rows": [], "bags": 0, "orders": 0, "portions": 0})
+        g = regions[r["region"]]
+        g["rows"].append(r)
+        g["bags"] += int(r["bags"] or 0)
+        g["orders"] += int(r["orders"] or 0)
+        g["portions"] += float(r["portions"] or 0)
+
+    if q.get("export") == "csv":
+        import csv, io
+        out = io.StringIO(); w = csv.writer(out)
+        w.writerow(["Region", "Customer", "Orders", "Bags", "Portions"])
+        for region, g in regions.items():
+            for r in g["rows"]:
+                w.writerow([region, r["customer_name"], r["orders"], r["bags"], f'{float(r["portions"]):.2f}'])
+            w.writerow([f"{region} TOTAL", "", g["orders"], g["bags"], f'{g["portions"]:.2f}'])
+        out.seek(0)
+        from fastapi.responses import StreamingResponse
+        return StreamingResponse(iter(['\ufeff' + out.getvalue()]), media_type="text/csv",
+                                 headers={"Content-Disposition": "attachment; filename=logistics_report.csv"})
+
+    grand = {"bags": sum(g["bags"] for g in regions.values()),
+             "orders": sum(g["orders"] for g in regions.values()),
+             "portions": sum(g["portions"] for g in regions.values())}
+    return render(request, "dispatch/logistics.html",
+                  {"regions": regions, "grand": grand,
+                   "filters": {"from_date": from_date, "to_date": to_date},
+                   "page_title": "Logistics Report"})
+
+
 @router.get("", response_class=HTMLResponse)
 def dispatch_dashboard(request: Request, db: Session = Depends(get_db)):
     require_area(request, "dispatch")
@@ -128,6 +188,8 @@ async def update_dispatch(
     delivery_temperature_c: float = Form(0),
     dispatch_status: str = Form("Packed"),
     remarks: str = Form(""),
+    region: str = Form(""),
+    packed_bags: str = Form(""),
     delivery_otp_input: str = Form(""),
     pod_photo: Optional[UploadFile] = File(None),
     db: Session = Depends(get_db),
@@ -137,6 +199,17 @@ async def update_dispatch(
     row = db.query(PackingDispatch).filter(PackingDispatch.id == dispatch_id).first()
     if not row:
         return _redirect_with_error("/dispatch", "Dispatch record not found.")
+
+    # Batch 129: region + editable bag count. Persisted regardless of delivery
+    # status transition (they're logistics attributes, not proof-of-delivery).
+    _region = (region or "").strip()
+    if _region:
+        row.region = _region
+    if (packed_bags or "").strip():
+        try:
+            row.packed_bags = int(float(packed_bags))
+        except (TypeError, ValueError):
+            pass
 
     # ------------------------------------------------------------------
     # Batch 100 — DELIVERED IS FINAL. Lock the record once delivery closes.
@@ -170,34 +243,14 @@ async def update_dispatch(
     # (generated via "Generate Delivery Code" and confirmed against what's
     # stored). Neither present/matching -> the status change is rejected
     # and everything else on the form is left exactly as it was.
+    # Batch 129: the delivery-code / photo proof-of-delivery UI was removed at
+    # the client's request, so "Delivered" no longer requires proof here. The
+    # record is still locked once Delivered (checked above), preserving the
+    # "no silent edits after delivery" guarantee. If proof-of-delivery is
+    # reinstated later, restore the gate that previously lived here.
     if dispatch_status == "Delivered":
-        photo_ok = False
-        stored = db.execute(text("SELECT delivery_otp, pod_photo_path FROM packing_dispatch WHERE id=:i"),
-                            {"i": dispatch_id}).mappings().first() or {}
-        otp_ok = bool(delivery_otp_input) and delivery_otp_input.strip() == (stored.get("delivery_otp") or "")
-
-        if pod_photo is not None and pod_photo.filename:
-            ext = (pod_photo.filename or "").rsplit(".", 1)[-1].lower()
-            if ext not in {"jpg", "jpeg", "png", "webp", "heic"}:
-                return _redirect_with_error("/dispatch", "Delivery photo must be JPG/PNG/WEBP.")
-            data = await pod_photo.read()
-            if len(data) > 5 * 1024 * 1024:
-                return _redirect_with_error("/dispatch", "Delivery photo must be under 5MB.")
-            os.makedirs(_POD_DIR, exist_ok=True)
-            fname = f"dispatch_{dispatch_id}_{int(datetime.utcnow().timestamp())}.{ext}"
-            with open(os.path.join(_POD_DIR, fname), "wb") as fh:
-                fh.write(data)
-            db.execute(text("UPDATE packing_dispatch SET pod_photo_path=:p, delivery_confirmed_by='Photo' WHERE id=:i"),
-                      {"p": f"/static/uploads/delivery_proof/{fname}", "i": dispatch_id})
-            photo_ok = True
-        elif otp_ok:
-            db.execute(text("UPDATE packing_dispatch SET delivery_confirmed_by='OTP' WHERE id=:i"), {"i": dispatch_id})
-
-        if not photo_ok and not otp_ok:
-            return _redirect_with_error(
-                "/dispatch",
-                f"Cannot mark {row.order_no} as Delivered without proof: upload a delivery photo, "
-                f"or generate a delivery code and enter the one the customer confirmed.")
+        db.execute(text("UPDATE packing_dispatch SET delivery_confirmed_by='Manual' WHERE id=:i"),
+                   {"i": dispatch_id})
         db.commit()
 
     row.packed_portions = packed_portions

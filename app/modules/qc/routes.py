@@ -132,6 +132,32 @@ def qc_order(request: Request, order_no: str, db: Session = Depends(get_db)):
     )
     if not txs:
         return _redirect_with_error("/qc", "No QC lines found for this order. Transfer from kitchen section to QC first.")
+
+    # Batch 127: parse the [NUT w= p= c=] tag Hot Kitchen writes into the remark
+    # so QC can show weight/protein/carb per portion in dedicated columns.
+    import re as _re
+    tx_rows = []
+    for t in txs:
+        rm = t.section_remarks or ""
+        w = p = c = ""
+        m = _re.search(r"\[NUT\s+([^\]]*)\]", rm)
+        if m:
+            for kv in m.group(1).split():
+                if kv.startswith("w="):
+                    w = kv[2:]
+                elif kv.startswith("p="):
+                    p = kv[2:]
+                elif kv.startswith("c="):
+                    c = kv[2:]
+        tx_rows.append({
+            "recipe_no": t.recipe_no, "recipe_name": t.recipe_name,
+            "ingredient_code": t.ingredient_code, "ingredient_name": t.ingredient_name,
+            "from_section": t.from_section, "issued_qty_standard": t.issued_qty_standard,
+            "received_qty_standard": t.received_qty_standard, "standard_uom": t.standard_uom,
+            "transaction_status": t.transaction_status,
+            "nut_w": w, "nut_p": p, "nut_c": c,
+            "clean_remark": _re.sub(r"\s*\[NUT[^\]]*\]", "", rm).strip(),
+        })
     totals = {
         "lines": len(txs),
         "input_qty": sum(float(t.issued_qty_standard or 0) for t in txs),
@@ -141,7 +167,7 @@ def qc_order(request: Request, order_no: str, db: Session = Depends(get_db)):
     return render(
         request,
         "qc/order.html",
-        {"order": order, "txs": txs, "totals": totals, "page_title": f"QC - {order_no}", "error": request.query_params.get("error")},
+        {"order": order, "txs": txs, "tx_rows": tx_rows, "totals": totals, "page_title": f"QC - {order_no}", "error": request.query_params.get("error")},
     )
 
 

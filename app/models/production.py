@@ -244,6 +244,7 @@ class PackingDispatch(Base):
     packed_portions = Column(Float, default=0)
     rejected_portions = Column(Float, default=0)
     packed_bags = Column(Integer, nullable=True)  # Batch 121: physical bag/tray count
+    region = Column(String(50), nullable=True)  # Batch 129: delivery region (Riyadh/Eastern/Jeddah/Makkah)
     dispatch_date = Column(Date, nullable=True)
     vehicle_no = Column(String(80), nullable=True)
     driver_name = Column(String(255), nullable=True)

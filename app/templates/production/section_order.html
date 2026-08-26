@@ -94,40 +94,9 @@ tr.locked .lock-note{color:#11783f;font-weight:800}
     {% endif %}
   </div>
 
-  {% if section in ['Bakery/Pastry', 'Cold Kitchen', 'Hot Kitchen'] %}
-  <div class="pis-card p-3 mb-4">
-    <h4 class="mb-1">{{ section }} Bulk Recipe Processing</h4>
-    <div class="small-muted mb-3">Ingredients are received separately but mixed and processed as a complete recipe batch. Enter final baked/cooked output at recipe level.</div>
-    {% for r in recipe_groups %}
-      <div class="recipe-box">
-        <div class="d-flex justify-content-between flex-wrap gap-2 mb-2">
-          <div><strong>{{ r.recipe_no }} - {{ r.recipe_name }}</strong><br><span class="small-muted">{{ r.ingredients_count }} ingredients collected for this recipe</span></div>
-          <div><span class="pis-chip">Issued {{ '%.2f'|format(r.total_issued_qty_standard or 0) }}</span> <span class="pis-chip">Received {{ '%.2f'|format(r.total_received_qty_standard or 0) }}</span></div>
-        </div>
-        <details class="mb-3"><summary class="fw-bold">View ingredient collection</summary>
-          <div class="table-responsive mt-2"><table class="table table-sm"><thead><tr><th>Code</th><th>Ingredient</th><th>Issued</th><th>Received</th><th>UOM</th><th>Status</th></tr></thead><tbody>
-            {% for d in r.details %}<tr><td>{{ d.ingredient_code }}</td><td><strong>{{ d.ingredient_name }}</strong></td><td>{{ d.issued_qty_standard }}</td><td>{{ d.received_qty_standard }}</td><td>{{ d.standard_uom }}</td><td>{{ d.transaction_status }}</td></tr>{% endfor %}
-          </tbody></table></div>
-        </details>
-        <form method="post" action="/production/bakery-pastry/process" class="row g-2 align-items-end">
-          <input type="hidden" name="order_no" value="{{ r.order_no }}"><input type="hidden" name="recipe_no" value="{{ r.recipe_no }}">
-          <input type="hidden" name="section" value="{{ section }}">
-          <div class="col-md-2"><label class="fw-bold">Output Qty</label><input class="pis-input" type="number" step="0.0001" min="0" name="output_qty" required></div>
-          <div class="col-md-2"><label class="fw-bold">Output UOM</label><select class="pis-input" name="output_uom"><option>Portions</option><option>Pieces</option><option>Kg</option></select></div>
-          {% if section == 'Hot Kitchen' %}
-          {# Batch 126: Hot Kitchen captures cooked weight + protein per portion. #}
-          <div class="col-md-2"><label class="fw-bold">Weight / Portion (g)</label><input class="pis-input" type="number" step="0.01" min="0" name="weight_per_portion"></div>
-          <div class="col-md-2"><label class="fw-bold">Protein / Portion (g)</label><input class="pis-input" type="number" step="0.01" min="0" name="protein_per_portion"></div>
-          {% endif %}
-          <div class="col-md-2"><label class="fw-bold">Recipe Waste</label><input class="pis-input" type="number" step="0.0001" min="0" name="waste_qty" value="0"></div>
-          <div class="col-md-3"><label class="fw-bold">Forward To</label><select class="pis-input" name="next_section">{% for s in next_sections %}<option>{{ s }}</option>{% endfor %}</select></div>
-          <div class="col-md-2"><label class="fw-bold">Remarks</label><input class="pis-input" name="remarks"></div>
-          <div class="col-md-1"><button class="pis-btn pis-success w-100">Process</button></div>
-        </form>
-      </div>
-    {% else %}<div class="text-muted">No {{ section }} recipe groups received yet — receive ingredient lines below first.</div>{% endfor %}
-  </div>
-  {% endif %}
+  {# Batch 127: the Bulk Recipe Processing panel moved BELOW the Ingredient
+     Receiving section (see after the receiving card) so users receive first,
+     then process — matching the real kitchen flow. #}
 
   <div class="pis-card p-3">
     <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
@@ -270,6 +239,71 @@ tr.locked .lock-note{color:#11783f;font-weight:800}
     </div>
   </div>
 </div>
+
+{# ===================================================================== #}
+{# Batch 127: Bulk Recipe Processing — now BELOW the receiving section.  #}
+{# Output Qty auto-fills to the received total once all lines received;  #}
+{# changing Output recalculates Waste (issued − output). Hot Kitchen adds #}
+{# Protein and Carb per portion, which flow through to QC/Packing/Dispatch.#}
+{# ===================================================================== #}
+{% if section in ['Bakery/Pastry', 'Cold Kitchen', 'Hot Kitchen'] %}
+<div class="pis-card p-3 mb-4">
+  <h4 class="mb-1">{{ section }} Bulk Recipe Processing</h4>
+  <div class="small-muted mb-3">Ingredients are received separately but mixed and processed as a complete recipe batch. Receive the lines above first, then enter the final cooked output here at recipe level.</div>
+  {% for r in recipe_groups %}
+    {% set _issued = r.total_issued_qty_standard or 0 %}
+    {% set _received = r.total_received_qty_standard or 0 %}
+    {% set _fully = _received > 0 and _received >= _issued %}
+    <div class="recipe-box">
+      <div class="d-flex justify-content-between flex-wrap gap-2 mb-2">
+        <div><strong>{{ r.recipe_no }} - {{ r.recipe_name }}</strong><br><span class="small-muted">{{ r.ingredients_count }} ingredients collected for this recipe</span></div>
+        <div><span class="pis-chip">Issued {{ '%.2f'|format(_issued) }}</span> <span class="pis-chip">Received {{ '%.2f'|format(_received) }}</span></div>
+      </div>
+      <details class="mb-3"><summary class="fw-bold">View ingredient collection</summary>
+        <div class="table-responsive mt-2"><table class="table table-sm"><thead><tr><th>Code</th><th>Ingredient</th><th>Issued</th><th>Received</th><th>UOM</th><th>Status</th></tr></thead><tbody>
+          {% for d in r.details %}<tr><td>{{ d.ingredient_code }}</td><td><strong>{{ d.ingredient_name }}</strong></td><td>{{ d.issued_qty_standard }}</td><td>{{ d.received_qty_standard }}</td><td>{{ d.standard_uom }}</td><td>{{ d.transaction_status }}</td></tr>{% endfor %}
+        </tbody></table></div>
+      </details>
+      {% if not _fully %}
+      <div class="alert alert-warning py-2 mb-2"><i class="bi bi-info-circle me-1"></i>Receive all ingredient lines for this recipe before processing. Received {{ '%.2f'|format(_received) }} of {{ '%.2f'|format(_issued) }}.</div>
+      {% endif %}
+      <form method="post" action="/production/bakery-pastry/process" class="row g-2 align-items-end bulk-process-form"
+            data-received="{{ _received }}" data-issued="{{ _issued }}">
+        <input type="hidden" name="order_no" value="{{ r.order_no }}"><input type="hidden" name="recipe_no" value="{{ r.recipe_no }}">
+        <input type="hidden" name="section" value="{{ section }}">
+        <div class="col-md-2"><label class="fw-bold">Output Qty</label><input class="pis-input bp-output" type="number" step="0.0001" min="0" name="output_qty" value="{{ '%.4f'|format(_received) if _fully else '' }}" {% if not _fully %}disabled{% endif %} required></div>
+        <div class="col-md-2"><label class="fw-bold">Output UOM</label><select class="pis-input" name="output_uom"><option>Portions</option><option>Pieces</option><option>Kg</option></select></div>
+        {% if section == 'Hot Kitchen' %}
+        {# Batch 127: Hot Kitchen captures cooked weight + protein + carb per portion. #}
+        <div class="col-md-2"><label class="fw-bold">Weight / Portion (g)</label><input class="pis-input" type="number" step="0.01" min="0" name="weight_per_portion"></div>
+        <div class="col-md-2"><label class="fw-bold">Protein / Portion (g)</label><input class="pis-input" type="number" step="0.01" min="0" name="protein_per_portion"></div>
+        <div class="col-md-2"><label class="fw-bold">Carb / Portion (g)</label><input class="pis-input" type="number" step="0.01" min="0" name="carb_per_portion"></div>
+        {% endif %}
+        <div class="col-md-2"><label class="fw-bold">Recipe Waste</label><input class="pis-input bp-waste" type="number" step="0.0001" min="0" name="waste_qty" value="0"></div>
+        <div class="col-md-3"><label class="fw-bold">Forward To</label><select class="pis-input" name="next_section">{% for s in next_sections %}<option>{{ s }}</option>{% endfor %}</select></div>
+        <div class="col-md-2"><label class="fw-bold">Remarks</label><input class="pis-input" name="remarks"></div>
+        <div class="col-md-1"><button class="pis-btn pis-success w-100" {% if not _fully %}disabled{% endif %}>Process</button></div>
+      </form>
+    </div>
+  {% else %}<div class="text-muted">No {{ section }} recipe groups received yet — receive ingredient lines above first.</div>{% endfor %}
+</div>
+<script>
+// Batch 127: output autofill + waste auto-calc on the bulk process forms.
+document.querySelectorAll('.bulk-process-form').forEach(function (f) {
+  var out = f.querySelector('.bp-output');
+  var waste = f.querySelector('.bp-waste');
+  var issued = parseFloat(f.getAttribute('data-issued') || '0');
+  if (out) {
+    out.addEventListener('input', function () {
+      // Waste = issued input − cooked output (never negative).
+      var o = parseFloat(out.value || '0');
+      var w = issued - o;
+      if (waste) waste.value = (w > 0 ? w : 0).toFixed(4);
+    });
+  }
+});
+</script>
+{% endif %}
 <script>
 /* Batch 94: auto-balancing direction changed, per request.
    Rule is still Processed = Waste + Return + Transfer, but which field

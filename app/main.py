@@ -397,25 +397,37 @@ async def forbidden_handler(request: Request, exc):
 # information_schema lookup.
 # =============================================================================
 def _ensure_recipe_menu_columns() -> None:
-    """Add recipes.day_of_week if missing. Safe to call repeatedly."""
+    """Add recipes.day_of_week if missing, and WIDEN it if it exists too narrow.
+
+    Batch 132: FRSH multi-day recipes (salads/snacks) store the explicit day
+    list, e.g. "Saturday & Sunday & Monday & Tuesday & Wednesday & Thursday"
+    (59 chars). The original column was VARCHAR(20), so those inserts died with
+    MySQL 1406 'Data too long for column day_of_week' and every multi-day recipe
+    silently vanished from the menu (the missing salads). We create at — and
+    grow existing installs to — VARCHAR(120). Idempotent."""
     try:
         from app.database.session import SessionLocal as _SL
         from sqlalchemy import text as _t
         _db = _SL()
         try:
-            has = _db.execute(_t("""
-                SELECT COUNT(*) FROM information_schema.columns
+            info = _db.execute(_t("""
+                SELECT CHARACTER_MAXIMUM_LENGTH FROM information_schema.columns
                 WHERE table_schema = DATABASE() AND table_name = 'recipes'
                   AND column_name = 'day_of_week'
             """)).scalar()
-            if not has:
-                _db.execute(_t("ALTER TABLE recipes ADD COLUMN day_of_week VARCHAR(20) NULL"))
+            if info is None:
+                _db.execute(_t("ALTER TABLE recipes ADD COLUMN day_of_week VARCHAR(120) NULL"))
                 try:
                     _db.execute(_t("CREATE INDEX idx_recipes_day ON recipes (day_of_week)"))
                 except Exception:
                     pass   # index already there, or insufficient privilege
                 _db.commit()
-                logger.info("Added recipes.day_of_week")
+                logger.info("Added recipes.day_of_week VARCHAR(120)")
+            elif int(info) < 120:
+                # Column exists but is the old narrow width — widen in place.
+                _db.execute(_t("ALTER TABLE recipes MODIFY COLUMN day_of_week VARCHAR(120) NULL"))
+                _db.commit()
+                logger.info(f"Widened recipes.day_of_week from VARCHAR({info}) to VARCHAR(120)")
         finally:
             _db.close()
     except Exception as exc:
@@ -461,6 +473,65 @@ def _ensure_packing_bags_column() -> None:
 # Run immediately at import — the packed_bags column is read by the packing,
 # dispatch AND QC-pass flows, so it must exist before any of them is hit.
 _ensure_packing_bags_column()
+
+
+def _ensure_dispatch_region_column() -> None:
+    """Batch 129 — add packing_dispatch.region if missing, at import time.
+    The Dispatch screen and Logistics report group deliveries by region
+    (Riyadh / Eastern / Jeddah / Makkah). Idempotent."""
+    try:
+        from app.database.session import SessionLocal as _SL
+        from sqlalchemy import text as _t
+        _db = _SL()
+        try:
+            has = _db.execute(_t("""
+                SELECT COUNT(*) FROM information_schema.columns
+                WHERE table_schema = DATABASE() AND table_name = 'packing_dispatch'
+                  AND column_name = 'region'
+            """)).scalar()
+            if not has:
+                _db.execute(_t("ALTER TABLE packing_dispatch ADD COLUMN region VARCHAR(50) NULL"))
+                _db.commit()
+                logger.info("Added packing_dispatch.region")
+        finally:
+            _db.close()
+    except Exception as exc:
+        logger.error(f"Schema guard failed (packing_dispatch.region): {exc}")
+
+
+_ensure_dispatch_region_column()
+
+
+def _ensure_recipe_ingredient_section_column() -> None:
+    """Batch 131 — add recipe_ingredients.kitchen_section if missing, at import.
+
+    The store-issuance section routing (PRD1 → Cutting; else the recipe's own
+    kitchen section) needs the workbook's "Section" value carried down to each
+    ingredient line. The ORM model now declares `kitchen_section`, so — per the
+    day_of_week / packed_bags precedent — the column MUST exist before any route
+    queries RecipeIngredient, or every recipe/BOM read would 500 with 'Unknown
+    column kitchen_section'. Raw additive column, idempotent."""
+    try:
+        from app.database.session import SessionLocal as _SL
+        from sqlalchemy import text as _t
+        _db = _SL()
+        try:
+            has = _db.execute(_t("""
+                SELECT COUNT(*) FROM information_schema.columns
+                WHERE table_schema = DATABASE() AND table_name = 'recipe_ingredients'
+                  AND column_name = 'kitchen_section'
+            """)).scalar()
+            if not has:
+                _db.execute(_t("ALTER TABLE recipe_ingredients ADD COLUMN kitchen_section VARCHAR(80) NULL"))
+                _db.commit()
+                logger.info("Added recipe_ingredients.kitchen_section")
+        finally:
+            _db.close()
+    except Exception as exc:
+        logger.error(f"Schema guard failed (recipe_ingredients.kitchen_section): {exc}")
+
+
+_ensure_recipe_ingredient_section_column()
 
 
 @app.on_event("startup")

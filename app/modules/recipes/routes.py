@@ -760,6 +760,8 @@ async def update_recipe(
     recipe.brand_name = str(form.get("brand_name") or "").strip()
     recipe.customer_name = str(form.get("customer_name") or "").strip()
     recipe.category = str(form.get("category") or "").strip()
+    # Batch 128: persist the Menu Day (weekly-menu customers).
+    recipe.day_of_week = str(form.get("day_of_week") or "").strip() or None
     recipe.is_sub_recipe = str(form.get("is_sub_recipe") or "No").lower() == "yes"
     recipe.standard_portions = _d(form.get("standard_portions"), "1")
     recipe.weight_per_portion_g = _d(form.get("weight_per_portion_g"))

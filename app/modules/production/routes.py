@@ -26,6 +26,7 @@ from app.schemas.production import CustomerOrderCreate, OrderLineIn
 from app.services.production_service import (
     approve_head_chef_plan,
     approve_order_before_bom,
+    backfill_issue_sections,
     bakery_pastry_consolidated,
     process_bakery_pastry_recipe,
     consolidated_bom,
@@ -715,6 +716,26 @@ async def release_to_store(request: Request, order_no: str, db: Session = Depend
     return RedirectResponse(f"/production/orders/{order_no}/store-issuance", status_code=HTTP_303_SEE_OTHER)
 
 
+@router.post("/store-issuance/backfill-sections")
+async def backfill_sections(request: Request, db: Session = Depends(get_db)):
+    """Batch 131 — one-click re-apply of the store-issuance section routing rule
+    (PRD1 → Cutting; else recipe's kitchen section) to BOM lines and PENDING
+    issuance lines that were created before this batch. Idempotent: safe to run
+    repeatedly. Already-issued lines are left untouched (pipeline-locked)."""
+    require_action(request, "store_issuance", "edit")
+    cid = _company_id_from_session(request)
+    counts = backfill_issue_sections(db, company_id=cid)
+    msg = (
+        f"Sections re-routed — {counts['bom_updated']} BOM lines, "
+        f"{counts['issue_updated']} pending issue lines updated "
+        f"({counts['skipped_locked']} already-issued lines left as-is)."
+    )
+    return RedirectResponse(
+        f"/production/store-issuance?toast=success&title=Sections Re-routed&msg={msg}",
+        status_code=HTTP_303_SEE_OTHER,
+    )
+
+
 @router.get("/orders/{order_no}/bom-report")
 async def bom_report(request: Request, order_no: str, group_by: str = "item", export: str | None = None, db: Session = Depends(get_db)):
     """Professional BOM view/export screen.
@@ -1378,18 +1399,25 @@ async def process_bakery_recipe(
     section: str = Form("Bakery/Pastry"),
     weight_per_portion: str = Form(""),
     protein_per_portion: str = Form(""),
+    carb_per_portion: str = Form(""),
     db: Session = Depends(get_db),
 ):
     require_action(request, "kitchen", "edit")
-    # Batch 126: Hot Kitchen weight/protein per portion are captured into the
-    # remark (no schema change) so they carry through to QC/packing history.
+    # Batch 127: Hot Kitchen weight/protein/carb per portion are captured into
+    # the remark with a machine-readable [NUT ...] tag, so QC / Packing /
+    # Dispatch can parse and display them without a schema change.
     extra = []
+    nut = {}
     if weight_per_portion.strip():
-        extra.append(f"Weight/portion: {weight_per_portion.strip()}g")
+        extra.append(f"Weight/portion: {weight_per_portion.strip()}g"); nut["w"] = weight_per_portion.strip()
     if protein_per_portion.strip():
-        extra.append(f"Protein/portion: {protein_per_portion.strip()}g")
+        extra.append(f"Protein/portion: {protein_per_portion.strip()}g"); nut["p"] = protein_per_portion.strip()
+    if carb_per_portion.strip():
+        extra.append(f"Carb/portion: {carb_per_portion.strip()}g"); nut["c"] = carb_per_portion.strip()
     if extra:
         remarks = (remarks + " | " if remarks else "") + " ".join(extra)
+    if nut:
+        remarks += f" [NUT w={nut.get('w','')} p={nut.get('p','')} c={nut.get('c','')}]"
     # Batch 126: the same recipe-level Process action now serves Bakery/Pastry,
     # Cold Kitchen and Hot Kitchen. `section` says which one, so we filter the
     # right transactions and return the user to the right section page.

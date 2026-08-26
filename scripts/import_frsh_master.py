@@ -212,6 +212,7 @@ def import_recipe_ingredients(db, ws, company_id, dry):
             "fcpp": _f(row[c_fcpp]) if c_fcpp is not None else 0.0,
             "total": _f(row[c_total]) if c_total is not None else 0.0,
             "section": map_section(row[c_sect]) if c_sect is not None else "",
+            "section_raw": _s(row[c_sect]) if c_sect is not None else "",
             "subdesc": _s(row[c_subdesc]) if c_subdesc is not None else "",
             "butchery": _s(row[c_butchery]) if c_butchery is not None else "",
         })
@@ -270,12 +271,12 @@ def import_recipe_ingredients(db, ws, company_id, dry):
                     INSERT INTO recipe_ingredients
                         (recipe_id, line_no, line_type, inventory_code, item_name,
                          uom, qty_batch, portions, qty_per_portion, cost_uom,
-                         line_cost, line_cost_per_portion, remark, missing_cost,
-                         created_at, updated_at)
+                         line_cost, line_cost_per_portion, sub_recipe_code, remark,
+                         kitchen_section, missing_cost, created_at, updated_at)
                     VALUES
                         (:rid, :ln, 'Main Recipe', :icode, :iname, :uom,
                          :qty_batch, :portions, :qty_port, :cost_uom,
-                         :line_cost, :fcpp, :remark, :missing, NOW(), NOW())
+                         :line_cost, :fcpp, :subrecipe, :remark, :ksec, :missing, NOW(), NOW())
                 """), {
                     "rid": rid, "ln": ln, "icode": line["icode"],
                     "iname": line["iname"], "uom": line["uom"],
@@ -285,7 +286,16 @@ def import_recipe_ingredients(db, ws, company_id, dry):
                     "cost_uom": line["price"],
                     "line_cost": line["total"],
                     "fcpp": line["fcpp"],
+                    # Batch 128: populate the Sub Recipe column (was left blank,
+                    # only appearing inside the remark). Blank -> NULL.
+                    "subrecipe": line["subdesc"] or None,
                     "remark": remark,
+                    # Batch 132: store the recipe's kitchen section on the
+                    # ingredient line so store-issuance routing (Batch 131) can
+                    # send each ingredient to the right section. We store the
+                    # mapped canonical name; the raw sheet value is preserved
+                    # only in the remark. Blank -> NULL.
+                    "ksec": line["section"] or line["section_raw"] or None,
                     "missing": 1 if not line["price"] else 0,
                 })
                 ok_lines += 1
@@ -309,7 +319,13 @@ def import_recipe_ingredients(db, ws, company_id, dry):
 
 
 # ---------------------------------------------------------------------------
-# 3. MENU  ->  fill day/category the ingredients sheet may have missed
+# 3. MENU  ->  set the FULL set of days each recipe is served, plus category.
+#    A recipe (e.g. a salad) appears once PER DAY in the menu sheet, so we must
+#    aggregate every day for a recipe and store them joined ("Sunday & Monday &
+#    …"). The app's day matcher works by stem containment, so a combined value
+#    correctly makes the recipe show on every one of its days. (The old version
+#    overwrote day_of_week with the last row seen, so multi-day recipes like
+#    salads/snacks only appeared on one day — the bug in images 2/4/7.)
 # ---------------------------------------------------------------------------
 def import_menu(db, ws, company_id, dry):
     hrow, hdr = _find_header(ws, ["recipe code", "days"])
@@ -321,14 +337,36 @@ def import_menu(db, ws, company_id, dry):
     c_name = col(hdr, "recipe names", "recipe name")
     c_cat = col(hdr, "category")
 
-    ok = fail = 0
+    # Canonical weekday order so the stored string is stable/readable.
+    ORDER = ["Saturday", "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
+
+    # Aggregate: recipe_code -> {name, category, set(days)}
+    agg: dict[str, dict] = {}
     for row in ws.iter_rows(min_row=hrow + 1, values_only=True):
         code = _s(row[c_code]) if c_code is not None else ""
         if not code:
             continue
+        # Use the code EXACTLY as it appears (same as the ingredients pass), so
+        # the menu UPDATE targets the same recipe row instead of creating a
+        # duplicate with a different case.
+        code_norm = code
         day = _s(row[c_day]) if c_day is not None else ""
         name = _s(row[c_name]) if c_name is not None else code
         cat = _s(row[c_cat]) if c_cat is not None else ""
+        a = agg.setdefault(code_norm, {"name": name, "cat": cat, "days": set()})
+        if day:
+            a["days"].add(day.strip().title())
+        if cat and not a["cat"]:
+            a["cat"] = cat
+
+    ok = fail = 0
+    for code, a in agg.items():
+        days_sorted = [d for d in ORDER if d in a["days"]]
+        # Batch 130: store the EXPLICIT list of days, never "Daily". FRSH runs
+        # Sat–Thu (no Friday); collapsing 6 days to "Daily" made the matcher
+        # (which treats Daily as all 7) wrongly show recipes on Friday. Listing
+        # the real days keeps Friday empty when the menu has no Friday.
+        day_value = " & ".join(days_sorted)
         if dry:
             ok += 1
             continue
@@ -344,7 +382,8 @@ def import_menu(db, ws, company_id, dry):
                     day_of_week = VALUES(day_of_week),
                     category = COALESCE(NULLIF(recipes.category,''), VALUES(category)),
                     customer_name='Frsh', status='ACTIVE', is_active=1, updated_at=NOW()
-            """), {"cid": company_id, "code": code, "name": name, "cat": cat, "day": day})
+            """), {"cid": company_id, "code": code, "name": a["name"],
+                   "cat": a["cat"], "day": day_value})
             db.commit()
             ok += 1
         except Exception as exc:
@@ -382,6 +421,18 @@ def main():
             print(f"  Recipes: {rok} ok, {rfail} failed  |  Recipe lines: {lok}")
 
         if "menu" in names:
+            # Batch 132: wipe any stale day_of_week on FRSH recipes BEFORE the
+            # menu pass rewrites it. Earlier broken imports left ghost values
+            # (e.g. a "Daily" or a truncated string that matched Friday), which
+            # made the portal offer Friday even though the FRSH workbook has no
+            # Friday menu. Clearing first guarantees the stored days are exactly
+            # what this workbook contains — nothing survives from a prior run.
+            if not args.dry_run:
+                db.execute(text("""
+                    UPDATE recipes SET day_of_week = NULL, updated_at = NOW()
+                    WHERE company_id = :cid AND customer_name = 'Frsh'
+                """), {"cid": args.company})
+                db.commit()
             ok, fail = import_menu(db, wb[names["menu"]], args.company, args.dry_run)
             print(f"  Menu day/category rows: {ok} ok, {fail} failed")
 

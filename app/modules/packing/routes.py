@@ -112,7 +112,52 @@ def packing_order(request: Request, packing_id: int, db: Session = Depends(get_d
         ORDER BY id DESC
         LIMIT 5
     """), {"order_no": row.order_no}).mappings().all()
-    return render(request, "packing/order.html", {"row": row, "order": order, "qc_rows": qc_rows, "page_title": f"Packing - {row.order_no}", "error": request.query_params.get("error")})
+
+    # Batch 130: per-recipe packing detail. Pull the recipe outputs that reached
+    # QC/packing, with planned portions (from order_lines) vs received, the lack
+    # (planned − received), and the protein/carb captured by Hot Kitchen in the
+    # [NUT w= p= c=] tag on the section remark.
+    import re as _re
+    tx = db.execute(text("""
+        SELECT k.recipe_no, k.recipe_name,
+               COALESCE(k.received_qty_standard, 0) AS received,
+               COALESCE(k.section_remarks, '') AS remarks,
+               COALESCE(ol.required_portions, 0) AS planned
+        FROM kitchen_section_transactions k
+        LEFT JOIN order_lines ol
+          ON ol.order_no = k.order_no AND ol.recipe_no = k.recipe_no
+        WHERE k.order_no = :order_no AND k.current_section = 'QC'
+        GROUP BY k.recipe_no, k.recipe_name, k.received_qty_standard, k.section_remarks, ol.required_portions
+        ORDER BY k.recipe_name
+    """), {"order_no": row.order_no}).mappings().all()
+
+    pack_lines = []
+    for t in tx:
+        rm = t["remarks"] or ""
+        w = p = c = ""
+        m = _re.search(r"\[NUT\s+([^\]]*)\]", rm)
+        if m:
+            for kv in m.group(1).split():
+                if kv.startswith("w="):
+                    w = kv[2:]
+                elif kv.startswith("p="):
+                    p = kv[2:]
+                elif kv.startswith("c="):
+                    c = kv[2:]
+        planned = float(t["planned"] or 0)
+        received = float(t["received"] or 0)
+        pack_lines.append({
+            "recipe_no": t["recipe_no"], "recipe_name": t["recipe_name"],
+            "planned": planned, "received": received,
+            "lack": max(planned - received, 0),
+            "protein": p, "carb": c, "weight": w,
+        })
+
+    return render(request, "packing/order.html",
+                  {"row": row, "order": order, "qc_rows": qc_rows,
+                   "pack_lines": pack_lines,
+                   "page_title": f"Packing - {row.order_no}",
+                   "error": request.query_params.get("error")})
 
 
 @router.post("/{packing_id}/update")

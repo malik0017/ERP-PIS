@@ -20,9 +20,11 @@
     <div class="grid3">
       <div class="field"><label>Recipe Code</label><input name="recipe_code" value="{{ recipe.recipe_code if recipe else '' }}" required></div>
       <div class="field"><label>Recipe Name</label><input name="recipe_name" value="{{ recipe.recipe_name if recipe else '' }}" required></div>
-      <div class="field"><label>Customer</label><select name="customer_name" required><option value="">-- select customer --</option>{% for c in customers %}<option value="{{ c.customer_name }}" {% if recipe and recipe.customer_name == c.customer_name %}selected{% endif %}>{{ c.customer_code }} - {{ c.customer_name }}</option>{% endfor %}</select></div>
-      <div class="field"><label>Brand</label><select name="brand_name" required><option value="">-- select brand --</option>{% for b in brands %}<option value="{{ b.brand_name_en }}" {% if recipe and recipe.brand_name == b.brand_name_en %}selected{% endif %}>{{ b.brand_code }} - {{ b.brand_name_en }}</option>{% endfor %}</select></div>
+      <div class="field"><label>Customer</label><select name="customer_name" required><option value="">-- select customer --</option>{% for c in customers %}<option value="{{ c.customer_name }}" {% if recipe and recipe.customer_name and (recipe.customer_name|lower == c.customer_name|lower or recipe.customer_name|lower in c.customer_name|lower or c.customer_name|lower in recipe.customer_name|lower) %}selected{% endif %}>{{ c.customer_code }} - {{ c.customer_name }}</option>{% endfor %}</select></div>
+      <div class="field"><label>Brand</label><select name="brand_name"><option value="">-- select brand --</option>{% for b in brands %}<option value="{{ b.brand_name_en }}" {% if recipe and recipe.brand_name == b.brand_name_en %}selected{% endif %}>{{ b.brand_code }} - {{ b.brand_name_en }}</option>{% endfor %}</select></div>
       <div class="field"><label>Category</label><input name="category" value="{{ recipe.category if recipe else 'Manual' }}"></div>
+      {# Batch 128: Menu Day field (weekly-menu customers like FRSH). #}
+      <div class="field"><label>Menu Day</label><select name="day_of_week"><option value="">-- none --</option>{% for d in ['Saturday','Sunday','Monday','Tuesday','Wednesday','Thursday','Friday'] %}<option value="{{ d }}" {% if recipe and recipe.day_of_week == d %}selected{% endif %}>{{ d }}</option>{% endfor %}</select></div>
       <div class="field"><label>Is Sub Recipe?</label><select name="is_sub_recipe"><option value="No" {% if not recipe or not recipe.is_sub_recipe %}selected{% endif %}>No</option><option value="Yes" {% if recipe and recipe.is_sub_recipe %}selected{% endif %}>Yes</option></select></div>
       <div class="field"><label>No. of Portions</label><input name="standard_portions" type="number" step="0.0001" value="{{ recipe.standard_portions if recipe else 1 }}"></div>
       <div class="field"><label>Wt per Portion (g)</label><input name="weight_per_portion_g" type="number" step="0.0001" value="{{ recipe.weight_per_portion_g if recipe else 0 }}"></div>
@@ -62,6 +64,16 @@
       <tr class="recipe-line-row"><td class="line-no">1</td><td><select name="line_type[]"><option value="Main Recipe">Ingredient</option><option value="Packaging">Packaging</option><option value="Sub Recipe">Sub Recipe</option></select></td><td><select name="inventory_code[]" onchange="fillInventory(this,'code')"><option value="">-- select --</option>{% for i in inventory_items %}<option value="{{ i.code }}">{{ i.code }}</option>{% endfor %}</select></td><td><select name="item_name[]" onchange="fillInventory(this,'name')"><option value="">-- select --</option>{% for i in inventory_items %}<option value="{{ i.name }}">{{ i.name }}</option>{% endfor %}</select></td><td><input name="inventory_uom[]" readonly></td><td><input name="uom[]"></td><td><input name="conversion_factor[]" type="number" step="0.000001" value="1"></td><td><input name="qty_batch[]" type="number" step="0.0001" value="0"></td><td><input name="line_portions[]" type="number" step="0.0001" value="1"></td><td><input name="qty_per_portion[]" type="number" step="0.000001" value="0"></td><td><input name="cost_uom[]" type="number" step="0.000001" value="0"></td><td class="line-cost-display">0.0000</td><td><input name="remark[]"></td><td><button type="button" class="btn btn-danger" onclick="removeLine(this)">X</button></td></tr>
     {% endif %}
     </tbody></table></div>
+    {# Batch 130: line-action buttons repeated BELOW the table (a new line is
+       appended at the bottom, so the controls need to be reachable there too),
+       plus a Back button. #}
+    <div class="line-toolbar mt-3">
+      <a href="/recipes" class="btn btn-secondary"><i class="bi bi-arrow-left"></i> Back</a>
+      <div>
+        <button type="button" class="btn btn-primary" onclick="addLine()"><i class="bi bi-plus-circle"></i> Add Line</button>
+        <button type="button" class="btn btn-secondary" onclick="recalcRecipe()"><i class="bi bi-calculator"></i> Recalculate</button>
+      </div>
+    </div>
   </div>
 
   <div class="grid2">

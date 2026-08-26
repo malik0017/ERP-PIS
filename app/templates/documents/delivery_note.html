@@ -58,6 +58,9 @@
       <div><div class="lbl">Rejected Portions</div><div class="val text-danger">{{ '%.0f'|format(d.rejected_portions) }}</div></div>
       <div><div class="lbl">Net Delivered</div><div class="val text-success">{{ '%.0f'|format((d.packed_portions or 0) - (d.rejected_portions or 0)) }}</div></div>
       <div><div class="lbl">Delivery Temp °C</div><div class="val">{{ '%.1f'|format(d.delivery_temperature_c) if d.delivery_temperature_c is not none else '—' }}</div></div>
+      {# Batch 129: bags + region on the delivery note (image 1). #}
+      <div><div class="lbl">Number of Bags</div><div class="val">{{ d.packed_bags if d.packed_bags is not none else '—' }}</div></div>
+      <div><div class="lbl">Region</div><div class="val">{{ d.region or '—' }}</div></div>
     </div>
 
     <div style="padding:0 26px 8px">

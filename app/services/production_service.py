@@ -21,6 +21,10 @@ from app.models.production import (
 from app.models.recipe import Recipe, RecipeIngredient
 from app.schemas.production import CustomerOrderCreate
 from app.core.notifications import notify_role
+from app.core.production_constants import (
+    resolve_issue_section,
+    DEFAULT_ISSUE_SECTION,
+)
 
 
 def _num(value: Any) -> float:
@@ -294,7 +298,16 @@ def generate_bom_for_order(db: Session, order_no: str, approved_by: str | None =
             required_with_waste = required_std + expected_waste
             cost = required_with_waste * unit_cost
             route = default_route_for_ingredient(ingredient, ri.item_name)
-            first_section = route[1] if len(route) > 1 else "Hot Kitchen"
+            # Batch 131 — store-issuance destination. PRD1-* fresh produce goes
+            # to Cutting; every other line follows the kitchen section written
+            # on the recipe ingredient (mapped from the workbook's "Section"
+            # column). The route's step[1] is only the last-resort fallback.
+            route_first = route[1] if len(route) > 1 else DEFAULT_ISSUE_SECTION
+            first_section = resolve_issue_section(
+                ingredient_code,
+                getattr(ri, "kitchen_section", None),
+                fallback=route_first,
+            )
 
             bom = BOMLine(
                 company_id=getattr(order, "company_id", None),
@@ -557,13 +570,18 @@ def create_store_issuance_from_bom(db: Session, order_no: str) -> list[StoreIssu
         if exists:
             continue
         route = _json_list(bom.route_template)
-        first_section = bom.default_issue_section or (route[1] if len(route) > 1 else "Hot Kitchen")
-        # Batch 124: initial section SUGGESTION by item-code prefix. Fresh produce
-        # coded PRD1-* is washed/cut first, so it defaults to Cutting. This only
-        # sets the default — the store keeper can still change it on screen, and
-        # any explicit section on the BOM line still applies to non-PRD1 items.
-        if (bom.ingredient_code or "").upper().startswith("PRD1"):
-            first_section = "Cutting"
+        route_first = route[1] if len(route) > 1 else DEFAULT_ISSUE_SECTION
+        # Batch 131 — single source of truth for the issue-to section. PRD1-*
+        # fresh produce → Cutting; otherwise the section the BOM inherited from
+        # the recipe workbook (bom.default_issue_section). This SUPERSEDES the
+        # Batch-124 PRD1-only rule: non-PRD1 lines now honour the recipe's own
+        # kitchen section instead of collapsing to a generic default. The store
+        # keeper can still change it on screen; this only sets the default.
+        first_section = resolve_issue_section(
+            bom.ingredient_code,
+            None,  # sheet section already baked into default_issue_section at BOM time
+            fallback=bom.default_issue_section or route_first,
+        )
         available = (
             db.query(StockLot)
             .filter(StockLot.ingredient_code == bom.ingredient_code, StockLot.status == "Available")
@@ -604,6 +622,81 @@ def create_store_issuance_from_bom(db: Session, order_no: str) -> list[StoreIssu
         order.status = "Store Pending"
     db.commit()
     return db.query(StoreIssuanceLine).filter(StoreIssuanceLine.order_no == order_no).all()
+
+
+def backfill_issue_sections(db: Session, company_id: int | None = None) -> dict[str, int]:
+    """Batch 131 — re-apply the section routing rule to data created BEFORE this
+    batch, without regenerating anything.
+
+    Three passes, all idempotent:
+      1. BOM lines whose default_issue_section doesn't match the rule → corrected
+         using the matching recipe ingredient's kitchen_section (looked up by
+         order recipe + ingredient code).
+      2. Store-issuance lines that are still PENDING (not yet physically issued)
+         → their issue_to_section is re-pointed to match their BOM line. Lines
+         already issued/in production are LEFT ALONE: the pipeline lock owns them
+         and re-pointing a completed issue would strand kitchen transactions.
+
+    Returns a small counter dict for the README / admin toast.
+    """
+    counts = {"bom_updated": 0, "issue_updated": 0, "skipped_locked": 0}
+
+    # --- Pass 1: BOM lines ------------------------------------------------
+    bom_q = db.query(BOMLine)
+    if company_id is not None:
+        bom_q = bom_q.filter(BOMLine.company_id == company_id)
+    for bom in bom_q.all():
+        # Resolve the section this line SHOULD have. Prefer a matching recipe
+        # ingredient's stored kitchen_section; fall back to the BOM's own value.
+        sheet_section = None
+        recipe = (
+            db.query(Recipe)
+            .filter(Recipe.recipe_code == bom.recipe_no)
+            .order_by(Recipe.version.desc(), Recipe.id.desc())
+            .first()
+        )
+        if recipe:
+            ri = (
+                db.query(RecipeIngredient)
+                .filter(
+                    RecipeIngredient.recipe_id == recipe.id,
+                    RecipeIngredient.inventory_code == bom.ingredient_code,
+                )
+                .first()
+            )
+            sheet_section = getattr(ri, "kitchen_section", None) if ri else None
+
+        target = resolve_issue_section(
+            bom.ingredient_code, sheet_section,
+            fallback=bom.default_issue_section or DEFAULT_ISSUE_SECTION,
+        )
+        if (bom.default_issue_section or "") != target:
+            bom.default_issue_section = target
+            counts["bom_updated"] += 1
+
+    db.flush()
+
+    # --- Pass 2: pending store-issuance lines -----------------------------
+    iss_q = db.query(StoreIssuanceLine)
+    if company_id is not None:
+        iss_q = iss_q.filter(StoreIssuanceLine.company_id == company_id)
+    for line in iss_q.all():
+        if (line.issuance_status or "").strip().lower() not in {"pending", ""}:
+            counts["skipped_locked"] += 1
+            continue
+        bom = db.query(BOMLine).filter(BOMLine.id == line.bom_line_id).first()
+        target = resolve_issue_section(
+            line.ingredient_code,
+            None,
+            fallback=(bom.default_issue_section if bom else None)
+            or line.issue_to_section or DEFAULT_ISSUE_SECTION,
+        )
+        if (line.issue_to_section or "") != target:
+            line.issue_to_section = target
+            counts["issue_updated"] += 1
+
+    db.commit()
+    return counts
 
 
 def update_store_issuance_line(

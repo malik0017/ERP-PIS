@@ -8,14 +8,17 @@
     padding: 18px;
     margin-bottom: 16px;
   }
+
   .sap-title {
     font-weight: 800;
     color: #142a46;
     margin: 0;
   }
+
   .sap-muted {
     color: #6f8196;
   }
+
   .sap-help {
     background: #e7f8ff;
     border: 1px solid #a7e7ff;
@@ -23,12 +26,14 @@
     padding: 12px;
     color: #226;
   }
+
   .sap-grid {
     display: grid;
     grid-template-columns: 1.35fr 1fr 1fr 150px 140px;
     gap: 12px;
     align-items: end;
   }
+
   .sap-line {
     display: grid;
     grid-template-columns: minmax(360px, 1fr) 150px 42px;
@@ -36,6 +41,7 @@
     align-items: end;
     margin-bottom: 10px;
   }
+
   .sap-line-pro {
     display: grid;
     grid-template-columns: minmax(360px, 1fr) 170px 44px;
@@ -47,18 +53,22 @@
     padding: 12px;
     margin-bottom: 10px;
   }
+
   .sap-line-pro .sap-label {
     min-height: 20px;
   }
+
   .sap-line-pro .sap-danger {
     height: 42px;
     margin-top: 25px;
   }
+
   .sap-label {
     font-weight: 800;
     color: #142a46;
     margin-bottom: 5px;
   }
+
   .sap-input {
     width: 100%;
     border: 1px solid #cbdbea;
@@ -66,25 +76,30 @@
     padding: 9px 11px;
     background: #fff;
   }
+
   .sap-btn {
     border: 0;
     border-radius: 10px;
     padding: 9px 13px;
     font-weight: 800;
   }
+
   .sap-primary {
     background: #315efb;
     color: #fff;
   }
+
   .sap-soft {
     background: #eaf2f8;
     color: #142a46;
   }
+
   .sap-danger {
     background: #fff0f0;
     color: #c11;
     border: 1px solid #ffc7c7;
   }
+
   .recipe-info {
     display: block;
     margin-top: 4px;
@@ -92,47 +107,63 @@
     color: #6f8196;
     font-size: 12px;
   }
+
   .portal-note {
     font-size: 13px;
     color: #6f8196;
   }
+
   @media (max-width: 1200px) {
     .sap-grid {
       grid-template-columns: 1fr 1fr;
     }
+
     .sap-line {
       grid-template-columns: 1fr 150px 42px;
     }
   }
+
   @media (max-width: 760px) {
+
     .sap-grid,
     .sap-line {
       grid-template-columns: 1fr;
     }
   }
 
-    /* Batch 102: the sticky header row that replaced the repeated labels. */
-    .portal-lines-head{
-      padding-bottom:.35rem; margin-bottom:.35rem;
-      border-bottom:2px solid var(--phoenix-border-color, #e3e8ef);
-      position:sticky; top:0; z-index:2;
-      background:var(--phoenix-body-bg, #fff);
-    }
-    .portal-lines-head .sap-label{ font-weight:700; text-transform:uppercase; font-size:.72rem; }
-  </style>
+  /* Batch 102: the sticky header row that replaced the repeated labels. */
+  .portal-lines-head {
+    padding-bottom: .35rem;
+    margin-bottom: .35rem;
+    border-bottom: 2px solid var(--phoenix-border-color, #e3e8ef);
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: var(--phoenix-body-bg, #fff);
+  }
+
+  .portal-lines-head .sap-label {
+    font-weight: 700;
+    text-transform: uppercase;
+    font-size: .72rem;
+  }
+</style>
 <div class="container-fluid py-3">
   <div class="isfc-hero mb-4 p-4 rounded-4 text-white d-flex align-items-center justify-content-between flex-wrap gap-3"
-       style="background:linear-gradient(135deg,#08243d,#1e5bb8)">
+    style="background:linear-gradient(135deg,#08243d,#1e5bb8)">
     <div>
       <h1 class="mb-1 fw-bold text-white">
         {% if immediate %}<i class="bi bi-lightning-fill me-2"></i>{{ t('Immediate Order') }}
         {% else %}<i class="bi bi-cart-plus me-2"></i>{{ t('Sale Requisitions') }}{% endif %}
         {# Batch 126: surface the picked customer (e.g. FRSH) in the header so
-           the user always knows which customer this order is for. #}
-        {% if preset_customer %}<span class="badge bg-white text-dark ms-2 align-middle" style="font-size:.5em;vertical-align:middle">{{ preset_customer|upper }}</span>{% endif %}</h1>
+        the user always knows which customer this order is for. #}
+        {% if preset_customer %}<span class="badge bg-white text-dark ms-2 align-middle"
+          style="font-size:.5em;vertical-align:middle">{{ preset_customer|upper }}</span>{% endif %}</h1>
       <p class="mb-0 opacity-75">
-        {% if immediate %}{{ t('Same order form, same everything — the 48-hour delivery rule does not apply on this screen. Use it only for genuinely urgent orders.') }}
-        {% else %}{{ t('Place a new order on behalf of a customer, or for internal production — the same 48-hour delivery rule applies here as everywhere else.') }}{% endif %}</p>
+        {% if immediate %}{{ t('Same order form, same everything — the 48-hour delivery rule does not apply on this
+        screen. Use it only for genuinely urgent orders.') }}
+        {% else %}{{ t('Place a new order on behalf of a customer, or for internal production — the same 48-hour
+        delivery rule applies here as everywhere else.') }}{% endif %}</p>
     </div>
   </div>
 
@@ -142,60 +173,38 @@
       <div class="sap-grid">
         <div>
           <div class="sap-label">Customer Code & Name</div>
-          <input
-            class="sap-input"
-            list="customerList"
-            name="customer_display"
-            id="customer_display"
-            placeholder="Search customer code or name"
-            required
-          />
+          <input class="sap-input" list="customerList" name="customer_display" id="customer_display"
+            placeholder="Search customer code or name" required />
           <input type="hidden" name="customer_no" id="customer_no" />
           <input type="hidden" name="customer_name" id="customer_name" />
         </div>
         <div>
           <div class="sap-label">Brand Code & Name</div>
-          <input
-            class="sap-input"
-            list="brandList"
-            name="brand_display"
-            id="brand_display"
-            placeholder="Search brand code or name"
-          />
+          <input class="sap-input" list="brandList" name="brand_display" id="brand_display"
+            placeholder="Search brand code or name" />
           <input type="hidden" name="brand" id="brand" />
         </div>
         <div>
           <div class="sap-label">Sales Channel</div>
-          <input
-            class="sap-input"
-            list="channelList"
-            name="channel_display"
-            id="channel_display"
-            placeholder="Search sales channel"
-          />
+          <input class="sap-input" list="channelList" name="channel_display" id="channel_display"
+            placeholder="Search sales channel" />
           <input type="hidden" name="channel" id="channel" />
         </div>
         {# Batch 102: Day appears only for menu-driven customers (Frsh and any
-           other customer flagged is_menu_driven in Master Data). Hidden and
-           inert otherwise, so nothing changes for ad-hoc customers. #}
+        other customer flagged is_menu_driven in Master Data). Hidden and
+        inert otherwise, so nothing changes for ad-hoc customers. #}
         {# Batch 104: the Day dropdown is gone. The weekday is derived from
-           the delivery date, so choosing both was redundant and made it
-           possible to pick a day and a date that disagreed. #}
+        the delivery date, so choosing both was redundant and made it
+        possible to pick a day and a date that disagreed. #}
         <div>
           <div class="sap-label">{{ t('Delivery Date') }}</div>
           {# Free date entry for normal customers; for a menu customer this is
-             swapped for a dropdown of that weekday's upcoming dates, so an
-             invalid date cannot be typed in the first place. #}
-          <input
-            class="sap-input"
-            type="date"
-            name="required_delivery_date"
-            id="deliveryDate"
-            required
-          />
+          swapped for a dropdown of that weekday's upcoming dates, so an
+          invalid date cannot be typed in the first place. #}
+          <input class="sap-input" type="date" name="required_delivery_date" id="deliveryDate" required />
           {# Batch 104: the constrained date dropdown is gone too — the plain
-             date input is now the single source, and the weekday it falls on
-             drives the menu. #}
+          date input is now the single source, and the weekday it falls on
+          drives the menu. #}
         </div>
         <div>
           <div class="sap-label">Delivery Time</div>
@@ -205,133 +214,102 @@
 
       <datalist id="customerList">
         {% for c in customers %}
-        <option
-          value="{{ c.customer_code }} - {{ c.customer_name }}"
-          data-code="{{ c.customer_code }}"
-          data-name="{{ c.customer_name }}"
-          data-brand="{{ c.brand }}"
-        ></option>
+        <option value="{{ c.customer_code }} - {{ c.customer_name }}" data-code="{{ c.customer_code }}"
+          data-name="{{ c.customer_name }}" data-brand="{{ c.brand }}"></option>
         {% endfor %}
       </datalist>
       <datalist id="brandList">
         {% for b in brands %}
-        <option
-          value="{{ b.brand_code }} - {{ b.brand_name }}"
-          data-code="{{ b.brand_code }}"
-          data-name="{{ b.brand_name }}"
-        ></option>
+        <option value="{{ b.brand_code }} - {{ b.brand_name }}" data-code="{{ b.brand_code }}"
+          data-name="{{ b.brand_name }}"></option>
         {% endfor %}
       </datalist>
       <datalist id="channelList">
         {% for ch in channels %}
-        <option
-          value="{{ ch.channel_code }} - {{ ch.channel_name }}"
-          data-code="{{ ch.channel_code }}"
-          data-name="{{ ch.channel_name }}"
-        ></option>
+        <option value="{{ ch.channel_code }} - {{ ch.channel_name }}" data-code="{{ ch.channel_code }}"
+          data-name="{{ ch.channel_name }}"></option>
         {% endfor %}
       </datalist>
       <datalist id="recipeList">
         {% for r in recipes %}
-        <option
-          value="{{ r.recipe_code }} - {{ r.recipe_name }}"
-          data-code="{{ r.recipe_code }}"
-          data-name="{{ r.recipe_name }}"
-          data-food="{{ r.food_cost_per_portion or 0 }}"
-          data-sale="{{ r.sale_price_per_portion or 0 }}"
-          data-bom="{{ r.bom_lines or 0 }}"
-          data-category="{{ r.category or '' }}"
-        ></option>
+        <option value="{{ r.recipe_code }} - {{ r.recipe_name }}" data-code="{{ r.recipe_code }}"
+          data-name="{{ r.recipe_name }}" data-food="{{ r.food_cost_per_portion or 0 }}"
+          data-sale="{{ r.sale_price_per_portion or 0 }}" data-bom="{{ r.bom_lines or 0 }}"
+          data-category="{{ r.category or '' }}"></option>
         {% endfor %}
       </datalist>
 
       <hr />
-      <div
-        class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2"
-      >
+      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
         <h5 class="m-0">{{ t('Recipes Ordered') }}</h5>
         <span class="small-muted" id="menuHint"></span>
       </div>
 
       {# Batch 123: realtime recipe search. Filters the recipe rows as you type —
-         no button, no reload. Matches on both recipe CODE and NAME. #}
+      no button, no reload. Matches on both recipe CODE and NAME. #}
       <div class="mb-2">
         <div class="input-group">
           <!-- <span class="input-group-text bg-white"><i class="bi bi-search"></i></span> -->
           <input type="text" id="recipeFilter" class="sap-input" style="border-radius:0 10px 10px 0"
-                 placeholder="{{ t('Search recipe code or name — filters as you type') }}"
-                 oninput="filterRecipeRows(this.value)" autocomplete="off">
+            placeholder="{{ t('Search recipe code or name — filters as you type') }}"
+            oninput="filterRecipeRows(this.value)" autocomplete="off">
         </div>
         <small class="small-muted" id="recipeFilterHint"></small>
       </div>
 
       {# ==================================================================
-         Batch 103 — ONE REAL TABLE.
+      Batch 103 — ONE REAL TABLE.
 
-         Batch 102 added a header row but each line was still its own bordered
-         .sap-line-pro block, so the screen still read as separate cards. This
-         is now a genuine <table>: one header, one <tr> per line, nothing
-         repeated. On a 20-line Frsh order that is the difference between a
-         readable grid and 20 stacked panels.
+      Batch 102 added a header row but each line was still its own bordered
+      .sap-line-pro block, so the screen still read as separate cards. This
+      is now a genuine <table>: one header, one <tr> per line, nothing
+          repeated. On a 20-line Frsh order that is the difference between a
+          readable grid and 20 stacked panels.
 
-         Same markup is used by Sale Requisition, Immediate Order and the
-         Customer Portal because all three render this one template.
-         ================================================================== #}
-      <div class="table-responsive">
-        <table class="table table-sm align-middle mb-0 isfc-order-table" data-no-sort>
-          <thead>
-            <tr>
-              <th>{{ t('Recipe Code & Name') }}</th>
-              <th style="width:160px">{{ t('Category') }}</th>
-              <th style="width:150px" class="text-end">{{ t('Quantity Ordered') }}</th>
-              <th style="width:56px"></th>
-            </tr>
-          </thead>
-          <tbody id="portal-lines">
-            <tr class="order-line">
-              <td>
-                <input
-                  class="sap-input recipe-display"
-                  list="recipeList"
-                  name="recipe_display"
-                  placeholder="{{ t('Type recipe code or recipe name') }}"
-                  required
-                />
-                <input type="hidden" name="recipe_no" class="recipe-no" />
-                <input type="hidden" name="recipe_name" class="recipe-name" />
-                {# Batch 103: portion size, price and food cost for the picked
-                   recipe, so whoever places the order can see what they are
-                   committing to without opening the recipe in another tab. #}
-                <small class="recipe-info text-body-tertiary d-block mt-1"></small>
-              </td>
-              {# Batch 122: category column, auto-filled from the picked recipe. #}
-              <td><span class="recipe-category badge badge-phoenix badge-phoenix-secondary">—</span></td>
-              <td>
-                <input
-                  class="sap-input text-end"
-                  {# Batch 105: step="1" so the spinner arrows move 1, 2, 3 —
-                     step="0.01" made every up-arrow click produce 0.01, 0.02.
-                     Portions are counted items; you cannot cook 0.01 of one. #}
-                  type="number"
-                  step="1"
-                  min="0"
-                  inputmode="numeric"
-                  name="required_portions"
-                  value="0"
-                  required
-                />
-              </td>
-              <td class="text-center">
-                <button type="button" class="sap-btn sap-danger" onclick="removeLine(this)">X</button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <button type="button" class="sap-btn sap-soft" onclick="addPortalLine()">
-        Add Recipe
-      </button>
-      <button class="sap-btn sap-primary">Submit Order</button>
+          Same markup is used by Sale Requisition, Immediate Order and the
+          Customer Portal because all three render this one template.
+          ================================================================== #}
+          <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0 isfc-order-table" data-no-sort>
+              <thead>
+                <tr>
+                  <th>{{ t('Recipe Code & Name') }}</th>
+                  <th style="width:160px">{{ t('Category') }}</th>
+                  <th style="width:150px" class="text-end">{{ t('Quantity Ordered') }}</th>
+                  <th style="width:56px"></th>
+                </tr>
+              </thead>
+              <tbody id="portal-lines">
+                <tr class="order-line">
+                  <td>
+                    <input class="sap-input recipe-display" list="recipeList" name="recipe_display"
+                      placeholder="{{ t('Type recipe code or recipe name') }}" required />
+                    <input type="hidden" name="recipe_no" class="recipe-no" />
+                    <input type="hidden" name="recipe_name" class="recipe-name" />
+                    {# Batch 103: portion size, price and food cost for the picked
+                    recipe, so whoever places the order can see what they are
+                    committing to without opening the recipe in another tab. #}
+                    <small class="recipe-info text-body-tertiary d-block mt-1"></small>
+                  </td>
+                  {# Batch 122: category column, auto-filled from the picked recipe. #}
+                  <td><span class="recipe-category badge badge-phoenix badge-phoenix-secondary">—</span></td>
+                  <td>
+                    <input class="sap-input text-end" {# Batch 105: step="1" so the spinner arrows move 1, 2, 3 —
+                      step="0.01" made every up-arrow click produce 0.01, 0.02. Portions are counted items; you cannot
+                      cook 0.01 of one. #} type="number" step="1" min="0" inputmode="numeric" name="required_portions"
+                      value="0" required />
+                  </td>
+                  <td class="text-center">
+                    <button type="button" class="sap-btn sap-danger" onclick="removeLine(this)">X</button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <button type="button" class="sap-btn sap-soft" onclick="addPortalLine()">
+            Add Recipe
+          </button>
+          <button class="sap-btn sap-primary">Submit Order</button>
     </form>
   </div>
 </div>
@@ -421,7 +399,7 @@
           + "{{ t('Weekly menu customer') }}</span> "
           + "{{ t('Pick a delivery date — that day\'s menu will load automatically.') }}"
           + (d.days_available && d.days_available.length
-              ? " (" + d.days_available.join(", ") + ")" : "");
+            ? " (" + d.days_available.join(", ") + ")" : "");
         // If a date is already set, load immediately rather than waiting for
         // the user to re-pick it.
         const dt = document.getElementById("deliveryDate");
@@ -557,7 +535,7 @@
       return;
     }
 
- 
+
     {% if not immediate %}
     var dEl = document.getElementById("deliveryDate");
     var tEl = document.getElementById("deliveryTime");
@@ -585,7 +563,7 @@
     {% else %}
     var min = new Date(Date.now() + 48 * 3600 * 1000);
     {% endif %}
-   
+
     var iso = min.getFullYear() + "-"
       + String(min.getMonth() + 1).padStart(2, "0") + "-"
       + String(min.getDate()).padStart(2, "0");
@@ -615,39 +593,40 @@
   // (/orders/portal/new?customer=smc). Matches the card key against the
   // customer datalist by code or name and locks the field.
   (function presetCustomer() {
-    var preset = {{ (preset_customer or '')|tojson }};
-    var presetInfo = {{ (preset_info or {})|tojson }};
-    if (!preset) return;
-    var input = document.getElementById("customer_display");
-    var list = document.getElementById("customerList");
-    if (!input || !list) return;
-    var target = preset.toLowerCase();
-    var opts = list.querySelectorAll("option");
-    var matched = null;
-    for (var i = 0; i < opts.length; i++) {
-      var code = (opts[i].dataset.code || "").toLowerCase();
-      var name = (opts[i].dataset.name || "").toLowerCase();
-      var val = (opts[i].value || "").toLowerCase();
-      if (code.indexOf(target) !== -1 || name.indexOf(target) !== -1 || val.indexOf(target) !== -1) {
-        matched = opts[i]; break;
+    var preset = {{ (preset_customer or '')| tojson
+  }};
+  var presetInfo = {{ (preset_info or { })| tojson }};
+  if (!preset) return;
+  var input = document.getElementById("customer_display");
+  var list = document.getElementById("customerList");
+  if (!input || !list) return;
+  var target = preset.toLowerCase();
+  var opts = list.querySelectorAll("option");
+  var matched = null;
+  for (var i = 0; i < opts.length; i++) {
+    var code = (opts[i].dataset.code || "").toLowerCase();
+    var name = (opts[i].dataset.name || "").toLowerCase();
+    var val = (opts[i].value || "").toLowerCase();
+    if (code.indexOf(target) !== -1 || name.indexOf(target) !== -1 || val.indexOf(target) !== -1) {
+      matched = opts[i]; break;
+    }
+  }
+  if (matched) {
+    input.value = matched.value;
+    var cn = document.getElementById("customer_name");
+    var co = document.getElementById("customer_no");
+    if (cn) cn.value = matched.dataset.name || matched.value;
+    if (co) co.value = matched.dataset.code || "";
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+    // Batch 124: explicitly (re)trigger weekly-menu detection after the
+    // fields are populated, so FRSH auto-fills brand/channel and shows the
+    // "Weekly menu customer" badge without the user retyping anything.
+    setTimeout(function () {
+      if (typeof loadMenuMode === "function") {
+        loadMenuMode((cn && cn.value) || matched.dataset.name || "");
       }
-    }
-    if (matched) {
-      input.value = matched.value;
-      var cn = document.getElementById("customer_name");
-      var co = document.getElementById("customer_no");
-      if (cn) cn.value = matched.dataset.name || matched.value;
-      if (co) co.value = matched.dataset.code || "";
-      input.dispatchEvent(new Event("change", { bubbles: true }));
-      // Batch 124: explicitly (re)trigger weekly-menu detection after the
-      // fields are populated, so FRSH auto-fills brand/channel and shows the
-      // "Weekly menu customer" badge without the user retyping anything.
-      setTimeout(function () {
-        if (typeof loadMenuMode === "function") {
-          loadMenuMode((cn && cn.value) || matched.dataset.name || "");
-        }
-      }, 30);
-    }
-  })();
+    }, 30);
+  }
+  }) ();
 </script>
 {% endblock %}

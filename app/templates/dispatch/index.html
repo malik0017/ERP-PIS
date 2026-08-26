@@ -207,21 +207,21 @@
             r.dispatch_status }}</span>
         </div>
       </div>
-      <form method="post" action="/dispatch/{{ r.id }}/generate-otp" class="d-inline">
-        <button class="btn-pro btn-soft btn-sm" type="submit" title="Generate a delivery confirmation code to read out to the customer">
-          <i class="bi bi-shield-lock"></i> Generate Delivery Code</button>
-      </form>
-      {% if r.delivery_confirmed_by %}
-      <span class="pill ok" title="Proof of delivery on file">
-        <i class="bi bi-patch-check-fill"></i> Confirmed via {{ r.delivery_confirmed_by }}</span>
-      {% if r.pod_photo_path %}<a href="{{ r.pod_photo_path }}" target="_blank" class="btn-pro btn-soft btn-sm">View Photo</a>{% endif %}
-      {% endif %}
-      <form method="post" action="/dispatch/{{ r.id }}/update" enctype="multipart/form-data">
+      {# Batch 129: delivery-code + photo proof-of-delivery removed per request;
+         Region + editable bag count added for logistics planning. #}
+      <form method="post" action="/dispatch/{{ r.id }}/update">
         <div class="form-grid">
           <div><label>Packed Portions</label><input type="number" step="0.01" name="packed_portions"
               value="{{ r.packed_portions or 0 }}"></div>
           <div><label>Rejected Portions</label><input type="number" step="0.01" name="rejected_portions"
               value="{{ r.rejected_portions or 0 }}"></div>
+          <div><label>Number of Bags</label><input type="number" min="0" step="1" name="packed_bags"
+              value="{{ r.packed_bags or '' }}" placeholder="e.g. 12"></div>
+          <div><label>Region</label><select name="region">
+              <option value="">-- select region --</option>
+              {% for rg in ['Riyadh','Eastern Province','Jeddah','Makkah'] %}
+              <option {% if r.region==rg %}selected{% endif %}>{{ rg }}</option>{% endfor %}
+            </select></div>
           <div><label>Dispatch Date</label><input type="date" name="dispatch_date" value="{{ r.dispatch_date or '' }}">
           </div>
           <div><label>Vehicle No</label><input name="vehicle_no" value="{{ r.vehicle_no or '' }}"></div>
@@ -234,21 +234,10 @@
               <option {% if r.dispatch_status=='Out for Delivery' %}selected{% endif %}>Out for Delivery</option>
               <option {% if r.dispatch_status=='Delivered' %}selected{% endif %}>Delivered</option>
             </select></div>
-          <div style="grid-column:span 4"><label>Remarks</label><input name="remarks" value="{{ r.remarks or '' }}">
-          </div>
-          {# Batch 80: proof-of-delivery — required before "Delivered" can be saved.
-             Either field alone is enough; the server enforces this, not just the UI. #}
-          <div style="grid-column:span 2">
-            <label>Delivery Code (from customer) <span class="text-muted" title="Generate a code above, call the customer, then enter what they read back">?</span></label>
-            <input name="delivery_otp_input" placeholder="4-digit code" maxlength="4" inputmode="numeric">
-          </div>
-          <div style="grid-column:span 2">
-            <label>Delivery Photo <span class="text-muted" title="Proof-of-delivery photo taken by the driver">?</span></label>
-            <input type="file" name="pod_photo" accept="image/*" capture="environment">
+          <div style="grid-column:span 3"><label>Remarks</label><input name="remarks" value="{{ r.remarks or '' }}">
           </div>
           <div><button class="btn-pro btn-green" type="submit"><i class="bi bi-truck"></i> Save</button></div>
         </div>
-        <div class="small text-muted mt-1"><i class="bi bi-info-circle me-1"></i>To mark an order <b>Delivered</b>, either the delivery code or a delivery photo is required — this can't be saved on trust alone.</div>
       </form>
     </div>
     {% else %}<div class="empty">No dispatch records yet. Pass an order from QC to create packing/dispatch

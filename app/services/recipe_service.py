@@ -469,6 +469,10 @@ def import_recipe_excel(db: Session, file_path: str, company_id: int) -> dict[st
                     sub_recipe_code=_code(_get(line_ws, row, line_headers, "Sub Recipe ID", "Sub Recipe Ref")),
                     inventory_code=inventory_code,
                     item_name=item_name,
+                    # Batch 131 — raw "Section" value from the recipe workbook
+                    # (e.g. "Hot Section", "Butchery Section"). Drives store-
+                    # issuance routing at BOM time. Stored raw; mapped later.
+                    kitchen_section=_s(_get(line_ws, row, line_headers, "Section", "Kitchen Section")),
                     uom=_s(_get(line_ws, row, line_headers, "St. UOM", "UOM", "Unit")),
                     qty_batch=_d(_get(line_ws, row, line_headers, "Qty req per Batch (g/pcs)", "Qty Batch", "Batch Qty")),
                     portions=_d(_get(line_ws, row, line_headers, "No. of portions per batch", "Portions"), "1"),

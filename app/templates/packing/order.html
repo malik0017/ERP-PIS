@@ -158,6 +158,7 @@
       <h3>Order Summary</h3>
       <div class="info mt-2">
         <div class="tile"><span>Customer</span><strong>{{ row.customer_name or '—' }}</strong></div>
+        <div class="tile"><span>Brand</span><strong>{{ order.brand if order else '—' }}</strong></div>
         <div class="tile"><span>Delivery</span><strong>{{ order.required_delivery_date if order else '—' }} {{
             order.required_delivery_time if order else '' }}</strong></div>
         <div class="tile"><span>Planned Portions</span><strong>{{ order.total_planned_portions if order else
@@ -180,6 +181,37 @@
             <td>{{ q.overall_score }}</td>
           </tr>{% else %}<tr>
             <td colspan="3" class="text-secondary">No QC history found.</td>
+          </tr>{% endfor %}</tbody>
+      </table>
+    </div>
+  </div>
+
+  {# Batch 130: per-recipe packing detail — planned vs received portions, the
+     lack (shortfall), and protein/carb per portion carried from Hot Kitchen. #}
+  <div class="panel mt-3">
+    <h3>Recipe Pack Detail</h3>
+    <div class="small text-secondary mb-2">Required = ordered portions · Received = what came through QC · Lack = shortfall to make up. Protein/Carb per portion come from Hot Kitchen.</div>
+    <div class="table-responsive">
+      <table class="table-pro">
+        <thead>
+          <tr>
+            <th>Recipe</th>
+            <th class="text-end">Required</th>
+            <th class="text-end">Received</th>
+            <th class="text-end">Lack</th>
+            <th class="text-end">Protein/Portion (g)</th>
+            <th class="text-end">Carb/Portion (g)</th>
+          </tr>
+        </thead>
+        <tbody>{% for l in pack_lines %}<tr>
+            <td>{{ l.recipe_no }}<br><strong>{{ l.recipe_name }}</strong></td>
+            <td class="text-end">{{ '%.2f'|format(l.planned) }}</td>
+            <td class="text-end">{{ '%.2f'|format(l.received) }}</td>
+            <td class="text-end {% if l.lack > 0 %}text-danger fw-bold{% endif %}">{{ '%.2f'|format(l.lack) }}</td>
+            <td class="text-end">{{ l.protein or '—' }}</td>
+            <td class="text-end">{{ l.carb or '—' }}</td>
+          </tr>{% else %}<tr>
+            <td colspan="6" class="text-secondary">No recipe lines have reached QC/packing yet.</td>
           </tr>{% endfor %}</tbody>
       </table>
     </div>
