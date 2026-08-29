@@ -24,6 +24,8 @@
   .kp-card .rn{font-weight:800;color:var(--phoenix-emphasis-color);}
   .kp-card .meta{font-size:.8rem;color:var(--phoenix-secondary-color);}
   .kp-body{padding:14px 18px;}
+  .kp-ing{padding:6px 18px 12px;border-bottom:1px solid var(--phoenix-border-color);background:var(--phoenix-secondary-bg,#f8fafc);}
+  [data-bs-theme="dark"] .kp-ing{background:rgba(255,255,255,.03);}
   .kp-steps{display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap;}
   .kp-step{font-size:.68rem;font-weight:800;padding:3px 10px;border-radius:20px;background:var(--phoenix-body-highlight,#eef2f7);color:#64748b;}
   .kp-step.on{background:#dbeafe;color:#1e40af;}
@@ -65,10 +67,29 @@
     <div class="top">
       <div>
         <div class="rn">{{ r.recipe_name }} <span class="meta">({{ r.recipe_no }})</span></div>
-        <div class="meta">{{ r.ing_received }}/{{ r.ing_lines }} ingredients received · issued {{ '%.2f'|format(r.issued) }}</div>
+        <div class="meta">{{ r.ing_received }}/{{ r.ing_lines }} ingredients received · issued {{ '%.2f'|format(r.issued) }}
+          {% if r.details %}<button type="button" class="btn btn-link btn-sm p-0 ms-2 js-ing-toggle" data-target="ing-{{ section_slug }}-{{ r.recipe_no }}"><i class="bi bi-eye me-1"></i>View ingredients</button>{% endif %}
+        </div>
       </div>
       <span class="state-badge s-{{ r.status }}">{{ r.status }}</span>
     </div>
+
+    {# Batch 134: collapsible ingredient breakdown, hidden by default. #}
+    {% if r.details %}
+    <div class="kp-ing d-none" id="ing-{{ section_slug }}-{{ r.recipe_no }}">
+      <table class="table table-sm mb-0">
+        <thead><tr><th>Code</th><th>Ingredient</th><th class="text-end">Issued</th><th class="text-end">Received</th><th>Status</th></tr></thead>
+        <tbody>
+        {% for d in r.details %}
+          <tr><td class="text-body-tertiary">{{ d.ingredient_code }}</td><td>{{ d.ingredient_name }}</td>
+          <td class="text-end">{{ '%.2f'|format(d.issued or 0) }} <span class="text-body-tertiary">{{ d.standard_uom }}</span></td>
+          <td class="text-end">{{ '%.2f'|format(d.received or 0) }}</td>
+          <td><span class="text-body-tertiary small">{{ d.transaction_status or 'Pending' }}</span></td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
     <div class="kp-body">
       <div class="kp-steps">
         <span class="kp-step {{ 'done' if r.status in ['RECEIVED','PRODUCED','TRANSFERRED'] else 'on' }}">1 · Receive</span>
@@ -79,27 +100,37 @@
       </div>
 
       {% if r.status == 'PENDING' %}
-        <div class="text-body-tertiary small"><i class="bi bi-info-circle me-1"></i>Receive the ingredients first (use "Receive All Ingredients" above).</div>
-      {% elif r.status == 'RECEIVED' %}
-        {% set received_whole = r.received|round(0, 'floor')|int %}
-        <form method="post" action="/production/kitchen/{{ section_slug }}/{{ order_no }}/produce" class="row g-2 align-items-end produce-form" data-received="{{ received_whole }}">
+        {# Batch 135: recipe-wise Receive right here (Image 4), no need to jump away. #}
+        <form method="post" action="/production/section/{{ section_slug }}/orders/{{ order_no }}/recipe/receive" class="d-flex align-items-center gap-2 flex-wrap"
+              data-confirm="Receive all pending ingredient lines for {{ r.recipe_no }}?"
+              data-confirm-title="Receive Recipe" data-confirm-ok="Receive All" data-confirm-variant="success">
           <input type="hidden" name="recipe_no" value="{{ r.recipe_no }}">
-          <div class="col-6 col-md-3">
-            <label class="form-label fs-9 text-body-tertiary mb-1">Produced portions <span class="text-body-tertiary" title="Whole portions only">(whole)</span></label>
-            <input type="number" step="1" min="0" inputmode="numeric" class="form-control form-control-sm js-produced" name="produced_portions" value="{{ received_whole }}">
-          </div>
-          <div class="col-6 col-md-3">
-            <label class="form-label fs-9 text-body-tertiary mb-1">Waste portions <span class="text-body-tertiary" title="Auto = Received − Produced, editable">(auto)</span></label>
-            <input type="number" step="1" min="0" inputmode="numeric" class="form-control form-control-sm js-waste" name="waste_portions" value="0">
-          </div>
-          <div class="col-12 col-md-4">
-            <label class="form-label fs-9 text-body-tertiary mb-1">Remarks</label>
-            <input type="text" class="form-control form-control-sm" name="remarks" placeholder="Optional">
-          </div>
-          <div class="col-12 col-md-2">
-            <label class="form-label fs-9 mb-1 d-none d-md-block">&nbsp;</label>
-            <button class="btn btn-primary btn-sm w-100 fw-bold produce-btn"><i class="bi bi-check2-circle me-1"></i>Produce</button>
-          </div>
+          <button class="btn btn-phoenix-success btn-sm fw-bold"><i class="bi bi-box-arrow-in-down me-1"></i>Receive all {{ r.ing_lines }} ingredients</button>
+          <span class="text-body-tertiary small">or use "Receive All Ingredients" above for the whole order.</span>
+        </form>
+      {% elif r.status == 'RECEIVED' %}
+        {# Batch 135: full ingredient-level fields with auto-calc, uniform with the
+           section screen. Posts to the shared recipe/process endpoint (pro-rata
+           split across this recipe's received lines). #}
+        {% set _avail = r.received %}
+        <form method="post" action="/production/section/{{ section_slug }}/orders/{{ order_no }}/recipe/process" class="row g-2 align-items-end kp-proc-form"
+              data-avail="{{ _avail }}"
+              data-confirm="Process &amp; transfer this recipe's received lines? Totals split across its ingredients."
+              data-confirm-title="Process &amp; Transfer" data-confirm-ok="Process &amp; Transfer" data-confirm-variant="primary">
+          <input type="hidden" name="recipe_no" value="{{ r.recipe_no }}">
+          <div class="col-6 col-md-2"><label class="form-label fs-9 text-body-tertiary mb-1">Processed</label>
+            <input type="number" step="0.0001" min="0" class="form-control form-control-sm kp-processed" data-avail="{{ _avail }}" name="processed_qty_standard" value="{{ '%.4f'|format(_avail) }}"></div>
+          <div class="col-6 col-md-2"><label class="form-label fs-9 text-body-tertiary mb-1">Waste</label>
+            <input type="number" step="0.0001" min="0" class="form-control form-control-sm kp-waste" name="waste_qty_standard" value="0"></div>
+          <div class="col-6 col-md-2"><label class="form-label fs-9 text-body-tertiary mb-1">Return</label>
+            <input type="number" step="0.0001" min="0" class="form-control form-control-sm kp-return" name="returned_qty_standard" value="0"></div>
+          <div class="col-6 col-md-2"><label class="form-label fs-9 text-body-tertiary mb-1">Transfer ⟳</label>
+            <input type="number" step="0.0001" min="0" class="form-control form-control-sm kp-transfer" data-full="{{ _avail }}" name="transferred_qty_standard" value="{{ '%.4f'|format(_avail) }}"></div>
+          <div class="col-6 col-md-2"><label class="form-label fs-9 text-body-tertiary mb-1">Next Section</label>
+            <select class="form-select form-select-sm" name="next_section"><option value="">Use route</option>{% for s in route_options %}<option>{{ s }}</option>{% endfor %}</select></div>
+          <div class="col-6 col-md-2"><label class="form-label fs-9 text-body-tertiary mb-1">Remark</label>
+            <input type="text" class="form-control form-control-sm" name="section_remarks" placeholder="Optional"><input type="hidden" name="waste_reason"></div>
+          <div class="col-12"><button class="btn btn-primary btn-sm fw-bold"><i class="bi bi-arrow-right-circle me-1"></i>Process &amp; Transfer</button></div>
         </form>
       {% elif r.status == 'PRODUCED' %}
         <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
@@ -136,21 +167,28 @@
     var n = Math.round(parseFloat(v));
     return isNaN(n) || n < 0 ? 0 : n;
   }
-  document.querySelectorAll('.produce-form').forEach(function (form) {
-    var received = whole(form.dataset.received);
-    var produced = form.querySelector('.js-produced');
-    var waste = form.querySelector('.js-waste');
-    if (!produced || !waste) return;
-    var wasteTouched = false;
-    function recalcWaste() {
-      var p = whole(produced.value);
-      if (p > received) { p = received; produced.value = p; }
-      if (!wasteTouched) waste.value = Math.max(0, received - p);
-    }
-    produced.addEventListener('input', function () { produced.value = whole(produced.value); recalcWaste(); });
-    waste.addEventListener('input', function () { wasteTouched = true; waste.value = whole(waste.value); });
-    recalcWaste();
+  /* Batch 135: ingredient-level auto-calc on the Production View process form
+     (uniform with the section screen). Edit Transfer → Waste recalculates;
+     edit Waste → Return recalculates. */
+  document.querySelectorAll('.kp-proc-form').forEach(function (form) {
+    function num(v){ var x = parseFloat(v); return isNaN(x) ? 0 : x; }
+    var avail = num(form.dataset.avail);
+    var tra = form.querySelector('.kp-transfer');
+    var waste = form.querySelector('.kp-waste');
+    var ret = form.querySelector('.kp-return');
+    if (tra) tra.addEventListener('input', function () { var w = avail - num(tra.value) - num(ret.value); waste.value = (w > 0 ? w : 0).toFixed(4); });
+    if (waste) waste.addEventListener('input', function () { var r = avail - num(tra.value) - num(waste.value); ret.value = (r > 0 ? r : 0).toFixed(4); });
   });
 })();
+/* Batch 134: collapsible ingredient view under each recipe (hidden by default). */
+document.querySelectorAll('.js-ing-toggle').forEach(function(btn){
+  btn.addEventListener('click', function(){
+    var box = document.getElementById(btn.dataset.target);
+    if (!box) return;
+    var open = box.classList.toggle('d-none') === false;
+    btn.innerHTML = open ? '<i class="bi bi-eye-slash me-1"></i>Hide ingredients'
+                         : '<i class="bi bi-eye me-1"></i>View ingredients';
+  });
+});
 </script>
 {% endblock %}

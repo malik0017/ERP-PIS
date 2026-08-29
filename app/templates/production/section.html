@@ -49,6 +49,20 @@
   }
   .qs-seg { display: flex; flex-direction: column; padding: 5px 12px; min-width: 74px; }
   .qs-lbl { font-size: 9px; text-transform: uppercase; letter-spacing: .04em; color: #7a8aa0; font-weight: 700; }
+  /* Batch 135: light, calm section-status badges (replaces solid bg-secondary). */
+  .sec-badge{display:inline-block;font-size:11px;font-weight:800;letter-spacing:.01em;border-radius:999px;padding:3px 11px;line-height:1.5;}
+  .sec-st-pending{background:#fff4e0;color:#a5620a;}
+  .sec-st-progress{background:#e3f2ff;color:#0b5aa2;}
+  .sec-st-received{background:#eef2ff;color:#4338ca;}
+  .sec-st-done{background:#e5f6ea;color:#137a3e;}
+  .sec-st-none{background:#eef1f5;color:#5a6b80;}
+  .sec-st-late{background:#fde8e8;color:#b42318;}
+  [data-bs-theme="dark"] .sec-st-pending{background:rgba(165,98,10,.22);color:#f0c088;}
+  [data-bs-theme="dark"] .sec-st-progress{background:rgba(11,90,162,.24);color:#8fc4f5;}
+  [data-bs-theme="dark"] .sec-st-received{background:rgba(67,56,202,.24);color:#b7b3f0;}
+  [data-bs-theme="dark"] .sec-st-done{background:rgba(19,122,62,.24);color:#8fdca9;}
+  [data-bs-theme="dark"] .sec-st-none{background:rgba(90,107,128,.24);color:#aab6c6;}
+  [data-bs-theme="dark"] .sec-st-late{background:rgba(180,35,24,.24);color:#f3a29a;}
   .qs-val { font-size: 13.5px; font-weight: 800; color: #132947; }
   .qs-val-zero { color: #16a34a; }
   .qs-div { width: 1px; background: var(--phoenix-border-color, #dfe7f0); }
@@ -223,14 +237,33 @@
             <td><strong>{{ o.customer_name or '-' }}</strong></td>
             <td>{{ o.brand or '-' }}</td>
             <td>{{ o.delivery_date or '-' }}{% if o.delivery_time %} {{ o.delivery_time }}{% endif %}</td>
-            {# Batch 126: order status + a NOT DELIVERED flag when the delivery
-               date has passed and the order isn't finished in this section. #}
+            {# Batch 135: SECTION-WISE status (not the global order status, which
+               reads as confusing here). Derived from this section's own lines:
+               none received → Pending Receive; all done → Completed; some done →
+               Receiving; received but none transferred → Received. Light badge
+               colours. The NOT DELIVERED flag still fires on an overdue order. #}
             <td>
+              {% set _tot = o.total_lines or 0 %}
+              {% set _rec = o.received_lines or 0 %}
+              {% set _comp = o.completed_lines or 0 %}
+              {% if _tot == 0 %}
+                {% set _sec_status = 'No Lines' %}{% set _sec_cls = 'sec-st-none' %}
+              {% elif _comp >= _tot %}
+                {% set _sec_status = 'Completed' %}{% set _sec_cls = 'sec-st-done' %}
+              {% elif _comp > 0 %}
+                {% set _sec_status = 'Transferring' %}{% set _sec_cls = 'sec-st-progress' %}
+              {% elif _rec >= _tot %}
+                {% set _sec_status = 'Received' %}{% set _sec_cls = 'sec-st-received' %}
+              {% elif _rec > 0 %}
+                {% set _sec_status = 'Receiving' %}{% set _sec_cls = 'sec-st-progress' %}
+              {% else %}
+                {% set _sec_status = 'Pending Receive' %}{% set _sec_cls = 'sec-st-pending' %}
+              {% endif %}
               {% set _st = (o.order_status or '')|lower %}
               {% set _done = _st in ['delivered','closed','cancelled'] %}
-              {% set _late = o.delivery_date and (o.delivery_date|string) < (today|string) and not _done %}
-              {% if o.order_status %}<span class="badge {{ 'bg-success' if _done else 'bg-secondary' }}">{{ o.order_status }}</span>{% else %}<span class="text-muted">-</span>{% endif %}
-              {% if _late %}<br><span class="badge bg-danger mt-1">NOT DELIVERED</span>{% endif %}
+              {% set _late = o.delivery_date and (o.delivery_date|string) < (today|string) and not _done and _comp < _tot %}
+              <span class="sec-badge {{ _sec_cls }}">{{ _sec_status }}</span>
+              {% if _late %}<br><span class="sec-badge sec-st-late mt-1">NOT DELIVERED</span>{% endif %}
             </td>
             <td style="min-width:220px">
               <div class="d-flex justify-content-between small mb-1"><span>Received {{ o.received_lines or 0 }}/{{

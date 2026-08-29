@@ -94,6 +94,9 @@ def build_launcher_context(db: Session) -> dict:
         }
 
     cards = {
+        "sales": card(int(_n(db, "SELECT COUNT(*) FROM customer_orders "
+                                 "WHERE COALESCE(status,'') NOT IN ('Delivered','Closed','Cancelled')")),
+                      prod_series, "success"),
         "production": card(stats["open_orders"], prod_series, "primary"),
         "inventory": card(stats["inventory_items"], inv_series, "info"),
         "procurement": card(stats["open_pos"], proc_series, "warning"),

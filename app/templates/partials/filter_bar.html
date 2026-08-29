@@ -1,16 +1,4 @@
-{# ==========================================================================
-   Shared filter bar — same style and position on every screen that uses it
-   (Store Issuance, Production Orders, QC, Packing, Dispatch, Procurement,
-   Inventory, Customer Orders).
-   Usage: {% include 'partials/filter_bar.html' with context %}
-   Expects: `filters` dict {search, from_date, to_date, status}
-   Optional: `status_options` list of statuses for the dropdown.
 
-   Batch 80: collapsed behind a single "Filters" button by default (matches
-   every other filter bar in the density pass) so it doesn't eat permanent
-   vertical space — auto-opens if a filter is already active on load, so
-   nobody loses track of an applied filter.
-   ========================================================================== #}
 {% set _fb_active = filters and (filters.from_date or filters.to_date or filters.status or filters.search) %}
 <div class="mb-3">
   <button type="button" class="isfc-filter-toggle" data-bs-toggle="collapse" data-bs-target="#sharedFilterBody"

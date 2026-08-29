@@ -1032,6 +1032,220 @@ def transfer_transaction(
     return tx
 
 
+def ingredient_wise_consolidated(db: Session, order_no: str | None = None,
+                                 section: str = "Cutting") -> list[dict[str, Any]]:
+    """Group a section's work at INGREDIENT level, across all recipes.
+
+    Batch 133 — the mirror image of bakery_pastry_consolidated. One ingredient
+    (e.g. Fresh Onion) is issued separately for many recipes, but a prep cook
+    wants to receive/wash/cut ALL of it in one motion. This groups by
+    order + ingredient_code and sums quantities across every recipe that uses it,
+    keeping the underlying line txs in `details` so a bulk action can fan out to
+    each one. Works for any section; used by Cutting, Butchery, Hot, Cold and
+    Bakery/Pastry.
+    """
+    q = db.query(KitchenSectionTransaction).filter(
+        KitchenSectionTransaction.current_section == section
+    )
+    if order_no:
+        q = q.filter(KitchenSectionTransaction.order_no == order_no)
+
+    grouped: dict[tuple[str, str], dict[str, Any]] = {}
+    for tx in q.order_by(KitchenSectionTransaction.order_no,
+                         KitchenSectionTransaction.ingredient_name,
+                         KitchenSectionTransaction.recipe_no).all():
+        key = (tx.order_no, tx.ingredient_code or tx.ingredient_name or "")
+        if key not in grouped:
+            grouped[key] = {
+                "order_no": tx.order_no,
+                "ingredient_code": tx.ingredient_code,
+                "ingredient_name": tx.ingredient_name,
+                "uom": tx.standard_uom,
+                "recipes_count": 0,
+                "total_issued_qty_standard": 0.0,
+                "total_received_qty_standard": 0.0,
+                "total_processed_qty_standard": 0.0,
+                "total_waste_qty_standard": 0.0,
+                "total_balance_qty_standard": 0.0,
+                "pending_receive": 0,
+                "received_ready": 0,
+                "locked": 0,
+                "details": [],
+            }
+        g = grouped[key]
+        g["recipes_count"] += 1
+        g["total_issued_qty_standard"] += _num(tx.issued_qty_standard)
+        g["total_received_qty_standard"] += _num(tx.received_qty_standard)
+        g["total_processed_qty_standard"] += _num(tx.processed_qty_standard)
+        g["total_waste_qty_standard"] += _num(tx.waste_qty_standard)
+        g["total_balance_qty_standard"] += _num(tx.balance_qty_standard)
+        status = str(tx.transaction_status or "").upper()
+        if status == "TRANSFERRED" or status.startswith("COMPLETED"):
+            g["locked"] += 1
+        elif _num(tx.received_qty_standard) > 0:
+            g["received_ready"] += 1
+        else:
+            g["pending_receive"] += 1
+        g["details"].append(tx)
+
+    return sorted(grouped.values(),
+                  key=lambda x: (x["order_no"], x["ingredient_name"] or ""))
+
+
+def bulk_receive_ingredient(db: Session, order_no: str, section: str,
+                            ingredient_code: str, user: str) -> tuple[int, int]:
+    """Receive every not-yet-received line for one ingredient in one section.
+
+    Batch 133 — powers ingredient-wise bulk receiving. Each pending line is
+    received at its full issued quantity. Returns (received, skipped)."""
+    txs = db.query(KitchenSectionTransaction).filter(
+        KitchenSectionTransaction.order_no == order_no,
+        KitchenSectionTransaction.current_section == section,
+        KitchenSectionTransaction.ingredient_code == ingredient_code,
+    ).all()
+    ok = skipped = 0
+    for tx in txs:
+        status = str(tx.transaction_status or "").upper()
+        if status == "TRANSFERRED" or status.startswith("COMPLETED"):
+            skipped += 1
+            continue
+        if _num(tx.received_qty_standard) > 0:
+            skipped += 1
+            continue
+        try:
+            receive_transaction(db, tx.id, _num(tx.issued_qty_standard), user)
+            ok += 1
+        except ValueError:
+            skipped += 1
+    return ok, skipped
+
+
+def bulk_receive_recipe(db: Session, order_no: str, section: str,
+                        recipe_no: str, user: str) -> tuple[int, int]:
+    """Receive every not-yet-received line for one RECIPE in one section.
+
+    Batch 135 — recipe-wise receive, so By-Recipe has the same one-click
+    "Receive All" that By-Ingredient already offers. Returns (received, skipped)."""
+    txs = db.query(KitchenSectionTransaction).filter(
+        KitchenSectionTransaction.order_no == order_no,
+        KitchenSectionTransaction.current_section == section,
+        KitchenSectionTransaction.recipe_no == recipe_no,
+    ).all()
+    ok = skipped = 0
+    for tx in txs:
+        status = str(tx.transaction_status or "").upper()
+        if status == "TRANSFERRED" or status.startswith("COMPLETED"):
+            skipped += 1
+            continue
+        if _num(tx.received_qty_standard) > 0:
+            skipped += 1
+            continue
+        try:
+            receive_transaction(db, tx.id, _num(tx.issued_qty_standard), user)
+            ok += 1
+        except ValueError:
+            skipped += 1
+    return ok, skipped
+
+
+def _prorata_process_transfer(
+    db: Session, eligible: list, total_txs: int,
+    processed_qty: float, waste_qty: float, returned_qty: float,
+    transferred_qty: float, next_section: str | None,
+    waste_reason: str | None, remarks: str | None, user: str,
+) -> tuple[int, int]:
+    """Shared core: split entered totals PRO-RATA across already-filtered
+    eligible (received, unlocked) lines by received qty, last line absorbing the
+    rounding remainder so section totals reconcile exactly. Used by both the
+    ingredient-wise and recipe-wise bulk process/transfer endpoints so their
+    maths is guaranteed identical. `eligible` is a list of (tx, received_qty)."""
+    if not eligible:
+        return 0, total_txs
+
+    total_recv = sum(r for _, r in eligible) or 1.0
+    P, W, R, T = (_num(processed_qty), _num(waste_qty),
+                  _num(returned_qty), _num(transferred_qty))
+
+    ok = skipped = 0
+    n = len(eligible)
+    acc = {"p": 0.0, "w": 0.0, "r": 0.0, "t": 0.0}
+    for idx, (tx, recv) in enumerate(eligible):
+        share = recv / total_recv
+        if idx < n - 1:
+            p = round(P * share, 4); w = round(W * share, 4)
+            r = round(R * share, 4); t = round(T * share, 4)
+            acc["p"] += p; acc["w"] += w; acc["r"] += r; acc["t"] += t
+        else:
+            p = round(P - acc["p"], 4); w = round(W - acc["w"], 4)
+            r = round(R - acc["r"], 4); t = round(T - acc["t"], 4)
+        try:
+            transfer_transaction(db, tx.id, p, w, r, t, user,
+                                 waste_reason, remarks, next_section or None)
+            ok += 1
+        except ValueError:
+            skipped += 1
+    return ok, skipped
+
+
+def _eligible_lines(txs: list) -> list:
+    """Filter kitchen txs to (tx, received_qty) pairs that are received and not
+    yet locked — the only lines a bulk process/transfer may touch."""
+    out = []
+    for tx in txs:
+        status = str(tx.transaction_status or "").upper()
+        if status == "TRANSFERRED" or status.startswith("COMPLETED"):
+            continue
+        recv = _num(tx.received_qty_standard) or _num(tx.issued_qty_standard)
+        if recv <= 0:
+            continue
+        out.append((tx, recv))
+    return out
+
+
+def bulk_process_transfer_ingredient(
+    db: Session, order_no: str, section: str, ingredient_code: str,
+    processed_qty: float, waste_qty: float, returned_qty: float,
+    transferred_qty: float, next_section: str | None,
+    waste_reason: str | None, remarks: str | None, user: str,
+) -> tuple[int, int]:
+    """Process + transfer every received line for one ingredient, distributing
+    the entered totals PRO-RATA across the ingredient's lines by received qty.
+
+    Batch 133 — the ingredient-wise twin of the single-line Process & Transfer.
+    Lines already locked or not yet received are skipped."""
+    txs = db.query(KitchenSectionTransaction).filter(
+        KitchenSectionTransaction.order_no == order_no,
+        KitchenSectionTransaction.current_section == section,
+        KitchenSectionTransaction.ingredient_code == ingredient_code,
+    ).all()
+    return _prorata_process_transfer(
+        db, _eligible_lines(txs), len(txs),
+        processed_qty, waste_qty, returned_qty, transferred_qty,
+        next_section, waste_reason, remarks, user)
+
+
+def bulk_process_transfer_recipe(
+    db: Session, order_no: str, section: str, recipe_no: str,
+    processed_qty: float, waste_qty: float, returned_qty: float,
+    transferred_qty: float, next_section: str | None,
+    waste_reason: str | None, remarks: str | None, user: str,
+) -> tuple[int, int]:
+    """Batch 134 — recipe-wise twin of the above. Process + transfer every
+    received line of ONE recipe in this prep section (Cutting/Butchery), with the
+    full process/waste/return/transfer field set split pro-rata across the
+    recipe's ingredient lines. Same maths as the single-line and ingredient-wise
+    panels. Cook sections keep the cooked-output form (process_bakery_pastry_recipe)."""
+    txs = db.query(KitchenSectionTransaction).filter(
+        KitchenSectionTransaction.order_no == order_no,
+        KitchenSectionTransaction.current_section == section,
+        KitchenSectionTransaction.recipe_no == recipe_no,
+    ).all()
+    return _prorata_process_transfer(
+        db, _eligible_lines(txs), len(txs),
+        processed_qty, waste_qty, returned_qty, transferred_qty,
+        next_section, waste_reason, remarks, user)
+
+
 def bakery_pastry_consolidated(db: Session, order_no: str | None = None,
                                section: str = "Bakery/Pastry") -> list[dict[str, Any]]:
     """Group a section's work at recipe level, not item level.
@@ -1061,6 +1275,11 @@ def bakery_pastry_consolidated(db: Session, order_no: str | None = None,
                 "total_processed_qty_standard": 0.0,
                 "total_waste_qty_standard": 0.0,
                 "total_balance_qty_standard": 0.0,
+                # Batch 135: per-status counts so By-Recipe can offer a recipe-wise
+                # "Receive All (n)" button like By-Ingredient does.
+                "pending_receive": 0,
+                "received_ready": 0,
+                "locked": 0,
                 "details": [],
             }
         g = grouped[key]
@@ -1070,6 +1289,13 @@ def bakery_pastry_consolidated(db: Session, order_no: str | None = None,
         g["total_processed_qty_standard"] += _num(tx.processed_qty_standard)
         g["total_waste_qty_standard"] += _num(tx.waste_qty_standard)
         g["total_balance_qty_standard"] += _num(tx.balance_qty_standard)
+        _st = str(tx.transaction_status or "").upper()
+        if _st == "TRANSFERRED" or _st.startswith("COMPLETED"):
+            g["locked"] += 1
+        elif _num(tx.received_qty_standard) > 0:
+            g["received_ready"] += 1
+        else:
+            g["pending_receive"] += 1
         g["details"].append(tx)
 
     return sorted(grouped.values(), key=lambda x: (x["order_no"], x["recipe_name"] or ""))

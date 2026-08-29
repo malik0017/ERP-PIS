@@ -121,6 +121,21 @@ def recipe_states(db: Session, order_no: str, section: str) -> dict:
     """), {"o": order_no, "s": section}).mappings().all():
         kp[r["recipe_no"] or ""] = dict(r)
 
+    # Batch 134: per-recipe ingredient lines so the Production View can render a
+    # collapsible ingredient breakdown under each recipe card (hidden by default).
+    detail_rows = db.execute(text("""
+        SELECT COALESCE(recipe_no,'') AS recipe_no, ingredient_code, ingredient_name,
+               ROUND(COALESCE(issued_qty_standard,0),4) AS issued,
+               ROUND(COALESCE(received_qty_standard,0),4) AS received,
+               standard_uom, transaction_status
+        FROM kitchen_section_transactions
+        WHERE order_no=:o AND current_section=:s
+        ORDER BY COALESCE(recipe_no,''), ingredient_name
+    """), {"o": order_no, "s": section}).mappings().all()
+    details_by_recipe: dict[str, list] = {}
+    for d in detail_rows:
+        details_by_recipe.setdefault(d["recipe_no"] or "", []).append(dict(d))
+
     out = {}
     for r in ing:
         rno = r["recipe_no"] or ""
@@ -145,6 +160,7 @@ def recipe_states(db: Session, order_no: str, section: str) -> dict:
             "waste_portions": float(state["waste_portions"]) if state else 0.0,
             "next_section": (state["next_section"] if state else next_section(section)),
             "produced_by": state["produced_by"] if state else None,
+            "details": details_by_recipe.get(rno, []),
         }
     return out
 

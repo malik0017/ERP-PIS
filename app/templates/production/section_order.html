@@ -3,417 +3,453 @@
   {% set active_step = 'Kitchen' %}{% set active_kitchen = section %}{% include 'partials/process_status_row.html' %}
 
 <style>
-.pis-hero{background:linear-gradient(135deg,#08243d,#1e5bb8);border-radius:22px;color:#fff;padding:26px 30px;box-shadow:0 18px 40px rgba(15,80,97,.18)}
-.pis-card{background:#fff;border:1px solid #dce8f2;border-radius:18px;box-shadow:0 12px 28px rgba(15,30,50,.06)}
-.pis-kpi{padding:16px 18px}.pis-kpi span{display:block;color:#6b7f95;font-size:12px;text-transform:uppercase;font-weight:800;letter-spacing:.05em}.pis-kpi b{font-size:22px;color:#132947}
-.pis-chip{display:inline-flex;align-items:center;border-radius:999px;background:#edf5fb;color:#18314f;padding:6px 11px;font-weight:800;font-size:12px}
-.pis-btn{border:0;border-radius:12px;padding:9px 13px;font-weight:900;text-decoration:none;display:inline-flex;align-items:center;gap:8px}
+/* ---- Batch 133: unified premium ERP look, shared by all 5 kitchen sections ---- */
+.pis-hero{background:linear-gradient(135deg,#08243d,#1e5bb8);border-radius:18px;color:#fff;padding:20px 24px;box-shadow:0 14px 32px rgba(15,80,97,.16)}
+.pis-card{background:#fff;border:1px solid #dce8f2;border-radius:14px;box-shadow:0 8px 22px rgba(15,30,50,.05)}
+.pis-chip{display:inline-flex;align-items:center;border-radius:999px;background:rgba(255,255,255,.16);color:#fff;padding:4px 10px;font-weight:800;font-size:11px;border:1px solid rgba(255,255,255,.28)}
+.pis-btn{border:0;border-radius:10px;padding:8px 12px;font-weight:800;text-decoration:none;display:inline-flex;align-items:center;gap:7px;font-size:13px;cursor:pointer}
 .pis-primary{background:#315cf6;color:#fff}.pis-success{background:#16a34a;color:#fff}.pis-soft{background:#eef5fb;color:#152b49}
-.pis-table th{background:#edf5fb;color:#152b49;text-transform:uppercase;font-size:12px;letter-spacing:.04em}
-.pis-input{border:1px solid #cbdbea;border-radius:10px;padding:8px 10px;width:100%}
-.recipe-box{border:1px solid #dce8f2;border-radius:16px;padding:16px;background:#fbfdff;margin-bottom:14px}
-.small-muted{color:#6f8196;font-size:13px}
-/* Batch 20: two-row line layout + lock styling */
-.line-group{border-top:2px solid #dce8f2}
-.row-receive td{background:#fbfdff;border-bottom:0!important}
-.row-process td{background:#fff}
-.stage-tag{display:inline-block;font-size:10px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;border-radius:6px;padding:2px 8px}
-.stage-receive{background:#e0f2fe;color:#075985}
-.stage-process{background:#ede9fe;color:#5b21b6}
-tr.locked td{background:#f2f7f2!important;color:#5d7263}
-tr.locked .lock-note{color:#11783f;font-weight:800}
-.delivery-badge{background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.35);border-radius:12px;padding:8px 14px;font-weight:800}
-/* UI fix — collapse the Process & Transfer inputs behind a button by default
-   (they were always open, even before a line was received). The compact
-   summary row shows a one-click toggle; the full input row stays hidden
-   until the chef asks for it, same progressive-disclosure pattern used by
-   Generate PO elsewhere in the system. */
-.row-process-summary td{background:#f4fbf6;padding-top:10px;padding-bottom:10px}
-.row-process-pending td{color:#8a97a6;font-style:italic}
-.js-toggle-process{border:1px solid #cbdbea;background:#fff;color:#152b49;border-radius:10px;padding:5px 12px;font-weight:800;font-size:12.5px;display:inline-flex;align-items:center;gap:6px}
-.js-toggle-process:hover{background:#edf5fb}
-.row-process-expanded.d-none{display:none!important}
-.bulk-bar{background:#eef7f0;border:1px solid #cfe8d4;border-radius:14px;padding:10px 14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.pis-input{border:1px solid #cbdbea;border-radius:9px;padding:6px 9px;width:100%;font-size:13px}
+.small-muted{color:#6f8196;font-size:12.5px}
+.delivery-badge{background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.35);border-radius:10px;padding:6px 12px;font-weight:800;font-size:12.5px}
+.kpi-strip{display:grid;grid-template-columns:repeat(6,1fr);gap:1px;background:#e4edf5;border:1px solid #e4edf5;border-radius:12px;overflow:hidden}
+.kpi-strip .kpi{background:#fff;padding:11px 14px}
+.kpi-strip .kpi span{display:block;color:#6b7f95;font-size:11px;text-transform:uppercase;font-weight:800;letter-spacing:.04em}
+.kpi-strip .kpi b{font-size:19px;color:#132947}
+.mode-tabs{display:inline-flex;background:#eef4fa;border-radius:11px;padding:4px;gap:3px}
+.mode-tabs button{border:0;background:transparent;color:#54687f;font-weight:800;font-size:13px;padding:7px 15px;border-radius:8px;cursor:pointer;display:inline-flex;align-items:center;gap:7px}
+.mode-tabs button.active{background:#fff;color:#123;box-shadow:0 2px 6px rgba(20,40,70,.10)}
+.mode-pane{display:none}.mode-pane.active{display:block}
+.erp{width:100%;border-collapse:separate;border-spacing:0;font-size:13px}
+.erp thead th{position:sticky;top:0;z-index:2;background:#0f2f4d;color:#eaf2fb;text-transform:uppercase;font-size:11px;letter-spacing:.03em;font-weight:800;padding:9px 10px;text-align:left;white-space:nowrap}
+.erp tbody td{padding:7px 10px;border-bottom:1px solid #eef3f8;vertical-align:middle}
+.erp tbody tr:hover{background:#f7fbff}
+.erp tbody tr.locked{background:#f3f8f4}
+.erp .rc{font-weight:800;color:#123}
+.erp .sub{color:#7688a0;font-size:11.5px}
+.num{font-variant-numeric:tabular-nums;text-align:right}
+.st{display:inline-block;font-size:10.5px;font-weight:800;border-radius:6px;padding:2px 8px;white-space:nowrap}
+.st-pending{background:#fff4e0;color:#a5620a}.st-received{background:#e3f2ff;color:#0b5aa2}.st-transferred{background:#e5f6ea;color:#137a3e}.st-completed{background:#e5f6ea;color:#137a3e}
+.tbl-wrap{overflow:auto;border:1px solid #e4edf5;border-radius:12px}
+.toolbar{display:flex;gap:8px;align-items:center}
+.bulk-bar{background:#eef7f0;border:1px solid #cfe8d4;border-radius:11px;padding:9px 13px;display:flex;align-items:center;gap:11px;flex-wrap:wrap;margin-bottom:11px}
 .bulk-bar .count{font-weight:900;color:#11783f}
-.line-select{width:17px;height:17px;margin-top:2px;cursor:pointer}
+.line-select{width:16px;height:16px;cursor:pointer}
+.grp{border:1px solid #e2ecf5;border-radius:12px;margin-bottom:10px;overflow:hidden;background:#fff}
+.grp-head{display:flex;align-items:center;gap:12px;padding:10px 14px;cursor:pointer;background:#fbfdff}
+.grp-head:hover{background:#f3f9ff}
+.grp.done .grp-head{background:#f3f8f4}
+.grp-head .caret{transition:transform .15s;color:#6f8196}
+.grp.open .grp-head .caret{transform:rotate(90deg)}
+.grp-body{display:none;border-top:1px solid #eef3f8;padding:12px 14px}
+.grp.open .grp-body{display:block}
+.grp-title{font-weight:800;color:#123;flex:1}
+.pill{display:inline-flex;align-items:center;border-radius:999px;background:#edf5fb;color:#18314f;padding:3px 9px;font-weight:800;font-size:11.5px;margin-left:5px}
+.pill.warn{background:#fff4e0;color:#a5620a}.pill.ok{background:#e5f6ea;color:#137a3e}
+.mini{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:6px}
+.mini th{background:#f0f5fa;color:#41576f;text-align:left;padding:5px 8px;font-size:11px;text-transform:uppercase}
+.mini td{padding:5px 8px;border-bottom:1px solid #eef3f8}
+.proc-grid{display:flex;flex-wrap:wrap;gap:9px;align-items:end;margin-top:10px;padding-top:11px;border-top:1px dashed #d7e3ee}
+.proc-grid .fld{display:flex;flex-direction:column}
+.proc-grid label{font-size:11px;font-weight:800;color:#5c7188;margin-bottom:2px;text-transform:uppercase}
 </style>
+
 <div class="container-fluid py-3">
-  <div class="pis-hero mb-4">
+
+  <div class="pis-hero mb-3">
     <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
       <div class="flex-grow-1">
-        <span class="pis-chip mb-3">{{ section }} Workstation</span>
-        <h2 class="mb-1">Receiving &amp; Processing: {{ order_no }}</h2>
-        <p class="mb-1 opacity-75">Step 1 — Receive the store-issued quantity. Step 2 — Process, record wastage/returns and transfer to the next section. Transferred lines lock automatically.</p>
-        {# Batch 20: delivery timetable is now visible to every section #}
-        <div class="d-flex gap-2 flex-wrap mt-2">
-          <span class="delivery-badge"><i class="bi bi-truck me-1"></i> Delivery:
-            {{ (order.required_delivery_date or '—') if order else '—' }}
-            {{ (order.required_delivery_time or '') if order else '' }}</span>
+        <span class="pis-chip mb-2">{{ section }} Workstation</span>
+        <h2 class="mb-1 fw-bold">Receiving &amp; Processing: {{ order_no }}</h2>
+        <!-- <p class="mb-2 opacity-75" style="font-size:13.5px">Receive the store-issued quantity, then process (waste / return / transfer) to the next section. Transferred lines lock automatically.</p> -->
+        <div class="d-flex gap-2 flex-wrap">
+          <span class="delivery-badge"><i class="bi bi-truck me-1"></i> Delivery: {{ (order.required_delivery_date or '—') if order else '—' }} {{ (order.required_delivery_time or '') if order else '' }}</span>
           {% if order and order.cooking_date %}<span class="delivery-badge"><i class="bi bi-fire me-1"></i> Cooking: {{ order.cooking_date }} {{ order.cooking_time or '' }}</span>{% endif %}
         </div>
       </div>
-      {# Batch 121: action buttons pinned top-right in a single row (image 3). #}
-      <div class="d-flex gap-2 flex-nowrap align-items-start">
+      <div class="d-flex gap-2 flex-wrap align-items-start">
         <a class="pis-btn pis-soft text-nowrap" href="/production/section/{{ section_slug }}">Back to {{ section }} Orders</a>
-        <a class="pis-btn text-nowrap" style="background:#fff;color:#132947;font-weight:800" href="/production/kitchen/{{ section_slug }}/{{ order_no }}"><i class="bi bi-fire"></i> Production View</a>
-        <a class="pis-btn pis-soft text-nowrap" href="/production/section/{{ section_slug }}/orders/{{ order_no }}?export=csv"><i class="bi bi-download"></i> Download CSV</a>
+        <a class="pis-btn text-nowrap" style="background:#fff;color:#132947" href="/production/kitchen/{{ section_slug }}/{{ order_no }}"><i class="bi bi-fire"></i> Production View</a>
+        <a class="pis-btn pis-soft text-nowrap" href="/production/section/{{ section_slug }}/orders/{{ order_no }}?export=csv"><i class="bi bi-download"></i> CSV</a>
       </div>
     </div>
   </div>
 
-  {% if error %}<div class="alert alert-warning">{{ error }}</div>{% endif %}
+  {% if error %}<div class="alert alert-warning py-2">{{ error }}</div>{% endif %}
 
-  {# Batch 121: kitchen step-lock banner. Once the order is past Kitchen (QC/
-     Packing/Dispatch), this section is view-only — rows still show for review. #}
   {% set _k_locked = order and stage_locked(order.status, 'kitchen') %}
   {% if _k_locked %}
-  <div class="alert alert-warning d-flex align-items-center gap-2" role="alert">
-    <i class="bi bi-lock-fill"></i>
-    <div>{{ stage_lock_reason(order.status, 'kitchen') }}</div>
+  <div class="alert alert-warning d-flex align-items-center gap-2 py-2" role="alert">
+    <i class="bi bi-lock-fill"></i><div>{{ stage_lock_reason(order.status, 'kitchen') }}</div>
   </div>
   {% endif %}
 
-  <div class="pis-card p-3 mb-3">
-    <div class="row g-3">
-      <div class="col-md-3"><div class="pis-kpi"><span>Customer</span><b style="font-size:17px">{{ order.customer_name if order else '-' }}</b></div></div>
-      <div class="col-md-2"><div class="pis-kpi"><span>Lines</span><b>{{ totals.lines }}</b></div></div>
-      <div class="col-md-2"><div class="pis-kpi"><span>Issued</span><b>{{ '%.2f'|format(totals.issued or 0) }}</b></div></div>
-      <div class="col-md-2"><div class="pis-kpi"><span>Received</span><b>{{ '%.2f'|format(totals.received or 0) }}</b></div></div>
-      <div class="col-md-1"><div class="pis-kpi"><span>Balance</span><b>{{ '%.2f'|format(totals.balance or 0) }}</b></div></div>
-      <div class="col-md-2"><div class="pis-kpi"><span>Completed</span><b>{{ totals.completed }} / {{ totals.lines }}</b></div></div>
-    </div>
-    {% if not _k_locked %}
-    <form method="post" action="/production/section/{{ section_slug }}/orders/{{ order_no }}/receive-all" class="mt-2"
-          data-confirm="Receive the full store-issued quantity for every pending line in this order?"
-          data-confirm-title="Receive All Pending Lines" data-confirm-ok="Receive All" data-confirm-variant="success">
-      <button class="pis-btn pis-success">Receive All Pending Lines</button>
-      <span class="small-muted ms-2">Use this when the section physically receives the full store-issued quantity.</span>
-    </form>
-    {% else %}
-    <div class="mt-2 small-muted"><i class="bi bi-eye"></i> View-only — this step is complete. Use Download CSV above to extract a report.</div>
-    {% endif %}
+  <div class="kpi-strip mb-3">
+    <div class="kpi"><span>Customer</span><b style="font-size:15px">{{ order.customer_name if order else '-' }}</b></div>
+    <div class="kpi"><span>Lines</span><b>{{ totals.lines }}</b></div>
+    <div class="kpi"><span>Issued</span><b>{{ '%.2f'|format(totals.issued or 0) }}</b></div>
+    <div class="kpi"><span>Received</span><b>{{ '%.2f'|format(totals.received or 0) }}</b></div>
+    <div class="kpi"><span>Balance</span><b>{{ '%.2f'|format(totals.balance or 0) }}</b></div>
+    <div class="kpi"><span>Completed</span><b>{{ totals.completed }} / {{ totals.lines }}</b></div>
   </div>
 
-  {# Batch 127: the Bulk Recipe Processing panel moved BELOW the Ingredient
-     Receiving section (see after the receiving card) so users receive first,
-     then process — matching the real kitchen flow. #}
+  {% if not _k_locked %}
+  <form method="post" action="/production/section/{{ section_slug }}/orders/{{ order_no }}/receive-all" class="mb-3"
+        data-confirm="Receive the full store-issued quantity for every pending line in this order?"
+        data-confirm-title="Receive All Pending Lines" data-confirm-ok="Receive All" data-confirm-variant="success">
+    <button class="pis-btn pis-success"><i class="bi bi-box-arrow-in-down"></i> Receive All Pending Lines</button>
+  </form>
+  {% endif %}
 
   <div class="pis-card p-3">
-    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-      <div><h4 class="mb-1">Ingredient Receiving &amp; Processing Lines</h4>
-        <div class="small-muted">Each line has a <span class="stage-tag stage-receive">Receive</span> row and a <span class="stage-tag stage-process">Process &amp; Transfer</span> row. Once transferred, the line locks.</div></div>
-      <div class="d-flex gap-2 flex-nowrap align-items-center" style="flex-wrap:nowrap">
-        {# Batch 20: column-level filters — Batch 21: one flex row #}
-        <select id="statusFilter" class="form-select form-select-sm" style="max-width:170px" onchange="filterLines()">
-          <option value="">All Statuses</option>
-          <option value="pending">Pending Receive</option>
-          <option value="received">Received</option>
-          <option value="transferred">Transferred / Locked</option>
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+      <div class="mode-tabs" id="modeTabs">
+        <button class="active" data-mode="line"><i class="bi bi-list-ul"></i> By Line</button>
+        <button data-mode="ingredient"><i class="bi bi-basket"></i> By Ingredient</button>
+        <button data-mode="recipe"><i class="bi bi-journal-text"></i> By Recipe</button>
+      </div>
+      <div class="toolbar">
+        <select id="statusFilter" class="form-select form-select-sm" style="max-width:160px" onchange="filterLines()">
+          <option value="">All Statuses</option><option value="pending">Pending Receive</option>
+          <option value="received">Received</option><option value="transferred">Transferred / Locked</option>
         </select>
-        <select id="recipeFilter" class="form-select form-select-sm" style="max-width:190px" onchange="filterLines()">
-          <option value="">All Recipes</option>
-          {% for rn in txs|map(attribute='recipe_no')|unique %}<option value="{{ rn }}">{{ rn }}</option>{% endfor %}
-        </select>
-        <input class="form-control form-control-sm" style="max-width:280px" id="lineSearch" placeholder="Search ingredient, recipe, status..." onkeyup="filterLines()">
+        <input class="form-control form-control-sm" style="max-width:260px" id="lineSearch" placeholder="Search ingredient, recipe…" onkeyup="filterLines();filterGroups()">
       </div>
     </div>
 
-    {# UI fix: bulk process — tick several Received lines and transfer them
-       together instead of opening each line's panel one at a time. #}
-    <form id="bulkForm" method="post" action="/production/section/{{ section_slug }}/orders/{{ order_no }}/bulk-transfer"
-          data-confirm="Process and transfer every selected line at its full received quantity?"
-          data-confirm-title="Bulk Process &amp; Transfer" data-confirm-ok="Process Selected" data-confirm-variant="success">
-      <div class="bulk-bar">
-        <div class="form-check mb-0 d-flex align-items-center gap-2">
-          <input class="form-check-input line-select mt-0" type="checkbox" id="selectAllReceived" onclick="toggleSelectAllLines(this)">
-          <label class="form-check-label fw-bold" for="selectAllReceived">Select all ready-to-process lines</label>
+    <div class="mode-pane active p-2" id="pane-line">
+      {% if not _k_locked %}
+      <form id="bulkForm" method="post" action="/production/section/{{ section_slug }}/orders/{{ order_no }}/bulk-transfer"
+            data-confirm="Process and transfer every selected line at its full received quantity?"
+            data-confirm-title="Bulk Process &amp; Transfer" data-confirm-ok="Process Selected" data-confirm-variant="success">
+        <div class="bulk-bar">
+          <div class="form-check mb-0 d-flex align-items-center gap-2">
+            <input class="form-check-input line-select mt-0" type="checkbox" id="selectAllReceived" onclick="toggleSelectAllLines(this)">
+            <label class="form-check-label fw-bold" for="selectAllReceived">Select all ready lines</label>
+          </div>
+          <span class="small-muted"><span class="count" id="selectedCount">0</span> selected · <span id="bulkRecvTotal">0</span> received</span>
+          <div class="fld" style="width:90px"><label class="small-muted d-block">Waste</label><input class="pis-input num" type="number" step="0.0001" min="0" name="bulk_waste" id="bulkWaste" value="0" oninput="bulkRecalc()"></div>
+          <div class="fld" style="width:90px"><label class="small-muted d-block">Return</label><input class="pis-input num" type="number" step="0.0001" min="0" name="bulk_return" id="bulkReturn" value="0" oninput="bulkRecalc()"></div>
+          <div class="fld" style="width:110px"><label class="small-muted d-block">Transfer ⟳</label><input class="pis-input num" type="number" id="bulkTransfer" value="0" readonly title="Auto = received − waste − return"></div>
+          <div class="fld" style="min-width:150px"><label class="small-muted d-block">Next Section</label>
+            <select name="bulk_next_section" class="pis-input">
+              <option value="">Use each line's route</option>{% for s in next_sections %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="fld" style="min-width:150px"><label class="small-muted d-block">Remark</label><input class="pis-input" name="bulk_remark" placeholder="Optional"></div>
+          <div class="fld"><label class="small-muted d-block">&nbsp;</label><button type="submit" class="pis-btn pis-success" id="bulkSubmitBtn" disabled><i class="bi bi-check2-all"></i> Process &amp; Transfer Selected</button></div>
         </div>
-        <span class="small-muted"><span class="count" id="selectedCount">0</span> selected</span>
-        <select name="bulk_next_section" class="form-select form-select-sm" style="max-width:200px">
-          <option value="">Use each line's route</option>
-          {% for s in next_sections %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
-        </select>
-        <button type="submit" class="pis-btn pis-success" id="bulkSubmitBtn" disabled>
-          <i class="bi bi-check2-all"></i> Process &amp; Transfer Selected
-        </button>
-        <span class="small-muted">Passes each selected line through at full received quantity, zero waste. Use the per-line panel for waste/partial transfers.</span>
-      </div>
-    </form>
+      </form>
+      {% endif %}
 
-    <div class="table-responsive">
-      <table class="table align-middle pis-table" id="linesTable">
-        <thead>
-          <tr>
-            <th style="width:80px">Stage</th>
-            <th style="min-width:130px">Recipe</th>
-            <th style="min-width:180px">Ingredient</th>
-            <th style="min-width:110px">Issued</th>
-            <th style="min-width:110px">Status</th>
-            <th colspan="6">Action</th>
-          </tr>
-        </thead>
-        <tbody>
-        {% for tx in txs %}
-          {% set st = (tx.transaction_status or '') %}
-          {% set locked = st == 'Transferred' or st.upper().startswith('COMPLETED') %}
-          {% set received = (tx.received_qty_standard or 0) > 0 %}
-          {% set line_status = 'transferred' if locked else 'received' if received else 'pending' %}
-          <tr class="line-group row-receive {{ 'locked' if locked }}"
-              data-status="{{ line_status }}" data-recipe="{{ tx.recipe_no }}" data-tx-group="{{ tx.id }}">
-            <td rowspan="2" style="vertical-align:top;padding-top:14px">
-              {% if received and not locked %}
-              {# UI fix: bulk-select checkbox — only on lines that are actually
-                 ready to process. Submits with #bulkForm via the form="" attribute
-                 even though it lives inside this row, not that form's markup. #}
-              <input type="checkbox" class="line-select mb-2" form="bulkForm" name="tx_ids" value="{{ tx.id }}" onclick="onLineCheck()" title="Select for bulk processing">
+      <div class="tbl-wrap">
+        <table class="erp" id="linesTable">
+          <thead><tr>
+            {% if not _k_locked %}<th style="width:34px"></th>{% endif %}
+            <th style="min-width:150px">Recipe</th><th style="min-width:190px">Ingredient</th>
+            <th class="num">Issued</th><th class="num">Received</th><th>Status</th><th style="min-width:120px">Action</th>
+          </tr></thead>
+          <tbody>
+          {% for tx in txs %}
+            {% set st = (tx.transaction_status or '') %}
+            {% set locked = st == 'Transferred' or st.upper().startswith('COMPLETED') %}
+            {% set received = (tx.received_qty_standard or 0) > 0 %}
+            {% set line_status = 'transferred' if locked else 'received' if received else 'pending' %}
+            {% set stcls = 'st-completed' if st.upper().startswith('COMPLETED') else 'st-transferred' if st=='Transferred' else 'st-received' if received else 'st-pending' %}
+            <tr class="line-main {{ 'locked' if locked }}" data-status="{{ line_status }}" data-recipe="{{ tx.recipe_no }}" data-tx="{{ tx.id }}">
+              {% if not _k_locked %}
+              <td>{% if received and not locked %}<input type="checkbox" class="line-select" form="bulkForm" name="tx_ids" value="{{ tx.id }}" data-recv="{{ tx.received_qty_standard or tx.issued_qty_standard or 0 }}" onclick="onLineCheck()">{% endif %}</td>
               {% endif %}
-              <span class="stage-tag stage-receive d-block mb-2">Receive</span>
-              <span class="stage-tag stage-process d-block">Process</span>
-            </td>
-            <td rowspan="2" style="vertical-align:top"><strong>{{ tx.recipe_no }}</strong><br><span class="small-muted">{{ tx.recipe_name }}</span></td>
-            <td rowspan="2" style="vertical-align:top"><strong>{{ tx.ingredient_code }}</strong><br>{{ tx.ingredient_name }}</td>
-            <td rowspan="2" style="vertical-align:top">{{ tx.issued_qty_standard }} {{ tx.standard_uom }}<br><span class="small-muted">Recv: {{ tx.received_qty_standard or 0 }}</span></td>
-            <td rowspan="2" style="vertical-align:top">
-              <span class="isfc-tx-status {{ 'st-completed' if st.upper().startswith('COMPLETED') else 'st-transferred' if st == 'Transferred' else 'st-received' if st == 'Received' else 'st-pending' if 'Pending' in st else 'st-other' }}">{{ st or 'Pending Receive' }}</span>
-              {% if locked %}<div class="lock-note mt-2"><i class="bi bi-lock-fill"></i> Locked — sent to {{ tx.to_section or 'next section' }}</div>{% endif %}
-            </td>
-            {# ---------- ROW 1: RECEIVE ---------- #}
-            {% if locked %}
-            <td colspan="6" class="small-muted">Received {{ tx.received_qty_standard or 0 }} {{ tx.standard_uom }} by {{ tx.received_by or '—' }} {{ tx.received_at or '' }}</td>
-            {% else %}
-            <td colspan="6">
-              <form method="post" action="/production/tx/{{ tx.id }}/receive" class="d-flex gap-2" style="max-width:340px">
-                <input class="pis-input" type="number" step="0.0001" name="received_qty_standard" value="{{ tx.received_qty_standard or tx.issued_qty_standard or 0 }}">
-                <button class="pis-btn pis-soft" {% if received %}title="Update received quantity"{% endif %}>{{ 'Update' if received else 'Receive' }}</button>
-              </form>
-            </td>
-            {% endif %}
-          </tr>
-          {# ---------- ROW 2: PROCESS & TRANSFER (collapsed behind a button) ---------- #}
-          <tr class="row-process {{ 'locked' if locked }}" data-status="{{ line_status }}" data-recipe="{{ tx.recipe_no }}" data-tx-group="{{ tx.id }}">
-            {% if locked %}
-            <td colspan="6" class="small-muted">
-              Processed {{ tx.processed_qty_standard or 0 }} · Waste {{ tx.waste_qty_standard or 0 }} · Return {{ tx.returned_qty_standard or 0 }} ·
-              Transferred {{ tx.transferred_qty_standard or 0 }} {{ tx.standard_uom }} by {{ tx.transferred_by or '—' }}
-              {% if tx.waste_reason %}· Reason: {{ tx.waste_reason }}{% endif %}
-            </td>
-            {% elif not received %}
-            <td colspan="6" class="row-process-pending"><i class="bi bi-info-circle me-1"></i>Receive this line first — the Process &amp; Transfer panel unlocks once received.</td>
-            {% else %}
-            <td colspan="6" class="p-0">
-              {# Compact default state: one line + a button, instead of 5 open inputs. #}
-              <div class="row-process-summary d-flex justify-content-between align-items-center flex-wrap gap-2 px-2 py-1" id="summary-{{ tx.id }}">
-                <span><i class="bi bi-check-circle-fill text-success me-1"></i>Received {{ tx.received_qty_standard or 0 }} {{ tx.standard_uom }} — ready to process.</span>
-                <button type="button" class="js-toggle-process" data-target="{{ tx.id }}"><i class="bi bi-sliders"></i> Process &amp; Transfer <i class="bi bi-chevron-down"></i></button>
-              </div>
-              {# Expanded state: the real inputs, hidden until requested. #}
-              <div class="row-process-expanded d-none px-2 pb-2" id="expand-{{ tx.id }}">
-                <div class="d-flex flex-wrap gap-2 align-items-end">
-                  <div style="width:110px"><label class="small-muted d-block">Processed</label><input form="txf{{ tx.id }}" class="pis-input tx-processed" data-tx="{{ tx.id }}" data-avail="{{ tx.received_qty_standard or tx.issued_qty_standard or 0 }}" type="number" step="0.0001" name="processed_qty_standard" value="{{ tx.received_qty_standard or tx.issued_qty_standard or 0 }}"></div>
-                  <div style="width:95px"><label class="small-muted d-block">Waste</label><input form="txf{{ tx.id }}" class="pis-input tx-waste" data-tx="{{ tx.id }}" type="number" step="0.0001" min="0" name="waste_qty_standard" value="0"></div>
-                  <div style="width:95px"><label class="small-muted d-block">Return</label><input form="txf{{ tx.id }}" class="pis-input tx-return" data-tx="{{ tx.id }}" type="number" step="0.0001" min="0" name="returned_qty_standard" value="0"></div>
-                  <div style="width:110px"><label class="small-muted d-block">Transfer <span class="text-secondary" title="Editing this recalculates Waste">⟳</span></label><input form="txf{{ tx.id }}" class="pis-input tx-transfer" data-tx="{{ tx.id }}" data-full="{{ tx.balance_qty_standard or tx.received_qty_standard or tx.issued_qty_standard or 0 }}" type="number" step="0.0001" min="0" name="transferred_qty_standard" value="{{ tx.balance_qty_standard or tx.received_qty_standard or tx.issued_qty_standard or 0 }}"></div>
-                  <div style="min-width:220px"><label class="small-muted d-block">Next Section / Reason</label>
-                    <div class="d-flex gap-1">
-                      <select form="txf{{ tx.id }}" class="pis-input" name="next_section"><option value="">Use route</option>{% for s in next_sections %}<option>{{ s }}</option>{% endfor %}</select>
-                      <input form="txf{{ tx.id }}" class="pis-input tx-reason" data-tx="{{ tx.id }}" name="waste_reason" placeholder="Reason (optional)">
-                    </div>
-                  </div>
-                  <div style="width:170px">
-                    <form method="post" id="txf{{ tx.id }}" action="/production/tx/{{ tx.id }}/transfer"
-                          data-confirm="Transfer this line to the next section? It will lock after transfer."
-                          data-confirm-title="Confirm Transfer" data-confirm-ok="Transfer" data-confirm-variant="primary"></form>
-                    <div class="d-flex gap-1">
-                      <button form="txf{{ tx.id }}" class="pis-btn pis-primary w-100">Transfer</button>
-                      <button type="button" class="js-toggle-process" data-target="{{ tx.id }}" title="Hide"><i class="bi bi-chevron-up"></i></button>
-                    </div>
-                  </div>
+              <td><span class="rc">{{ tx.recipe_no }}</span><div class="sub">{{ tx.recipe_name }}</div></td>
+              <td><span class="rc">{{ tx.ingredient_name }}</span><div class="sub">{{ tx.ingredient_code }}</div></td>
+              <td class="num">{{ '%.2f'|format(tx.issued_qty_standard or 0) }} <span class="sub">{{ tx.standard_uom }}</span></td>
+              <td class="num">{{ '%.2f'|format(tx.received_qty_standard or 0) }}</td>
+              <td><span class="st {{ stcls }}">{{ st or 'Pending Receive' }}</span></td>
+              <td>
+                {% if locked %}
+                  <span class="sub"><i class="bi bi-lock-fill"></i> {{ tx.to_section or 'next' }}</span>
+                {% elif not received %}
+                  <form method="post" action="/production/tx/{{ tx.id }}/receive" class="d-flex gap-1" style="max-width:200px">
+                    <input class="pis-input num" type="number" step="0.0001" name="received_qty_standard" value="{{ tx.received_qty_standard or tx.issued_qty_standard or 0 }}" style="width:90px">
+                    <button class="pis-btn pis-soft">Receive</button>
+                  </form>
+                {% else %}
+                  <button type="button" class="pis-btn pis-soft js-toggle-process" data-target="{{ tx.id }}"><i class="bi bi-sliders"></i> Process</button>
+                {% endif %}
+              </td>
+            </tr>
+            {% if received and not locked and not _k_locked %}
+            <tr class="line-expand d-none" id="expand-{{ tx.id }}" data-status="{{ line_status }}" data-recipe="{{ tx.recipe_no }}">
+              <td colspan="7" style="background:#f7fbff">
+                <form method="post" id="txf{{ tx.id }}" action="/production/tx/{{ tx.id }}/transfer"
+                      data-confirm="Transfer this line to the next section? It will lock after transfer."
+                      data-confirm-title="Confirm Transfer" data-confirm-ok="Transfer" data-confirm-variant="primary"></form>
+                <div class="proc-grid">
+                  <div class="fld" style="width:110px"><label>Processed</label><input form="txf{{ tx.id }}" class="pis-input num tx-processed" data-tx="{{ tx.id }}" data-avail="{{ tx.received_qty_standard or tx.issued_qty_standard or 0 }}" type="number" step="0.0001" name="processed_qty_standard" value="{{ tx.received_qty_standard or tx.issued_qty_standard or 0 }}"></div>
+                  <div class="fld" style="width:92px"><label>Waste</label><input form="txf{{ tx.id }}" class="pis-input num tx-waste" data-tx="{{ tx.id }}" type="number" step="0.0001" min="0" name="waste_qty_standard" value="0"></div>
+                  <div class="fld" style="width:92px"><label>Return</label><input form="txf{{ tx.id }}" class="pis-input num tx-return" data-tx="{{ tx.id }}" type="number" step="0.0001" min="0" name="returned_qty_standard" value="0"></div>
+                  <div class="fld" style="width:110px"><label>Transfer ⟳</label><input form="txf{{ tx.id }}" class="pis-input num tx-transfer" data-tx="{{ tx.id }}" data-full="{{ tx.balance_qty_standard or tx.received_qty_standard or tx.issued_qty_standard or 0 }}" type="number" step="0.0001" min="0" name="transferred_qty_standard" value="{{ tx.balance_qty_standard or tx.received_qty_standard or tx.issued_qty_standard or 0 }}"></div>
+                  <div class="fld" style="min-width:150px"><label>Next Section</label><select form="txf{{ tx.id }}" class="pis-input" name="next_section"><option value="">Use route</option>{% for s in next_sections %}<option>{{ s }}</option>{% endfor %}</select></div>
+                  <div class="fld" style="min-width:170px"><label>Reason / Remark</label><input form="txf{{ tx.id }}" class="pis-input tx-reason" data-tx="{{ tx.id }}" name="waste_reason" placeholder="Reason (optional)"></div>
+                  <div class="fld"><label>&nbsp;</label><button form="txf{{ tx.id }}" class="pis-btn pis-primary"><i class="bi bi-arrow-right-circle"></i> Transfer</button></div>
                 </div>
-              </div>
-            </td>
+              </td>
+            </tr>
             {% endif %}
-          </tr>
-        {% endfor %}
-        </tbody>
-      </table>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
     </div>
+
+    <div class="mode-pane p-2" id="pane-ingredient">
+      {% for g in ingredient_groups %}
+        {% set g_issued = g.total_issued_qty_standard or 0 %}
+        {% set g_recv = g.total_received_qty_standard or 0 %}
+        {% set all_locked = g.locked == g.recipes_count %}
+        {% set any_ready = g.received_ready > 0 %}
+        <div class="grp {{ 'done' if all_locked }}" id="ing-{{ g.ingredient_code }}" data-name="{{ g.ingredient_name|lower }} {{ g.ingredient_code|lower }}">
+          <div class="grp-head" onclick="toggleGrp(this)">
+            <i class="bi bi-chevron-right caret"></i>
+            <div class="grp-title">{{ g.ingredient_name }}
+              <span class="sub">{{ g.ingredient_code }}</span>
+              {% if all_locked %}<span class="pill ok"><i class="bi bi-check2-circle me-1"></i>Done</span>
+              {% else %}<span class="pill">{{ g.recipes_count }} recipes</span>
+                {% if g.pending_receive %}<span class="pill warn">{{ g.pending_receive }} to receive</span>{% endif %}
+                {% if any_ready %}<span class="pill ok">{{ g.received_ready }} ready</span>{% endif %}
+              {% endif %}
+            </div>
+            <span class="pill">Issued {{ '%.2f'|format(g_issued) }} {{ g.uom }}</span>
+            <span class="pill">Recv {{ '%.2f'|format(g_recv) }}</span>
+          </div>
+          <div class="grp-body">
+            <table class="mini">
+              <thead><tr><th>Recipe</th><th class="num">Issued</th><th class="num">Received</th><th>Status</th></tr></thead>
+              <tbody>
+              {% for d in g.details %}
+                <tr><td><span class="rc">{{ d.recipe_no }}</span> <span class="sub">{{ d.recipe_name }}</span></td>
+                <td class="num">{{ '%.2f'|format(d.issued_qty_standard or 0) }}</td>
+                <td class="num">{{ '%.2f'|format(d.received_qty_standard or 0) }}</td>
+                <td><span class="sub">{{ d.transaction_status or 'Pending' }}</span></td></tr>
+              {% endfor %}
+              </tbody>
+            </table>
+
+            {% if not _k_locked and not all_locked %}
+            {% if g.pending_receive %}
+            <form method="post" action="/production/section/{{ section_slug }}/orders/{{ order_no }}/ingredient/receive" class="mt-3"
+                  data-confirm="Receive every pending line for {{ g.ingredient_name }} at its full issued quantity?"
+                  data-confirm-title="Bulk Receive Ingredient" data-confirm-ok="Receive All" data-confirm-variant="success">
+              <input type="hidden" name="ingredient_code" value="{{ g.ingredient_code }}">
+              <button class="pis-btn pis-success"><i class="bi bi-box-arrow-in-down"></i> Receive All ({{ g.pending_receive }})</button>
+            </form>
+            {% endif %}
+
+            {% if any_ready %}
+            <form method="post" action="/production/section/{{ section_slug }}/orders/{{ order_no }}/ingredient/process" class="ing-proc-form"
+                  data-confirm="Process &amp; transfer all received lines for {{ g.ingredient_name }}? Totals split across its recipes."
+                  data-confirm-title="Bulk Process Ingredient" data-confirm-ok="Process &amp; Transfer" data-confirm-variant="primary">
+              <input type="hidden" name="ingredient_code" value="{{ g.ingredient_code }}">
+              <div class="proc-grid">
+                <div class="fld" style="width:110px"><label>Processed</label><input class="pis-input num ip-processed" data-avail="{{ g_recv }}" type="number" step="0.0001" name="processed_qty_standard" value="{{ '%.4f'|format(g_recv) }}"></div>
+                <div class="fld" style="width:92px"><label>Waste</label><input class="pis-input num ip-waste" type="number" step="0.0001" min="0" name="waste_qty_standard" value="0"></div>
+                <div class="fld" style="width:92px"><label>Return</label><input class="pis-input num ip-return" type="number" step="0.0001" min="0" name="returned_qty_standard" value="0"></div>
+                <div class="fld" style="width:110px"><label>Transfer ⟳</label><input class="pis-input num ip-transfer" data-full="{{ g_recv }}" type="number" step="0.0001" min="0" name="transferred_qty_standard" value="{{ '%.4f'|format(g_recv) }}"></div>
+                <div class="fld" style="min-width:150px"><label>Next Section</label><select class="pis-input" name="next_section"><option value="">Use route</option>{% for s in next_sections %}<option>{{ s }}</option>{% endfor %}</select></div>
+                <div class="fld" style="min-width:170px"><label>Reason / Remark</label><input class="pis-input ip-reason" name="waste_reason" placeholder="Reason (optional)"><input type="hidden" name="section_remarks"></div>
+                <div class="fld"><label>&nbsp;</label><button class="pis-btn pis-primary"><i class="bi bi-arrow-right-circle"></i> Process &amp; Transfer</button></div>
+              </div>
+            </form>
+            {% endif %}
+            {% elif all_locked %}
+            <div class="small-muted mt-2"><i class="bi bi-check2-circle text-success me-1"></i>All lines for this ingredient are processed and transferred.</div>
+            {% endif %}
+          </div>
+        </div>
+      {% else %}
+        <div class="text-muted p-3">No ingredient lines for this order in {{ section }}.</div>
+      {% endfor %}
+    </div>
+
+    <div class="mode-pane p-2" id="pane-recipe">
+      
+      {% for r in recipe_groups %}
+        {% set _issued = r.total_issued_qty_standard or 0 %}
+        {% set _received = r.total_received_qty_standard or 0 %}
+        {% set _fully = _received > 0 and _received >= _issued %}
+        <div class="grp" data-name="{{ r.recipe_no|lower }} {{ r.recipe_name|lower }}">
+          <div class="grp-head" onclick="toggleGrp(this)">
+            <i class="bi bi-chevron-right caret"></i>
+            <div class="grp-title">{{ r.recipe_no }} — {{ r.recipe_name }}<span class="pill">{{ r.ingredients_count }} ingredients</span></div>
+            <span class="pill">Issued {{ '%.2f'|format(_issued) }}</span>
+            <span class="pill {{ 'ok' if _fully else 'warn' }}">Recv {{ '%.2f'|format(_received) }}</span>
+          </div>
+          <div class="grp-body">
+            <table class="mini">
+              <thead><tr><th>Code</th><th>Ingredient</th><th class="num">Issued</th><th class="num">Received</th><th>Status</th></tr></thead>
+              <tbody>{% for d in r.details %}<tr><td class="sub">{{ d.ingredient_code }}</td><td class="rc">{{ d.ingredient_name }}</td><td class="num">{{ '%.2f'|format(d.issued_qty_standard or 0) }}</td><td class="num">{{ '%.2f'|format(d.received_qty_standard or 0) }}</td><td class="sub">{{ d.transaction_status or 'Pending' }}</td></tr>{% endfor %}</tbody>
+            </table>
+
+            {% if not _k_locked %}
+            {% if section in ['Bakery/Pastry','Cold Kitchen','Hot Kitchen'] %}
+              {% if not _fully %}<div class="alert alert-warning py-2 my-2"><i class="bi bi-info-circle me-1"></i>Receive all lines first. Received {{ '%.2f'|format(_received) }} of {{ '%.2f'|format(_issued) }}.</div>{% endif %}
+              <form method="post" action="/production/bakery-pastry/process" class="proc-grid bulk-process-form" data-received="{{ _received }}" data-issued="{{ _issued }}">
+                <input type="hidden" name="order_no" value="{{ r.order_no }}"><input type="hidden" name="recipe_no" value="{{ r.recipe_no }}"><input type="hidden" name="section" value="{{ section }}">
+                <div class="fld" style="width:110px"><label>Output Qty</label><input class="pis-input num bp-output" type="number" step="0.0001" min="0" name="output_qty" value="{{ '%.4f'|format(_received) if _fully else '' }}" {% if not _fully %}disabled{% endif %} required></div>
+                <div class="fld" style="width:110px"><label>Output UOM</label><select class="pis-input" name="output_uom"><option>Portions</option><option>Pieces</option><option>Kg</option></select></div>
+                {% if section == 'Hot Kitchen' %}
+                <div class="fld" style="width:110px"><label>Wt/Portion g</label><input class="pis-input num" type="number" step="0.01" min="0" name="weight_per_portion"></div>
+                <div class="fld" style="width:110px"><label>Protein/Port g</label><input class="pis-input num" type="number" step="0.01" min="0" name="protein_per_portion"></div>
+                <div class="fld" style="width:110px"><label>Carb/Port g</label><input class="pis-input num" type="number" step="0.01" min="0" name="carb_per_portion"></div>
+                {% endif %}
+                <div class="fld" style="width:100px"><label>Waste</label><input class="pis-input num bp-waste" type="number" step="0.0001" min="0" name="waste_qty" value="0"></div>
+                <div class="fld" style="min-width:150px"><label>Forward To</label><select class="pis-input" name="next_section">{% for s in next_sections %}<option>{{ s }}</option>{% endfor %}</select></div>
+                <div class="fld" style="min-width:150px"><label>Remarks</label><input class="pis-input" name="remarks"></div>
+                <div class="fld"><label>&nbsp;</label><button class="pis-btn pis-success" {% if not _fully %}disabled{% endif %}><i class="bi bi-check2"></i> Process</button></div>
+              </form>
+            {% else %}
+              {% if r.pending_receive %}
+              <form method="post" action="/production/section/{{ section_slug }}/orders/{{ order_no }}/recipe/receive" class="mb-2"
+                    data-confirm="Receive all pending ingredient lines for {{ r.recipe_no }} at full issued quantity?"
+                    data-confirm-title="Receive Recipe" data-confirm-ok="Receive All" data-confirm-variant="success">
+                <input type="hidden" name="recipe_no" value="{{ r.recipe_no }}">
+                <button class="pis-btn pis-success"><i class="bi bi-box-arrow-in-down"></i> Receive All ({{ r.pending_receive }})</button>
+              </form>
+              {% endif %}
+              {% if _received <= 0 %}<div class="alert alert-warning py-2 my-2"><i class="bi bi-info-circle me-1"></i>Receive this recipe's ingredient lines first — use the button above, By Line, or By Ingredient.</div>
+              {% else %}
+              <form method="post" action="/production/section/{{ section_slug }}/orders/{{ order_no }}/recipe/process" class="proc-grid rc-proc-form"
+                    data-confirm="Process &amp; transfer this recipe's received lines? Totals split across its ingredients."
+                    data-confirm-title="Bulk Process Recipe" data-confirm-ok="Process &amp; Transfer" data-confirm-variant="primary">
+                <input type="hidden" name="recipe_no" value="{{ r.recipe_no }}">
+                <div class="fld" style="width:110px"><label>Processed</label><input class="pis-input num rc-processed" data-avail="{{ _received }}" type="number" step="0.0001" name="processed_qty_standard" value="{{ '%.4f'|format(_received) }}"></div>
+                <div class="fld" style="width:92px"><label>Waste</label><input class="pis-input num rc-waste" type="number" step="0.0001" min="0" name="waste_qty_standard" value="0"></div>
+                <div class="fld" style="width:92px"><label>Return</label><input class="pis-input num rc-return" type="number" step="0.0001" min="0" name="returned_qty_standard" value="0"></div>
+                <div class="fld" style="width:110px"><label>Transfer ⟳</label><input class="pis-input num rc-transfer" data-full="{{ _received }}" type="number" step="0.0001" min="0" name="transferred_qty_standard" value="{{ '%.4f'|format(_received) }}"></div>
+                <div class="fld" style="min-width:150px"><label>Next Section</label><select class="pis-input" name="next_section"><option value="">Use route</option>{% for s in next_sections %}<option>{{ s }}</option>{% endfor %}</select></div>
+                <div class="fld" style="min-width:170px"><label>Reason / Remark</label><input class="pis-input rc-reason" name="section_remarks" placeholder="Reason (optional)"><input type="hidden" name="waste_reason"></div>
+                <div class="fld"><label>&nbsp;</label><button class="pis-btn pis-primary"><i class="bi bi-arrow-right-circle"></i> Process &amp; Transfer All Received</button></div>
+              </form>
+              {% endif %}
+            {% endif %}
+            {% endif %}
+          </div>
+        </div>
+      {% else %}
+        <div class="text-muted p-3">No recipe groups yet — receive ingredient lines first.</div>
+      {% endfor %}
+    </div>
+
   </div>
 </div>
 
-{# ===================================================================== #}
-{# Batch 127: Bulk Recipe Processing — now BELOW the receiving section.  #}
-{# Output Qty auto-fills to the received total once all lines received;  #}
-{# changing Output recalculates Waste (issued − output). Hot Kitchen adds #}
-{# Protein and Carb per portion, which flow through to QC/Packing/Dispatch.#}
-{# ===================================================================== #}
-{% if section in ['Bakery/Pastry', 'Cold Kitchen', 'Hot Kitchen'] %}
-<div class="pis-card p-3 mb-4">
-  <h4 class="mb-1">{{ section }} Bulk Recipe Processing</h4>
-  <div class="small-muted mb-3">Ingredients are received separately but mixed and processed as a complete recipe batch. Receive the lines above first, then enter the final cooked output here at recipe level.</div>
-  {% for r in recipe_groups %}
-    {% set _issued = r.total_issued_qty_standard or 0 %}
-    {% set _received = r.total_received_qty_standard or 0 %}
-    {% set _fully = _received > 0 and _received >= _issued %}
-    <div class="recipe-box">
-      <div class="d-flex justify-content-between flex-wrap gap-2 mb-2">
-        <div><strong>{{ r.recipe_no }} - {{ r.recipe_name }}</strong><br><span class="small-muted">{{ r.ingredients_count }} ingredients collected for this recipe</span></div>
-        <div><span class="pis-chip">Issued {{ '%.2f'|format(_issued) }}</span> <span class="pis-chip">Received {{ '%.2f'|format(_received) }}</span></div>
-      </div>
-      <details class="mb-3"><summary class="fw-bold">View ingredient collection</summary>
-        <div class="table-responsive mt-2"><table class="table table-sm"><thead><tr><th>Code</th><th>Ingredient</th><th>Issued</th><th>Received</th><th>UOM</th><th>Status</th></tr></thead><tbody>
-          {% for d in r.details %}<tr><td>{{ d.ingredient_code }}</td><td><strong>{{ d.ingredient_name }}</strong></td><td>{{ d.issued_qty_standard }}</td><td>{{ d.received_qty_standard }}</td><td>{{ d.standard_uom }}</td><td>{{ d.transaction_status }}</td></tr>{% endfor %}
-        </tbody></table></div>
-      </details>
-      {% if not _fully %}
-      <div class="alert alert-warning py-2 mb-2"><i class="bi bi-info-circle me-1"></i>Receive all ingredient lines for this recipe before processing. Received {{ '%.2f'|format(_received) }} of {{ '%.2f'|format(_issued) }}.</div>
-      {% endif %}
-      <form method="post" action="/production/bakery-pastry/process" class="row g-2 align-items-end bulk-process-form"
-            data-received="{{ _received }}" data-issued="{{ _issued }}">
-        <input type="hidden" name="order_no" value="{{ r.order_no }}"><input type="hidden" name="recipe_no" value="{{ r.recipe_no }}">
-        <input type="hidden" name="section" value="{{ section }}">
-        <div class="col-md-2"><label class="fw-bold">Output Qty</label><input class="pis-input bp-output" type="number" step="0.0001" min="0" name="output_qty" value="{{ '%.4f'|format(_received) if _fully else '' }}" {% if not _fully %}disabled{% endif %} required></div>
-        <div class="col-md-2"><label class="fw-bold">Output UOM</label><select class="pis-input" name="output_uom"><option>Portions</option><option>Pieces</option><option>Kg</option></select></div>
-        {% if section == 'Hot Kitchen' %}
-        {# Batch 127: Hot Kitchen captures cooked weight + protein + carb per portion. #}
-        <div class="col-md-2"><label class="fw-bold">Weight / Portion (g)</label><input class="pis-input" type="number" step="0.01" min="0" name="weight_per_portion"></div>
-        <div class="col-md-2"><label class="fw-bold">Protein / Portion (g)</label><input class="pis-input" type="number" step="0.01" min="0" name="protein_per_portion"></div>
-        <div class="col-md-2"><label class="fw-bold">Carb / Portion (g)</label><input class="pis-input" type="number" step="0.01" min="0" name="carb_per_portion"></div>
-        {% endif %}
-        <div class="col-md-2"><label class="fw-bold">Recipe Waste</label><input class="pis-input bp-waste" type="number" step="0.0001" min="0" name="waste_qty" value="0"></div>
-        <div class="col-md-3"><label class="fw-bold">Forward To</label><select class="pis-input" name="next_section">{% for s in next_sections %}<option>{{ s }}</option>{% endfor %}</select></div>
-        <div class="col-md-2"><label class="fw-bold">Remarks</label><input class="pis-input" name="remarks"></div>
-        <div class="col-md-1"><button class="pis-btn pis-success w-100" {% if not _fully %}disabled{% endif %}>Process</button></div>
-      </form>
-    </div>
-  {% else %}<div class="text-muted">No {{ section }} recipe groups received yet — receive ingredient lines above first.</div>{% endfor %}
-</div>
 <script>
-// Batch 127: output autofill + waste auto-calc on the bulk process forms.
-document.querySelectorAll('.bulk-process-form').forEach(function (f) {
-  var out = f.querySelector('.bp-output');
-  var waste = f.querySelector('.bp-waste');
-  var issued = parseFloat(f.getAttribute('data-issued') || '0');
-  if (out) {
-    out.addEventListener('input', function () {
-      // Waste = issued input − cooked output (never negative).
-      var o = parseFloat(out.value || '0');
-      var w = issued - o;
-      if (waste) waste.value = (w > 0 ? w : 0).toFixed(4);
-    });
-  }
+document.querySelectorAll('#modeTabs button').forEach(function(b){
+  b.addEventListener('click', function(){
+    document.querySelectorAll('#modeTabs button').forEach(x=>x.classList.remove('active'));
+    document.querySelectorAll('.mode-pane').forEach(x=>x.classList.remove('active'));
+    b.classList.add('active');
+    document.getElementById('pane-'+b.dataset.mode).classList.add('active');
+  });
 });
-</script>
-{% endif %}
-<script>
-/* Batch 94: auto-balancing direction changed, per request.
-   Rule is still Processed = Waste + Return + Transfer, but which field
-   drives the calculation flipped: staff typically know Transfer first
-   (they weigh what's physically going to the next section), so:
-   - Edit Transfer  -> Waste auto = Processed - Transfer - Return
-   - Edit Waste     -> Return auto = Processed - Transfer - Waste
-   Editing Transfer away from its full-transfer default also makes the
-   reason field required — a deviation from "send everything on" needs
-   an explanation on record, same principle as the QC/Dispatch hard
-   gates elsewhere in this system. */
+function toggleGrp(head){ head.closest('.grp').classList.toggle('open'); }
+function filterGroups(){
+  var q=(document.getElementById('lineSearch').value||'').toLowerCase();
+  document.querySelectorAll('.grp[data-name]').forEach(function(g){
+    g.style.display=(!q||g.dataset.name.indexOf(q)>-1)?'':'none';});
+}
 (function(){
-  function n(v){ var x = parseFloat(v); return isNaN(x) ? 0 : x; }
-  function group(tx){
-    return {
-      avail: n(document.querySelector('.tx-processed[data-tx="'+tx+'"]')?.dataset.avail),
-      full:  document.querySelector('.tx-transfer[data-tx="'+tx+'"]')?.dataset.full,
-      waste: document.querySelector('.tx-waste[data-tx="'+tx+'"]'),
-      ret:   document.querySelector('.tx-return[data-tx="'+tx+'"]'),
-      tra:   document.querySelector('.tx-transfer[data-tx="'+tx+'"]'),
-      reason: document.querySelector('.tx-reason[data-tx="'+tx+'"]')
-    };
-  }
-  document.addEventListener('input', function(e){
-    var el = e.target, tx = el.dataset && el.dataset.tx;
-    if (!tx) return;
-    var g = group(tx);
-    if (!g.waste || !g.ret || !g.tra) return;
-    if (el.classList.contains('tx-transfer')) {
-      var w = g.avail - n(g.tra.value) - n(g.ret.value);
-      if (w < 0) { w = 0; if (window.showToast) showToast('Transfer + Return exceeds the processed quantity', 'warning', 'Check quantities'); }
-      g.waste.value = +w.toFixed(4);
-      // Deviating from the full-transfer default requires a reason on record.
-      var isFullTransfer = Math.abs(n(g.tra.value) - n(g.full)) < 0.0001;
-      if (g.reason) {
-        g.reason.required = !isFullTransfer;
-        g.reason.placeholder = isFullTransfer ? 'Reason (optional)' : 'Reason — required, transfer changed';
-        g.reason.classList.toggle('is-required-now', !isFullTransfer);
-      }
-    } else if (el.classList.contains('tx-waste')) {
-      var r = g.avail - n(g.tra.value) - n(g.waste.value);
-      if (r < 0) { r = 0; if (window.showToast) showToast('Transfer + Waste exceeds the processed quantity', 'warning', 'Check quantities'); }
-      g.ret.value = +r.toFixed(4);
+  function n(v){var x=parseFloat(v);return isNaN(x)?0:x;}
+  function group(tx){return{
+    avail:n(document.querySelector('.tx-processed[data-tx="'+tx+'"]')?.dataset.avail),
+    full:document.querySelector('.tx-transfer[data-tx="'+tx+'"]')?.dataset.full,
+    waste:document.querySelector('.tx-waste[data-tx="'+tx+'"]'),
+    ret:document.querySelector('.tx-return[data-tx="'+tx+'"]'),
+    tra:document.querySelector('.tx-transfer[data-tx="'+tx+'"]'),
+    reason:document.querySelector('.tx-reason[data-tx="'+tx+'"]')};}
+  document.addEventListener('input',function(e){
+    var el=e.target,tx=el.dataset&&el.dataset.tx;if(!tx)return;
+    var g=group(tx);if(!g.waste||!g.ret||!g.tra)return;
+    if(el.classList.contains('tx-transfer')){
+      var w=g.avail-n(g.tra.value)-n(g.ret.value);
+      if(w<0){w=0;if(window.showToast)showToast('Transfer + Return exceeds processed qty','warning','Check quantities');}
+      g.waste.value=+w.toFixed(4);
+      var full=Math.abs(n(g.tra.value)-n(g.full))<0.0001;
+      if(g.reason){g.reason.required=!full;g.reason.placeholder=full?'Reason (optional)':'Reason — required';}
+    }else if(el.classList.contains('tx-waste')){
+      var r=g.avail-n(g.tra.value)-n(g.waste.value);
+      if(r<0){r=0;if(window.showToast)showToast('Transfer + Waste exceeds processed qty','warning','Check quantities');}
+      g.ret.value=+r.toFixed(4);
     }
   });
-  document.addEventListener('submit', function(e){
-    var form = e.target;
-    if (!form.id || !form.id.startsWith('txf')) return;
-    var reasonEl = form.querySelector('.tx-reason');
-    if (reasonEl && reasonEl.required && !reasonEl.value.trim()) {
-      e.preventDefault();
-      if (window.showToast) showToast('Transfer quantity was changed from the full amount — a reason is required before this can be submitted.', 'warning', 'Reason Required');
-      reasonEl.focus();
-    }
+  document.addEventListener('submit',function(e){
+    var form=e.target;if(!form.id||!form.id.startsWith('txf'))return;
+    var reasonEl=form.querySelector('.tx-reason');
+    if(reasonEl&&reasonEl.required&&!reasonEl.value.trim()){e.preventDefault();
+      if(window.showToast)showToast('Transfer changed from full — a reason is required.','warning','Reason Required');reasonEl.focus();}
   });
 })();
+document.querySelectorAll('.ing-proc-form').forEach(function(f){
+  function n(v){var x=parseFloat(v);return isNaN(x)?0:x;}
+  var avail=n(f.querySelector('.ip-processed')?.dataset.avail);
+  var tra=f.querySelector('.ip-transfer'),waste=f.querySelector('.ip-waste'),ret=f.querySelector('.ip-return');
+  if(tra) tra.addEventListener('input',function(){var w=avail-n(tra.value)-n(ret.value);waste.value=(w>0?w:0).toFixed(4);});
+  if(waste) waste.addEventListener('input',function(){var r=avail-n(tra.value)-n(waste.value);ret.value=(r>0?r:0).toFixed(4);});
+});
+/* Batch 134: same auto-calc for the By-Recipe process form (prep sections). */
+document.querySelectorAll('.rc-proc-form').forEach(function(f){
+  function n(v){var x=parseFloat(v);return isNaN(x)?0:x;}
+  var avail=n(f.querySelector('.rc-processed')?.dataset.avail);
+  var tra=f.querySelector('.rc-transfer'),waste=f.querySelector('.rc-waste'),ret=f.querySelector('.rc-return');
+  if(tra) tra.addEventListener('input',function(){var w=avail-n(tra.value)-n(ret.value);waste.value=(w>0?w:0).toFixed(4);});
+  if(waste) waste.addEventListener('input',function(){var r=avail-n(tra.value)-n(waste.value);ret.value=(r>0?r:0).toFixed(4);});
+});
+document.querySelectorAll('.bulk-process-form').forEach(function(f){
+  var out=f.querySelector('.bp-output'),waste=f.querySelector('.bp-waste');
+  var issued=parseFloat(f.getAttribute('data-issued')||'0');
+  if(out) out.addEventListener('input',function(){var o=parseFloat(out.value||'0');var w=issued-o;if(waste)waste.value=(w>0?w:0).toFixed(4);});
+});
 function filterLines(){
-  const q=(document.getElementById('lineSearch').value||'').toLowerCase();
-  const st=document.getElementById('statusFilter').value;
-  const rc=document.getElementById('recipeFilter').value;
-  const rows=document.querySelectorAll('#linesTable tbody tr');
-  for(let i=0;i<rows.length;i+=2){
-    const a=rows[i], b=rows[i+1];
-    let show=true;
-    if(st && a.dataset.status!==st) show=false;
-    if(rc && a.dataset.recipe!==rc) show=false;
-    if(q && !(a.innerText+' '+(b?b.innerText:'')).toLowerCase().includes(q)) show=false;
-    a.style.display=show?'':'none';
-    if(b) b.style.display=show?'':'none';
-    // a checkbox for a now-hidden line must not silently submit with the bulk form
-    if(!show){ const cb=a.querySelector('.line-select'); if(cb) cb.checked=false; }
-  }
+  var q=(document.getElementById('lineSearch').value||'').toLowerCase();
+  var st=document.getElementById('statusFilter').value;
+  document.querySelectorAll('#linesTable tbody tr.line-main').forEach(function(row){
+    var show=true;
+    if(st&&row.dataset.status!==st) show=false;
+    var exp=document.getElementById('expand-'+row.dataset.tx);
+    if(q&&(row.innerText+' '+(exp?exp.innerText:'')).toLowerCase().indexOf(q)===-1) show=false;
+    row.style.display=show?'':'none';
+    if(exp){ exp.style.display=(show&&!exp.classList.contains('d-none'))?'':'none'; }
+    if(!show){var cb=row.querySelector('.line-select');if(cb)cb.checked=false;}
+  });
   onLineCheck();
 }
-
-/* UI fix: collapse the Process & Transfer panel behind a button by default.
-   Click toggles between the compact "ready to process" summary and the
-   full input row for that one line. */
-document.addEventListener('click', function(e){
-  const btn = e.target.closest('.js-toggle-process');
-  if (!btn) return;
-  const id = btn.dataset.target;
-  const summary = document.getElementById('summary-' + id);
-  const expand = document.getElementById('expand-' + id);
-  if (!summary || !expand) return;
-  const opening = expand.classList.contains('d-none');
-  expand.classList.toggle('d-none', !opening);
-  summary.classList.toggle('d-none', opening);
+document.addEventListener('click',function(e){
+  var btn=e.target.closest('.js-toggle-process');if(!btn)return;
+  var exp=document.getElementById('expand-'+btn.dataset.target);if(!exp)return;
+  exp.classList.toggle('d-none');
+  exp.style.display=exp.classList.contains('d-none')?'none':'';
 });
-
-/* UI fix: bulk selection — "select all ready lines" + live counter that
-   enables/disables the bulk submit button. */
 function onLineCheck(){
-  const boxes = document.querySelectorAll('#linesTable .line-select[name="tx_ids"]');
-  const checked = document.querySelectorAll('#linesTable .line-select[name="tx_ids"]:checked');
-  const countEl = document.getElementById('selectedCount');
-  const submitBtn = document.getElementById('bulkSubmitBtn');
-  const selectAll = document.getElementById('selectAllReceived');
-  if (countEl) countEl.textContent = checked.length;
-  if (submitBtn) submitBtn.disabled = checked.length === 0;
-  if (selectAll) {
-    const visibleBoxes = Array.from(boxes).filter(b => b.closest('tr').style.display !== 'none');
-    selectAll.checked = visibleBoxes.length > 0 && visibleBoxes.every(b => b.checked);
-  }
+  var boxes=document.querySelectorAll('#linesTable .line-select[name="tx_ids"]');
+  var checked=document.querySelectorAll('#linesTable .line-select[name="tx_ids"]:checked');
+  var c=document.getElementById('selectedCount');if(c)c.textContent=checked.length;
+  var b=document.getElementById('bulkSubmitBtn');if(b)b.disabled=checked.length===0;
+  var all=document.getElementById('selectAllReceived');
+  if(all){var vis=Array.from(boxes).filter(x=>x.closest('tr').style.display!=='none');all.checked=vis.length>0&&vis.every(x=>x.checked);}
+  // Batch 135: sum received across the selection and refresh the bulk transfer figure.
+  var tot=0; checked.forEach(function(cb){tot+=parseFloat(cb.dataset.recv||'0')||0;});
+  var rt=document.getElementById('bulkRecvTotal'); if(rt) rt.textContent=(Math.round(tot*10000)/10000);
+  window.__bulkRecvTotal=tot; bulkRecalc();
 }
-function toggleSelectAllLines(master){
+function bulkRecalc(){
+  var tot=window.__bulkRecvTotal||0;
+  function n(id){var e=document.getElementById(id);return e?(parseFloat(e.value)||0):0;}
+  var t=tot-n('bulkWaste')-n('bulkReturn'); if(t<0)t=0;
+  var tf=document.getElementById('bulkTransfer'); if(tf) tf.value=(Math.round(t*10000)/10000);
+}
+function toggleSelectAllLines(m){
   document.querySelectorAll('#linesTable .line-select[name="tx_ids"]').forEach(function(cb){
-    const row = cb.closest('tr');
-    if (row.style.display !== 'none') cb.checked = master.checked;
-  });
+    if(cb.closest('tr').style.display!=='none') cb.checked=m.checked;});
   onLineCheck();
 }
 </script>

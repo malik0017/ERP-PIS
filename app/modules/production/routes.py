@@ -28,6 +28,12 @@ from app.services.production_service import (
     approve_order_before_bom,
     backfill_issue_sections,
     bakery_pastry_consolidated,
+    ingredient_wise_consolidated,
+    bulk_receive_ingredient,
+    bulk_receive_recipe,
+    bulk_process_transfer_ingredient,
+    bulk_process_transfer_recipe,
+    _prorata_process_transfer,
     process_bakery_pastry_recipe,
     consolidated_bom,
     create_order,
@@ -446,12 +452,6 @@ def master_dropdown_context(db: Session, company_id: int = 1) -> dict:
 
 @router.get("/orders")
 async def orders_page(request: Request, db: Session = Depends(get_db)):
-    # Batch 91: Production Orders and Head Chef Planning showed the same
-    # underlying list of orders — consolidated into one screen as asked.
-    # This route now redirects rather than rendering its own page, so the
-    # ~10 existing internal links that still point here (Back to Orders
-    # buttons, breadcrumbs, etc.) land on the right place automatically
-    # instead of needing every one of them individually updated.
     qs = str(request.url.query)
     target = "/production/head-chef" + (f"?{qs}" if qs else "")
     return RedirectResponse(target, status_code=307)
@@ -1111,11 +1111,15 @@ async def section_order_page(request: Request, section_name: str, order_no: str,
         return redirect_with_error(f"/production/section/{_section_slug(section)}", "No section receiving lines found for this order.")
 
     recipe_groups = []
-    # Batch 126: per-recipe bulk processing now applies to Bakery/Pastry,
-    # Cold Kitchen and Hot Kitchen — they all receive separate ingredients but
-    # cook/mix them as a complete recipe batch.
-    if section in ("Bakery/Pastry", "Cold Kitchen", "Hot Kitchen"):
-        recipe_groups = bakery_pastry_consolidated(db, order_no=order_no, section=section)
+    # Batch 133: recipe-wise bulk now applies to EVERY kitchen section, including
+    # Cutting and Butchery (they were missing it). Each section receives separate
+    # ingredients but a cook often wants to push a whole recipe's worth through
+    # at once.
+    recipe_groups = bakery_pastry_consolidated(db, order_no=order_no, section=section)
+
+    # Batch 133: ingredient-wise grouping — one ingredient across many recipes,
+    # for bulk receive + bulk process/transfer of e.g. all the onion at once.
+    ingredient_groups = ingredient_wise_consolidated(db, order_no=order_no, section=section)
 
     totals = {
         "lines": len(txs),
@@ -1146,6 +1150,7 @@ async def section_order_page(request: Request, section_name: str, order_no: str,
             "order_no": order_no,
             "txs": txs,
             "recipe_groups": recipe_groups,
+            "ingredient_groups": ingredient_groups,
             "totals": totals,
             "next_sections": next_sections,
             "page_title": f"{section} Receiving - {order_no}",
@@ -1245,21 +1250,47 @@ async def bulk_transfer_section_order(request: Request, section_name: str, order
             status_code=HTTP_303_SEE_OTHER)
 
     user = current_user_name(request)
-    ok, failed = 0, 0
+
+    # Batch 135: the bulk bar now carries the full field set (waste / return /
+    # remark). Totals are split PRO-RATA across the selected lines by received
+    # quantity, exactly like the ingredient/recipe bulk. Processed & Transfer are
+    # derived: processed = sum(received); transfer = processed − waste − return.
+    def _f(name):
+        try:
+            return float(form.get(name) or 0)
+        except (TypeError, ValueError):
+            return 0.0
+    bulk_waste = _f("bulk_waste")
+    bulk_return = _f("bulk_return")
+    bulk_remark = (form.get("bulk_remark") or "").strip() or "Bulk processed & transferred"
+
+    # Gather the selected, still-actionable lines with their received qty.
+    eligible = []
+    failed = 0
     for tx_id in tx_ids:
         tx = db.query(KitchenSectionTransaction).filter(KitchenSectionTransaction.id == tx_id).first()
         if not tx:
             failed += 1
             continue
-        received_qty = float(tx.received_qty_standard or tx.issued_qty_standard or 0)
-        try:
-            transfer_transaction(
-                db, tx_id, received_qty, 0, 0, received_qty, user,
-                None, "Bulk processed & transferred", next_section or None,
-            )
-            ok += 1
-        except ValueError:
+        st = str(tx.transaction_status or "").upper()
+        if st == "TRANSFERRED" or st.startswith("COMPLETED"):
             failed += 1
+            continue
+        recv = float(tx.received_qty_standard or tx.issued_qty_standard or 0)
+        if recv <= 0:
+            failed += 1
+            continue
+        eligible.append((tx, recv))
+
+    total_recv = sum(r for _, r in eligible)
+    processed_total = total_recv
+    transfer_total = max(0.0, total_recv - bulk_waste - bulk_return)
+
+    ok, skipped = _prorata_process_transfer(
+        db, eligible, len(eligible),
+        processed_total, bulk_waste, bulk_return, transfer_total,
+        next_section or None, None, bulk_remark, user)
+    failed += skipped
 
     # Batch 121: the old message never said WHERE the lines went, which read as
     # "wrong" when the chef had picked a specific destination. Name it clearly.
@@ -1275,6 +1306,165 @@ async def bulk_transfer_section_order(request: Request, section_name: str, order
     return RedirectResponse(
         f"/production/section/{_section_slug(section)}/orders/{order_no}?toast={kind}&title={_q('Process & Transfer')}&msg={_q(msg)}",
         status_code=HTTP_303_SEE_OTHER)
+
+
+@router.post("/section/{section_name}/orders/{order_no}/ingredient/receive")
+async def ingredient_bulk_receive(request: Request, section_name: str, order_no: str, db: Session = Depends(get_db)):
+    """Batch 133 — receive every pending line for ONE ingredient at once."""
+    require_action(request, "kitchen", "edit")
+    section = _section_from_slug(section_name)
+    form = await request.form()
+    code = (form.get("ingredient_code") or "").strip()
+    from urllib.parse import quote as _q
+    back = f"/production/section/{_section_slug(section)}/orders/{order_no}"
+    if not code:
+        return redirect_with_error(back, "No ingredient selected.")
+
+    from app.core.stage_lock import is_stage_locked, lock_reason
+    _ord = db.query(CustomerOrder).filter(CustomerOrder.order_no == order_no).first()
+    _status = getattr(_ord, "status", "") if _ord else ""
+    if is_stage_locked(_status, "kitchen"):
+        return RedirectResponse(f"{back}?toast=warning&title={_q('Step Locked')}&msg={_q(lock_reason(_status, 'kitchen'))}", status_code=HTTP_303_SEE_OTHER)
+
+    ok, skipped = bulk_receive_ingredient(db, order_no, section, code, current_user_name(request))
+    db.commit()
+    msg = f"{ok} line(s) received for this ingredient."
+    if skipped:
+        msg += f" {skipped} already received or locked."
+    kind = "success" if ok else "warning"
+    return RedirectResponse(f"{back}?toast={kind}&title={_q('Ingredient Received')}&msg={_q(msg)}#ing-{code}", status_code=HTTP_303_SEE_OTHER)
+
+
+@router.post("/section/{section_name}/orders/{order_no}/recipe/receive")
+async def recipe_bulk_receive(request: Request, section_name: str, order_no: str, db: Session = Depends(get_db)):
+    """Batch 135 — receive every pending line for ONE recipe at once (By-Recipe
+    parity with By-Ingredient's Receive All)."""
+    require_action(request, "kitchen", "edit")
+    section = _section_from_slug(section_name)
+    form = await request.form()
+    recipe_no = (form.get("recipe_no") or "").strip()
+    from urllib.parse import quote as _q
+    back = f"/production/section/{_section_slug(section)}/orders/{order_no}"
+    if not recipe_no:
+        return redirect_with_error(back, "No recipe selected.")
+
+    from app.core.stage_lock import is_stage_locked, lock_reason
+    _ord = db.query(CustomerOrder).filter(CustomerOrder.order_no == order_no).first()
+    _status = getattr(_ord, "status", "") if _ord else ""
+    if is_stage_locked(_status, "kitchen"):
+        return RedirectResponse(f"{back}?toast=warning&title={_q('Step Locked')}&msg={_q(lock_reason(_status, 'kitchen'))}", status_code=HTTP_303_SEE_OTHER)
+
+    ok, skipped = bulk_receive_recipe(db, order_no, section, recipe_no, current_user_name(request))
+    db.commit()
+    msg = f"{ok} line(s) received for {recipe_no}."
+    if skipped:
+        msg += f" {skipped} already received or locked."
+    kind = "success" if ok else "warning"
+    return RedirectResponse(f"{back}?toast={kind}&title={_q('Recipe Received')}&msg={_q(msg)}", status_code=HTTP_303_SEE_OTHER)
+
+
+@router.post("/section/{section_name}/orders/{order_no}/ingredient/process")
+async def ingredient_bulk_process(request: Request, section_name: str, order_no: str, db: Session = Depends(get_db)):
+    """Batch 133 — process + transfer every received line for ONE ingredient,
+    splitting the entered totals pro-rata across its recipe lines. Mirrors the
+    single-line panel (process / waste / return / transfer / next section /
+    remark) with the same auto-calculation, applied in bulk."""
+    require_action(request, "kitchen", "edit")
+    section = _section_from_slug(section_name)
+    form = await request.form()
+    code = (form.get("ingredient_code") or "").strip()
+    from urllib.parse import quote as _q
+    back = f"/production/section/{_section_slug(section)}/orders/{order_no}"
+    if not code:
+        return redirect_with_error(back, "No ingredient selected.")
+
+    from app.core.stage_lock import is_stage_locked, lock_reason
+    _ord = db.query(CustomerOrder).filter(CustomerOrder.order_no == order_no).first()
+    _status = getattr(_ord, "status", "") if _ord else ""
+    if is_stage_locked(_status, "kitchen"):
+        return RedirectResponse(f"{back}?toast=warning&title={_q('Step Locked')}&msg={_q(lock_reason(_status, 'kitchen'))}", status_code=HTTP_303_SEE_OTHER)
+
+    def _f(name):
+        try:
+            return float(form.get(name) or 0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    ok, skipped = bulk_process_transfer_ingredient(
+        db, order_no, section, code,
+        _f("processed_qty_standard"), _f("waste_qty_standard"),
+        _f("returned_qty_standard"), _f("transferred_qty_standard"),
+        (form.get("next_section") or "").strip() or None,
+        (form.get("waste_reason") or "").strip() or None,
+        (form.get("section_remarks") or "").strip() or None,
+        current_user_name(request),
+    )
+    db.commit()
+    dest = (form.get("next_section") or "").strip() or "the next section"
+    msg = f"{ok} line(s) processed & transferred to {dest}." if ok else "No lines were transferred."
+    if skipped:
+        msg += f" {skipped} skipped (locked or not received)."
+    kind = "success" if ok else "warning"
+    return RedirectResponse(f"{back}?toast={kind}&title={_q('Ingredient Processed')}&msg={_q(msg)}", status_code=HTTP_303_SEE_OTHER)
+
+
+@router.post("/section/{section_name}/orders/{order_no}/recipe/process")
+async def recipe_bulk_process_passthrough(request: Request, section_name: str, order_no: str, db: Session = Depends(get_db)):
+    """Batch 134 — recipe-wise bulk process/transfer for prep sections (Cutting,
+    Butchery). Now carries the SAME field set as the single-line and ingredient-
+    wise panels: process / waste / return / transfer / next-section / remark, with
+    the entered totals split pro-rata across the recipe's received ingredient
+    lines. Cook sections (Bakery/Cold/Hot) still use /bakery-pastry/process."""
+    require_action(request, "kitchen", "edit")
+    section = _section_from_slug(section_name)
+    form = await request.form()
+    recipe_no = (form.get("recipe_no") or "").strip()
+    next_section = (form.get("next_section") or "").strip() or None
+    remarks = (form.get("section_remarks") or "").strip() or None
+    waste_reason = (form.get("waste_reason") or "").strip() or None
+    from urllib.parse import quote as _q
+    back = f"/production/section/{_section_slug(section)}/orders/{order_no}"
+    if not recipe_no:
+        return redirect_with_error(back, "No recipe selected.")
+
+    from app.core.stage_lock import is_stage_locked, lock_reason
+    _ord = db.query(CustomerOrder).filter(CustomerOrder.order_no == order_no).first()
+    _status = getattr(_ord, "status", "") if _ord else ""
+    if is_stage_locked(_status, "kitchen"):
+        return RedirectResponse(f"{back}?toast=warning&title={_q('Step Locked')}&msg={_q(lock_reason(_status, 'kitchen'))}", status_code=HTTP_303_SEE_OTHER)
+
+    def _f(name):
+        try:
+            return float(form.get(name) or 0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    # If the process fields weren't supplied (older form), fall back to full
+    # received pass-through so behaviour is never worse than before.
+    P = _f("processed_qty_standard")
+    T = _f("transferred_qty_standard")
+    if P <= 0 and T <= 0:
+        txs = db.query(KitchenSectionTransaction).filter(
+            KitchenSectionTransaction.order_no == order_no,
+            KitchenSectionTransaction.current_section == section,
+            KitchenSectionTransaction.recipe_no == recipe_no,
+        ).all()
+        recv_total = sum(float(t.received_qty_standard or 0) for t in txs
+                         if str(t.transaction_status or "").upper() not in ("TRANSFERRED",)
+                         and not str(t.transaction_status or "").upper().startswith("COMPLETED"))
+        P = T = recv_total
+
+    ok, skipped = bulk_process_transfer_recipe(
+        db, order_no, section, recipe_no,
+        P, _f("waste_qty_standard"), _f("returned_qty_standard"), T,
+        next_section, waste_reason, remarks, current_user_name(request))
+    db.commit()
+    dest = next_section or "the next section"
+    msg = f"{ok} line(s) of {recipe_no} processed & transferred to {dest}." if ok else "No lines were transferred."
+    if skipped:
+        msg += f" {skipped} skipped (locked or not received)."
+    kind = "success" if ok else "warning"
+    return RedirectResponse(f"{back}?toast={kind}&title={_q('Recipe Processed')}&msg={_q(msg)}", status_code=HTTP_303_SEE_OTHER)
 
 
 @router.post("/tx/{tx_id}/transfer")
