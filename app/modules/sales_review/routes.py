@@ -61,6 +61,14 @@ def sales_request_list(request: Request, db: Session = Depends(get_db)):
     if date_to:
         q = q.filter(CustomerOrder.order_date <= date_to)
 
+    # Batch 137: default to CURRENT work — delivery today or later — so back-dated
+    # requests are hidden unless the user sets a date range or ?scope=all.
+    scope = (request.query_params.get("scope") or "current").strip().lower()
+    if scope != "all" and not date_from and not date_to:
+        from datetime import date as _d
+        from sqlalchemy import func as _func
+        q = q.filter(_func.coalesce(CustomerOrder.required_delivery_date, _d(9999, 12, 31)) >= _d.today())
+
     orders = q.order_by(
         CustomerOrder.required_delivery_date.is_(None),
         CustomerOrder.required_delivery_date.asc(),
@@ -93,7 +101,7 @@ def sales_request_list(request: Request, db: Session = Depends(get_db)):
     return render(request, "sales_review/list.html", {
         "orders": orders, "stock": stock, "counts": counts,
         "filters": {"status": status_f, "search": search,
-                    "date_from": date_from, "date_to": date_to},
+                    "date_from": date_from, "date_to": date_to, "scope": scope},
         "status_options": ["Pending", "Approved", "Rejected", "All"],
         "today": date.today(),
         "page_title": "Sales Requests — Approval",
@@ -209,6 +217,52 @@ def _full_coverage(db: Session, order_no: str, cid: int) -> list[dict]:
 # ---------------------------------------------------------------------------
 # Approve / Reject
 # ---------------------------------------------------------------------------
+@router.post("/{order_no}/update-portions")
+async def update_portions(request: Request, order_no: str, db: Session = Depends(get_db)):
+    """Batch 139 — let the reviewer correct requested portions before approving.
+    Only editable while the request is still Pending (not yet sent to planning)."""
+    require_action(request, "sales_review", "edit")
+    cid = _cid(request)
+    order = db.query(CustomerOrder).filter(
+        CustomerOrder.order_no == order_no, _company_filter(cid)).first()
+    if not order:
+        return RedirectResponse("/sales-requests?toast=danger&title=Not found&msg=Request not found",
+                                status_code=303)
+    if (order.sales_review_status or "Approved") != "Pending":
+        return RedirectResponse(
+            f"/sales-requests/{order_no}?toast=warning&title=Locked&msg=Portions can only be edited while the request is pending.",
+            status_code=303)
+
+    form = await request.form()
+    lines = db.query(OrderLine).filter(OrderLine.order_no == order_no).all()
+    changed = 0
+    total = 0.0
+    for l in lines:
+        raw = form.get(f"portions_{l.id}")
+        if raw is None:
+            total += float(l.required_portions or 0)
+            continue
+        try:
+            val = max(0.0, float(raw))
+        except (TypeError, ValueError):
+            total += float(l.required_portions or 0)
+            continue
+        if abs(val - float(l.required_portions or 0)) > 1e-9:
+            l.required_portions = val
+            changed += 1
+        total += val
+    # keep the order header's planned-portions total in sync
+    try:
+        order.total_planned_portions = total
+    except Exception:
+        pass
+    db.commit()
+    msg = f"{changed} line(s) updated." if changed else "No changes."
+    return RedirectResponse(
+        f"/sales-requests/{order_no}?toast=success&title=Portions Updated&msg={msg}",
+        status_code=303)
+
+
 @router.post("/{order_no}/approve")
 async def approve(request: Request, order_no: str, db: Session = Depends(get_db)):
     """Approve the request. THIS is the only thing that makes the order
@@ -241,12 +295,10 @@ async def approve(request: Request, order_no: str, db: Session = Depends(get_db)
                 message=f"{order.customer_name} — approved by {_user(request)}, ready for Head Chef scheduling.",
                 url=f"/production/orders/{order_no}", category="sales_review_approved")
 
-    nxt = _next_pending(db, cid)
-    target = f"/sales-requests/{nxt}" if nxt else "/sales-requests"
+
     return RedirectResponse(
-        f"{target}?toast=success&title=Approved"
-        f"&msg={order_no} approved"
-        + ("" if nxt else " No more requests pending."),
+        "/sales-requests?toast=success&title=Approved"
+        f"&msg={order_no} approved Sent to Head Chef Planning.",
         status_code=303)
 
 
@@ -280,10 +332,9 @@ async def reject(request: Request, order_no: str, db: Session = Depends(get_db))
     order.sales_review_reason = reason[:500]
     db.commit()
 
-    nxt = _next_pending(db, cid)
-    target = f"/sales-requests/{nxt}" if nxt else "/sales-requests"
+    # Batch 139: return to the Sales Requests index after rejecting.
     return RedirectResponse(
-        f"{target}?toast=warning&title=Rejected&msg={order_no} rejected — it will not reach Head Chef Planning.",
+        f"/sales-requests?toast=warning&title=Rejected&msg={order_no} rejected — it will not reach Head Chef Planning.",
         status_code=303)
 
 
@@ -362,7 +413,8 @@ async def raise_pr(request: Request, order_no: str, db: Session = Depends(get_db
                       f"for {order.customer_name or 'internal'}.",
     )
 
+    # Batch 139: return to the Sales Requests index after raising the requisition.
     return RedirectResponse(
-        f"/sales-requests/{order_no}?toast=success&title=Requisition Raised"
+        "/sales-requests?toast=success&title=Requisition Raised"
         f"&msg={pr_no} sent to Procurement for review — no Purchase Order has been created yet.",
         status_code=303)

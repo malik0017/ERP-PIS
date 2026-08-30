@@ -8,7 +8,6 @@
       <p class="mb-0 opacity-75">{{ t('Region-wise delivery bag counts by customer.') }}</p>
     </div>
     <div class="d-flex gap-2">
-      <a class="btn btn-light" href="/dispatch/logistics?export=csv{% if filters.from_date %}&from_date={{ filters.from_date }}{% endif %}{% if filters.to_date %}&to_date={{ filters.to_date }}{% endif %}"><i class="bi bi-download me-1"></i>{{ t('Download CSV') }}</a>
       <a class="btn btn-phoenix-secondary" href="/dispatch">{{ t('Back to Dispatch') }}</a>
     </div>
   </div>
@@ -25,6 +24,41 @@
       </div>
     </div>
   </form>
+
+  {# Batch 147: combined, exportable table with the shared table tools
+     (CSV / PDF / Print / column toggle / per-column filter). The region-grouped
+     cards below remain as the visual breakdown. #}
+  <div class="card mb-3">
+    <div class="card-header bg-body-highlight fw-bold"><i class="bi bi-table me-1"></i>{{ t('All Regions (exportable)') }}</div>
+    <div class="card-body">
+      <div class="table-responsive">
+        <table class="table table-sm mb-0" data-isfc-table data-isfc-colfilters
+               data-isfc-title="Logistics Report"
+               data-isfc-subtitle="Region-wise delivery bags · {{ filters.from_date or 'all' }} → {{ filters.to_date or 'all' }} · ISFC ERP">
+          <thead class="bg-body-highlight"><tr>
+            <th>{{ t('Region') }}</th>
+            <th>{{ t('Customer') }}</th>
+            <th class="text-end">{{ t('Orders') }}</th>
+            <th class="text-end">{{ t('Bags') }}</th>
+            <th class="text-end">{{ t('Portions') }}</th>
+          </tr></thead>
+          <tbody>
+          {% for r in flat_rows %}
+            <tr>
+              <td>{{ r.region }}</td>
+              <td><strong>{{ r.customer_name }}</strong></td>
+              <td class="text-end">{{ r.orders }}</td>
+              <td class="text-end fw-bold">{{ r.bags }}</td>
+              <td class="text-end">{{ '%.2f'|format(r.portions or 0) }}</td>
+            </tr>
+          {% else %}
+            <tr><td colspan="5" class="text-center text-muted py-3">{{ t('No dispatch records with a region yet.') }}</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
 
   {% for region, g in regions.items() %}
   <div class="card mb-3">

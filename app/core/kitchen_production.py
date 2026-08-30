@@ -124,13 +124,17 @@ def recipe_states(db: Session, order_no: str, section: str) -> dict:
     # Batch 134: per-recipe ingredient lines so the Production View can render a
     # collapsible ingredient breakdown under each recipe card (hidden by default).
     detail_rows = db.execute(text("""
-        SELECT COALESCE(recipe_no,'') AS recipe_no, ingredient_code, ingredient_name,
-               ROUND(COALESCE(issued_qty_standard,0),4) AS issued,
-               ROUND(COALESCE(received_qty_standard,0),4) AS received,
-               standard_uom, transaction_status
-        FROM kitchen_section_transactions
-        WHERE order_no=:o AND current_section=:s
-        ORDER BY COALESCE(recipe_no,''), ingredient_name
+        SELECT COALESCE(k.recipe_no,'') AS recipe_no, k.ingredient_code, k.ingredient_name,
+               ROUND(COALESCE(k.issued_qty_standard,0),4) AS issued,
+               ROUND(COALESCE(k.received_qty_standard,0),4) AS received,
+               ROUND(COALESCE(k.processed_qty_standard,0),4) AS processed,
+               k.standard_uom, k.transaction_status,
+               (SELECT ri.cutting_portion_size FROM recipe_ingredients ri
+                  WHERE ri.inventory_code = k.ingredient_code
+                    AND ri.cutting_portion_size IS NOT NULL LIMIT 1) AS cutting_portion_size
+        FROM kitchen_section_transactions k
+        WHERE k.order_no=:o AND k.current_section=:s
+        ORDER BY COALESCE(k.recipe_no,''), k.ingredient_name
     """), {"o": order_no, "s": section}).mappings().all()
     details_by_recipe: dict[str, list] = {}
     for d in detail_rows:

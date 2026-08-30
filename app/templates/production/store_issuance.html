@@ -123,14 +123,8 @@
         <h2 class="mb-1">Store Issuance Control</h2>
       </div>
       <div class="d-flex gap-2 flex-wrap">
-        {% if can_action('store_issuance', 'edit') %}
-        <form method="post" action="/production/store-issuance/backfill-sections" class="d-inline"
-              onsubmit="var b=this.querySelector('button');b.disabled=true;b.innerHTML='<span class=&quot;spinner-border spinner-border-sm me-1&quot;></span>Re-routing…';">
-          <button class="btn btn-light fw-bold" title="Re-apply PRD1 → Cutting and recipe-section routing to existing BOM and pending issue lines">
-            <i class="bi bi-signpost-split me-1"></i> Re-route Sections
-          </button>
-        </form>
-        {% endif %}
+        {# Batch 136: "Re-route Sections" button removed — it hung on click and the
+           routing is already applied at BOM time. #}
         <a class="btn btn-light fw-bold" href="/production/store-issuance/by-section{% if order %}?order={{ order.order_no }}{% endif %}"><i class="bi bi-layers me-1"></i> Issuance by Section</a>
       </div>
     </div>
@@ -192,11 +186,20 @@
             <th>Issued Qty</th>
             <th>Action</th>
           </tr>
+          {# Batch 137: per-column filters (client-side, AND across columns). #}
+          <tr class="col-filter-row">
+            <th><input class="cf" data-col="0" placeholder="Order…"></th>
+            <th><input class="cf" data-col="1" placeholder="Customer…"></th>
+            <th><input class="cf" data-col="2" placeholder="Brand…"></th>
+            <th><input class="cf" data-col="3" placeholder="Date…"></th>
+            <th><input class="cf" data-col="4" placeholder="Status…"></th>
+            <th colspan="5"></th>
+          </tr>
         </thead>
         <tbody>{% for o in orders %}{% set lm = line_map.get(o.order_no) if line_map is defined else None %}<tr>
             <td><strong>{{ o.order_no }}</strong></td>
             <td><strong>{{ o.customer_name }}</strong></td>
-            <td>{{ o.brand or '-' }}</td>
+            <td><strong>{{ o.brand or '-' }}</strong></td>
             <td>{{ o.cooking_date or o.required_delivery_date or '-' }} {{ o.cooking_time or o.required_delivery_time or
               '' }}</td>
             <td><span
@@ -219,7 +222,17 @@
     <div class="d-flex justify-content-between flex-wrap gap-2 mb-3">
       <div>
         <h4>Store Issuance Lines - {{ order.order_no if order else '' }}</h4>
-        <div class="text-muted">Select kitchen section per line.</div>
+        {# Batch 145: order-detail strip (customer, brand, delivery, portions) so
+           the store keeper sees who/what/when at a glance. #}
+        {% if order %}
+        <div class="d-flex flex-wrap gap-3 mt-1" style="font-size:13px">
+          <span><span class="text-muted">Customer:</span> <strong>{{ order.customer_name or '-' }}</strong></span>
+          <span><span class="text-muted">Brand:</span> <strong>{{ order.brand or '-' }}</strong></span>
+          <span><span class="text-muted">Delivery:</span> <strong>{{ order.required_delivery_date or '-' }}{% if order.required_delivery_time %} {{ order.required_delivery_time }}{% endif %}</strong></span>
+          <span><span class="text-muted">Portions:</span> <strong>{{ '%.0f'|format(order.total_planned_portions or 0) }}</strong></span>
+        </div>
+        {% endif %}
+        <div class="text-muted mt-1">Select kitchen section per line.</div>
       </div><a href="/production/store-issuance" class="si-btn si-soft">Back to Store Queue</a>
     </div>
     </div>
@@ -232,6 +245,7 @@
             <th>Main Category</th>
             <th>Sub Category</th>
             <th>Ingredient</th>
+            <th>Recipe</th>
             <th>Required</th>
             <th>Issue Qty</th>
             <th>UOM</th>
@@ -244,8 +258,9 @@
             <td><input class="issue-check" type="checkbox" checked {% if l.finalized %}disabled{% endif %}></td>
             <td>{{ l.ingredient_main_category or '-' }}</td>
             <td>{{ l.ingredient_sub_category or '-' }}</td>
-            <td><strong>{{ l.ingredient_code }}</strong><br><strong>{{ l.ingredient_name }}</strong><br><span class="mini">Recipe: {{
-                l.recipe_no }} - <strong>{{ l.recipe_name }}</strong></span></td>
+            {# Batch 136: ingredient and recipe split into two columns; names bold. #}
+            <td><span class="mini text-muted">{{ l.ingredient_code }}</span><br><strong>{{ l.ingredient_name }}</strong></td>
+            <td><span class="mini text-muted">{{ l.recipe_no }}</span><br><strong>{{ l.recipe_name }}</strong></td>
             <td>{{ '%.4f'|format(l.required_qty_with_waste_standard or 0) }} {{ l.standard_uom }}</td>
             <td><input form="issue-form-{{ l.id }}" class="form-control form-control-sm" type="number" step="0.0001" name="input_material_issued"
                 value="{{ l.input_material_issued if l.input_material_issued is not none else (l.required_qty_with_waste_standard or 0) }}" {% if l.finalized %}readonly{% endif %}></td>
@@ -283,5 +298,22 @@
   </div>
   {% endif %}
 </div>
-<script>function filterStore() { const q = (document.getElementById('storeSearch')?.value || '').toLowerCase(); document.querySelectorAll('#storeTable tbody tr').forEach(tr => tr.style.display = tr.innerText.toLowerCase().includes(q) ? '' : 'none') }</script>
+<script>function filterStore() { const q = (document.getElementById('storeSearch')?.value || '').toLowerCase(); document.querySelectorAll('#storeTable tbody tr').forEach(tr => tr.style.display = tr.innerText.toLowerCase().includes(q) ? '' : 'none') }
+// Batch 137: per-column filters (AND across columns).
+(function(){
+  var inputs = Array.prototype.slice.call(document.querySelectorAll('#storeTable .col-filter-row .cf'));
+  function apply(){
+    var terms = inputs.map(function(i){ return {c:parseInt(i.dataset.col,10), v:(i.value||'').toLowerCase().trim()}; }).filter(function(t){ return t.v; });
+    document.querySelectorAll('#storeTable tbody tr').forEach(function(tr){
+      var cells = tr.querySelectorAll('td');
+      tr.style.display = terms.every(function(t){ var c=cells[t.c]; return c && c.innerText.toLowerCase().indexOf(t.v)>-1; }) ? '' : 'none';
+    });
+  }
+  inputs.forEach(function(i){ i.addEventListener('keyup', apply); i.addEventListener('change', apply); });
+})();</script>
+<style>
+.col-filter-row th{padding:4px 6px;background:#f4f8fc;}
+.col-filter-row .cf{width:100%;border:1px solid #cbdbea;border-radius:6px;padding:3px 7px;font-size:12px;}
+[data-bs-theme="dark"] .col-filter-row th{background:rgba(255,255,255,.03);}
+</style>
 {% endblock %}

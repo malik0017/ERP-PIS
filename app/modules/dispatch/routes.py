@@ -114,7 +114,7 @@ def logistics_report(request: Request, db: Session = Depends(get_db)):
              "orders": sum(g["orders"] for g in regions.values()),
              "portions": sum(g["portions"] for g in regions.values())}
     return render(request, "dispatch/logistics.html",
-                  {"regions": regions, "grand": grand,
+                  {"regions": regions, "grand": grand, "flat_rows": rows,
                    "filters": {"from_date": from_date, "to_date": to_date},
                    "page_title": "Logistics Report"})
 
@@ -128,6 +128,7 @@ def dispatch_dashboard(request: Request, db: Session = Depends(get_db)):
     from_date = (q.get("from_date") or "").strip()
     to_date = (q.get("to_date") or "").strip()
     status_f = (q.get("status") or "").strip()
+    scope = (q.get("scope") or "current").strip().lower()
     query = db.query(PackingDispatch).filter(PackingDispatch.dispatch_status.in_(["Packed", "Out for Delivery", "Delivered"]))
     if status_f:
         query = query.filter(PackingDispatch.dispatch_status == status_f)
@@ -137,7 +138,13 @@ def dispatch_dashboard(request: Request, db: Session = Depends(get_db)):
         query = query.filter(PackingDispatch.dispatch_date >= from_date)
     if to_date:
         query = query.filter(PackingDispatch.dispatch_date <= to_date)
-    rows = query.order_by(PackingDispatch.id.desc()).limit(200).all()
+    # Batch 144: default to current work (dispatch date today onward) unless a
+    # date range or scope=all is set. Priority = nearest dispatch date first.
+    from datetime import date as _d
+    from sqlalchemy import func as _func
+    if scope != "all" and not from_date and not to_date:
+        query = query.filter(_func.coalesce(PackingDispatch.dispatch_date, _d(9999, 12, 31)) >= _d.today())
+    rows = query.order_by(_func.coalesce(PackingDispatch.dispatch_date, _d(9999, 12, 31)).asc(), PackingDispatch.id.desc()).limit(200).all()
     summary = {
         "pending": db.query(PackingDispatch).filter(PackingDispatch.dispatch_status.in_(["Packed", "Out for Delivery"])).count(),
         "delivered": db.query(PackingDispatch).filter(PackingDispatch.dispatch_status == "Delivered").count(),
@@ -145,7 +152,7 @@ def dispatch_dashboard(request: Request, db: Session = Depends(get_db)):
         "portions": db.execute(text("SELECT COALESCE(SUM(packed_portions),0) FROM packing_dispatch")).scalar() or 0,
     }
     return render(request, "dispatch/index.html", {"rows": rows, "summary": summary, "page_title": "Dispatch / Delivery",
-                                                    "filters": {"search": search, "from_date": from_date, "to_date": to_date, "status": status_f},
+                                                    "filters": {"search": search, "from_date": from_date, "to_date": to_date, "status": status_f, "scope": scope},
                                                     "error": request.query_params.get("error")})
 
 
@@ -174,6 +181,22 @@ def generate_delivery_otp(request: Request, dispatch_id: int, db: Session = Depe
     return RedirectResponse(
         f"/dispatch?toast=success&title=Delivery+Code+Generated&msg=Code {otp} for {row.order_no} — share it with the customer by phone, then have the driver enter it to confirm delivery.",
         status_code=HTTP_303_SEE_OTHER)
+
+
+@router.get("/{dispatch_id}", response_class=HTMLResponse)
+def dispatch_detail(request: Request, dispatch_id: int, db: Session = Depends(get_db)):
+    """Batch 146b — single-order dispatch detail. The dashboard is now a compact
+    index (cards + filters + table); opening an order brings you here to edit the
+    driver / vehicle / region / status for just that order (image 12)."""
+    require_area(request, "dispatch")
+    _ensure_delivery_confirmation_schema(db)
+    row = db.query(PackingDispatch).filter(PackingDispatch.id == dispatch_id).first()
+    if not row:
+        return _redirect_with_error("/dispatch", "Dispatch record not found.")
+    order = db.query(CustomerOrder).filter(CustomerOrder.order_no == row.order_no).first()
+    return render(request, "dispatch/detail.html",
+                  {"r": row, "order": order, "page_title": f"Dispatch - {row.order_no}",
+                   "error": request.query_params.get("error")})
 
 
 @router.post("/{dispatch_id}/update")

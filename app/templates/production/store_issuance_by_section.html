@@ -23,7 +23,7 @@
 <div class="container-fluid py-3">
   <div class="si-hero mb-4 d-flex justify-content-between flex-wrap gap-3 align-items-center">
     <div>
-      <h2 class="mb-1">Store Issuance — By Kitchen Section</h2>
+      <h2 class="mb-1">Store Issuance By Kitchen Section</h2>
     </div>
     <a class="btn btn-light fw-bold" href="/production/store-issuance"><i class="bi bi-arrow-left"></i> Back to Orders View</a>
   </div>
@@ -36,10 +36,16 @@
         <i class="bi bi-chevron-down"></i>
       </button>
       <div class="d-flex gap-2 flex-wrap">
+        {# Batch 138: single download point. Both exports respect the active
+           filters; filtering to one order automatically produces an
+           order-detailed (line-level) export instead of a cross-order roll-up. #}
         <a class="btn btn-outline-secondary btn-sm fw-bold" href="/production/store-issuance/by-section/export?format=csv&section={{ filters.section }}&show={{ filters.show }}&order={{ filters.order }}&customer={{ filters.customer }}&date_from={{ filters.date_from }}&date_to={{ filters.date_to }}">
-          <i class="bi bi-download"></i> Download CSV (current filters)</a>
+          <i class="bi bi-download"></i> CSV</a>
         <a class="btn btn-outline-danger btn-sm fw-bold" href="/production/store-issuance/by-section/export?format=pdf&section={{ filters.section }}&show={{ filters.show }}&order={{ filters.order }}&customer={{ filters.customer }}&date_from={{ filters.date_from }}&date_to={{ filters.date_to }}">
-          <i class="bi bi-filetype-pdf"></i> Download PDF (current filters)</a>
+          <i class="bi bi-filetype-pdf"></i> PDF</a>
+        <button type="button" class="btn btn-outline-secondary btn-sm fw-bold" onclick="window.print()">
+          <i class="bi bi-printer"></i> Print</button>
+        <!-- <span class="align-self-center small text-muted">Respects current filters{% if filters.order %} · order-detailed{% endif %}</span> -->
       </div>
     </div>
     <div class="si-filter-body {% if filters_active %}show{% endif %}" id="siFilterBody">
@@ -87,10 +93,8 @@
            replacing the per-row Open buttons. #}
         <a class="btn btn-primary btn-sm fw-bold" href="/production/store-issuance" title="Open the full Store Issuance queue">
           <i class="bi bi-box-arrow-up-right"></i> Open in Store Issuance</a>
-        <a class="btn btn-outline-secondary btn-sm" href="/production/store-issuance/by-section/export?format=csv&section={{ g.section }}&show={{ filters.show }}" title="Download this section only">
-          <i class="bi bi-download"></i> Section CSV</a>
-        <a class="btn btn-outline-danger btn-sm" href="/production/store-issuance/by-section/export?format=pdf&section={{ g.section }}&show={{ filters.show }}" title="Download this section as PDF">
-          <i class="bi bi-filetype-pdf"></i> Section PDF</a>
+        {# Batch 138: per-section CSV/PDF removed — one download point (top of page,
+           "current filters") avoids confusion about which data is exported. #}
       </div>
     </div>
 

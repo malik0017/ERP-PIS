@@ -149,8 +149,8 @@
     <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
       <div>
         <h1>QC Checklist · {{ order.order_no }}</h1>
-        <p>{{ order.customer_name }} · {{ order.brand }} · Delivery {{ order.required_delivery_date or '—' }} {{
-          order.required_delivery_time or '' }}</p>
+        <p>{{ order.customer_name }} · {{ order.brand or '—' }} · Delivery {{ order.required_delivery_date or '—' }} {{
+          order.required_delivery_time or '' }} · {{ '%.0f'|format(order.total_planned_portions or 0) }} portions</p>
       </div>
       <a href="/qc/orders/{{ order.order_no }}/certificate" target="_blank"
          class="btn btn-light btn-sm fw-bold"><i class="bi bi-patch-check me-1"></i>QC Certificate</a>
@@ -160,9 +160,9 @@
   {% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
   <div class="metric-grid mb-3">
     <div class="metric"><span>QC Lines</span><strong>{{ totals.lines }}</strong></div>
-    <div class="metric"><span>Input Qty</span><strong>{{ '%.2f'|format(totals.input_qty or 0) }}</strong></div>
-    <div class="metric"><span>Received Qty</span><strong>{{ '%.2f'|format(totals.received_qty or 0) }}</strong></div>
-    <div class="metric"><span>Balance Qty</span><strong>{{ '%.2f'|format(totals.balance_qty or 0) }}</strong></div>
+    <div class="metric"><span>Input Qty ({{ totals.uom or 'qty' }})</span><strong>{{ '%.2f'|format(totals.input_qty or 0) }}</strong></div>
+    <div class="metric"><span>Received Qty ({{ totals.uom or 'qty' }})</span><strong>{{ '%.2f'|format(totals.received_qty or 0) }}</strong></div>
+    <div class="metric"><span>Balance Qty ({{ totals.uom or 'qty' }})</span><strong>{{ '%.2f'|format(totals.balance_qty or 0) }}</strong></div>
   </div>
   <div class="cardx">
     <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
@@ -216,7 +216,7 @@
             <td>{{ t.ingredient_code }}<br>{{ t.ingredient_name }}</td>
             <td>{{ t.from_section or '—' }}</td>
             <td>{{ '%.2f'|format(t.issued_qty_standard or 0) }} {{ t.standard_uom }}</td>
-            <td>{{ '%.2f'|format(t.received_qty_standard or 0) }}</td>
+            <td>{{ '%.2f'|format(t.received_qty_standard or 0) }} {{ t.standard_uom }}</td>
             <td>{{ t.transaction_status }}</td>
             <td>{{ t.nut_w or '—' }}</td>
             <td>{{ t.nut_p or '—' }}</td>

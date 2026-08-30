@@ -30,7 +30,8 @@
     <div class="bom-kpi"><span>Order Number</span><strong>{{ order_no }}</strong></div>
     <div class="bom-kpi"><span>Groups</span><strong>{{ group_count }}</strong></div>
     <div class="bom-kpi"><span>BOM Lines</span><strong>{{ rows|length }}</strong></div>
-    <div class="bom-kpi"><span>Estimated Cost</span><strong>{{ '%.2f'|format(total_cost) }}</strong></div>
+    {# Batch 140: Estimated Cost KPI removed — the BOM report is a picking document. #}
+    <div class="bom-kpi"><span>Total Required Qty</span><strong>{{ '%.2f'|format(total_qty) }}</strong></div>
   </div>
 
   <div class="bom-card">
@@ -53,7 +54,6 @@
             <th>Issue Section</th>
             <th class="bom-right">Required Qty</th>
             <th>UOM</th>
-            <th class="bom-right">Estimated Cost</th>
           </tr>
         </thead>
         <tbody>
@@ -67,10 +67,9 @@
             <td>{{ r.issue_section or '-' }}</td>
             <td class="bom-right">{{ '%.4f'|format(r.required_qty or 0) }}</td>
             <td>{{ r.standard_uom or '-' }}</td>
-            <td class="bom-right">{{ '%.2f'|format(r.estimated_cost or 0) }}</td>
           </tr>
           {% else %}
-          <tr><td colspan="9" class="text-center text-muted py-4">No BOM lines found. Generate BOM first.</td></tr>
+          <tr><td colspan="8" class="text-center text-muted py-4">No BOM lines found. Generate BOM first.</td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -94,31 +93,50 @@ document.getElementById('bomSearch')?.addEventListener('input', function(){
   var meta = {
     order: {{ order_no|tojson }},
     customer: {{ (order.customer_name or '')|tojson }},
-    brand: {{ (order.brand or '')|tojson }}
+    brand: {{ (order.brand or '')|tojson }},
+    title: {{ group_label|tojson }}
   };
   function loadScript(src){return new Promise(function(res,rej){var s=document.createElement('script');s.src=src;s.onload=res;s.onerror=function(){rej(new Error(src));};document.head.appendChild(s);});}
   var ready=null;
   function ensure(){if(ready)return ready;if(window.jspdf&&window.jspdf.jsPDF){ready=Promise.resolve();return ready;}ready=loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js').then(function(){return loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js');});return ready;}
+  // Batch 140: the PDF headers rendered as "GROUP!A", "ITEM CODE!A" etc. — an
+  // invisible bidi / non-breaking control character (from the RTL-aware layout)
+  // was leaking into innerText and the default PDF font drew it as "!A". Strip
+  // every non-printable / bidi mark and collapse whitespace so headers and cells
+  // are clean ASCII-safe text.
+  function clean(s){
+    return String(s == null ? '' : s)
+      .replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069\u00a0\u0000-\u001f\u007f-\u009f]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
   btn.addEventListener('click', function () {
     var old = btn.textContent; btn.textContent = 'Preparing…';
     ensure().then(function () {
       var jsPDF = window.jspdf.jsPDF;
       var table = document.getElementById('bomTable');
-      var head = [], body = [];
-      table.querySelectorAll('thead th').forEach(function(){});
-      var ths = []; table.querySelectorAll('thead th').forEach(function(th){ths.push((th.innerText||'').trim());});
-      head = [ths];
+      // Batch 140: drop the "Estimated Cost" column from the PDF (last column).
+      // The kitchen/store BOM shouldn't carry cost. Find its index dynamically so
+      // it works for every grouping, then skip that cell in header + body.
+      var ths = []; table.querySelectorAll('thead th').forEach(function(th){ ths.push(clean(th.innerText)); });
+      var costIdx = ths.findIndex(function(h){ return /cost/i.test(h); });
+      function keep(i){ return i !== costIdx; }
+      var head = [ ths.filter(function(_,i){ return keep(i); }) ];
+      var body = [];
       table.querySelectorAll('tbody tr').forEach(function(tr){
         if (tr.style.display === 'none') return;
-        var row = []; tr.querySelectorAll('td').forEach(function(td){row.push((td.innerText||'').trim().replace(/\s+/g,' '));});
-        if (row.length) body.push(row);
+        var cells = tr.querySelectorAll('td');
+        if (!cells.length) return;
+        var row = [];
+        cells.forEach(function(td,i){ if (keep(i)) row.push(clean(td.innerText)); });
+        body.push(row);
       });
       var doc = new jsPDF({orientation:'landscape',unit:'pt',format:'a4'});
-      doc.setFontSize(14); doc.text('Customer-wise BOM', 40, 34);
+      doc.setFontSize(14); doc.text(clean(meta.title || 'BOM'), 40, 34);
       doc.setFontSize(9); doc.setTextColor(90);
-      doc.text('Order: ' + meta.order + '   Customer: ' + (meta.customer || '-') + '   Brand: ' + (meta.brand || '-'), 40, 50);
+      doc.text(clean('Order: ' + meta.order + '   Customer: ' + (meta.customer || '-') + '   Brand: ' + (meta.brand || '-')), 40, 50);
       doc.setTextColor(140); doc.setFontSize(8);
-      doc.text(new Date().toLocaleString() + '  ·  ISFC ERP', 40, 62);
+      doc.text(new Date().toLocaleString() + '  \u00b7  ISFC ERP', 40, 62);
       doc.autoTable({head:head, body:body, startY:72,
         styles:{fontSize:6.5,cellPadding:2.5,overflow:'linebreak'},
         headStyles:{fillColor:[71,85,105],textColor:255,fontSize:6.5},

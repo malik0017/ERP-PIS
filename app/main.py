@@ -525,6 +525,16 @@ def _ensure_recipe_ingredient_section_column() -> None:
                 _db.execute(_t("ALTER TABLE recipe_ingredients ADD COLUMN kitchen_section VARCHAR(80) NULL"))
                 _db.commit()
                 logger.info("Added recipe_ingredients.kitchen_section")
+            # Batch 136: Butchery cutting / portion-size column (same guard).
+            has2 = _db.execute(_t("""
+                SELECT COUNT(*) FROM information_schema.columns
+                WHERE table_schema = DATABASE() AND table_name = 'recipe_ingredients'
+                  AND column_name = 'cutting_portion_size'
+            """)).scalar()
+            if not has2:
+                _db.execute(_t("ALTER TABLE recipe_ingredients ADD COLUMN cutting_portion_size VARCHAR(255) NULL"))
+                _db.commit()
+                logger.info("Added recipe_ingredients.cutting_portion_size")
         finally:
             _db.close()
     except Exception as exc:

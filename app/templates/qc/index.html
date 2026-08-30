@@ -206,8 +206,8 @@
             <td>{{ o.delivery_date }} {{ o.delivery_time or '' }}</td>
             <td>{{ o.total_lines }}</td>
             <td>{{ o.received_lines }}</td>
-            <td>{{ '%.2f'|format(o.input_qty or 0) }}</td>
-            <td>{{ '%.2f'|format(o.balance_qty or 0) }}</td>
+            <td>{{ '%.2f'|format(o.input_qty or 0) }} <span class="text-body-tertiary">{{ o.uom }}</span></td>
+            <td>{{ '%.2f'|format(o.balance_qty or 0) }} <span class="text-body-tertiary">{{ o.uom }}</span></td>
             <td><a class="btn-pro" href="/qc/orders/{{ o.order_no }}"><i class="bi bi-clipboard-check"></i> Open QC</a>
             </td>
           </tr>{% else %}<tr>
@@ -221,7 +221,8 @@
     <h3>QC History</h3>
     <p>Latest checks, status and score.</p>
     <div class="table-responsive">
-      <table class="table-pro">
+      <table class="table-pro" data-isfc-table data-isfc-colfilters data-isfc-search="false"
+             data-isfc-title="QC History" data-isfc-subtitle="Quality Control · ISFC ERP">
         <thead>
           <tr>
             <th>QC No</th>
@@ -234,7 +235,7 @@
             <th>Score</th>
             <th>Checked By</th>
             <th>Checked At</th>
-            <th>Issue</th>
+            <th data-isfc-nofilter>Issue</th>
           </tr>
         </thead>
         <tbody>

@@ -31,7 +31,7 @@ def _next_no(db: Session, table: str, col: str, prefix: str) -> str:
     return f"{prefix}-{today}-{int(row) + 1:04d}"
 
 
-def _qc_orders(db: Session, search: str = "", from_date: str = "", to_date: str = ""):
+def _qc_orders(db: Session, search: str = "", from_date: str = "", to_date: str = "", scope: str = "current"):
     extra = ""
     params = {}
     if search:
@@ -43,6 +43,11 @@ def _qc_orders(db: Session, search: str = "", from_date: str = "", to_date: str 
     if to_date:
         extra += " AND COALESCE(co.required_delivery_date,'') <= :to_date"
         params["to_date"] = to_date
+    # Batch 144: default to current work — delivery today or later — unless an
+    # explicit date range or scope=all is given. Priority sort = nearest delivery.
+    having = ""
+    if scope != "all" and not from_date and not to_date:
+        having = "HAVING COALESCE(MAX(co.required_delivery_date), '9999-12-31') >= CURDATE()"
     return db.execute(text(f"""
         SELECT
             k.order_no,
@@ -50,6 +55,7 @@ def _qc_orders(db: Session, search: str = "", from_date: str = "", to_date: str 
             COALESCE(MAX(co.brand), '') AS brand,
             COALESCE(MAX(co.required_delivery_date), '') AS delivery_date,
             COALESCE(MAX(co.required_delivery_time), '') AS delivery_time,
+            COALESCE(MAX(k.standard_uom), '') AS uom,
             COUNT(*) AS total_lines,
             SUM(CASE WHEN COALESCE(k.received_qty_standard,0) > 0 THEN 1 ELSE 0 END) AS received_lines,
             ROUND(SUM(COALESCE(k.issued_qty_standard,0)), 4) AS input_qty,
@@ -62,7 +68,8 @@ def _qc_orders(db: Session, search: str = "", from_date: str = "", to_date: str 
           AND UPPER(COALESCE(k.transaction_status,'')) NOT IN ('QC PASSED','QC REJECTED')
           {extra}
         GROUP BY k.order_no
-        ORDER BY MAX(k.updated_at) DESC, k.order_no DESC
+        {having}
+        ORDER BY COALESCE(MAX(co.required_delivery_date), '9999-12-31') ASC, k.order_no DESC
     """), params).mappings().all()
 
 
@@ -74,7 +81,8 @@ def qc_dashboard(request: Request, db: Session = Depends(get_db)):
     from_date = (q.get("from_date") or "").strip()
     to_date = (q.get("to_date") or "").strip()
     status_f = (q.get("status") or "").strip()
-    pending_orders = _qc_orders(db, search=search, from_date=from_date, to_date=to_date)
+    scope = (q.get("scope") or "current").strip().lower()
+    pending_orders = _qc_orders(db, search=search, from_date=from_date, to_date=to_date, scope=scope)
     # Batch 122: QC History now shows customer / brand / category by joining
     # customer_orders, instead of the bare QCCheck rows (image 15).
     hist_where = "1=1"
@@ -112,7 +120,7 @@ def qc_dashboard(request: Request, db: Session = Depends(get_db)):
             "rows": rows,
             "summary": summary,
             "page_title": "Quality Control",
-            "filters": {"search": search, "from_date": from_date, "to_date": to_date, "status": status_f},
+            "filters": {"search": search, "from_date": from_date, "to_date": to_date, "status": status_f, "scope": scope},
             "error": request.query_params.get("error"),
         },
     )
@@ -163,6 +171,8 @@ def qc_order(request: Request, order_no: str, db: Session = Depends(get_db)):
         "input_qty": sum(float(t.issued_qty_standard or 0) for t in txs),
         "received_qty": sum(float(t.received_qty_standard or 0) for t in txs),
         "balance_qty": sum(float(t.balance_qty_standard or 0) for t in txs),
+        # Batch 145: dominant UOM across the order's QC lines, for the KPI labels.
+        "uom": (max(((t.standard_uom or "") for t in txs), key=lambda u: sum(1 for x in txs if (x.standard_uom or "") == u)) if txs else ""),
     }
     return render(
         request,

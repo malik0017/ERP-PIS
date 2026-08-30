@@ -1,0 +1,70 @@
+{% extends "layouts/base.html" %}
+{% block title %}Dispatch · {{ r.order_no }}{% endblock %}
+{% block content %}
+<div class="container-fluid py-3">
+  {% set active_step = 'Dispatch' %}{% include 'partials/process_status_row.html' %}
+
+  <div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-3 p-4 rounded-4 text-white"
+       style="background:linear-gradient(135deg,#102542,#3874ff)">
+    <div>
+      <h2 class="mb-1 fw-bold text-white"><i class="bi bi-truck me-2"></i>{{ r.order_no }} · {{ r.customer_name or 'Customer' }}</h2>
+      <div class="opacity-75" style="font-size:13.5px">
+        Dispatch No: {{ r.dispatch_no }}
+        {% if order %} · Brand: <strong>{{ order.brand or '—' }}</strong>
+        · Delivery: <strong>{{ order.required_delivery_date or '—' }} {{ order.required_delivery_time or '' }}</strong>
+        · Portions: <strong>{{ '%.0f'|format(order.total_planned_portions or 0) }}</strong>{% endif %}
+        {% if r.packed_bags %} · <strong>{{ r.packed_bags }} bag(s)</strong>{% endif %}
+      </div>
+    </div>
+    <div class="d-flex align-items-center gap-2">
+      <a href="/dispatch/{{ r.id }}/delivery-note" target="_blank" class="btn btn-light btn-sm fw-bold"><i class="bi bi-truck me-1"></i>Delivery Note</a>
+      <a href="/dispatch" class="btn btn-outline-light btn-sm fw-bold">Back to Dispatch</a>
+      <span class="badge {% if r.dispatch_status=='Delivered' %}bg-success{% elif r.dispatch_status in ['Rejected','Cancelled'] %}bg-danger{% else %}bg-warning text-dark{% endif %}">{{ r.dispatch_status }}</span>
+    </div>
+  </div>
+
+  {% if error %}<div class="alert alert-warning py-2">{{ error }}</div>{% endif %}
+
+  <div class="card">
+    <div class="card-body">
+      {# Batch 146b: single-order dispatch form (moved out of the index list). #}
+      <form method="post" action="/dispatch/{{ r.id }}/update">
+        <div class="row g-3">
+          <div class="col-6 col-md-3"><label class="form-label small fw-bold">Packed Portions</label>
+            <input class="form-control" type="number" step="0.01" name="packed_portions" value="{{ r.packed_portions or 0 }}"></div>
+          <div class="col-6 col-md-3"><label class="form-label small fw-bold">Rejected Portions</label>
+            <input class="form-control" type="number" step="0.01" name="rejected_portions" value="{{ r.rejected_portions or 0 }}"></div>
+          <div class="col-6 col-md-3"><label class="form-label small fw-bold">Number of Bags</label>
+            <input class="form-control" type="number" min="0" step="1" name="packed_bags" value="{{ r.packed_bags or '' }}" placeholder="e.g. 12"></div>
+          <div class="col-6 col-md-3"><label class="form-label small fw-bold">Region</label>
+            <select class="form-select" name="region">
+              <option value="">-- select region --</option>
+              {% for rg in ['Riyadh','Eastern','Jeddah','Makkah','Madinah','Qassim','Other'] %}
+              <option value="{{ rg }}" {% if r.region==rg %}selected{% endif %}>{{ rg }}</option>{% endfor %}
+            </select></div>
+          <div class="col-6 col-md-3"><label class="form-label small fw-bold">Dispatch Date</label>
+            <input class="form-control" type="date" name="dispatch_date" value="{{ r.dispatch_date or '' }}"></div>
+          <div class="col-6 col-md-3"><label class="form-label small fw-bold">Vehicle No</label>
+            <input class="form-control" name="vehicle_no" value="{{ r.vehicle_no or '' }}"></div>
+          <div class="col-6 col-md-3"><label class="form-label small fw-bold">Driver Name</label>
+            <input class="form-control" name="driver_name" value="{{ r.driver_name or '' }}"></div>
+          <div class="col-6 col-md-3"><label class="form-label small fw-bold">Temp °C</label>
+            <input class="form-control" type="number" step="0.01" name="delivery_temperature_c" value="{{ r.delivery_temperature_c or 0 }}"></div>
+          <div class="col-6 col-md-3"><label class="form-label small fw-bold">Status</label>
+            <select class="form-select" name="dispatch_status">
+              <option {% if r.dispatch_status=='Packing Pending' %}selected{% endif %}>Packing Pending</option>
+              <option {% if r.dispatch_status=='Packed' %}selected{% endif %}>Packed</option>
+              <option {% if r.dispatch_status=='Out for Delivery' %}selected{% endif %}>Out for Delivery</option>
+              <option {% if r.dispatch_status=='Delivered' %}selected{% endif %}>Delivered</option>
+            </select></div>
+          <div class="col-12 col-md-9"><label class="form-label small fw-bold">Remarks</label>
+            <input class="form-control" name="remarks" value="{{ r.remarks or '' }}"></div>
+          <div class="col-12">
+            <button class="btn btn-success fw-bold" type="submit"><i class="bi bi-truck me-1"></i>Save Dispatch</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

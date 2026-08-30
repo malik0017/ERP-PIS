@@ -78,12 +78,14 @@
     {% if r.details %}
     <div class="kp-ing d-none" id="ing-{{ section_slug }}-{{ r.recipe_no }}">
       <table class="table table-sm mb-0">
-        <thead><tr><th>Code</th><th>Ingredient</th><th class="text-end">Issued</th><th class="text-end">Received</th><th>Status</th></tr></thead>
+        <thead><tr><th>Code</th><th>Ingredient</th>{% if section == 'Butchery' %}<th>Cutting Method</th>{% endif %}<th class="text-end">Received</th><th class="text-end">Processed</th><th>UOM</th><th>Status</th></tr></thead>
         <tbody>
         {% for d in r.details %}
           <tr><td class="text-body-tertiary">{{ d.ingredient_code }}</td><td>{{ d.ingredient_name }}</td>
-          <td class="text-end">{{ '%.2f'|format(d.issued or 0) }} <span class="text-body-tertiary">{{ d.standard_uom }}</span></td>
-          <td class="text-end">{{ '%.2f'|format(d.received or 0) }}</td>
+          {% if section == 'Butchery' %}<td class="text-body-tertiary small">{{ d.cutting_portion_size or '—' }}</td>{% endif %}
+          <td class="text-end">{{ '%.2f'|format(d.received or d.issued or 0) }}</td>
+          <td class="text-end">{{ '%.2f'|format(d.processed or 0) }}</td>
+          <td class="text-body-tertiary">{{ d.standard_uom }}</td>
           <td><span class="text-body-tertiary small">{{ d.transaction_status or 'Pending' }}</span></td></tr>
         {% endfor %}
         </tbody>

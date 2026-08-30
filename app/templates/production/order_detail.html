@@ -196,22 +196,19 @@ order.status), instead of a fixed string. #}
         class="{% if order.status in ['Out for Delivery','Dispatched','Delivered'] %}done{% endif %}">8 Dispatch</span>
     </div>
   </idv> -->
+  {# Batch 140: the Estimated Food Cost / Selling Value / Estimated Margin KPIs
+     are removed from the production document — pricing/margin isn't surfaced to
+     the whole system, and the kitchen/store document shouldn't lead with money.
+     Replaced with operational figures the production floor actually uses. #}
   <div class="row g-3 mb-3">
-    <div class="col-md-3">
-      <div class="od-card od-kpi"><span>Total Portions Ordered</span><b>{{ '%.2f'|format(order.total_planned_portions or
-          0) }}</b></div>
+    <div class="col-md-4">
+      <div class="od-card od-kpi"><span>Total Portions Ordered</span><b>{{ '%.2f'|format(order.total_planned_portions or 0) }}</b></div>
     </div>
-    <div class="col-md-3">
-      <div class="od-card od-kpi"><span>Estimated Food Cost</span><b>{{ '%.2f'|format(order.total_estimated_food_cost or
-          0) }}</b></div>
+    <div class="col-md-4">
+      <div class="od-card od-kpi"><span>Recipe Lines</span><b>{{ lines|length if lines is defined else '—' }}</b></div>
     </div>
-    <div class="col-md-3">
-      <div class="od-card od-kpi"><span>Selling Value</span><b>{{ '%.2f'|format(order.total_estimated_selling_value or
-          0) }}</b></div>
-    </div>
-    <div class="col-md-3">
-      <div class="od-card od-kpi"><span>Estimated Margin</span><b>{{ '%.2f'|format(order.total_estimated_margin or 0)
-          }}</b></div>
+    <div class="col-md-4">
+      <div class="od-card od-kpi"><span>Delivery</span><b style="font-size:16px">{{ order.required_delivery_date or '—' }}{% if order.required_delivery_time %} {{ order.required_delivery_time }}{% endif %}</b></div>
     </div>
   </div>
 
@@ -388,7 +385,6 @@ order.status), instead of a fixed string. #}
             <th>Total Portions</th>
             <th>Recipe Std Portions</th>
             <th>Batches</th>
-            <th>Sale/Portion</th>
           </tr>{% for l in lines %}<tr>
             <td>{{ l.line_no }}</td>
             <td>{{ l.recipe_no }} - {{ l.recipe_name }}</td>
@@ -396,7 +392,6 @@ order.status), instead of a fixed string. #}
             {% set rm = recipe_meta.get(l.recipe_no) if recipe_meta is defined else None %}<td>{{ rm.standard_portions
               if rm else '1' }}</td>
             <td>{{ '%.2f'|format(l.planned_batches or 0) }}</td>
-            <td>{{ '%.2f'|format(l.selling_price_per_portion or 0) }}</td>
           </tr>{% endfor %}
         </table>
       </div>

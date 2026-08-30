@@ -191,57 +191,46 @@
   {% include 'partials/filter_bar.html' %}
 
   <div class="panel">
-    <h3>Dispatch Worklist</h3> 
-    {% for r in rows %}
-    <div class="dispatch-card">
-      <div class="dispatch-head">
-        <div>
-          <h4 class="mb-1"><a href="/production/orders/{{ r.order_no }}">{{ r.order_no }}</a> · {{ r.customer_name or
-            'Customer' }}</h4>
-          <div class="text-muted">Dispatch No: {{ r.dispatch_no }} · Created {{ r.created_at }}{% if r.packed_bags %} · <strong>{{ r.packed_bags }} bag(s)</strong>{% endif %}</div>
-        </div>
-        <div class="d-flex align-items-center gap-2">
-          <a href="/dispatch/{{ r.id }}/delivery-note" target="_blank" class="btn btn-phoenix-primary btn-sm"><i class="bi bi-truck me-1"></i>Delivery Note</a>
-          <span
-            class="pill {% if r.dispatch_status=='Delivered' %}ok{% elif r.dispatch_status in ['Rejected','Cancelled'] %}danger{% else %}warn{% endif %}">{{
-            r.dispatch_status }}</span>
-        </div>
-      </div>
-      {# Batch 129: delivery-code + photo proof-of-delivery removed per request;
-         Region + editable bag count added for logistics planning. #}
-      <form method="post" action="/dispatch/{{ r.id }}/update">
-        <div class="form-grid">
-          <div><label>Packed Portions</label><input type="number" step="0.01" name="packed_portions"
-              value="{{ r.packed_portions or 0 }}"></div>
-          <div><label>Rejected Portions</label><input type="number" step="0.01" name="rejected_portions"
-              value="{{ r.rejected_portions or 0 }}"></div>
-          <div><label>Number of Bags</label><input type="number" min="0" step="1" name="packed_bags"
-              value="{{ r.packed_bags or '' }}" placeholder="e.g. 12"></div>
-          <div><label>Region</label><select name="region">
-              <option value="">-- select region --</option>
-              {% for rg in ['Riyadh','Eastern Province','Jeddah','Makkah'] %}
-              <option {% if r.region==rg %}selected{% endif %}>{{ rg }}</option>{% endfor %}
-            </select></div>
-          <div><label>Dispatch Date</label><input type="date" name="dispatch_date" value="{{ r.dispatch_date or '' }}">
-          </div>
-          <div><label>Vehicle No</label><input name="vehicle_no" value="{{ r.vehicle_no or '' }}"></div>
-          <div><label>Driver Name</label><input name="driver_name" value="{{ r.driver_name or '' }}"></div>
-          <div><label>Temp °C</label><input type="number" step="0.01" name="delivery_temperature_c"
-              value="{{ r.delivery_temperature_c or 0 }}"></div>
-          <div><label>Status</label><select name="dispatch_status">
-              <option {% if r.dispatch_status=='Packing Pending' %}selected{% endif %}>Packing Pending</option>
-              <option {% if r.dispatch_status=='Packed' %}selected{% endif %}>Packed</option>
-              <option {% if r.dispatch_status=='Out for Delivery' %}selected{% endif %}>Out for Delivery</option>
-              <option {% if r.dispatch_status=='Delivered' %}selected{% endif %}>Delivered</option>
-            </select></div>
-          <div style="grid-column:span 3"><label>Remarks</label><input name="remarks" value="{{ r.remarks or '' }}">
-          </div>
-          <div><button class="btn-pro btn-green" type="submit"><i class="bi bi-truck"></i> Save</button></div>
-        </div>
-      </form>
+    <h3>Dispatch Worklist</h3>
+    {# Batch 146b: compact index — one row per order with an Open action that
+       leads to the single-order dispatch detail. (Was: every order's full
+       driver/vehicle form inline, which was long and hard to scan.) #}
+    <div class="table-responsive">
+      <table class="table-pro" data-isfc-table data-isfc-colfilters data-isfc-search="false"
+             data-isfc-title="Dispatch Worklist" data-isfc-subtitle="Dispatch / Delivery · ISFC ERP">
+        <thead>
+          <tr>
+            <th>Order</th>
+            <th>Customer</th>
+            <th>Dispatch No</th>
+            <th>Region</th>
+            <th>Bags</th>
+            <th>Dispatch Date</th>
+            <th>Status</th>
+            <th data-isfc-nofilter>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in rows %}
+          <tr>
+            <td><strong>{{ r.order_no }}</strong></td>
+            <td><strong>{{ r.customer_name or '—' }}</strong></td>
+            <td class="text-muted">{{ r.dispatch_no }}</td>
+            <td>{{ r.region or '—' }}</td>
+            <td>{{ r.packed_bags or '—' }}</td>
+            <td>{{ r.dispatch_date or '—' }}</td>
+            <td><span class="pill {% if r.dispatch_status=='Delivered' %}ok{% elif r.dispatch_status in ['Rejected','Cancelled'] %}danger{% else %}warn{% endif %}">{{ r.dispatch_status }}</span></td>
+            <td class="d-flex gap-1">
+              <a href="/dispatch/{{ r.id }}" class="btn-pro btn-green"><i class="bi bi-pencil-square"></i> Open</a>
+              <a href="/dispatch/{{ r.id }}/delivery-note" target="_blank" class="btn-pro"><i class="bi bi-truck"></i> Note</a>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="8" class="empty">No dispatch records yet. Pass an order from QC to create packing/dispatch automatically.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
     </div>
-    {% else %}<div class="empty">No dispatch records yet. Pass an order from QC to create packing/dispatch
-      automatically.</div>{% endfor %}
   </div>
 </div>
 {% endblock %}

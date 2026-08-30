@@ -54,6 +54,7 @@ def packing_dashboard(request: Request, db: Session = Depends(get_db)):
     from_date = (q.get("from_date") or "").strip()
     to_date = (q.get("to_date") or "").strip()
     status_f = (q.get("status") or "").strip()
+    scope = (q.get("scope") or "current").strip().lower()
     extra = ""
     params = {}
     if search:
@@ -68,6 +69,10 @@ def packing_dashboard(request: Request, db: Session = Depends(get_db)):
     if status_f:
         extra += " AND COALESCE(pd.dispatch_status,'Packing Pending') = :status_f"
         params["status_f"] = status_f
+    # Batch 144: default to current work (delivery today onward) unless a date
+    # range or scope=all is set. Priority sort = nearest delivery first.
+    if scope != "all" and not from_date and not to_date:
+        extra += " AND COALESCE(co.required_delivery_date, '9999-12-31') >= CURDATE()"
     rows = db.execute(text(f"""
         SELECT
             pd.id, pd.dispatch_no, pd.order_no, pd.customer_name,
@@ -85,7 +90,7 @@ def packing_dashboard(request: Request, db: Session = Depends(get_db)):
         LEFT JOIN customer_orders co ON co.order_no = pd.order_no
         WHERE COALESCE(pd.dispatch_status,'Packing Pending') IN ('Packing Pending','Packing In Progress','Packed','Pending')
         {extra}
-        ORDER BY pd.id DESC
+        ORDER BY COALESCE(co.required_delivery_date, '9999-12-31') ASC, pd.id DESC
     """), params).mappings().all()
     summary = {
         "pending": db.execute(text("SELECT COUNT(*) FROM packing_dispatch WHERE COALESCE(dispatch_status,'Packing Pending') IN ('Packing Pending','Packing In Progress','Pending')")).scalar() or 0,
@@ -94,7 +99,7 @@ def packing_dashboard(request: Request, db: Session = Depends(get_db)):
         "portions": db.execute(text("SELECT COALESCE(SUM(packed_portions),0) FROM packing_dispatch WHERE dispatch_status IN ('Packed','Out for Delivery','Delivered')")).scalar() or 0,
     }
     return render(request, "packing/index.html", {"rows": rows, "summary": summary, "page_title": "Trayline / Packing",
-                                                   "filters": {"search": search, "from_date": from_date, "to_date": to_date, "status": status_f},
+                                                   "filters": {"search": search, "from_date": from_date, "to_date": to_date, "status": status_f, "scope": scope},
                                                    "error": request.query_params.get("error")})
 
 
@@ -117,18 +122,27 @@ def packing_order(request: Request, packing_id: int, db: Session = Depends(get_d
     # QC/packing, with planned portions (from order_lines) vs received, the lack
     # (planned − received), and the protein/carb captured by Hot Kitchen in the
     # [NUT w= p= c=] tag on the section remark.
+    # Batch 146 (fixes image 11): the previous GROUP BY included per-ingredient
+    # columns (received/remarks), so a recipe appeared once PER INGREDIENT — the
+    # long duplicated list in the screenshot. Aggregate to ONE row per recipe:
+    # planned from order_lines, received = SUM across the recipe's QC lines, and
+    # the section it came from. Nutrition (protein/carb) is pulled from any line
+    # of the recipe that carries the Hot Kitchen [NUT ...] tag.
     import re as _re
     tx = db.execute(text("""
-        SELECT k.recipe_no, k.recipe_name,
-               COALESCE(k.received_qty_standard, 0) AS received,
-               COALESCE(k.section_remarks, '') AS remarks,
-               COALESCE(ol.required_portions, 0) AS planned
+        SELECT k.recipe_no,
+               MAX(k.recipe_name) AS recipe_name,
+               ROUND(SUM(COALESCE(k.received_qty_standard, 0)), 2) AS received,
+               MAX(COALESCE(ol.required_portions, 0)) AS planned,
+               MAX(COALESCE(k.from_section, '')) AS from_section,
+               GROUP_CONCAT(COALESCE(k.section_remarks, '') SEPARATOR ' ') AS remarks,
+               MAX(k.standard_uom) AS uom
         FROM kitchen_section_transactions k
         LEFT JOIN order_lines ol
           ON ol.order_no = k.order_no AND ol.recipe_no = k.recipe_no
         WHERE k.order_no = :order_no AND k.current_section = 'QC'
-        GROUP BY k.recipe_no, k.recipe_name, k.received_qty_standard, k.section_remarks, ol.required_portions
-        ORDER BY k.recipe_name
+        GROUP BY k.recipe_no
+        ORDER BY MAX(k.recipe_name)
     """), {"order_no": row.order_no}).mappings().all()
 
     pack_lines = []
@@ -151,6 +165,7 @@ def packing_order(request: Request, packing_id: int, db: Session = Depends(get_d
             "planned": planned, "received": received,
             "lack": max(planned - received, 0),
             "protein": p, "carb": c, "weight": w,
+            "from_section": t["from_section"], "uom": t["uom"],
         })
 
     return render(request, "packing/order.html",
@@ -170,6 +185,7 @@ def update_packing(
     dispatch_date: Optional[str] = Form(None),
     packing_status: str = Form("Packed"),
     remarks: str = Form(""),
+    region: str = Form(""),
     db: Session = Depends(get_db),
 ):
     require_action(request, "packing", "edit")
@@ -187,6 +203,9 @@ def update_packing(
         packing_status = "Packed"
     row.packed_portions = packed_portions
     row.rejected_portions = rejected_portions
+    # Batch 146: region chosen at packing carries through to Dispatch/Logistics.
+    if (region or "").strip():
+        row.region = region.strip()
     # Batch 121: persist bag count (column added via ensure_schema). Written
     # with raw SQL so it works even if the ORM model attribute isn't present.
     try:

@@ -116,6 +116,10 @@ class RecipeIngredient(Base):
     # store-issuance time via app.core.production_constants.resolve_issue_section.
     # Added via an import-time schema guard in main.py (raw column, no ORM lag).
     kitchen_section = Column(String(80), nullable=True)
+    # Batch 136: "Butchery Cutting / Portion size" from the recipe workbook
+    # (e.g. "Chicken Breast Butterfly - 140 g"). Shown in the Butchery section so
+    # the butcher knows the exact cut/portion. Free text; may be blank.
+    cutting_portion_size = Column(String(255), nullable=True)
 
     qty_batch = Column(Numeric(18, 4), nullable=False, default=0)
     portions = Column(Numeric(18, 4), nullable=False, default=1)

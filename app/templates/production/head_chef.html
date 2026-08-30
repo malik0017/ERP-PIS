@@ -263,6 +263,17 @@
             <th>Portions</th>
             <th>Next Action</th>
           </tr>
+          {# Batch 137: per-column filters (client-side, AND across columns). #}
+          <tr class="col-filter-row">
+            <th><input class="cf" data-col="0" placeholder="Order…"></th>
+            <th><input class="cf" data-col="1" placeholder="Customer / brand…"></th>
+            <th><input class="cf" data-col="2" placeholder="Status…"></th>
+            <th><input class="cf" data-col="3" placeholder="Delivery…"></th>
+            <th><input class="cf" data-col="4" placeholder="Cooking…"></th>
+            <th><input class="cf" data-col="5" placeholder="Material…"></th>
+            <th><input class="cf" data-col="6" placeholder="Portions…"></th>
+            <th></th>
+          </tr>
         </thead>
         <tbody>{% for o in orders %}<tr>
             <td><strong>{{ o.order_no }}</strong></td>
@@ -286,5 +297,22 @@
     </div>
   </div>
 </div>
-<script>function filterHeadChef() { const q = (document.getElementById('hcSearch').value || '').toLowerCase(); document.querySelectorAll('#headChefTable tbody tr').forEach(tr => tr.style.display = tr.innerText.toLowerCase().includes(q) ? '' : 'none') }</script>
+<script>function filterHeadChef() { const q = (document.getElementById('hcSearch').value || '').toLowerCase(); document.querySelectorAll('#headChefTable tbody tr').forEach(tr => tr.style.display = tr.innerText.toLowerCase().includes(q) ? '' : 'none') }
+// Batch 137: per-column filters (AND across columns).
+(function(){
+  var inputs = Array.prototype.slice.call(document.querySelectorAll('#headChefTable .col-filter-row .cf'));
+  function apply(){
+    var terms = inputs.map(function(i){ return {c:parseInt(i.dataset.col,10), v:(i.value||'').toLowerCase().trim()}; }).filter(function(t){ return t.v; });
+    document.querySelectorAll('#headChefTable tbody tr').forEach(function(tr){
+      var cells = tr.querySelectorAll('td');
+      tr.style.display = terms.every(function(t){ var c=cells[t.c]; return c && c.innerText.toLowerCase().indexOf(t.v)>-1; }) ? '' : 'none';
+    });
+  }
+  inputs.forEach(function(i){ i.addEventListener('keyup', apply); i.addEventListener('change', apply); });
+})();</script>
+<style>
+.col-filter-row th{padding:4px 6px;background:#f4f8fc;}
+.col-filter-row .cf{width:100%;border:1px solid #cbdbea;border-radius:6px;padding:3px 7px;font-size:12px;}
+[data-bs-theme="dark"] .col-filter-row th{background:rgba(255,255,255,.03);}
+</style>
 {% endblock %}

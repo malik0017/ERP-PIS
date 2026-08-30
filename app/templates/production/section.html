@@ -63,6 +63,10 @@
   [data-bs-theme="dark"] .sec-st-done{background:rgba(19,122,62,.24);color:#8fdca9;}
   [data-bs-theme="dark"] .sec-st-none{background:rgba(90,107,128,.24);color:#aab6c6;}
   [data-bs-theme="dark"] .sec-st-late{background:rgba(180,35,24,.24);color:#f3a29a;}
+  /* Batch 137: compact per-column filter inputs */
+  .col-filter-row th{padding:4px 6px;background:#f4f8fc;}
+  .col-filter-row .cf{width:100%;border:1px solid #cbdbea;border-radius:6px;padding:3px 7px;font-size:12px;font-weight:500;}
+  [data-bs-theme="dark"] .col-filter-row th{background:rgba(255,255,255,.03);}
   .qs-val { font-size: 13.5px; font-weight: 800; color: #132947; }
   .qs-val-zero { color: #16a34a; }
   .qs-div { width: 1px; background: var(--phoenix-border-color, #dfe7f0); }
@@ -212,6 +216,12 @@
         </select></div>
       <div><label class="fw-bold small text-uppercase">Quick Search</label><input class="form-control" name="search"
           value="{{ filters.search or '' }}" placeholder="Search order, customer, brand, recipe..."></div>
+      {# Batch 137: scope toggle — default hides back-dated orders (current work
+         only); switch to All to see history. #}
+      <div><label class="fw-bold small text-uppercase">Show</label><select class="form-select" name="scope" onchange="this.form.submit()">
+          <option value="current" {% if filters.scope != 'all' %}selected{% endif %}>Current (today onward)</option>
+          <option value="all" {% if filters.scope == 'all' %}selected{% endif %}>All (incl. past)</option>
+        </select></div>
       <button class="pis-btn pis-primary filter-submit" type="submit">Filter</button>
     </form>
     <div class="table-responsive">
@@ -226,6 +236,16 @@
             <th>Progress</th>
             <th>Qty Summary</th>
             <th>Action</th>
+          </tr>
+          {# Batch 137: per-column filters. Each input filters its own column
+             client-side; combined with AND. "Progress/Qty/Action" have no filter. #}
+          <tr class="col-filter-row">
+            <th><input class="cf" data-col="0" placeholder="Filter order…"></th>
+            <th><input class="cf" data-col="1" placeholder="Filter customer…"></th>
+            <th><input class="cf" data-col="2" placeholder="Filter brand…"></th>
+            <th><input class="cf" data-col="3" placeholder="Filter date…"></th>
+            <th><input class="cf" data-col="4" placeholder="Filter status…"></th>
+            <th colspan="3"></th>
           </tr>
         </thead>
         <tbody>
@@ -315,5 +335,21 @@
       tr.style.display = tr.innerText.toLowerCase().includes(q) ? '' : 'none';
     });
   }
+  // Batch 137: per-column client-side filters (AND across columns).
+  (function(){
+    var inputs = Array.prototype.slice.call(document.querySelectorAll('.col-filter-row .cf'));
+    function apply(){
+      var terms = inputs.map(function(i){ return {c:parseInt(i.dataset.col,10), v:(i.value||'').toLowerCase().trim()}; })
+                        .filter(function(t){ return t.v; });
+      document.querySelectorAll('#ordersTable tbody tr').forEach(function(tr){
+        var cells = tr.querySelectorAll('td');
+        var show = terms.every(function(t){
+          var cell = cells[t.c]; return cell && cell.innerText.toLowerCase().indexOf(t.v) > -1;
+        });
+        tr.style.display = show ? '' : 'none';
+      });
+    }
+    inputs.forEach(function(i){ i.addEventListener('keyup', apply); i.addEventListener('change', apply); });
+  })();
 </script>
 {% endblock %}

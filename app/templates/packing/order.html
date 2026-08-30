@@ -143,6 +143,14 @@
               <option value="Packing In Progress">Packing In Progress</option>
               <option value="Packed" selected>Packed</option>
             </select></div>
+          {# Batch 146: Region set at packing flows through to Dispatch & the
+             Logistics report (region-wise bag counts). #}
+          <div><label>Region</label><select class="form-select" name="region" {% if _p_locked %}disabled{% endif %}>
+              <option value="">-- select region --</option>
+              {% for rg in ['Riyadh','Eastern','Jeddah','Makkah','Madinah','Qassim','Other'] %}
+              <option value="{{ rg }}" {% if row.region == rg %}selected{% endif %}>{{ rg }}</option>
+              {% endfor %}
+            </select></div>
           <div style="grid-column:1/-1"><label>Packing Remarks</label><input class="form-control" name="remarks"
               value="{{ row.remarks or '' }}" placeholder="Trayline / packing notes" {% if _p_locked %}readonly{% endif %}></div>
         </div>
@@ -196,6 +204,7 @@
         <thead>
           <tr>
             <th>Recipe</th>
+            <th>From Section</th>
             <th class="text-end">Required</th>
             <th class="text-end">Received</th>
             <th class="text-end">Lack</th>
@@ -205,13 +214,14 @@
         </thead>
         <tbody>{% for l in pack_lines %}<tr>
             <td>{{ l.recipe_no }}<br><strong>{{ l.recipe_name }}</strong></td>
+            <td><span class="text-secondary">{{ l.from_section or '—' }}</span></td>
             <td class="text-end">{{ '%.2f'|format(l.planned) }}</td>
-            <td class="text-end">{{ '%.2f'|format(l.received) }}</td>
+            <td class="text-end">{{ '%.2f'|format(l.received) }} <span class="text-secondary">{{ l.uom or '' }}</span></td>
             <td class="text-end {% if l.lack > 0 %}text-danger fw-bold{% endif %}">{{ '%.2f'|format(l.lack) }}</td>
             <td class="text-end">{{ l.protein or '—' }}</td>
             <td class="text-end">{{ l.carb or '—' }}</td>
           </tr>{% else %}<tr>
-            <td colspan="6" class="text-secondary">No recipe lines have reached QC/packing yet.</td>
+            <td colspan="7" class="text-secondary">No recipe lines have reached QC/packing yet.</td>
           </tr>{% endfor %}</tbody>
       </table>
     </div>

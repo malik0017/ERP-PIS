@@ -27,6 +27,15 @@
             {% endfor %}
           </select>
         </div>
+        {# Batch 144: current-work scope toggle. Default hides back-dated orders
+           (delivery today onward); switch to All to see history. #}
+        <div class="col-6 col-md-2">
+          <label class="form-label fs-10 text-uppercase fw-bold text-body-tertiary mb-1">{{ t('Show') }}</label>
+          <select class="form-select form-select-sm" name="scope">
+            <option value="current" {% if not filters or filters.scope != 'all' %}selected{% endif %}>{{ t('Current (today onward)') }}</option>
+            <option value="all" {% if filters and filters.scope == 'all' %}selected{% endif %}>{{ t('All (incl. past)') }}</option>
+          </select>
+        </div>
         <div class="col-12 col-md-4">
           <label class="form-label fs-10 text-uppercase fw-bold text-body-tertiary mb-1">{{ t('Quick Search') }}</label>
           <input class="form-control form-control-sm" type="search" name="search" placeholder="Search order, customer, brand..." value="{{ filters.search if filters else '' }}">

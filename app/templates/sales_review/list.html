@@ -76,9 +76,11 @@
       <span>{{ t('Requests') }} <span class="badge badge-phoenix badge-phoenix-secondary">{{ orders|length }}</span></span>
       <span class="fs-9 text-body-tertiary">{{ t('Inventory checked against QC-cleared stock only') }}</span>
     </div>
-    <div class="card-body p-0">
+    <div class="card-body p-4">
       <div class="table-responsive">
-        <table class="table table-hover mb-0 align-middle" data-isfc-table>
+        <table class="table table-hover mb-0 align-middle" data-isfc-table data-isfc-colfilters
+               data-isfc-title="Sales Requests"
+               data-isfc-subtitle="Status: {{ filters.status or 'All' }} · Generated for review · ISFC ERP">
           <thead class="bg-body-highlight">
             <tr>
               <th>{{ t('Request') }}</th>
@@ -88,7 +90,7 @@
               <th class="text-end">{{ t('Value') }}</th>
               <th class="text-center">{{ t('Inventory') }}</th>
               <th class="text-center">{{ t('Review') }}</th>
-              <th class="text-end">{{ t('Action') }}</th>
+              <th class="text-end" data-isfc-nofilter>{{ t('Action') }}</th>
             </tr>
           </thead>
           <tbody>

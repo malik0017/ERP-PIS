@@ -282,6 +282,15 @@ def _filtered_orders_query(db: Session, request: Request, date_column: str = "or
     if date_to:
         q = q.filter(col <= date_to)
 
+    # Batch 137: when the user hasn't chosen an explicit date range or a named
+    # view (Today/Week/Month/etc.), default to CURRENT work only — delivery today
+    # or later — so back-dated orders don't clutter the queue. `?scope=all` opts
+    # back into full history. Named views and explicit From/To always win, so this
+    # only affects the otherwise-unfiltered default landing.
+    scope = (request.query_params.get("scope") or "").strip().lower()
+    if scope != "all" and not date_from and not date_to and not view:
+        q = q.filter(func.coalesce(col, date(9999, 12, 31)) >= date.today())
+
     if status:
         if status == "pending":
             q = q.filter(CustomerOrder.status.in_(["Submitted", "Head Chef Approved", "BOM Generated", "Store Pending", "Packing Pending", "QC Hold"]))
@@ -289,7 +298,7 @@ def _filtered_orders_query(db: Session, request: Request, date_column: str = "or
             q = q.filter(CustomerOrder.status.in_(["In Production", "QC In Progress", "Packing In Progress", "Out for Delivery"]))
         else:
             q = q.filter(CustomerOrder.status == status)
-    return q, {"view": view, "status": status, "date_from": date_from, "date_to": date_to}
+    return q, {"view": view, "status": status, "date_from": date_from, "date_to": date_to, "scope": scope or "current"}
 
 
 def _order_stats(db: Session):
@@ -389,7 +398,13 @@ def _order_flow_status(db: Session, order_no: str, order=None) -> dict:
 
 def _store_order_summary(db: Session, request: Request):
     q, filters = _filtered_orders_query(db, request, date_column="cooking")
-    rows = q.order_by(CustomerOrder.cooking_date.desc(), CustomerOrder.required_delivery_date.desc(), CustomerOrder.id.desc()).limit(300).all()
+    # Batch 137: priority order — nearest cooking date first (NULLs last), then
+    # nearest delivery. Matches how the store actually works: issue for what's
+    # cooking soonest. (Was newest-first, which buried urgent work.)
+    rows = q.order_by(CustomerOrder.cooking_date.is_(None),
+                      CustomerOrder.cooking_date.asc(),
+                      CustomerOrder.required_delivery_date.asc(),
+                      CustomerOrder.id.desc()).limit(300).all()
     ids = [o.order_no for o in rows]
     line_map = {}
     if ids:
@@ -789,12 +804,14 @@ async def bom_report(request: Request, order_no: str, group_by: str = "item", ex
     if export == "csv":
         output = io.StringIO()
         writer = csv.writer(output)
-        writer.writerow(["Group", "Item Code", "Item Name", "Main Category", "Sub Category", "Issue Section", "Required Qty", "UOM", "Estimated Cost"])
+        # Batch 140: cost removed from the BOM export — this is a kitchen/store
+        # picking document, not a costing sheet.
+        writer.writerow(["Group", "Item Code", "Item Name", "Main Category", "Sub Category", "Issue Section", "Required Qty", "UOM"])
         for r in report_rows:
             writer.writerow([
                 r.get("group_value", ""), r.get("ingredient_code", ""), r.get("ingredient_name", ""),
                 r.get("main_category", ""), r.get("sub_category", ""), r.get("issue_section", ""),
-                r.get("required_qty", 0), r.get("standard_uom", ""), r.get("estimated_cost", 0),
+                r.get("required_qty", 0), r.get("standard_uom", ""),
             ])
         output.seek(0)
         return StreamingResponse(
@@ -1024,6 +1041,11 @@ async def section_page(request: Request, section_name: str, db: Session = Depend
 
     search = (request.query_params.get("search") or "").strip()
     status_filter = (request.query_params.get("status") or "").strip()
+    # Batch 137: by default show only current work — orders whose delivery is
+    # today or later — and sort priority-wise (nearest delivery first). The user
+    # can opt back into history with ?scope=all. Back-dated orders are hidden
+    # rather than deleted, so nothing is lost.
+    scope = (request.query_params.get("scope") or "current").strip().lower()
     params = {"section": section, "search": f"%{search}%"}
     extra_where = ""
     if search:
@@ -1034,6 +1056,11 @@ async def section_page(request: Request, section_name: str, db: Session = Depend
         extra_where += " AND COALESCE(k.received_qty_standard,0) > 0"
     elif status_filter == "completed":
         extra_where += " AND (UPPER(COALESCE(k.transaction_status,'')) LIKE 'COMPLETED%' OR UPPER(COALESCE(k.transaction_status,'')) = 'TRANSFERRED')"
+
+    # HAVING (not WHERE) because delivery date is an aggregate over the group.
+    having = ""
+    if scope != "all":
+        having = "HAVING COALESCE(MAX(co.required_delivery_date), '9999-12-31') >= CURDATE()"
 
     order_rows = db.execute(text(f"""
         SELECT
@@ -1055,7 +1082,12 @@ async def section_page(request: Request, section_name: str, db: Session = Depend
         WHERE k.current_section = :section
         {extra_where}
         GROUP BY k.order_no
-        ORDER BY MAX(k.updated_at) DESC, k.order_no DESC
+        {having}
+        ORDER BY
+            -- unfinished orders first, then by nearest delivery (priority)
+            (SUM(CASE WHEN UPPER(COALESCE(k.transaction_status,'')) LIKE 'COMPLETED%' OR UPPER(COALESCE(k.transaction_status,'')) = 'TRANSFERRED' THEN 1 ELSE 0 END) >= COUNT(*)) ASC,
+            COALESCE(MAX(co.required_delivery_date), '9999-12-31') ASC,
+            k.order_no DESC
     """), params).mappings().all()
 
     if request.query_params.get("export") == "csv":
@@ -1088,7 +1120,7 @@ async def section_page(request: Request, section_name: str, db: Session = Depend
             "total_lines": total_lines,
             "received_lines": received_lines,
             "completed_lines": completed_lines,
-            "filters": {"search": search, "status": status_filter},
+            "filters": {"search": search, "status": status_filter, "scope": scope},
             "today": date.today().isoformat(),
             "page_title": f"{section} Workstation",
             "error": request.query_params.get("error"),
@@ -1125,8 +1157,11 @@ async def section_order_page(request: Request, section_name: str, order_no: str,
         "lines": len(txs),
         "issued": sum(float(t.issued_qty_standard or 0) for t in txs),
         "received": sum(float(t.received_qty_standard or 0) for t in txs),
+        "processed": sum(float(t.processed_qty_standard or 0) for t in txs),
         "balance": sum(float(t.balance_qty_standard or 0) for t in txs),
         "completed": sum(1 for t in txs if str(t.transaction_status or '').upper().startswith('COMPLETED') or str(t.transaction_status or '').upper() == 'TRANSFERRED'),
+        # Batch 136: dominant UOM across the order's lines, for the KPI labels.
+        "uom": (max(((t.standard_uom or "") for t in txs), key=lambda u: sum(1 for x in txs if (x.standard_uom or "") == u)) if txs else ""),
     }
 
     if request.query_params.get("export") == "csv":
@@ -1139,6 +1174,20 @@ async def section_order_page(request: Request, section_name: str, order_no: str,
         return StreamingResponse(iter(['\ufeff' + output.getvalue()]), media_type="text/csv", headers={"Content-Disposition": f"attachment; filename={order_no}_{_section_slug(section)}_receiving.csv"})
 
     next_sections = ["Cutting", "Butchery", "Hot Kitchen", "Cold Kitchen", "Bakery/Pastry", "QC", "Trayline / Packing", "Dispatch"]  # Batch 19: Thawing/Marination retired; Packing unified into Trayline / Packing
+
+    # Batch 136: Butchery-only — map ingredient_code -> cutting/portion text so the
+    # butcher sees the exact cut (e.g. "Chicken Breast Butterfly - 140 g"). Only
+    # queried for Butchery to avoid overhead on the other four sections.
+    cutting_map = {}
+    if section == "Butchery" and txs:
+        from app.models.recipe import RecipeIngredient as _RI
+        codes = {t.ingredient_code for t in txs if t.ingredient_code}
+        if codes:
+            for code, cut in (db.query(_RI.inventory_code, _RI.cutting_portion_size)
+                              .filter(_RI.inventory_code.in_(codes),
+                                      _RI.cutting_portion_size.isnot(None)).all()):
+                if cut and code not in cutting_map:
+                    cutting_map[code] = cut
 
     return render(
         request,
@@ -1153,6 +1202,7 @@ async def section_order_page(request: Request, section_name: str, order_no: str,
             "ingredient_groups": ingredient_groups,
             "totals": totals,
             "next_sections": next_sections,
+            "cutting_map": cutting_map,
             "page_title": f"{section} Receiving - {order_no}",
             "error": request.query_params.get("error"),
         },
@@ -1764,8 +1814,18 @@ async def store_issuance_by_section_export(request: Request, db: Session = Depen
     # by (section, ingredient) — sum required + issued, and collect the distinct
     # orders/customers so the store still sees who the pull is for. The raw dump
     # is still available with ?consolidated=0 if ever needed.
+    #
+    # Batch 138 FIX (images 11-13): when the user has filtered to a SINGLE order,
+    # a cross-order consolidation is exactly the wrong thing to show — they want
+    # that order's real line detail. So we auto-switch to line-detail whenever an
+    # order filter is present (unless explicitly overridden), which fixes the
+    # "I filtered one order but it shows other orders' data" complaint.
     # ------------------------------------------------------------------
-    consolidated = (request.query_params.get("consolidated") or "1").strip() != "0"
+    _cons_param = (request.query_params.get("consolidated") or "").strip()
+    if _cons_param == "":
+        consolidated = not bool(order_filter)   # order filter → line detail
+    else:
+        consolidated = _cons_param != "0"
     if consolidated:
         agg: dict = {}
         for r in raw_rows:
@@ -1836,49 +1896,70 @@ async def store_issuance_by_section_export(request: Request, db: Session = Depen
 
             buf = io.BytesIO()
             doc = SimpleDocTemplate(buf, pagesize=landscape(A4),
-                                    leftMargin=12 * mm, rightMargin=12 * mm,
+                                    leftMargin=10 * mm, rightMargin=10 * mm,
                                     topMargin=12 * mm, bottomMargin=12 * mm)
             styles = getSampleStyleSheet()
+            # Batch 138: a small wrapping cell style so long Orders/Customers lists
+            # wrap inside the column instead of overflowing the page (Image 11).
+            from reportlab.lib.styles import ParagraphStyle
+            cell = ParagraphStyle("cell", parent=styles["Normal"], fontSize=6.5, leading=8)
+            cellB = ParagraphStyle("cellB", parent=cell, fontName="Helvetica-Bold")
+
+            def P(v, bold=False):
+                return Paragraph(str(v if v is not None else "").replace("&", "&amp;"),
+                                 cellB if bold else cell)
+
+            title = "Store Issuance — " + ("Consolidated Picking List" if consolidated else "Order Line Detail")
+            scope_bits = [f"Section: {section_filter or 'All sections'}", f"Show: {show}"]
+            if order_filter:
+                scope_bits.append(f"Order: {order_filter}")
+            if customer_filter:
+                scope_bits.append(f"Customer: {customer_filter}")
+            if date_from or date_to:
+                scope_bits.append(f"Delivery: {date_from or '…'} → {date_to or '…'}")
+            scope_bits.append(f"Generated: {date.today().isoformat()}")
+            scope_bits.append("ISFC ERP")
             elems = [
-                Paragraph("Store Issuance — " + ("Consolidated Picking List" if consolidated else "Full Line Detail"), styles["Title"]),
-                Paragraph(
-                    f"Section: {section_filter or 'All sections'} &nbsp;·&nbsp; "
-                    f"Show: {show} &nbsp;·&nbsp; Generated: {date.today().isoformat()} &nbsp;·&nbsp; ISFC ERP",
-                    styles["Normal"]),
-                Spacer(1, 6 * mm),
+                Paragraph(title, styles["Title"]),
+                Paragraph(" · ".join(scope_bits), styles["Normal"]),
+                Spacer(1, 5 * mm),
             ]
-            head = ["Section", "Ingredient Code", "Ingredient", "Total Required",
-                    "Total Issued", "UOM", "Orders", "Customers", "Status"] if consolidated else \
-                   ["Section", "Order", "Customer", "Recipe", "Ingredient",
-                    "Required", "Issued", "UOM", "Status"]
-            data = [head]
+            if consolidated:
+                head = ["Section", "Code", "Ingredient", "Total Required",
+                        "Total Issued", "UOM", "Orders", "Customers", "Status"]
+                col_widths = [24*mm, 20*mm, 42*mm, 22*mm, 22*mm, 14*mm, 55*mm, 40*mm, 22*mm]
+            else:
+                head = ["Section", "Order", "Customer", "Recipe", "Ingredient",
+                        "Required", "Issued", "UOM", "Status"]
+                col_widths = [22*mm, 30*mm, 34*mm, 44*mm, 46*mm, 20*mm, 20*mm, 14*mm, 22*mm]
+            data = [[P(h, bold=True) for h in head]]
             for r in rows:
                 if consolidated:
                     data.append([
-                        r["section"], r["ingredient_code"], r["ingredient_name"] or "",
-                        f'{r["required_qty"]:.3f}', f'{r["issued_qty"]:.3f}', r["uom"],
-                        r["orders"], r["customers"], r["issuance_status"],
+                        P(r["section"]), P(r["ingredient_code"]), P(r["ingredient_name"] or ""),
+                        P(f'{r["required_qty"]:.3f}'), P(f'{r["issued_qty"]:.3f}'), P(r["uom"]),
+                        P(r["orders"]), P(r["customers"]), P(r["issuance_status"]),
                     ])
                 else:
                     data.append([
-                        r["section"], r["order_no"], r["customer_name"] or "",
-                        f'{r["recipe_no"] or ""} {r["recipe_name"] or ""}'.strip(),
-                        f'{r["ingredient_code"] or ""} {r["ingredient_name"] or ""}'.strip(),
-                        f'{float(r["required_qty"] or 0):.2f}',
-                        f'{float(r["issued_qty"] or 0):.2f}',
-                        r["uom"], r["issuance_status"],
+                        P(r["section"]), P(r["order_no"]), P(r["customer_name"] or ""),
+                        P(f'{r["recipe_no"] or ""} — {r["recipe_name"] or ""}'.strip(" —")),
+                        P(f'{r["ingredient_code"] or ""} — {r["ingredient_name"] or ""}'.strip(" —")),
+                        P(f'{float(r["required_qty"] or 0):.2f}'),
+                        P(f'{float(r["issued_qty"] or 0):.2f}'),
+                        P(r["uom"]), P(r["issuance_status"]),
                     ])
-            tbl = Table(data, repeatRows=1)
+            tbl = Table(data, colWidths=col_widths, repeatRows=1)
             tbl.setStyle(TableStyle([
                 ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1e3a5f")),
                 ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-                ("FONTSIZE", (0, 0), (-1, -1), 6.5),
-                ("FONTSIZE", (0, 0), (-1, 0), 7),
                 ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#d8e2ef")),
                 ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f5f8fc")]),
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("LEFTPADDING", (0, 0), (-1, -1), 3),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 3),
+                ("LEFTPADDING", (0, 0), (-1, -1), 4),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+                ("TOPPADDING", (0, 0), (-1, -1), 3),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
             ]))
             elems.append(tbl)
             doc.build(elems)
@@ -1899,10 +1980,7 @@ async def store_issuance_by_section_export(request: Request, db: Session = Depen
 
 @router.post("/store-issuance/{line_id}/quick-issue")
 async def quick_issue_store_line(request: Request, line_id: int, db: Session = Depends(get_db)):
-    """UI fix: issue a line at its full required quantity directly from the
-    'Store Issuance — By Kitchen Section' grouped view, without navigating
-    to the order-level page first. Uses the exact same update path (and
-    audit trail) as the manual per-order issuance form."""
+   
     require_action(request, "store_issuance", "edit")
     line = db.query(StoreIssuanceLine).filter(StoreIssuanceLine.id == line_id).first()
     if not line:

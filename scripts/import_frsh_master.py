@@ -168,6 +168,10 @@ def import_recipe_ingredients(db, ws, company_id, dry):
     c_rname = col(hdr, "recipe name")
     c_day = col(hdr, "day")
     c_sect = col(hdr, "section")
+    # Batch 136: Butchery cutting / portion-size column (header carries a typo
+    # "Buchery" in the workbook — match both spellings).
+    c_cut = col(hdr, "buchery cutting /portion size", "butchery cutting /portion size",
+                "buchery cutting / portion size", "cutting /portion size", "portion size")
     c_subdesc = col(hdr, "sub recipe description")
     c_icode = col(hdr, "item code")
     c_iname = col(hdr, "item / ingredient", "item/ingredient")
@@ -213,6 +217,7 @@ def import_recipe_ingredients(db, ws, company_id, dry):
             "total": _f(row[c_total]) if c_total is not None else 0.0,
             "section": map_section(row[c_sect]) if c_sect is not None else "",
             "section_raw": _s(row[c_sect]) if c_sect is not None else "",
+            "cutting": _s(row[c_cut]) if c_cut is not None else "",
             "subdesc": _s(row[c_subdesc]) if c_subdesc is not None else "",
             "butchery": _s(row[c_butchery]) if c_butchery is not None else "",
         })
@@ -272,11 +277,11 @@ def import_recipe_ingredients(db, ws, company_id, dry):
                         (recipe_id, line_no, line_type, inventory_code, item_name,
                          uom, qty_batch, portions, qty_per_portion, cost_uom,
                          line_cost, line_cost_per_portion, sub_recipe_code, remark,
-                         kitchen_section, missing_cost, created_at, updated_at)
+                         kitchen_section, cutting_portion_size, missing_cost, created_at, updated_at)
                     VALUES
                         (:rid, :ln, 'Main Recipe', :icode, :iname, :uom,
                          :qty_batch, :portions, :qty_port, :cost_uom,
-                         :line_cost, :fcpp, :subrecipe, :remark, :ksec, :missing, NOW(), NOW())
+                         :line_cost, :fcpp, :subrecipe, :remark, :ksec, :cut, :missing, NOW(), NOW())
                 """), {
                     "rid": rid, "ln": ln, "icode": line["icode"],
                     "iname": line["iname"], "uom": line["uom"],
@@ -296,6 +301,8 @@ def import_recipe_ingredients(db, ws, company_id, dry):
                     # mapped canonical name; the raw sheet value is preserved
                     # only in the remark. Blank -> NULL.
                     "ksec": line["section"] or line["section_raw"] or None,
+                    # Batch 136: Butchery cutting / portion size. Blank -> NULL.
+                    "cut": line["cutting"] or None,
                     "missing": 1 if not line["price"] else 0,
                 })
                 ok_lines += 1
