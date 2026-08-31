@@ -1167,9 +1167,9 @@ async def section_order_page(request: Request, section_name: str, order_no: str,
     if request.query_params.get("export") == "csv":
         output = io.StringIO()
         writer = csv.writer(output)
-        writer.writerow(["Order", "Section", "Recipe Code", "Recipe Name", "Ingredient Code", "Ingredient Name", "Issued Qty", "Received Qty", "Processed Qty", "Waste Qty", "Return Qty", "Transfer Qty", "Balance Qty", "UOM", "Status"])
+        writer.writerow(["Order", "Section", "Recipe Name", "Recipe Code", "Ingredient Name", "Ingredient Code", "Received Qty", "Transferred Qty", "Waste Qty", "Return Qty", "Balance Qty", "UOM", "Status"])
         for tx in txs:
-            writer.writerow([tx.order_no, section, tx.recipe_no, tx.recipe_name, tx.ingredient_code, tx.ingredient_name, tx.issued_qty_standard, tx.received_qty_standard, tx.processed_qty_standard, tx.waste_qty_standard, tx.returned_qty_standard, tx.transferred_qty_standard, tx.balance_qty_standard, tx.standard_uom, tx.transaction_status])
+            writer.writerow([tx.order_no, section, tx.recipe_name, tx.recipe_no, tx.ingredient_name, tx.ingredient_code, tx.received_qty_standard or tx.issued_qty_standard, tx.processed_qty_standard, tx.waste_qty_standard, tx.returned_qty_standard, tx.balance_qty_standard, tx.standard_uom, tx.transaction_status])
         output.seek(0)
         return StreamingResponse(iter(['\ufeff' + output.getvalue()]), media_type="text/csv", headers={"Content-Disposition": f"attachment; filename={order_no}_{_section_slug(section)}_receiving.csv"})
 
@@ -1189,6 +1189,18 @@ async def section_order_page(request: Request, section_name: str, order_no: str,
                 if cut and code not in cutting_map:
                     cutting_map[code] = cut
 
+    # Batch 149: main/sub category per ingredient (image 12) — helps decide the
+    # next-section transfer. Looked up once from the Ingredient master, keyed by
+    # code, so it's cheap and section-agnostic.
+    category_map = {}
+    if txs:
+        from app.models.ingredient import Ingredient as _Ing
+        _codes = {t.ingredient_code for t in txs if t.ingredient_code}
+        if _codes:
+            for row in (db.query(_Ing.inventory_code, _Ing.main_category, _Ing.sub_category)
+                        .filter(_Ing.inventory_code.in_(_codes)).all()):
+                category_map[row[0]] = {"main": row[1] or "", "sub": row[2] or ""}
+
     return render(
         request,
         "production/section_order.html",
@@ -1203,6 +1215,7 @@ async def section_order_page(request: Request, section_name: str, order_no: str,
             "totals": totals,
             "next_sections": next_sections,
             "cutting_map": cutting_map,
+            "category_map": category_map,
             "page_title": f"{section} Receiving - {order_no}",
             "error": request.query_params.get("error"),
         },
@@ -1689,12 +1702,12 @@ async def head_chef_dashboard(request: Request, db: Session = Depends(get_db)):
     _ensure_sales_review_schema(db)
     require_area(request, "head_chef")
     q, filters = _filtered_orders_query(db, request, date_column="delivery")
-    # Batch 17: planning order = SOONEST delivery first (was newest-first),
-    # NULL delivery dates sink to the bottom so dated work is always on top.
-    orders = (q.order_by(CustomerOrder.required_delivery_date.is_(None),
-                         CustomerOrder.required_delivery_date.asc(),
-                         CustomerOrder.required_delivery_time.asc(),
-                         CustomerOrder.id.asc())
+    # Batch 148: NEW orders on top (image 2). A just-created order must be
+    # immediately visible, so the primary sort is newest-first by id; delivery
+    # date is the tiebreaker. (Was soonest-delivery-first, which buried new work.)
+    orders = (q.order_by(CustomerOrder.id.desc(),
+                         CustomerOrder.required_delivery_date.is_(None),
+                         CustomerOrder.required_delivery_date.asc())
                 .limit(200).all())
     from datetime import date as _date, timedelta as _td
     _today = _date.today()
@@ -1821,11 +1834,15 @@ async def store_issuance_by_section_export(request: Request, db: Session = Depen
     # order filter is present (unless explicitly overridden), which fixes the
     # "I filtered one order but it shows other orders' data" complaint.
     # ------------------------------------------------------------------
+    # Batch 151 (image 7): the store keeper wants the CONSOLIDATED picking list
+    # even when an order is selected — that's the whole point of "by section"
+    # (e.g. Bakery/Pastry = 17 consolidated ingredients, not the raw per-line dump).
+    # So consolidated is now the DEFAULT for exports regardless of the order
+    # filter. Line detail is only produced when explicitly asked with
+    # ?consolidated=0. (Batch 138 auto-switched to line-detail on an order filter,
+    # which turned out to be the opposite of what's wanted here.)
     _cons_param = (request.query_params.get("consolidated") or "").strip()
-    if _cons_param == "":
-        consolidated = not bool(order_filter)   # order filter → line detail
-    else:
-        consolidated = _cons_param != "0"
+    consolidated = _cons_param != "0"
     if consolidated:
         agg: dict = {}
         for r in raw_rows:

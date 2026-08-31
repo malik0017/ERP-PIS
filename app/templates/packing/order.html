@@ -168,7 +168,7 @@
         <div class="tile"><span>Customer</span><strong>{{ row.customer_name or '—' }}</strong></div>
         <div class="tile"><span>Brand</span><strong>{{ order.brand if order else '—' }}</strong></div>
         <div class="tile"><span>Delivery</span><strong>{{ order.required_delivery_date if order else '—' }} {{
-            order.required_delivery_time if order else '' }}</strong></div>
+            order.required_delivery_time if order else '' }}</strong>{% if delivery_weekday %}<div class="text-secondary small">{{ delivery_weekday }}</div>{% endif %}</div>
         <div class="tile"><span>Planned Portions</span><strong>{{ order.total_planned_portions if order else
             row.packed_portions }}</strong></div>
         <div class="tile"><span>Order Status</span><strong>{{ order.status if order else row.dispatch_status }}</strong>

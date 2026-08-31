@@ -6,7 +6,7 @@
 <div class="bom-page">
   <div class="bom-hero">
     <h2>{{ group_label }}</h2>
-    <p>Order {{ order_no }} · {{ order.customer_name }} · {{ order.brand or '-' }} · SAP-style BOM view for production and store verification.</p>
+    <p>Order {{ order_no }} · {{ order.customer_name }} · {{ order.brand or '-' }} · Consolidated BOM for production and store verification.</p>
   </div>
 
   <div class="bom-card bom-toolbar">
@@ -31,7 +31,7 @@
     <div class="bom-kpi"><span>Groups</span><strong>{{ group_count }}</strong></div>
     <div class="bom-kpi"><span>BOM Lines</span><strong>{{ rows|length }}</strong></div>
     {# Batch 140: Estimated Cost KPI removed — the BOM report is a picking document. #}
-    <div class="bom-kpi"><span>Total Required Qty</span><strong>{{ '%.2f'|format(total_qty) }}</strong></div>
+    <div class="bom-kpi"><span>Total Required Qty <span class="bom-muted">(mixed UOM)</span></span><strong>{{ '%.2f'|format(total_qty) }}</strong></div>
   </div>
 
   <div class="bom-card">
@@ -110,6 +110,11 @@ document.getElementById('bomSearch')?.addEventListener('input', function(){
       .replace(/\s+/g, ' ')
       .trim();
   }
+  // Batch 150: headers are English labels — strip EVERYTHING non-ASCII-printable
+  // so no stray sort-arrow glyph or bidi mark can ever render as "!A" (images 4,5).
+  function cleanHead(s){
+    return clean(s).replace(/[^\x20-\x7E]/g, '').replace(/\s+/g, ' ').trim();
+  }
   btn.addEventListener('click', function () {
     var old = btn.textContent; btn.textContent = 'Preparing…';
     ensure().then(function () {
@@ -118,7 +123,7 @@ document.getElementById('bomSearch')?.addEventListener('input', function(){
       // Batch 140: drop the "Estimated Cost" column from the PDF (last column).
       // The kitchen/store BOM shouldn't carry cost. Find its index dynamically so
       // it works for every grouping, then skip that cell in header + body.
-      var ths = []; table.querySelectorAll('thead th').forEach(function(th){ ths.push(clean(th.innerText)); });
+      var ths = []; table.querySelectorAll('thead th').forEach(function(th){ ths.push(cleanHead(th.innerText)); });
       var costIdx = ths.findIndex(function(h){ return /cost/i.test(h); });
       function keep(i){ return i !== costIdx; }
       var head = [ ths.filter(function(_,i){ return keep(i); }) ];

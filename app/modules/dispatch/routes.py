@@ -76,16 +76,48 @@ def logistics_report(request: Request, db: Session = Depends(get_db)):
     if to_date:
         where += " AND dispatch_date <= :td"; params["td"] = to_date
     rows = db.execute(text(f"""
-        SELECT COALESCE(NULLIF(region,''),'Unassigned') AS region,
+        SELECT id, COALESCE(NULLIF(region,''),'Unassigned') AS region,
                COALESCE(customer_name,'—') AS customer_name,
-               COUNT(*) AS orders,
-               COALESCE(SUM(packed_bags),0) AS bags,
-               COALESCE(SUM(packed_portions),0) AS portions
+               COALESCE(packed_bags,0) AS bags,
+               COALESCE(packed_portions,0) AS portions,
+               region_bags
         FROM packing_dispatch
         WHERE {where}
-        GROUP BY COALESCE(NULLIF(region,''),'Unassigned'), customer_name
         ORDER BY region, customer_name
     """), params).mappings().all()
+
+    # Batch 152a: expand each dispatch into per-region bag rows. When a dispatch
+    # has a region_bags allocation (e.g. {"Riyadh":10,"Dammam":8}), its bags are
+    # split across those regions; otherwise it counts once under its single
+    # region. Portions stay with the primary region to avoid double-counting.
+    import json as _json
+    expanded = []
+    for r in rows:
+        alloc = None
+        if r.get("region_bags"):
+            try:
+                alloc = _json.loads(r["region_bags"])
+            except Exception:
+                alloc = None
+        if alloc:
+            _first = True
+            for rname, rbags in alloc.items():
+                expanded.append({"region": rname or "Unassigned", "customer_name": r["customer_name"],
+                                 "orders": 1 if _first else 0, "bags": int(rbags or 0),
+                                 "portions": float(r["portions"] or 0) if _first else 0.0})
+                _first = False
+        else:
+            expanded.append({"region": r["region"], "customer_name": r["customer_name"],
+                             "orders": 1, "bags": int(r["bags"] or 0), "portions": float(r["portions"] or 0)})
+
+    # collapse to region + customer
+    _agg = {}
+    for e in expanded:
+        key = (e["region"], e["customer_name"])
+        if key not in _agg:
+            _agg[key] = {"region": e["region"], "customer_name": e["customer_name"], "orders": 0, "bags": 0, "portions": 0.0}
+        _agg[key]["orders"] += e["orders"]; _agg[key]["bags"] += e["bags"]; _agg[key]["portions"] += e["portions"]
+    rows = sorted(_agg.values(), key=lambda x: (x["region"], x["customer_name"]))
 
     # group into region -> [customer rows], with region totals
     regions: dict = {}
@@ -117,6 +149,50 @@ def logistics_report(request: Request, db: Session = Depends(get_db)):
                   {"regions": regions, "grand": grand, "flat_rows": rows,
                    "filters": {"from_date": from_date, "to_date": to_date},
                    "page_title": "Logistics Report"})
+
+
+@router.get("/logistics/board", response_class=HTMLResponse)
+def logistics_board(request: Request, db: Session = Depends(get_db)):
+    """Batch 152b — Logistics work board. The logistics user sees all dispatch
+    orders (filters + table), opens one to assign driver / vehicle / region / bags
+    (reusing the dispatch detail form), and can jump to the region report. Gated on
+    the new `logistics` area, so a dedicated logistics role can be granted this
+    without full dispatch rights."""
+    require_area(request, "logistics")
+    q = request.query_params
+    search = (q.get("search") or "").strip()
+    from_date = (q.get("from_date") or "").strip()
+    to_date = (q.get("to_date") or "").strip()
+    status_f = (q.get("status") or "").strip()
+    scope = (q.get("scope") or "current").strip().lower()
+    query = db.query(PackingDispatch).filter(
+        PackingDispatch.dispatch_status.in_(["Packed", "Out for Delivery", "Delivered"]))
+    if status_f:
+        query = query.filter(PackingDispatch.dispatch_status == status_f)
+    if search:
+        query = query.filter((PackingDispatch.order_no.like(f"%{search}%")) |
+                             (PackingDispatch.customer_name.like(f"%{search}%")))
+    if from_date:
+        query = query.filter(PackingDispatch.dispatch_date >= from_date)
+    if to_date:
+        query = query.filter(PackingDispatch.dispatch_date <= to_date)
+    from datetime import date as _d
+    from sqlalchemy import func as _func
+    if scope != "all" and not from_date and not to_date:
+        query = query.filter(_func.coalesce(PackingDispatch.dispatch_date, _d(9999, 12, 31)) >= _d.today())
+    rows = query.order_by(_func.coalesce(PackingDispatch.dispatch_date, _d(9999, 12, 31)).asc(),
+                          PackingDispatch.id.desc()).limit(200).all()
+    summary = {
+        "pending": db.query(PackingDispatch).filter(PackingDispatch.dispatch_status.in_(["Packed", "Out for Delivery"])).count(),
+        "no_driver": db.query(PackingDispatch).filter(
+            PackingDispatch.dispatch_status.in_(["Packed", "Out for Delivery"]),
+            (PackingDispatch.driver_name.is_(None)) | (PackingDispatch.driver_name == "")).count(),
+        "delivered": db.query(PackingDispatch).filter(PackingDispatch.dispatch_status == "Delivered").count(),
+    }
+    return render(request, "dispatch/logistics_board.html",
+                  {"rows": rows, "summary": summary,
+                   "filters": {"search": search, "from_date": from_date, "to_date": to_date, "status": status_f, "scope": scope},
+                   "page_title": "Logistics Board"})
 
 
 @router.get("", response_class=HTMLResponse)
@@ -194,8 +270,19 @@ def dispatch_detail(request: Request, dispatch_id: int, db: Session = Depends(ge
     if not row:
         return _redirect_with_error("/dispatch", "Dispatch record not found.")
     order = db.query(CustomerOrder).filter(CustomerOrder.order_no == row.order_no).first()
+    # Batch 152a: decode the region-bag allocation for the editor.
+    region_bags = []
+    if getattr(row, "region_bags", None):
+        try:
+            import json as _json
+            for name, cnt in _json.loads(row.region_bags).items():
+                region_bags.append({"name": name, "bags": cnt})
+        except Exception:
+            region_bags = []
     return render(request, "dispatch/detail.html",
-                  {"r": row, "order": order, "page_title": f"Dispatch - {row.order_no}",
+                  {"r": row, "order": order, "region_bags": region_bags,
+                   "regions": ["Riyadh", "Eastern", "Dammam", "Jeddah", "Makkah", "Madinah", "Qassim", "Other"],
+                   "page_title": f"Dispatch - {row.order_no}",
                    "error": request.query_params.get("error")})
 
 
@@ -233,6 +320,36 @@ async def update_dispatch(
             row.packed_bags = int(float(packed_bags))
         except (TypeError, ValueError):
             pass
+
+    # Batch 152a: region-wise bag allocation. The form posts parallel arrays
+    # region_name[] + region_bag_count[]; we build {region: bags} and store JSON.
+    # The total is also written to packed_bags so the delivery note / logistics
+    # roll-up stay consistent.
+    try:
+        _form = await request.form()
+        _rn = _form.getlist("region_name") if hasattr(_form, "getlist") else []
+        _rc = _form.getlist("region_bag_count") if hasattr(_form, "getlist") else []
+        if _rn:
+            import json as _json
+            alloc = {}
+            for name, cnt in zip(_rn, _rc):
+                name = (name or "").strip()
+                if not name:
+                    continue
+                try:
+                    c = int(float(cnt or 0))
+                except (TypeError, ValueError):
+                    c = 0
+                if c > 0:
+                    alloc[name] = alloc.get(name, 0) + c
+            if alloc:
+                row.region_bags = _json.dumps(alloc)
+                row.packed_bags = sum(alloc.values())
+                # primary region = the one with the most bags (for existing
+                # single-region views and the logistics group-by).
+                row.region = max(alloc, key=alloc.get)
+    except Exception:
+        pass
 
     # ------------------------------------------------------------------
     # Batch 100 — DELIVERED IS FINAL. Lock the record once delivery closes.

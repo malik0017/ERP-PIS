@@ -366,6 +366,20 @@ async def login(
     
     logger.info(f"🔐 Login attempt: {username}")
 
+    # Batch 155: IP-level rate limit. Even across many usernames, one IP can only
+    # try LOGIN_MAX_ATTEMPTS times per window before being throttled.
+    from ...core.security import login_rate_limited, login_rate_reset
+    _client_ip = (request.client.host if request.client else "") or (request.headers.get("x-forwarded-for", "").split(",")[0].strip())
+    if login_rate_limited(_client_ip):
+        logger.warning(f"⚠️  Login rate limit hit from {_client_ip}")
+        try:
+            write_audit(db, None, "LOGIN_RATE_LIMITED", "users", None, f"Too many login attempts from {_client_ip}", request)
+            db.commit()
+        except Exception:
+            pass
+        return _login_error_response(request, is_json_request, username,
+                                     "Too many login attempts. Please wait a few minutes and try again.", 429)
+
     _ensure_auth_schema(db)
 
     # Find user
@@ -494,6 +508,10 @@ async def login(
     request.session["username"] = user.username
     request.session["user_role"] = role_name
     request.session["company_id"] = getattr(user, "company_id", None) or 1
+    # Batch 155: clear the IP throttle on success + seed idle-expiry clock.
+    login_rate_reset(_client_ip)
+    import time as _t
+    request.session["_last_activity"] = _t.time()
     user_access_map = _load_user_access(db, user.id)
     user_action_map = _load_user_actions(db, user.id)
     # Keep session cookie small. Starlette stores sessions client-side; a large

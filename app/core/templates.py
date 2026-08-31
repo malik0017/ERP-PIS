@@ -27,6 +27,22 @@ def _inject_common_context(context: dict[str, Any] | None) -> dict[str, Any]:
         data.setdefault("user_role", normalized_role(request))
         data.setdefault("can_access", lambda area: can_access(request, area))
         data.setdefault("can_action", lambda area, action="view": can_action(request, area, action))
+        # Batch 155: CSRF token — generated once per session, exposed to every
+        # template as `csrf_token`. Forms can add {{ csrf_form_field()|safe }}
+        # (a hidden input) and enforcement middleware validates it. Provided as a
+        # global so rollout can be incremental without breaking existing forms.
+        try:
+            import secrets as _secrets
+            _tok = request.session.get("_csrf_token")
+            if not _tok:
+                _tok = _secrets.token_urlsafe(32)
+                request.session["_csrf_token"] = _tok
+            data.setdefault("csrf_token", _tok)
+            data.setdefault("csrf_form_field",
+                            lambda: f'<input type="hidden" name="_csrf" value="{_tok}">')
+        except Exception:
+            data.setdefault("csrf_token", "")
+            data.setdefault("csrf_form_field", lambda: "")
         # Batch 65: company-level module gate, available in every template.
         try:
             from app.core.module_visibility import module_enabled as _mod_enabled

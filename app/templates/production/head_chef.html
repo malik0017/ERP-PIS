@@ -279,7 +279,7 @@
             <td><strong>{{ o.order_no }}</strong></td>
             <td><strong>{{ o.customer_name }}</strong><br><span class="mini">{{ o.brand or '-' }} · {{ o.channel or '-'
                 }}</span></td>
-            <td><span class="hc-status {% if o.status == 'Submitted' %}hc-pending{% else %}hc-ok{% endif %}">{{ 'Created' if o.status == 'Submitted' else o.status
+            <td><span class="hc-status {% if o.status == 'Submitted' %}hc-pending{% else %}hc-ok{% endif %}">{{ 'Awaiting Planning' if o.status == 'Submitted' else o.status
                 }}</span></td>
             <td>{{ o.required_delivery_date or 'Not set' }} {{ o.required_delivery_time or '' }}
               {% set u = urgency.get(o.order_no, '') %}

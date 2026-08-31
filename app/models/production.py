@@ -245,6 +245,10 @@ class PackingDispatch(Base):
     rejected_portions = Column(Float, default=0)
     packed_bags = Column(Integer, nullable=True)  # Batch 121: physical bag/tray count
     region = Column(String(50), nullable=True)  # Batch 129: delivery region (Riyadh/Eastern/Jeddah/Makkah)
+    # Batch 152a: region-wise bag allocation, e.g. {"Riyadh": 10, "Dammam": 8}.
+    # Stored as a JSON string; the total should reconcile to packed_bags. Added
+    # via an import-time schema guard (raw TEXT column, no ORM lag).
+    region_bags = Column(Text, nullable=True)
     dispatch_date = Column(Date, nullable=True)
     vehicle_no = Column(String(80), nullable=True)
     driver_name = Column(String(255), nullable=True)

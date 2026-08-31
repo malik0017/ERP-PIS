@@ -9,6 +9,7 @@ PAGE_AREAS = {
     # Core modules
     "module_home", "dashboard", "relationship", "reports", "masters", "recipes",
     "orders", "head_chef", "bom", "store", "kitchen", "qc", "packing", "dispatch",
+    "logistics",
     "settings", "users", "audit", "procurement", "inventory_valuation", "finance",
     "customer_portal", "hr", "subscriptions",
 
@@ -72,14 +73,14 @@ ROLE_PERMISSIONS = {
 
     "MANAGER": {
         "dashboard": True, "orders": True, "recipes": True, "kitchen": True,
-        "qc": True, "dispatch": True, "procurement": True,
+        "qc": True, "dispatch": True, "logistics": True, "procurement": True,
         "inventory_valuation": True, "project_management": True, "reports": True,
         "subscriptions": True,
         "sales_review": True, "purchase_requisition": True,
     },
 
     "SUPERVISOR": {
-        "dashboard": True, "kitchen": True, "qc": True, "dispatch": True,
+        "dashboard": True, "kitchen": True, "qc": True, "dispatch": True, "logistics": True,
         "project_management": True, "reports": True,
     },
 

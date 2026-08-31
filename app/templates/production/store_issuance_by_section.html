@@ -117,7 +117,7 @@
 
     <div class="table-responsive">
       <table class="table align-middle si-table">
-        <thead><tr><th>Priority</th><th>Order</th><th>Customer</th><th>Recipe</th><th>Ingredient</th><th class="text-end">Required</th><th class="text-end">Issued</th><th>Status</th><th></th></tr></thead>
+        <thead><tr><th>Priority</th><th>Order</th><th>Customer</th><th>Recipe</th><th>Ingredient</th><th class="text-end">Required</th><th class="text-end">Issued</th><th>Status</th></tr></thead>
         <tbody>
         {% for l in g.lines %}
         <tr class="{% if l.finalized %}table-success{% endif %}">
@@ -128,24 +128,10 @@
           <td><strong>{{ l.ingredient_code }}</strong><br>{{ l.ingredient_name }}</td>
           <td class="text-end">{{ '%.3f'|format(l.required_qty or 0) }} {{ l.uom }}</td>
           <td class="text-end">{{ '%.3f'|format(l.issued_qty or 0) }}</td>
-          <td>{% if l.finalized %}<span class="si-tag si-done">Locked / Issued</span>{% else %}<span class="si-tag si-pending">{{ l.issuance_status }}</span>{% endif %}</td>
-          <td class="text-nowrap">
-            <div class="d-flex gap-1">
-              {# Batch 122: per-row "Open" buttons removed (there was one on every
-                 line). A single "Open in Store Issuance" button now lives in the
-                 section header. Quick Issue stays for the on-page fast path. #}
-              {% if not l.finalized %}
-              <form method="post" action="/production/store-issuance/{{ l.id }}/quick-issue"
-                    data-confirm="Issue {{ '%.3f'|format(l.required_qty or 0) }} {{ l.uom }} of {{ l.ingredient_name }} to {{ g.section }} now?"
-                    data-confirm-title="Quick Issue" data-confirm-ok="Issue Full Qty" data-confirm-variant="success">
-                <button class="btn btn-sm btn-success si-quick-issue" title="Issue the full required quantity now, without leaving this page">
-                  <i class="bi bi-lightning-charge-fill"></i> Quick Issue</button>
-              </form>
-              {% else %}
-              <span class="text-secondary small"><i class="bi bi-lock-fill"></i> Issued</span>
-              {% endif %}
-            </div>
-          </td>
+          {# Batch 151 (image 7): per-line Quick Issue removed. Issuing is done
+             from the Store Issuance screen (header "Open in Store Issuance"); this
+             by-section view is a consolidated picking / verification report. #}
+          <td>{% if l.finalized %}<span class="si-tag si-done"><i class="bi bi-lock-fill"></i> Locked / Issued</span>{% else %}<span class="si-tag si-pending">{{ l.issuance_status }}</span>{% endif %}</td>
         </tr>
         {% endfor %}
         </tbody>

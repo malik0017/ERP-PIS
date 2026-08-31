@@ -92,6 +92,8 @@ def delivery_note(request: Request, dispatch_id: int, db: Session = Depends(get_
         SELECT dispatch_no, order_no, COALESCE(customer_name,'') AS customer_name,
                COALESCE(packed_portions,0) AS packed_portions,
                COALESCE(rejected_portions,0) AS rejected_portions,
+               COALESCE(packed_bags,0) AS packed_bags,
+               COALESCE(region,'') AS region,
                dispatch_date, COALESCE(vehicle_no,'') AS vehicle_no,
                COALESCE(driver_name,'') AS driver_name,
                delivery_temperature_c, COALESCE(dispatch_status,'') AS dispatch_status,

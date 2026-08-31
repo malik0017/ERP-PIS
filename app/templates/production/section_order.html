@@ -71,6 +71,7 @@
         <a class="pis-btn pis-soft text-nowrap" href="/production/section/{{ section_slug }}">Back to {{ section }} Orders</a>
         <a class="pis-btn text-nowrap" style="background:#fff;color:#132947" href="/production/kitchen/{{ section_slug }}/{{ order_no }}"><i class="bi bi-fire"></i> Production View</a>
         <a class="pis-btn pis-soft text-nowrap" href="/production/section/{{ section_slug }}/orders/{{ order_no }}?export=csv"><i class="bi bi-download"></i> CSV</a>
+        <button type="button" class="pis-btn pis-soft text-nowrap" onclick="window.print()"><i class="bi bi-printer"></i> Print</button>
       </div>
     </div>
   </div>
@@ -90,7 +91,7 @@
     {# Batch 136: the first figure is what THIS section received from the previous
        stage; the second is what it has processed. Labels + UOM make that clear. #}
     <div class="kpi"><span>Received ({{ totals.uom or 'qty' }})</span><b>{{ '%.2f'|format(totals.received or 0) }}</b></div>
-    <div class="kpi"><span>Processed ({{ totals.uom or 'qty' }})</span><b>{{ '%.2f'|format(totals.processed or 0) }}</b></div>
+    <div class="kpi"><span>Transferred ({{ totals.uom or 'qty' }})</span><b>{{ '%.2f'|format(totals.processed or 0) }}</b></div>
     <div class="kpi"><span>Balance ({{ totals.uom or 'qty' }})</span><b>{{ '%.2f'|format(totals.balance or 0) }}</b></div>
     <div class="kpi"><span>Completed</span><b>{{ totals.completed }} / {{ totals.lines }}</b></div>
   </div>
@@ -149,8 +150,9 @@
           <thead><tr>
             {% if not _k_locked %}<th style="width:34px"></th>{% endif %}
             <th style="min-width:150px">Recipe</th><th style="min-width:190px">Ingredient</th>
-            {% if section == 'Butchery' %}<th style="min-width:150px">Cutting Method</th>{% endif %}
-            <th class="num">Received</th><th class="num">Processed</th><th>Status</th><th style="min-width:120px">Action</th>
+            <th style="min-width:100px">{{ t('Main Cat.') }}</th><th style="min-width:110px">{{ t('Sub Cat.') }}</th>
+            {% if section == 'Butchery' %}<th style="min-width:150px">{{ t('Cutting Method') }}</th>{% endif %}
+            <th class="num">{{ t('Received') }}</th><th class="num">{{ t('Transferred') }}</th><th>{{ t('Status') }}</th><th style="min-width:120px">{{ t('Action') }}</th>
           </tr></thead>
           <tbody>
           {% for tx in txs %}
@@ -163,8 +165,11 @@
               {% if not _k_locked %}
               <td>{% if received and not locked %}<input type="checkbox" class="line-select" form="bulkForm" name="tx_ids" value="{{ tx.id }}" data-recv="{{ tx.received_qty_standard or tx.issued_qty_standard or 0 }}" onclick="onLineCheck()">{% endif %}</td>
               {% endif %}
-              <td><span class="rc">{{ tx.recipe_no }}</span><div class="sub">{{ tx.recipe_name }}</div></td>
+              <td><span class="rc">{{ tx.recipe_name }}</span><div class="sub">{{ tx.recipe_no }}</div></td>
               <td><span class="rc">{{ tx.ingredient_name }}</span><div class="sub">{{ tx.ingredient_code }}</div></td>
+              {% set _cat = category_map.get(tx.ingredient_code, {}) %}
+              <td><span class="sub">{{ _cat.main or '—' }}</span></td>
+              <td><span class="sub">{{ _cat.sub or '—' }}</span></td>
               {% if section == 'Butchery' %}<td><span class="sub">{{ cutting_map.get(tx.ingredient_code, '—') }}</span></td>{% endif %}
               <td class="num">{{ '%.2f'|format(tx.received_qty_standard or tx.issued_qty_standard or 0) }} <span class="sub">{{ tx.standard_uom }}</span></td>
               <td class="num">{{ '%.2f'|format(tx.processed_qty_standard or 0) }}</td>
@@ -184,7 +189,7 @@
             </tr>
             {% if received and not locked and not _k_locked %}
             <tr class="line-expand d-none" id="expand-{{ tx.id }}" data-status="{{ line_status }}" data-recipe="{{ tx.recipe_no }}">
-              <td colspan="{{ 8 if section == 'Butchery' else 7 }}" style="background:#f7fbff">
+              <td colspan="{{ 10 if section == 'Butchery' else 9 }}" style="background:#f7fbff">
                 <form method="post" id="txf{{ tx.id }}" action="/production/tx/{{ tx.id }}/transfer"
                       data-confirm="Transfer this line to the next section? It will lock after transfer."
                       data-confirm-title="Confirm Transfer" data-confirm-ok="Transfer" data-confirm-variant="primary"></form>
@@ -199,6 +204,14 @@
                   <div class="fld" style="width:88px"><label>Protein g</label><input form="txf{{ tx.id }}" class="pis-input num hk-protein" data-tx="{{ tx.id }}" type="number" step="0.0001" min="0" name="hk_protein" value="0"></div>
                   <div class="fld" style="width:88px"><label>Vegetable g</label><input form="txf{{ tx.id }}" class="pis-input num hk-veg" data-tx="{{ tx.id }}" type="number" step="0.0001" min="0" name="hk_veg" value="0"></div>
                   <div class="fld" style="width:88px"><label>Yield g</label><input form="txf{{ tx.id }}" class="pis-input num hk-yield" data-tx="{{ tx.id }}" type="number" step="0.0001" name="hk_yield" value="0" readonly title="Auto = Processed − (Carb+Protein+Vegetable)"></div>
+                  {% endif %}
+                  {% if section == 'Cold Kitchen' %}
+                  {# Batch 153: Cold Kitchen extra fields (image 13) — produced
+                     portion + portion weight + output UOM. Captured into the
+                     remark for traceability (same lightweight approach as Hot). #}
+                  <div class="fld" style="width:100px"><label>Produced Portion</label><input form="txf{{ tx.id }}" class="pis-input num ck-portion" data-tx="{{ tx.id }}" type="number" step="0.01" min="0" name="ck_portion" value="0"></div>
+                  <div class="fld" style="width:100px"><label>Portion Wt g</label><input form="txf{{ tx.id }}" class="pis-input num ck-weight" data-tx="{{ tx.id }}" type="number" step="0.01" min="0" name="ck_weight" value="0"></div>
+                  <div class="fld" style="width:100px"><label>Output UOM</label><select form="txf{{ tx.id }}" class="pis-input ck-uom" name="ck_uom"><option>Portion</option><option>Box</option><option>Kg</option><option>Gram</option><option>Ml</option></select></div>
                   {% endif %}
                   <div class="fld" style="width:92px"><label>Waste</label><input form="txf{{ tx.id }}" class="pis-input num tx-waste" data-tx="{{ tx.id }}" type="number" step="0.0001" min="0" name="waste_qty_standard" value="0"></div>
                   <div class="fld" style="width:92px"><label>Return</label><input form="txf{{ tx.id }}" class="pis-input num tx-return" data-tx="{{ tx.id }}" type="number" step="0.0001" min="0" name="returned_qty_standard" value="0"></div>
@@ -234,7 +247,7 @@
               {% endif %}
             </div>
             <span class="pill">Received {{ '%.2f'|format(g_recv) }} {{ g.uom }}</span>
-            <span class="pill">Processed {{ '%.2f'|format(g.total_processed_qty_standard or 0) }} {{ g.uom }}</span>
+            <span class="pill">Transferred {{ '%.2f'|format(g.total_processed_qty_standard or 0) }} {{ g.uom }}</span>
           </div>
           <div class="grp-body">
             <table class="mini">
@@ -298,7 +311,7 @@
             <i class="bi bi-chevron-right caret"></i>
             <div class="grp-title">{{ r.recipe_no }} — {{ r.recipe_name }}<span class="pill">{{ r.ingredients_count }} ingredients</span></div>
             <span class="pill">Received {{ '%.2f'|format(_received) }}</span>
-            <span class="pill {{ 'ok' if _fully else 'warn' }}">Processed {{ '%.2f'|format(r.total_processed_qty_standard or 0) }}</span>
+            <span class="pill {{ 'ok' if _fully else 'warn' }}">Transferred {{ '%.2f'|format(r.total_processed_qty_standard or 0) }}</span>
           </div>
           <div class="grp-body">
             <table class="mini">
@@ -425,6 +438,15 @@ function filterGroups(){
       if(nn(carb)||nn(prot)||nn(veg)||nn(yld)){
         var note='[C'+nn(carb)+' P'+nn(prot)+' V'+nn(veg)+' Y'+nn(yld)+']';
         reasonEl.value=(reasonEl.value?reasonEl.value+' ':'')+note;
+      }
+    }
+    // Batch 153: append Cold Kitchen produced-portion / weight / UOM to the remark.
+    var ckp=form.querySelector('.ck-portion'),ckw=form.querySelector('.ck-weight'),cku=form.querySelector('.ck-uom');
+    if(reasonEl&&ckp){
+      function _n(el){var x=parseFloat(el&&el.value);return isNaN(x)?0:x;}
+      if(_n(ckp)||_n(ckw)){
+        var cnote='[OUT '+_n(ckp)+(cku?cku.value:'')+' Wt'+_n(ckw)+'g]';
+        reasonEl.value=(reasonEl.value?reasonEl.value+' ':'')+cnote;
       }
     }
     if(reasonEl&&reasonEl.required&&!reasonEl.value.trim()){e.preventDefault();

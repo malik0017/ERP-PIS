@@ -1,0 +1,92 @@
+{% extends "layouts/base.html" %}
+{% block title %}Logistics Board{% endblock %}
+{% block content %}
+<div class="container-fluid py-3">
+
+  <div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-3 p-4 rounded-4 text-white"
+       style="background:linear-gradient(135deg,#08243d,#1e5bb8)">
+    <div>
+      <h1 class="mb-1 fw-bold text-white"><i class="bi bi-truck-front me-2"></i>{{ t('Logistics Board') }}</h1>
+      <p class="mb-0 opacity-75">{{ t('Assign driver, vehicle and region-wise bags per order.') }}</p>
+    </div>
+    <div class="d-flex gap-2">
+      <a class="btn btn-light fw-bold" href="/dispatch/logistics"><i class="bi bi-bar-chart me-1"></i>{{ t('Region Report') }}</a>
+    </div>
+  </div>
+
+  {# KPIs #}
+  <div class="row g-3 mb-3">
+    <div class="col-md-4"><div class="card border"><div class="card-body">
+      <div class="text-uppercase small fw-bold text-body-tertiary">{{ t('Pending Dispatch') }}</div>
+      <div class="fs-2 fw-bold">{{ summary.pending }}</div></div></div></div>
+    <div class="col-md-4"><div class="card border"><div class="card-body">
+      <div class="text-uppercase small fw-bold text-body-tertiary">{{ t('Awaiting Driver') }}</div>
+      <div class="fs-2 fw-bold text-warning">{{ summary.no_driver }}</div></div></div></div>
+    <div class="col-md-4"><div class="card border"><div class="card-body">
+      <div class="text-uppercase small fw-bold text-body-tertiary">{{ t('Delivered') }}</div>
+      <div class="fs-2 fw-bold text-success">{{ summary.delivered }}</div></div></div></div>
+  </div>
+
+  {# Filters #}
+  <form class="card mb-3" method="get">
+    <div class="card-body d-flex flex-wrap gap-3 align-items-end">
+      <div><label class="form-label small fw-bold">{{ t('From') }}</label><input type="date" name="from_date" class="form-control form-control-sm" value="{{ filters.from_date }}"></div>
+      <div><label class="form-label small fw-bold">{{ t('To') }}</label><input type="date" name="to_date" class="form-control form-control-sm" value="{{ filters.to_date }}"></div>
+      <div><label class="form-label small fw-bold">{{ t('Status') }}</label>
+        <select class="form-select form-select-sm" name="status">
+          <option value="">{{ t('All') }}</option>
+          {% for s in ['Packed','Out for Delivery','Delivered'] %}<option {% if filters.status==s %}selected{% endif %}>{{ s }}</option>{% endfor %}
+        </select></div>
+      <div><label class="form-label small fw-bold">{{ t('Show') }}</label>
+        <select class="form-select form-select-sm" name="scope">
+          <option value="current" {% if filters.scope != 'all' %}selected{% endif %}>{{ t('Current (today onward)') }}</option>
+          <option value="all" {% if filters.scope == 'all' %}selected{% endif %}>{{ t('All') }}</option>
+        </select></div>
+      <div><label class="form-label small fw-bold">{{ t('Search') }}</label><input name="search" class="form-control form-control-sm" value="{{ filters.search }}" placeholder="{{ t('Order, customer...') }}"></div>
+      <button class="btn btn-primary btn-sm"><i class="bi bi-funnel me-1"></i>{{ t('Filter') }}</button>
+    </div>
+  </form>
+
+  <div class="card">
+    <div class="card-body">
+      <div class="table-responsive">
+        <table class="table table-sm align-middle" data-isfc-table data-isfc-colfilters data-isfc-search="false"
+               data-isfc-title="Logistics Board" data-isfc-subtitle="Driver / vehicle / region assignment · ISFC ERP">
+          <thead>
+            <tr>
+              <th>{{ t('Order') }}</th>
+              <th>{{ t('Customer') }}</th>
+              <th>{{ t('Dispatch No') }}</th>
+              <th>{{ t('Region') }}</th>
+              <th>{{ t('Bags') }}</th>
+              <th>{{ t('Driver') }}</th>
+              <th>{{ t('Vehicle') }}</th>
+              <th>{{ t('Dispatch Date') }}</th>
+              <th>{{ t('Status') }}</th>
+              <th data-isfc-nofilter>{{ t('Action') }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in rows %}
+            <tr>
+              <td><strong>{{ r.order_no }}</strong></td>
+              <td><strong>{{ r.customer_name or '—' }}</strong></td>
+              <td class="text-muted">{{ r.dispatch_no }}</td>
+              <td>{{ r.region or '—' }}</td>
+              <td>{{ r.packed_bags or '—' }}</td>
+              <td>{% if r.driver_name %}{{ r.driver_name }}{% else %}<span class="text-warning small">— set —</span>{% endif %}</td>
+              <td>{{ r.vehicle_no or '—' }}</td>
+              <td>{{ r.dispatch_date or '—' }}</td>
+              <td><span class="badge {% if r.dispatch_status=='Delivered' %}bg-success{% elif r.dispatch_status in ['Rejected','Cancelled'] %}bg-danger{% else %}bg-warning text-dark{% endif %}">{{ r.dispatch_status }}</span></td>
+              <td><a href="/dispatch/{{ r.id }}" class="btn btn-primary btn-sm fw-bold"><i class="bi bi-pencil-square me-1"></i>{{ t('Assign') }}</a></td>
+            </tr>
+            {% else %}
+            <tr><td colspan="10" class="text-center text-muted py-4">{{ t('No dispatch orders to plan.') }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

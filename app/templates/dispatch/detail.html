@@ -59,6 +59,33 @@
             </select></div>
           <div class="col-12 col-md-9"><label class="form-label small fw-bold">Remarks</label>
             <input class="form-control" name="remarks" value="{{ r.remarks or '' }}"></div>
+
+          {# Batch 152a: region-wise bag allocation. Add rows of region + bag
+             count; the total is written to Number of Bags on save. #}
+          <div class="col-12">
+            <div class="card border">
+              <div class="card-header bg-body-highlight d-flex justify-content-between align-items-center py-2">
+                <span class="fw-bold"><i class="bi bi-geo-alt me-1"></i>Region-wise Bag Allocation</span>
+                <span class="small text-muted">Allocated: <span id="rbTotal">0</span> bags</span>
+              </div>
+              <div class="card-body py-2">
+                <div id="rbRows">
+                  {% for rb in region_bags %}
+                  <div class="row g-2 mb-2 rb-row">
+                    <div class="col-6 col-md-4"><select class="form-select form-select-sm" name="region_name">
+                      {% for rg in regions %}<option value="{{ rg }}" {% if rb.name==rg %}selected{% endif %}>{{ rg }}</option>{% endfor %}
+                    </select></div>
+                    <div class="col-4 col-md-3"><input class="form-control form-control-sm rb-count" type="number" min="0" name="region_bag_count" value="{{ rb.bags }}" oninput="rbRecalc()"></div>
+                    <div class="col-2"><button type="button" class="btn btn-outline-danger btn-sm" onclick="this.closest('.rb-row').remove();rbRecalc();"><i class="bi bi-trash"></i></button></div>
+                  </div>
+                  {% endfor %}
+                </div>
+                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="rbAdd()"><i class="bi bi-plus-lg me-1"></i>Add region</button>
+                <span class="small text-muted ms-2">Leave empty to use the single Region + Number of Bags above.</span>
+              </div>
+            </div>
+          </div>
+
           <div class="col-12">
             <button class="btn btn-success fw-bold" type="submit"><i class="bi bi-truck me-1"></i>Save Dispatch</button>
           </div>
@@ -66,5 +93,25 @@
       </form>
     </div>
   </div>
+
+<script>
+var RB_REGIONS = {{ regions|tojson }};
+function rbRow(name, bags){
+  var opts = RB_REGIONS.map(function(rg){ return '<option value="'+rg+'"'+(rg===name?' selected':'')+'>'+rg+'</option>'; }).join('');
+  var d = document.createElement('div'); d.className='row g-2 mb-2 rb-row';
+  d.innerHTML = '<div class="col-6 col-md-4"><select class="form-select form-select-sm" name="region_name">'+opts+'</select></div>'+
+    '<div class="col-4 col-md-3"><input class="form-control form-control-sm rb-count" type="number" min="0" name="region_bag_count" value="'+(bags||'')+'" oninput="rbRecalc()"></div>'+
+    '<div class="col-2"><button type="button" class="btn btn-outline-danger btn-sm" onclick="this.closest(\'.rb-row\').remove();rbRecalc();"><i class="bi bi-trash"></i></button></div>';
+  document.getElementById('rbRows').appendChild(d);
+}
+function rbAdd(){ rbRow(RB_REGIONS[0], ''); }
+function rbRecalc(){
+  var t=0; document.querySelectorAll('#rbRows .rb-count').forEach(function(i){ var v=parseInt(i.value||'0',10); if(!isNaN(v))t+=v; });
+  var el=document.getElementById('rbTotal'); if(el) el.textContent=t;
+  // keep the single Number-of-Bags field in sync when an allocation exists
+  if(t>0){ var nb=document.querySelector('input[name="packed_bags"]'); if(nb) nb.value=t; }
+}
+rbRecalc();
+</script>
 </div>
 {% endblock %}

@@ -29,7 +29,7 @@ router = APIRouter(tags=["Users & Access"])
 
 MODULES = [
     ("dashboard", "Dashboard", "Executive production intelligence dashboard"),
-    ("relationship", "Relationship Map", "SAP-style document relationship map"),
+    ("relationship", "Relationship Map", "Document relationship map"),
     ("reports", "Reports Center", "Operational and management reports"),
     ("master_upload", "Master Upload", "Upload customers, suppliers, inventory and recipes"),
     ("master_data", "Master Data Lists", "Customers, brands, suppliers, inventory and sections"),

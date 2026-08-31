@@ -232,7 +232,7 @@
           <span><span class="text-muted">Portions:</span> <strong>{{ '%.0f'|format(order.total_planned_portions or 0) }}</strong></span>
         </div>
         {% endif %}
-        <div class="text-muted mt-1">Select kitchen section per line.</div>
+        <!-- <div class="text-muted mt-1">Select kitchen section per line.</div> -->
       </div><a href="/production/store-issuance" class="si-btn si-soft">Back to Store Queue</a>
     </div>
     </div>
@@ -258,9 +258,16 @@
             <td><input class="issue-check" type="checkbox" checked {% if l.finalized %}disabled{% endif %}></td>
             <td>{{ l.ingredient_main_category or '-' }}</td>
             <td>{{ l.ingredient_sub_category or '-' }}</td>
-            {# Batch 136: ingredient and recipe split into two columns; names bold. #}
-            <td><span class="mini text-muted">{{ l.ingredient_code }}</span><br><strong>{{ l.ingredient_name }}</strong></td>
-            <td><span class="mini text-muted">{{ l.recipe_no }}</span><br><strong>{{ l.recipe_name }}</strong></td>
+            <td>
+              <strong>{{ l.ingredient_name }}</strong>
+              <br>
+              <span class="mini text-muted">{{ l.ingredient_code }}</span>
+            </td>
+            <td>
+              <strong>{{ l.recipe_name }}</strong>
+              <br>
+              <span class="mini text-muted">{{ l.recipe_no }}</span>
+            </td>
             <td>{{ '%.4f'|format(l.required_qty_with_waste_standard or 0) }} {{ l.standard_uom }}</td>
             <td><input form="issue-form-{{ l.id }}" class="form-control form-control-sm" type="number" step="0.0001" name="input_material_issued"
                 value="{{ l.input_material_issued if l.input_material_issued is not none else (l.required_qty_with_waste_standard or 0) }}" {% if l.finalized %}readonly{% endif %}></td>

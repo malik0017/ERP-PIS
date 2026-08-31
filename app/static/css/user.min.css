@@ -124,7 +124,7 @@ body.isfc-ui {
 .dispatch-card,
 .section-card {
   border: 1px solid var(--isfc-border) !important;
-  border-radius: 1rem !important;
+  /* border-radius: 1rem !important; */
   box-shadow: var(--isfc-shadow) !important;
   background: var(--isfc-card) !important;
 }

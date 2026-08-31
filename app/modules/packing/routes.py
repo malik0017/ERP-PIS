@@ -168,9 +168,22 @@ def packing_order(request: Request, packing_id: int, db: Session = Depends(get_d
             "from_section": t["from_section"], "uom": t["uom"],
         })
 
+    # Batch 152: weekday name for the delivery date (image 14).
+    delivery_weekday = ""
+    try:
+        _dd = getattr(order, "required_delivery_date", None) if order else None
+        if _dd:
+            from datetime import datetime as _dt
+            if hasattr(_dd, "strftime"):
+                delivery_weekday = _dd.strftime("%A")
+            else:
+                delivery_weekday = _dt.strptime(str(_dd)[:10], "%Y-%m-%d").strftime("%A")
+    except Exception:
+        delivery_weekday = ""
+
     return render(request, "packing/order.html",
                   {"row": row, "order": order, "qc_rows": qc_rows,
-                   "pack_lines": pack_lines,
+                   "pack_lines": pack_lines, "delivery_weekday": delivery_weekday,
                    "page_title": f"Packing - {row.order_no}",
                    "error": request.query_params.get("error")})
 

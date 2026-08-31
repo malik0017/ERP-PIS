@@ -103,6 +103,19 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if not user_id:
             return RedirectResponse(url="/login", status_code=302)
 
+        # Batch 155: session idle-expiry. If there's been no activity for longer
+        # than IDLE_TIMEOUT_MINUTES, clear the session and force re-login. This is
+        # in addition to the cookie max_age (absolute lifetime) — idle-expiry caps
+        # how long an unattended, logged-in browser stays usable.
+        import time as _time
+        IDLE_TIMEOUT_MINUTES = 60
+        now = _time.time()
+        last = request.session.get("_last_activity")
+        if last and (now - float(last)) > IDLE_TIMEOUT_MINUTES * 60:
+            request.session.clear()
+            return RedirectResponse(url="/login?expired=1", status_code=302)
+        request.session["_last_activity"] = now
+
         request.state.user_id = user_id
         request.state.username = request.session.get("username")
         request.state.user_role = request.session.get("user_role")
@@ -137,11 +150,48 @@ app = FastAPI(
 
 app.add_middleware(AuthMiddleware)
 
+
+# Batch 155 — CSRF protection in MONITOR mode.
+# Reads the _csrf form field / X-CSRF-Token header on state-changing requests and
+# logs a warning when it doesn't match the session token, WITHOUT blocking. This
+# lets the token be rolled into forms safely; once every POST form carries
+# {{ csrf_form_field()|safe }}, flip CSRF_ENFORCE=True to reject mismatches.
+CSRF_ENFORCE = False
+
+
+class CSRFMiddleware(BaseHTTPMiddleware):
+    SAFE = {"GET", "HEAD", "OPTIONS", "TRACE"}
+    EXEMPT_PREFIXES = ("/login", "/api/", "/static", "/logout")
+
+    async def dispatch(self, request: Request, call_next):
+        if request.method in self.SAFE or any(request.url.path.startswith(p) for p in self.EXEMPT_PREFIXES):
+            return await call_next(request)
+        try:
+            session_tok = request.session.get("_csrf_token")
+        except Exception:
+            session_tok = None
+        if session_tok:
+            sent = request.headers.get("x-csrf-token")
+            # Monitor mode checks the header only; reading the form body here could
+            # interfere with downstream handlers on some setups. The per-route
+            # csrf_valid() helper validates the _csrf FORM field when enforcing.
+            if sent is not None and sent != session_tok:
+                logger.warning(f"CSRF header mismatch on {request.method} {request.url.path} (monitor mode)")
+                if CSRF_ENFORCE:
+                    from starlette.responses import PlainTextResponse
+                    return PlainTextResponse("CSRF validation failed", status_code=403)
+        return await call_next(request)
+
+
+app.add_middleware(CSRFMiddleware)
+
 app.add_middleware(
     SessionMiddleware,
     secret_key=SECRET_KEY,
     session_cookie="isfc_session",
-    max_age=86400,
+    # Batch 155: absolute cookie lifetime capped at 12h (was 24h); combined with
+    # the 60-min idle-expiry in AuthMiddleware, an unattended session can't linger.
+    max_age=43200,
     same_site="lax",
     https_only=False,
 )
@@ -493,6 +543,16 @@ def _ensure_dispatch_region_column() -> None:
                 _db.execute(_t("ALTER TABLE packing_dispatch ADD COLUMN region VARCHAR(50) NULL"))
                 _db.commit()
                 logger.info("Added packing_dispatch.region")
+            # Batch 152a: region-wise bag allocation JSON.
+            has_rb = _db.execute(_t("""
+                SELECT COUNT(*) FROM information_schema.columns
+                WHERE table_schema = DATABASE() AND table_name = 'packing_dispatch'
+                  AND column_name = 'region_bags'
+            """)).scalar()
+            if not has_rb:
+                _db.execute(_t("ALTER TABLE packing_dispatch ADD COLUMN region_bags TEXT NULL"))
+                _db.commit()
+                logger.info("Added packing_dispatch.region_bags")
         finally:
             _db.close()
     except Exception as exc:

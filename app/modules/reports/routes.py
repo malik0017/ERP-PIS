@@ -361,7 +361,7 @@ def relationship_map(
         "doc_flow": doc_flow,
         "master_nodes": master_nodes,
         "report_links": report_links,
-        "page_title": "SAP B1-style Relationship Map",
+        "page_title": "Document Relationship Map",
     })
 
 
