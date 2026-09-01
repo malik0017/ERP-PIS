@@ -48,6 +48,17 @@ def _ids(form) -> list[int]:
     return out
 
 
+def _cid(request: Request) -> int:
+    """Batch 154/160: active company. Every bulk UPDATE is scoped to it so a
+    request that (accidentally or maliciously) carries recipe ids from ANOTHER
+    company can never modify those rows — the id IN (...) is ANDed with
+    company_id = :cid. Falls back to 1 for the single-company default."""
+    try:
+        return int(request.session.get("company_id") or 1)
+    except (TypeError, ValueError):
+        return 1
+
+
 def _user(request: Request):
     """recipes.approved_by is an INT user id, not a username.
 
@@ -106,12 +117,12 @@ async def bulk_approve(request: Request, db: Session = Depends(get_db)):
 
     ph = ",".join(f":i{n}" for n in range(len(ids)))
     params = {f"i{n}": v for n, v in enumerate(ids)}
-    params.update({"by": _user(request), "at": datetime.utcnow()})
+    params.update({"by": _user(request), "at": datetime.utcnow(), "cid": _cid(request)})
     db.execute(text(f"""
         UPDATE recipes
         SET approval_status = 'Approved', approved_by = :by, approved_at = :at,
             is_active = 1, status = 'Active'
-        WHERE id IN ({ph})
+        WHERE id IN ({ph}) AND (company_id = :cid OR company_id IS NULL)
     """), params)
 
     # Approving a version supersedes the older ones for the same code, so they
@@ -123,8 +134,8 @@ async def bulk_approve(request: Request, db: Session = Depends(get_db)):
               WHERE id IN ({ph}) GROUP BY recipe_code) x
           ON x.recipe_code = r.recipe_code
         SET r.is_active = 0, r.status = 'Inactive'
-        WHERE r.version < x.v
-    """), {f"i{n}": v for n, v in enumerate(ids)})
+        WHERE r.version < x.v AND (r.company_id = :cid OR r.company_id IS NULL)
+    """), {**{f"i{n}": v for n, v in enumerate(ids)}, "cid": _cid(request)})
     db.commit()
     return _back(request, form,
                  f"{len(ids)} recipe version(s) approved. Older versions were retired.")
@@ -139,12 +150,12 @@ async def bulk_reject(request: Request, db: Session = Depends(get_db)):
         return _back(request, form, "Nothing was selected.", "warning")
     ph = ",".join(f":i{n}" for n in range(len(ids)))
     params = {f"i{n}": v for n, v in enumerate(ids)}
-    params.update({"by": _user(request), "at": datetime.utcnow()})
+    params.update({"by": _user(request), "at": datetime.utcnow(), "cid": _cid(request)})
     db.execute(text(f"""
         UPDATE recipes
         SET approval_status = 'Rejected', approved_by = :by, approved_at = :at,
             is_active = 0, status = 'Inactive'
-        WHERE id IN ({ph})
+        WHERE id IN ({ph}) AND (company_id = :cid OR company_id IS NULL)
     """), params)
     db.commit()
     return _back(request, form, f"{len(ids)} recipe version(s) rejected.", "warning")
@@ -162,8 +173,8 @@ async def bulk_deactivate(request: Request, db: Session = Depends(get_db)):
     ph = ",".join(f":i{n}" for n in range(len(ids)))
     db.execute(text(f"""
         UPDATE recipes SET is_active = 0, status = 'Inactive'
-        WHERE id IN ({ph})
-    """), {f"i{n}": v for n, v in enumerate(ids)})
+        WHERE id IN ({ph}) AND (company_id = :cid OR company_id IS NULL)
+    """), {**{f"i{n}": v for n, v in enumerate(ids)}, "cid": _cid(request)})
     db.commit()
     return _back(request, form,
                  f"{len(ids)} recipe(s) deactivated. They stay in history and can be reactivated.")
@@ -179,8 +190,8 @@ async def bulk_activate(request: Request, db: Session = Depends(get_db)):
     ph = ",".join(f":i{n}" for n in range(len(ids)))
     db.execute(text(f"""
         UPDATE recipes SET is_active = 1, status = 'Active'
-        WHERE id IN ({ph})
-    """), {f"i{n}": v for n, v in enumerate(ids)})
+        WHERE id IN ({ph}) AND (company_id = :cid OR company_id IS NULL)
+    """), {**{f"i{n}": v for n, v in enumerate(ids)}, "cid": _cid(request)})
     db.commit()
     return _back(request, form, f"{len(ids)} recipe(s) reactivated.")
 
@@ -247,13 +258,19 @@ async def retire_superseded(request: Request, db: Session = Depends(get_db)):
     """
     require_action(request, "recipe_list", "edit")
     form = await request.form()
+    # Batch 160: scope the version-cleanup to the active company. The inner
+    # MAX(version) per recipe_code is also company-scoped, so cross-company codes
+    # can't influence which version is kept.
     res = db.execute(text("""
         UPDATE recipes r
-        JOIN (SELECT recipe_code, MAX(version) AS v FROM recipes GROUP BY recipe_code) x
+        JOIN (SELECT recipe_code, MAX(version) AS v FROM recipes
+              WHERE (company_id = :cid OR company_id IS NULL)
+              GROUP BY recipe_code) x
           ON x.recipe_code = r.recipe_code
         SET r.is_active = 0, r.status = 'Inactive'
         WHERE r.version < x.v AND COALESCE(r.is_active, 1) = 1
-    """))
+          AND (r.company_id = :cid OR r.company_id IS NULL)
+    """), {"cid": _cid(request)})
     db.commit()
     n = getattr(res, "rowcount", 0) or 0
     return _back(request, form,

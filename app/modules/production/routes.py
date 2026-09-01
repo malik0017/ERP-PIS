@@ -591,7 +591,13 @@ async def create_order_form(
         order = create_order(db, payload, created_by=current_user_name(request),
                              company_id=_company_id_from_session(request))
     except ValueError as exc:
-        return redirect_with_error("/production/orders", str(exc))
+        # Batch 144: bounce back to the SAME order, not the orders list. A
+        # rejected edit that also throws you to a different screen reads as
+        # "the value just did not save" rather than "the line is locked".
+        _ord_no = getattr(before, "order_no", "") if before else ""
+        _back = (f"/production/orders/{_ord_no}/store-issuance#line-{line_id}"
+                 if _ord_no else "/production/orders")
+        return redirect_with_error(_back, str(exc))
 
     return RedirectResponse(
     f"/sales-requests?toast=success&title=Request Submitted",
@@ -631,6 +637,11 @@ async def order_detail(request: Request, order_no: str, db: Session = Depends(ge
             "lines": lines,
             "bom": bom,
             "consolidated": cons,
+            # Batch 142: total ordered portions, for the BOM's "Portions
+            # Required" column. Passed explicitly — an undefined name in Jinja
+            # is falsy, so a missing variable here would render a silent column
+            # of zeros rather than an error.
+            "order_total_portions": sum(float(l.required_portions or 0) for l in lines),
             "issuance": issuance,
             "txs": txs,
             "recipe_meta": recipe_meta,
@@ -1197,8 +1208,15 @@ async def section_order_page(request: Request, section_name: str, order_no: str,
         from app.models.ingredient import Ingredient as _Ing
         _codes = {t.ingredient_code for t in txs if t.ingredient_code}
         if _codes:
-            for row in (db.query(_Ing.inventory_code, _Ing.main_category, _Ing.sub_category)
-                        .filter(_Ing.inventory_code.in_(_codes)).all()):
+            # BATCH 147 FIX — the Ingredient model's column is `ingredient_code`.
+            # `inventory_code` is what RecipeIngredient calls it (see cutting_map
+            # just above, which is correct). Referencing a column that does not
+            # exist on a declarative model raises at ATTRIBUTE ACCESS time, not
+            # at import, so this 500'd every kitchen section order page the
+            # moment it had any transaction lines — while `import app.main` and
+            # every syntax check passed clean.
+            for row in (db.query(_Ing.ingredient_code, _Ing.main_category, _Ing.sub_category)
+                        .filter(_Ing.ingredient_code.in_(_codes)).all()):
                 category_map[row[0]] = {"main": row[1] or "", "sub": row[2] or ""}
 
     return render(
@@ -1216,6 +1234,17 @@ async def section_order_page(request: Request, section_name: str, order_no: str,
             "next_sections": next_sections,
             "cutting_map": cutting_map,
             "category_map": category_map,
+            # Batch 146: ordered portions per recipe, so the recipe-level Output
+            # Qty box can default to the number of PORTIONS the order actually
+            # wants. It previously defaulted to the summed INPUT weight (grams
+            # of every ingredient added together) while the UOM dropdown said
+            # "Portions" — 12321.4516 Portions of a dish nobody ordered 12321 of.
+            # Passed explicitly; an undefined name in Jinja is falsy and would
+            # silently reinstate the old behaviour.
+            "portions_map": {
+                (ol.recipe_no or ""): float(ol.required_portions or 0)
+                for ol in db.query(OrderLine).filter(OrderLine.order_no == order_no).all()
+            },
             "page_title": f"{section} Receiving - {order_no}",
             "error": request.query_params.get("error"),
         },
@@ -2016,6 +2045,67 @@ async def quick_issue_store_line(request: Request, line_id: int, db: Session = D
     ref = request.headers.get("referer") or "/production/store-issuance/by-section"
     sep = "&" if "?" in ref else "?"
     return RedirectResponse(f"{ref}{sep}toast=success&title=Issued&msg={line.ingredient_name}: quick-issued {full_qty} {uom}",
+                            status_code=HTTP_303_SEE_OTHER)
+
+
+@router.post("/store-issuance/by-section/issue-ingredient")
+async def issue_consolidated_ingredient(request: Request, db: Session = Depends(get_db)):
+    """Batch 145 — issue every pending line behind ONE consolidated row.
+
+    The by-section screen shows the store keeper what they physically pull:
+    "Butchery needs 4095 g of Frz Beef Tendrloin". Until now that row was
+    read-only, so the only way to act on it was to open the per-order screen and
+    issue the same ingredient once per order — retyping numbers the consolidated
+    row had already added up. That is where transcription errors come from.
+
+    This issues all matching non-finalized lines at each line's own required
+    quantity, so the per-order audit trail stays intact: the consolidation is a
+    picking convenience, not a merged transaction.
+    """
+    require_action(request, "store_issuance", "edit")
+    form = await request.form()
+    section = (form.get("section") or "").strip()
+    ingredient_code = (form.get("ingredient_code") or "").strip()
+    order_no = (form.get("order_no") or "").strip()
+    back = request.headers.get("referer") or "/production/store-issuance/by-section"
+
+    if not section or not ingredient_code:
+        return redirect_with_error(back, "Section and ingredient are required.")
+
+    q = db.query(StoreIssuanceLine).filter(
+        StoreIssuanceLine.ingredient_code == ingredient_code,
+        StoreIssuanceLine.issue_to_section == section,
+    )
+    if order_no:
+        q = q.filter(StoreIssuanceLine.order_no == order_no)
+    lines = [l for l in q.all() if not getattr(l, "finalized", False)]
+
+    if not lines:
+        return redirect_with_error(back, f"{ingredient_code}: nothing left to issue in {section}.")
+
+    issued_total = 0.0
+    failed = 0
+    uom = ""
+    for l in lines:
+        qty = float(getattr(l, "required_qty_with_waste_standard", None)
+                    or getattr(l, "required_qty_standard", None) or 0)
+        if qty <= 0:
+            continue
+        uom = getattr(l, "standard_uom", None) or uom or "Kg"
+        try:
+            update_store_issuance_line(
+                db, l.id, qty, uom, section, "", "",
+                "Issued from consolidated picking list")
+            issued_total += qty
+        except ValueError:
+            failed += 1
+
+    from urllib.parse import quote as _q
+    msg = f"{ingredient_code}: issued {issued_total:.3f} {uom} across {len(lines) - failed} line(s) to {section}."
+    if failed:
+        msg += f" {failed} line(s) skipped (locked)."
+    sep = "&" if "?" in back else "?"
+    return RedirectResponse(f"{back}{sep}toast=success&title={_q('Issued')}&msg={_q(msg)}",
                             status_code=HTTP_303_SEE_OTHER)
 
 

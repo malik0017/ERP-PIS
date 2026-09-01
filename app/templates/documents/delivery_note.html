@@ -59,8 +59,10 @@
       <div><div class="lbl">Net Delivered</div><div class="val text-success">{{ '%.0f'|format((d.packed_portions or 0) - (d.rejected_portions or 0)) }}</div></div>
       <div><div class="lbl">Delivery Temp °C</div><div class="val">{{ '%.1f'|format(d.delivery_temperature_c) if d.delivery_temperature_c is not none else '—' }}</div></div>
       {# Batch 129: bags + region on the delivery note (image 1). #}
-      <div><div class="lbl">Number of Bags</div><div class="val">{{ d.packed_bags if d.packed_bags is not none else '—' }}</div></div>
-      <div><div class="lbl">Region</div><div class="val">{{ d.region or '—' }}</div></div>
+      {# Batch 148: when a region is selected the header reports THAT region's
+         bags, not the whole dispatch's, so the driver's paper matches the van. #}
+      <div><div class="lbl">Number of Bags</div><div class="val">{{ region_bag_count if sel_region and region_bag_count is not none else (d.packed_bags if d.packed_bags is not none else '—') }}</div></div>
+      <div><div class="lbl">Region</div><div class="val">{{ sel_region or d.region or '—' }}</div></div>
     </div>
 
     <div style="padding:0 26px 8px">
@@ -71,6 +73,25 @@
          footer now shows the real net-delivered figure instead of silently
          re-showing the original order total regardless of any rejection. #}
       <table class="dn-tbl">
+    {%- if region_bags %}
+    <div class="no-print mb-3 p-2 border rounded">
+      <span class="fw-bold me-2">Delivery note for:</span>
+      <a class="btn btn-sm {{ 'btn-primary' if not sel_region else 'btn-outline-secondary' }}"
+         href="?">All regions ({{ d.packed_bags or 0 }} bags)</a>
+      {% for rg, bg in region_bags.items() %}
+      <a class="btn btn-sm {{ 'btn-primary' if sel_region == rg else 'btn-outline-secondary' }}"
+         href="?region={{ rg|urlencode }}">{{ rg }} ({{ bg }} bags)</a>
+      {% endfor %}
+    </div>
+    {%- endif %}
+    {%- if sel_region and region_share %}
+    <div class="mb-2 small" style="border-left:3px solid #d97706;padding-left:8px">
+      Portions below are <strong>pro-rated by bag share</strong>
+      ({{ region_bag_count }} of {{ d.packed_bags or 0 }} bags = {{ '%.1f'|format(region_share * 100) }}%).
+      The system records how many bags each region receives, not which recipe went
+      into which bag, so this is an allocation and not a counted figure.
+    </div>
+    {%- endif %}
         <thead><tr><th style="width:60px">#</th><th>Recipe</th><th class="text-end">Planned Portions</th></tr></thead>
         <tbody>
           {% for l in lines %}

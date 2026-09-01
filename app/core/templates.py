@@ -43,6 +43,43 @@ def _inject_common_context(context: dict[str, Any] | None) -> dict[str, Any]:
         except Exception:
             data.setdefault("csrf_token", "")
             data.setdefault("csrf_form_field", lambda: "")
+        # =================================================================
+        # Batch 142 — COST VISIBILITY SWITCH
+        #
+        # Costing is not signed off yet: the BOM screen was showing a Cost
+        # column built on purchase prices that nobody has validated, next to
+        # quantities the kitchen is expected to act on. A wrong number beside
+        # a right one makes the right one look wrong too.
+        #
+        # So every cost/price column is gated on `show_costs`, which defaults
+        # to OFF and is flipped from Settings once the costing data is agreed.
+        # It lives in the shared context rather than being deleted from each
+        # template so turning it back on later is one setting, not another
+        # batch of template edits.
+        # =================================================================
+        # Resolution order: per-session override (set by an admin from the
+        # Settings screen) -> environment variable -> off.
+        try:
+            _sc = request.session.get("show_costs")
+        except Exception:
+            _sc = None
+        if _sc is None:
+            # BATCH 143 HOTFIX — this line raised UnboundLocalError and took
+            # every page down, login included.
+            #
+            # Batch 142 added `import os as _os` at module level. That was
+            # correct in isolation, but ~25 lines further down this SAME
+            # function already had `import os as _os` inside a try block (the
+            # company-logo lookup). A binding anywhere in a function body makes
+            # the name local for the WHOLE body, so this read — which executes
+            # first — hit an unbound local and never reached the module-level
+            # import at all.
+            #
+            # The module-level import is removed and a distinct local name is
+            # used here, so neither block can shadow the other.
+            import os as _os_cost
+            _sc = _os_cost.getenv("ISFC_SHOW_COSTS", "0")
+        data.setdefault("show_costs", str(_sc).strip().lower() in ("1", "true", "yes", "on"))
         # Batch 65: company-level module gate, available in every template.
         try:
             from app.core.module_visibility import module_enabled as _mod_enabled

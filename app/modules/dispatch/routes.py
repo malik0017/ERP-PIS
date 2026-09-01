@@ -195,6 +195,72 @@ def logistics_board(request: Request, db: Session = Depends(get_db)):
                    "page_title": "Logistics Board"})
 
 
+@router.get("/logistics/order/{dispatch_id}", response_class=HTMLResponse)
+def logistics_detail(request: Request, dispatch_id: int, db: Session = Depends(get_db)):
+    """Batch 157 — Logistics assignment detail. Owned by the LOGISTICS user: set
+    driver / vehicle / region-wise bags for one order. Dispatch keeps portions /
+    bags / status; driver+vehicle are read-only there. This fixes the board's
+    Assign action pointing at the dispatch page (image 10)."""
+    require_area(request, "logistics")
+    row = db.query(PackingDispatch).filter(PackingDispatch.id == dispatch_id).first()
+    if not row:
+        return _redirect_with_error("/dispatch/logistics/board", "Dispatch record not found.")
+    order = db.query(CustomerOrder).filter(CustomerOrder.order_no == row.order_no).first()
+    region_bags = []
+    if getattr(row, "region_bags", None):
+        try:
+            import json as _json
+            for name, cnt in _json.loads(row.region_bags).items():
+                region_bags.append({"name": name, "bags": cnt})
+        except Exception:
+            region_bags = []
+    return render(request, "dispatch/logistics_detail.html",
+                  {"r": row, "order": order, "region_bags": region_bags,
+                   "regions": ["Riyadh", "Eastern", "Dammam", "Jeddah", "Makkah", "Madinah", "Qassim", "Other"],
+                   "page_title": f"Logistics - {row.order_no}",
+                   "error": request.query_params.get("error")})
+
+
+@router.post("/logistics/order/{dispatch_id}/assign")
+async def logistics_assign(request: Request, dispatch_id: int, db: Session = Depends(get_db)):
+    """Batch 157 — save the logistics assignment (driver / vehicle / region-wise
+    bags). Only the logistics-owned fields are written here."""
+    require_area(request, "logistics")
+    row = db.query(PackingDispatch).filter(PackingDispatch.id == dispatch_id).first()
+    if not row:
+        return _redirect_with_error("/dispatch/logistics/board", "Dispatch record not found.")
+    form = await request.form()
+    row.driver_name = (form.get("driver_name") or "").strip() or None
+    row.vehicle_no = (form.get("vehicle_no") or "").strip() or None
+    try:
+        row.delivery_temperature_c = float(form.get("delivery_temperature_c") or 0)
+    except (TypeError, ValueError):
+        pass
+    # region-wise bag allocation (parallel arrays)
+    _rn = form.getlist("region_name") if hasattr(form, "getlist") else []
+    _rc = form.getlist("region_bag_count") if hasattr(form, "getlist") else []
+    if _rn:
+        import json as _json
+        alloc = {}
+        for name, cnt in zip(_rn, _rc):
+            name = (name or "").strip()
+            if not name:
+                continue
+            try:
+                c = int(float(cnt or 0))
+            except (TypeError, ValueError):
+                c = 0
+            if c > 0:
+                alloc[name] = alloc.get(name, 0) + c
+        if alloc:
+            row.region_bags = _json.dumps(alloc)
+            row.packed_bags = sum(alloc.values())
+            row.region = max(alloc, key=alloc.get)
+    db.commit()
+    return RedirectResponse("/dispatch/logistics/board?toast=success&title=Assigned&msg=Logistics assignment saved.",
+                            status_code=HTTP_303_SEE_OTHER)
+
+
 @router.get("", response_class=HTMLResponse)
 def dispatch_dashboard(request: Request, db: Session = Depends(get_db)):
     require_area(request, "dispatch")
@@ -396,8 +462,13 @@ async def update_dispatch(
     row.packed_portions = packed_portions
     row.rejected_portions = rejected_portions
     row.dispatch_date = _parse_date(dispatch_date) or row.dispatch_date
-    row.vehicle_no = vehicle_no or None
-    row.driver_name = driver_name or None
+    # Batch 157: driver/vehicle are logistics-owned and no longer on the dispatch
+    # form. Only overwrite if a non-empty value was actually submitted, so a
+    # dispatch save never wipes what logistics assigned.
+    if vehicle_no:
+        row.vehicle_no = vehicle_no
+    if driver_name:
+        row.driver_name = driver_name
     row.delivery_temperature_c = delivery_temperature_c or None
     row.dispatch_status = dispatch_status
     row.remarks = remarks or None

@@ -181,15 +181,29 @@ def packing_order(request: Request, packing_id: int, db: Session = Depends(get_d
     except Exception:
         delivery_weekday = ""
 
+    # Batch 148: existing region/bag split for the allocator. Passed explicitly
+    # (an undefined name in Jinja is falsy, which would render an empty
+    # allocator on an order that already has one and quietly wipe it on save).
+    _PACK_REGIONS = ["Riyadh", "Eastern", "Jeddah", "Makkah", "Madinah", "Qassim", "Other"]
+    region_bags = []
+    if getattr(row, "region_bags", None):
+        try:
+            import json as _json
+            for name, cnt in _json.loads(row.region_bags).items():
+                region_bags.append({"name": name, "bags": cnt})
+        except Exception:
+            region_bags = []
+
     return render(request, "packing/order.html",
                   {"row": row, "order": order, "qc_rows": qc_rows,
                    "pack_lines": pack_lines, "delivery_weekday": delivery_weekday,
+                   "region_bags": region_bags, "pack_regions": _PACK_REGIONS,
                    "page_title": f"Packing - {row.order_no}",
                    "error": request.query_params.get("error")})
 
 
 @router.post("/{packing_id}/update")
-def update_packing(
+async def update_packing(
     request: Request,
     packing_id: int,
     packed_portions: float = Form(0),
@@ -219,12 +233,62 @@ def update_packing(
     # Batch 146: region chosen at packing carries through to Dispatch/Logistics.
     if (region or "").strip():
         row.region = region.strip()
+
+    # ------------------------------------------------------------------
+    # BATCH 148 — REGION-WISE BAG ALLOCATION MOVES TO TRAYLINE
+    #
+    # The allocation lived on the Dispatch screen, which is the wrong place:
+    # Trayline is where bags are physically filled and where the operator knows
+    # that 10 bags are Riyadh and 8 are Dammam. Dispatch was being asked to
+    # re-enter a fact that had already happened upstream, which is how the two
+    # screens end up disagreeing.
+    #
+    # Same JSON shape and same column as the Dispatch form wrote, so the
+    # logistics report and the existing per-region expansion keep working
+    # untouched. Dispatch keeps its editor as a correction path.
+    #
+    # packed_bags is DERIVED from the allocation when one is supplied, so the
+    # header count and the region rows can never disagree. Without an
+    # allocation the manually entered packed_bags below still applies.
+    # ------------------------------------------------------------------
+    _alloc_total = None
+    try:
+        _form = await request.form()
+        _rn = _form.getlist("region_name") if hasattr(_form, "getlist") else []
+        _rc = _form.getlist("region_bag_count") if hasattr(_form, "getlist") else []
+        if _rn:
+            import json as _json
+            alloc: dict[str, int] = {}
+            for name, cnt in zip(_rn, _rc):
+                name = (name or "").strip()
+                if not name:
+                    continue
+                try:
+                    c = int(float(cnt or 0))
+                except (TypeError, ValueError):
+                    c = 0
+                if c > 0:
+                    alloc[name] = alloc.get(name, 0) + c
+            if alloc:
+                row.region_bags = _json.dumps(alloc)
+                _alloc_total = sum(alloc.values())
+                # Primary region = the one with the most bags, matching what the
+                # Dispatch form already did, so single-region views are stable.
+                row.region = max(alloc, key=alloc.get)
+            else:
+                # An explicitly emptied allocation clears it rather than leaving
+                # a stale split behind a now-single-region order.
+                row.region_bags = None
+    except Exception:
+        pass
     # Batch 121: persist bag count (column added via ensure_schema). Written
     # with raw SQL so it works even if the ORM model attribute isn't present.
     try:
         db.execute(
             text("UPDATE packing_dispatch SET packed_bags = :b WHERE id = :i"),
-            {"b": int(packed_bags) if packed_bags not in (None, "") else None, "i": packing_id},
+            {"b": (_alloc_total if _alloc_total is not None
+                   else (int(packed_bags) if packed_bags not in (None, "") else None)),
+             "i": packing_id},
         )
     except Exception:
         db.rollback()

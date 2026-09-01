@@ -478,6 +478,16 @@ def _ensure_recipe_menu_columns() -> None:
                 _db.execute(_t("ALTER TABLE recipes MODIFY COLUMN day_of_week VARCHAR(120) NULL"))
                 _db.commit()
                 logger.info(f"Widened recipes.day_of_week from VARCHAR({info}) to VARCHAR(120)")
+            # Batch 158: SMC meal_order (BREAKFAST/LUNCH/DINNER).
+            has_meal = _db.execute(_t("""
+                SELECT COUNT(*) FROM information_schema.columns
+                WHERE table_schema = DATABASE() AND table_name = 'recipes'
+                  AND column_name = 'meal_order'
+            """)).scalar()
+            if not has_meal:
+                _db.execute(_t("ALTER TABLE recipes ADD COLUMN meal_order VARCHAR(30) NULL"))
+                _db.commit()
+                logger.info("Added recipes.meal_order")
         finally:
             _db.close()
     except Exception as exc:

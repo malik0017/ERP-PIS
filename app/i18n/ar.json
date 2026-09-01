@@ -1434,5 +1434,14 @@
   "Consolidated BOM for production and store verification.": "قائمة مواد موحدة للإنتاج والتحقق من المخزن.",
   "Document Relationship Map": "خريطة علاقات المستندات",
   "No quick link found — press Enter to\n                search everything.": "لم يتم العثور على رابط سريع — اضغط Enter للبحث في كل شيء.",
-  "PDF engine not installed — use your browser: Print → Save as PDF.": "محرك PDF غير مثبت — استخدم المتصفح: طباعة ← حفظ كـ PDF."
+  "PDF engine not installed — use your browser: Print → Save as PDF.": "محرك PDF غير مثبت — استخدم المتصفح: طباعة ← حفظ كـ PDF.",
+  "Driver & Vehicle Assignment": "تعيين السائق والمركبة",
+  "Save Logistics Assignment": "حفظ تعيين اللوجستيات",
+  "Back to Logistics Board": "العودة إلى لوحة اللوجستيات",
+  "Assign bags to one or more regions for this order.": "خصّص الأكياس لمنطقة واحدة أو أكثر لهذا الطلب.",
+  "Driver Name": "اسم السائق",
+  "Vehicle No": "رقم المركبة",
+  "Temp °C": "الحرارة °م",
+  "Bags": "الأكياس",
+  "Dispatch No": "رقم الإرسال"
 }

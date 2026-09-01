@@ -1060,5 +1060,14 @@
   "Input Qty": "Input Qty",
   "Balance Qty": "Balance Qty",
   "Consolidated BOM for production and store verification.": "Consolidated BOM for production and store verification.",
-  "Document Relationship Map": "Document Relationship Map"
+  "Document Relationship Map": "Document Relationship Map",
+  "Driver & Vehicle Assignment": "Driver & Vehicle Assignment",
+  "Save Logistics Assignment": "Save Logistics Assignment",
+  "Back to Logistics Board": "Back to Logistics Board",
+  "Assign bags to one or more regions for this order.": "Assign bags to one or more regions for this order.",
+  "Driver Name": "Driver Name",
+  "Vehicle No": "Vehicle No",
+  "Temp °C": "Temp °C",
+  "Bags": "Bags",
+  "Dispatch No": "Dispatch No"
 }

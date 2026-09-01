@@ -409,11 +409,11 @@ def _parse_stock(path: str) -> tuple[list[dict], int, list[str]]:
             v = _norm(ws.cell(row=r, column=c).value).lower()
             if v:
                 vals[v] = c
-        if any(k in vals for k in ("material code", "item code", "ingredient code")):
+        if any(k in vals for k in ("material code", "item code", "ingredient code", "pis material code")):
             header_row, headers = r, vals
             break
     if header_row is None:
-        return [], 0, ["Could not find a header row containing 'Material Code'."]
+        return [], 0, ["Could not find a header row containing 'Material Code' or 'PIS Material Code'."]
 
     def col(*names):
         for n in names:
@@ -421,18 +421,32 @@ def _parse_stock(path: str) -> tuple[list[dict], int, list[str]]:
                 return headers[n]
         return None
 
-    c_code = col("material code", "item code", "ingredient code")
+    # Batch 159: accept the new inventory template headers alongside the old ones.
+    # New template: PIS Material Code · Material Name · Unit of Measurement ·
+    # Cost Unit · Total Qty · Total Price · Main/Sub category · Conversion Factor
+    # · Price Per Gram · Received Date · (Material Code old).
+    c_code = col("pis material code", "material code", "item code", "ingredient code")
+    c_code_old = col("material code old", "material code (old)", "old material code")
     c_name = col("material name", "item name", "description")
     c_qty = col("total qty", "qty", "quantity")
     c_val = col("total price", "total value", "value")
     c_unit = col("cost unit", "unit cost", "rate")
-    c_uom = col("issue unit name", "uom", "unit")
+    c_uom = col("unit of measurement", "issue unit name", "uom", "unit")
     c_lot = col("barcode", "lot", "batch")
     c_date = col("received date", "date")
+    c_main = col("main category", "main cat")
+    c_sub = col("sub category", "sub cat")
+    c_conv = col("conversion factor", "conv factor")
+    c_ppg = col("price per gram", "price/gram")
 
     rows, problems = [], []
     for r in range(header_row + 1, ws.max_row + 1):
         code = _norm(ws.cell(row=r, column=c_code).value) if c_code else ""
+        # Batch 159: "PIS Material Code" is often blank in the new template while
+        # the real code sits in "Material Code old" (e.g. BKR1-1326). Fall back so
+        # those rows aren't skipped for an empty code.
+        if not code and c_code_old:
+            code = _norm(ws.cell(row=r, column=c_code_old).value)
         if not code:
             continue
         qty = _num(ws.cell(row=r, column=c_qty).value) if c_qty else 0.0
@@ -464,6 +478,12 @@ def _parse_stock(path: str) -> tuple[list[dict], int, list[str]]:
             "uom": _norm(ws.cell(row=r, column=c_uom).value) if c_uom else "",
             "qty": qty, "unit_cost": unit, "value": val or qty * unit,
             "lot": lot, "received": rdate,
+            # Batch 159: ingredient-master attributes from the new template, used
+            # by the master upsert (they're ignored by the opening-stock post).
+            "main_category": _norm(ws.cell(row=r, column=c_main).value) if c_main else "",
+            "sub_category": _norm(ws.cell(row=r, column=c_sub).value) if c_sub else "",
+            "conversion_factor": _num(ws.cell(row=r, column=c_conv).value) if c_conv else 0.0,
+            "price_per_gram": _num(ws.cell(row=r, column=c_ppg).value) if c_ppg else 0.0,
         })
     return rows, header_row, problems
 
@@ -574,6 +594,58 @@ async def stock_commit(request: Request, file: UploadFile = File(...),
     except Exception:
         pass
 
+    # Batch 159: optionally upsert the file's items into the ingredient MASTER
+    # first (image 1: "add inventory as master datatype"). With sync_master on,
+    # every row's code is created/updated in `ingredients` (name, categories, UOM,
+    # conversion, price-per-gram) so opening stock never skips for "no matching
+    # ingredient". retire_missing additionally deactivates master items NOT in the
+    # file — the safe way to remove the old 678 without a destructive delete.
+    sync_master = bool(form.get("sync_master"))
+    retire_missing = bool(form.get("retire_missing"))
+    mast_added = mast_updated = mast_retired = 0
+    if sync_master:
+        file_codes = {r["code"] for r in rows if r.get("code")}
+        for r in rows:
+            code = r["code"]
+            try:
+                exists = code in known
+                db.execute(text("""
+                    INSERT INTO ingredients
+                        (ingredient_code, name, main_category, sub_category,
+                         purchase_uom, recipe_uom, standard_uom,
+                         conversion_to_standard, is_active, created_at, updated_at)
+                    VALUES
+                        (:code, :name, :main, :sub, :uom, :uom, :uom,
+                         :conv, 1, NOW(), NOW())
+                    ON DUPLICATE KEY UPDATE
+                        name = COALESCE(NULLIF(VALUES(name),''), ingredients.name),
+                        main_category = COALESCE(NULLIF(VALUES(main_category),''), ingredients.main_category),
+                        sub_category = COALESCE(NULLIF(VALUES(sub_category),''), ingredients.sub_category),
+                        is_active = 1, updated_at = NOW()
+                """), {"code": code, "name": r["name"] or code,
+                       "main": r.get("main_category") or "", "sub": r.get("sub_category") or "",
+                       "uom": r["uom"] or "Kg",
+                       "conv": r.get("conversion_factor") or 1.0})
+                if exists:
+                    mast_updated += 1
+                else:
+                    mast_added += 1
+                    known.add(code)
+            except Exception:
+                db.rollback()
+        db.commit()
+        if retire_missing and file_codes:
+            try:
+                res = db.execute(text("""
+                    UPDATE ingredients SET is_active = 0, updated_at = NOW()
+                    WHERE is_active = 1 AND ingredient_code NOT IN :codes
+                """).bindparams(__import__("sqlalchemy").bindparam("codes", expanding=True)),
+                    {"codes": list(file_codes)})
+                mast_retired = res.rowcount or 0
+                db.commit()
+            except Exception:
+                db.rollback()
+
     from app.core.stock_ledger import post_stock_movement
 
     posted = skipped = 0
@@ -597,7 +669,13 @@ async def stock_commit(request: Request, file: UploadFile = File(...),
             skipped += 1
     db.commit()
 
+    _mast = ""
+    if sync_master:
+        _mast = f" Master: +{mast_added} new, {mast_updated} updated"
+        if retire_missing:
+            _mast += f", {mast_retired} retired"
+        _mast += "."
     return RedirectResponse(
         f"/inventory?toast=success&title={quote('Opening Stock Loaded')}"
-        f"&msg={quote(f'{posted} lot balance(s) posted to the ledger. {skipped} row(s) skipped (no matching ingredient).')}",
+        f"&msg={quote(f'{posted} lot balance(s) posted to the ledger. {skipped} row(s) skipped (no matching ingredient).' + _mast)}",
         status_code=303)

@@ -27,6 +27,29 @@ from app.core.production_constants import (
 )
 
 
+# =============================================================================
+# Batch 142 — BOM QUANTITY POLICY
+#
+# Two switches, deliberately module-level constants rather than settings rows,
+# because changing either one changes what the store physically hands over and
+# that should be a reviewed code change, not a checkbox someone toggles.
+#
+#   BOM_APPLY_WASTAGE = False
+#       The BOM quantity is exactly  qty_per_portion x ordered_portions.
+#       No 5% uplift, so the printed number reconciles against the recipe by
+#       hand. recipes.target_wastage_pct still exists for planning; it is just
+#       no longer folded into the issue quantity.
+#
+#   BOM_QTY_BASIS = "per_portion"
+#       Reads recipe_ingredients.qty_per_portion (the workbook's NET, i.e.
+#       post-trim, weight). "gross" instead divides gross-qty-per-batch by
+#       portions-per-batch, which is the weight the store must actually issue
+#       once yield loss is accounted for. See the note at the call site.
+# =============================================================================
+BOM_APPLY_WASTAGE = False
+BOM_QTY_BASIS = "per_portion"
+
+
 def _num(value: Any) -> float:
     try:
         if value is None or value == "":
@@ -286,15 +309,54 @@ def generate_bom_for_order(db: Session, order_no: str, approved_by: str | None =
             conv = ingredient.conversion_to_standard if ingredient else 1
             unit_cost = _num(ri.cost_uom) or _num(ingredient.unit_cost_standard if ingredient else 0)
 
-            # Prefer qty_per_portion. If missing, calculate from qty_batch / standard portions.
-            qty_per_portion = _num(ri.qty_per_portion)
+            # -----------------------------------------------------------------
+            # Batch 142 — WHICH COLUMN, and Batch 142b — NO WASTAGE UPLIFT.
+            #
+            # BOM_QTY_BASIS controls the source column:
+            #   "per_portion"  (default) recipe_ingredients.qty_per_portion,
+            #                  i.e. the workbook's "Qty req per portion".
+            #   "gross"        gross qty per batch / portions per batch.
+            #
+            # Default is "per_portion" because that is the figure you asked the
+            # BOM to show. Keep in mind what it means: that column is the NET
+            # weight, after peeling and trimming. Beetroot is NET 160 g per
+            # 10-portion batch at 83.67% yield, so the gross weight the store
+            # has to hand over is 19.12 g/portion, not 16. On the "per_portion"
+            # basis the BOM under-issues fresh produce by the yield loss on
+            # every order. Dry goods are identical either way (100% yield).
+            # Flip the constant to "gross" when you want issuance quantities
+            # instead of plate quantities — nothing else needs to change.
+            # -----------------------------------------------------------------
+            line_portions = _num(getattr(ri, "portions", 0)) or std_portions
+            qty_per_portion = 0.0
+            if BOM_QTY_BASIS == "gross" and _num(ri.qty_batch) > 0 and line_portions > 0:
+                qty_per_portion = _num(ri.qty_batch) / line_portions
+            if qty_per_portion <= 0:
+                qty_per_portion = _num(ri.qty_per_portion)
             if qty_per_portion <= 0 and _num(ri.qty_batch) > 0:
-                qty_per_portion = _num(ri.qty_batch) / std_portions
+                qty_per_portion = _num(ri.qty_batch) / (line_portions or std_portions)
 
             required_recipe_qty = qty_per_portion * order_portions
             required_std = convert_to_standard(required_recipe_qty, recipe_uom, standard_uom, conv)
+
+            # Batch 142b — the BOM quantity is now EXACTLY
+            #     qty_per_portion x ordered_portions
+            # with no wastage multiplier. The 5% uplift from
+            # recipes.target_wastage_pct was silently inflating every line
+            # (16 x 8 = 128 was being stored and printed as 134.4), so the
+            # number on the BOM could not be reconciled against the recipe by
+            # hand — which is the whole reason the column is there.
+            #
+            # target_wastage_pct is NOT deleted; it is still on the recipe and
+            # still available for planning. It is simply no longer folded into
+            # the quantity the store issues against. Set BOM_APPLY_WASTAGE to
+            # True to restore the old behaviour.
             waste_pct = _num(recipe.target_wastage_pct) * 100 if _num(recipe.target_wastage_pct) < 1 else _num(recipe.target_wastage_pct)
-            expected_waste = required_std * waste_pct / 100
+            if BOM_APPLY_WASTAGE:
+                expected_waste = required_std * waste_pct / 100
+            else:
+                waste_pct = 0.0
+                expected_waste = 0.0
             required_with_waste = required_std + expected_waste
             cost = required_with_waste * unit_cost
             route = default_route_for_ingredient(ingredient, ri.item_name)
@@ -858,23 +920,70 @@ def finalize_store_issuance(db: Session, order_no: str, issued_by: str) -> list[
         existing = existing.first()
 
         if existing:
-            downstream_touched = (
-                _num(getattr(existing, "received_qty_standard", 0)) > 0
-                or _num(getattr(existing, "processed_qty_standard", 0)) > 0
+            # ------------------------------------------------------------------
+            # BATCH 144 — RE-ISSUE AFTER THE KITCHEN HAS RECEIVED
+            #
+            # This is why the store showed 6200 g issued while Butchery still
+            # showed 6142.50 g received.
+            #
+            # `downstream_touched` treated "received" as work already done, so a
+            # corrected issue updated issued_qty_standard and nothing else. But
+            # the kitchen screen renders
+            #     received_qty_standard OR issued_qty_standard
+            # so once a line had been received even once, it displayed the OLD
+            # received figure for ever. The store's correction was recorded and
+            # then had no effect on the section that has to act on it — the
+            # worst possible outcome, because both screens look authoritative.
+            #
+            # Receiving is not consumption. Nothing has been cut, cooked or
+            # moved; the section simply acknowledged the delivery. So a line
+            # that has been RECEIVED but not processed / transferred / wasted is
+            # re-synced to the corrected quantity, with the change written into
+            # the remark so the section can see it moved and why.
+            #
+            # A line that HAS been worked is deliberately left alone: silently
+            # rewriting a quantity someone has already cut against would destroy
+            # the audit trail. Those surface as a variance instead (see below).
+            # ------------------------------------------------------------------
+            _worked = (
+                _num(getattr(existing, "processed_qty_standard", 0)) > 0
                 or _num(getattr(existing, "transferred_qty_standard", 0)) > 0
+                or _num(getattr(existing, "waste_qty_standard", 0)) > 0
             )
+            _prev_recv = _num(getattr(existing, "received_qty_standard", 0))
+            downstream_touched = _prev_recv > 0 or _worked
+
             existing.recipe_no = line.recipe_no
             existing.recipe_name = line.recipe_name
             existing.ingredient_name = line.ingredient_name
             existing.standard_uom = line.standard_uom
             existing.issued_qty_standard = issued_qty
+
+            if _prev_recv > 0 and not _worked and abs(_prev_recv - issued_qty) > 0.0001:
+                existing.received_qty_standard = issued_qty
+                _note = (f"Store re-issued: {_prev_recv:.4f} -> {issued_qty:.4f} "
+                         f"{line.standard_uom or ''}".strip())
+                existing.section_remarks = (
+                    f"{existing.section_remarks} | {_note}"
+                    if getattr(existing, "section_remarks", None) else _note
+                )
+            elif _worked and abs(_num(existing.received_qty_standard) - issued_qty) > 0.0001:
+                # Worked already — do not touch the quantities, but make the
+                # mismatch visible instead of leaving it silent.
+                _note = (f"VARIANCE: store issue corrected to {issued_qty:.4f} "
+                         f"after processing began (received "
+                         f"{_num(existing.received_qty_standard):.4f})")
+                existing.section_remarks = (
+                    f"{existing.section_remarks} | {_note}"
+                    if getattr(existing, "section_remarks", None) else _note
+                )
             # Balance = issued minus whatever has already moved downstream, so a
             # corrected (higher/lower) issue reflects correctly without dropping
             # progress the kitchen already recorded.
             _consumed = (
-                _num(getattr(existing, "received_qty_standard", 0))
-                + _num(getattr(existing, "transferred_qty_standard", 0))
+                _num(getattr(existing, "transferred_qty_standard", 0))
                 + _num(getattr(existing, "waste_qty_standard", 0))
+                + _num(getattr(existing, "returned_qty_standard", 0))
             )
             existing.balance_qty_standard = max(issued_qty - _consumed, 0)
             if not downstream_touched:
@@ -1065,6 +1174,11 @@ def ingredient_wise_consolidated(db: Session, order_no: str | None = None,
                 "total_issued_qty_standard": 0.0,
                 "total_received_qty_standard": 0.0,
                 "total_processed_qty_standard": 0.0,
+                # Batch 149: a real TRANSFERRED total. Both group headers were
+                # labelled "Transferred" but summed processed_qty_standard —
+                # the same wrong-field bug Batch 143 fixed on the By Line
+                # column, repeated at group level in two more places.
+                "total_transferred_qty_standard": 0.0,
                 "total_waste_qty_standard": 0.0,
                 "total_balance_qty_standard": 0.0,
                 "pending_receive": 0,
@@ -1077,6 +1191,7 @@ def ingredient_wise_consolidated(db: Session, order_no: str | None = None,
         g["total_issued_qty_standard"] += _num(tx.issued_qty_standard)
         g["total_received_qty_standard"] += _num(tx.received_qty_standard)
         g["total_processed_qty_standard"] += _num(tx.processed_qty_standard)
+        g["total_transferred_qty_standard"] += _num(tx.transferred_qty_standard)
         g["total_waste_qty_standard"] += _num(tx.waste_qty_standard)
         g["total_balance_qty_standard"] += _num(tx.balance_qty_standard)
         status = str(tx.transaction_status or "").upper()
@@ -1273,6 +1388,11 @@ def bakery_pastry_consolidated(db: Session, order_no: str | None = None,
                 "total_issued_qty_standard": 0.0,
                 "total_received_qty_standard": 0.0,
                 "total_processed_qty_standard": 0.0,
+                # Batch 149: a real TRANSFERRED total. Both group headers were
+                # labelled "Transferred" but summed processed_qty_standard —
+                # the same wrong-field bug Batch 143 fixed on the By Line
+                # column, repeated at group level in two more places.
+                "total_transferred_qty_standard": 0.0,
                 "total_waste_qty_standard": 0.0,
                 "total_balance_qty_standard": 0.0,
                 # Batch 135: per-status counts so By-Recipe can offer a recipe-wise
@@ -1287,6 +1407,7 @@ def bakery_pastry_consolidated(db: Session, order_no: str | None = None,
         g["total_issued_qty_standard"] += _num(tx.issued_qty_standard)
         g["total_received_qty_standard"] += _num(tx.received_qty_standard)
         g["total_processed_qty_standard"] += _num(tx.processed_qty_standard)
+        g["total_transferred_qty_standard"] += _num(tx.transferred_qty_standard)
         g["total_waste_qty_standard"] += _num(tx.waste_qty_standard)
         g["total_balance_qty_standard"] += _num(tx.balance_qty_standard)
         _st = str(tx.transaction_status or "").upper()
@@ -1351,6 +1472,11 @@ def process_bakery_pastry_recipe(
         tx.processed_at = now
         tx.transferred_at = now
         tx.transaction_status = f"Completed - Mixed in {source_section}"
+        # BATCH 143 FIX — the Action column on a locked line renders tx.to_section.
+        # These rows kept whatever the ORIGINAL route said (often "Bakery/Pastry"),
+        # so a line mixed in Hot Kitchen and sent to QC still displayed
+        # "Bakery/Pastry" as its destination. Record where it actually went.
+        tx.to_section = next_section
         tx.section_remarks = remarks
 
     # Keep recipe-level waste on the first ingredient transaction for audit history.
@@ -1381,7 +1507,10 @@ def process_bakery_pastry_recipe(
         transferred_qty_standard=0,
         balance_qty_standard=output,
         transaction_status="Pending Receive",
-        section_remarks=f"Bakery/Pastry output. Input received total: {total_received:.4f}. Recipe waste: {waste:.4f}. {remarks or ''}".strip(),
+        # BATCH 143 FIX — "Bakery/Pastry" was hardcoded. This function serves
+        # every section, so a Hot Kitchen mix was writing "Bakery/Pastry output"
+        # into the remark that QC then reads on screen. Use the real section.
+        section_remarks=f"{source_section} output. Input received total: {total_received:.4f}. Recipe waste: {waste:.4f}. {remarks or ''}".strip(),
     )
     db.add(next_tx)
     order = db.query(CustomerOrder).filter(CustomerOrder.order_no == order_no).first()

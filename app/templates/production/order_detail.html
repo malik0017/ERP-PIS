@@ -407,22 +407,27 @@ order.status), instead of a fixed string. #}
       <div class="od-card table-responsive">
         <h5>Consolidated BOM</h5>
         <table class="table table-sm table-bordered od-table">
+          {#- Batch 142: Cost is gated on show_costs (off until costing is signed
+              off). "Portions Required" replaces it as the number the kitchen and
+              store actually work to. -#}
           <tr>
             <th>Main Category</th>
             <th>Sub Category</th>
             <th>Item</th>
-            <th>Qty</th>
+            <th class="text-end">Portions Required</th>
+            <th class="text-end">Qty</th>
             <th>UOM</th>
-            <th>Cost</th>
+            {% if show_costs %}<th class="text-end">Cost</th>{% endif %}
           </tr>{% for b in consolidated %}<tr>
             <td>{{ b.ingredient_main_category or b.ingredient_category or '-' }}</td>
             <td>{{ b.ingredient_sub_category or '-' }}</td>
             <td>{{ b.ingredient_code }} - {{ b.ingredient_name }}</td>
-            <td>{{ '%.4f'|format(b.total_required_with_waste_standard or 0) }}</td>
+            <td class="text-end">{{ '%.2f'|format(order_total_portions or 0) }}</td>
+            <td class="text-end">{{ '%.4f'|format(b.total_required_with_waste_standard or 0) }}</td>
             <td>{{ b.standard_uom }}</td>
-            <td>{{ '%.2f'|format(b.total_estimated_cost or 0) }}</td>
+            {% if show_costs %}<td class="text-end">{{ '%.2f'|format(b.total_estimated_cost or 0) }}</td>{% endif %}
           </tr>{% else %}<tr>
-            <td colspan="6" class="text-muted">No BOM yet. Head Chef approves schedule first, then generate BOM.</td>
+            <td colspan="{{ 7 if show_costs else 6 }}" class="text-muted">No BOM yet. Head Chef approves schedule first, then generate BOM.</td>
           </tr>{% endfor %}
         </table>
       </div>

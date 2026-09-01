@@ -74,10 +74,29 @@ def map_section(raw):
     return SECTION_MAP.get(_s(raw).lower(), _s(raw))
 
 
-def _find_header(ws, must_have, max_scan=8):
+def _find_header(ws, must_have, max_scan=12):
+    """Locate the header row.
+
+    Batch 140 — each entry in `must_have` may now be either a single string or
+    a tuple of ACCEPTABLE SPELLINGS. This is why the SMC import reported
+    "Recipe Ingredients header not found — skipping" and silently produced
+    0 recipes and 0 lines: the FRSH workbook heads that column "Recipe code",
+    the SMC workbook heads it "Recipe Ref". A strict all()-of-strings test had
+    no way to express "either of these", so the whole sheet was skipped and the
+    only signal was one line of console text that is easy to read past.
+
+    max_scan also went 8 -> 12: SMC's sheet carries a title, a blank row and a
+    section banner above the header, and future workbooks will carry more.
+    """
     for i, row in enumerate(ws.iter_rows(min_row=1, max_row=max_scan, values_only=True), start=1):
         vals = [_s(c).replace("\n", " ").lower() for c in row]
-        if all(h in vals for h in must_have):
+        ok = True
+        for h in must_have:
+            alts = (h,) if isinstance(h, str) else tuple(h)
+            if not any(a in vals for a in alts):
+                ok = False
+                break
+        if ok:
             hdr = {}
             for j, c in enumerate(row):
                 if c is not None:
@@ -157,17 +176,28 @@ def import_raw_materials(db, ws, company_id, dry):
 # 2. RECIPE INGREDIENTS  ->  recipes + recipe_ingredients
 # ---------------------------------------------------------------------------
 def import_recipe_ingredients(db, ws, company_id, dry):
-    hrow, hdr = _find_header(ws, ["recipe code", "item code"])
+    hrow, hdr = _find_header(ws, [("recipe code", "recipe ref"), "item code"])
     if hrow is None:
         print("  ! Recipe Ingredients header not found — skipping")
+        print("    (scanned rows 1-12; expected a 'Recipe code'/'Recipe Ref' "
+              "column AND an 'Item Code' column on the same row)")
         return 0, 0, 0
 
-    c_rcode = col(hdr, "recipe code")
+    # Batch 140 — every lookup below now carries the SMC spelling as an alias.
+    # The two workbooks describe the same columns with different words:
+    #   FRSH  "Recipe code"  "Day"   "GROSS Qty req per Batch (g/pcs)"
+    #   SMC   "Recipe Ref"   "Days"  "Gross Qty req Batch"
+    # Silently returning None for an unmatched column is what turned a header
+    # mismatch into zero-cost, zero-quantity recipe lines rather than an error.
+    c_rcode = col(hdr, "recipe code", "recipe ref")
     c_cat = col(hdr, "category")
     c_cust = col(hdr, "customer name")
     c_rname = col(hdr, "recipe name")
-    c_day = col(hdr, "day")
+    c_day = col(hdr, "day", "days")
     c_sect = col(hdr, "section")
+    # SMC's "Order Type" holds Breakfast/Lunch/Dinner — the same thing the SMC
+    # Menu sheet calls "Meal Order".
+    c_meal = col(hdr, "meal order", "order type")
     # Batch 136: Butchery cutting / portion-size column (header carries a typo
     # "Buchery" in the workbook — match both spellings).
     c_cut = col(hdr, "buchery cutting /portion size", "butchery cutting /portion size",
@@ -176,12 +206,22 @@ def import_recipe_ingredients(db, ws, company_id, dry):
     c_icode = col(hdr, "item code")
     c_iname = col(hdr, "item / ingredient", "item/ingredient")
     c_uom = col(hdr, "uom")
-    c_net = col(hdr, "net qty req per batch (g/pcs)")
-    c_gross = col(hdr, "gross qty req per batch (g/pcs)")
+    c_net = col(hdr, "net qty req per batch (g/pcs)", "qty req per batch (g/pcs)")
+    c_gross = col(hdr, "gross qty req per batch (g/pcs)", "gross qty req batch",
+                  "gross qty req per batch")
     c_yield = col(hdr, "yield %")
     c_portions = col(hdr, "no. of portions per batch")
-    c_qtyport = col(hdr, "qty req per portion")
-    c_price = col(hdr, "purchase price  standard uom", "purchase price standard uom")
+    # NET per portion first, deliberately. SMC's sheet has BOTH a NET and a
+    # GROSS per-portion column; FRSH has only the net one (headed just "Qty req
+    # per portion"). Taking gross for SMC and net for FRSH would mean the same
+    # BOM_QTY_BASIS setting produced different semantics per customer, which is
+    # exactly the kind of difference nobody notices until the numbers are
+    # already in production. qty_batch below still carries GROSS, so switching
+    # BOM_QTY_BASIS to "gross" gives the yield-corrected figure for both.
+    c_qtyport = col(hdr, "qty req per portion", "net qty req per portion",
+                    "gross qty req per portion")
+    c_price = col(hdr, "purchase price  standard uom", "purchase price standard uom",
+                  "pp st. uom", "pp st uom")
     c_fcpp = col(hdr, "food cost per portion")
     c_total = col(hdr, "total cost")
     c_butchery = col(hdr, "buchery cutting /portion size", "butchery cutting /portion size")
@@ -199,6 +239,7 @@ def import_recipe_ingredients(db, ws, company_id, dry):
                 "category": _s(row[c_cat]) if c_cat is not None else "",
                 "customer": (_s(row[c_cust]) if c_cust is not None else "") or "Frsh",
                 "day": _s(row[c_day]) if c_day is not None else "",
+                "meal": (_s(row[c_meal]).upper() if c_meal is not None else ""),
                 "portions": _f(row[c_portions], 1.0) if c_portions is not None else 1.0,
                 "lines": [],
             }
@@ -227,26 +268,43 @@ def import_recipe_ingredients(db, ws, company_id, dry):
         return len(recipes), total_lines, 0
 
     ok_recipes = ok_lines = fail = 0
+    # Batch 140 — information_schema guard, because ADD COLUMN IF NOT EXISTS is
+    # not available on this MySQL and meal_order only exists once the app has
+    # started at least once since Batch 158.
+    has_meal = bool(db.execute(text("""
+        SELECT COUNT(*) FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'recipes'
+          AND column_name = 'meal_order'
+    """)).scalar())
+    meal_ins = ", meal_order" if has_meal else ""
+    meal_val = ", :meal" if has_meal else ""
+    meal_upd = ", meal_order = COALESCE(NULLIF(VALUES(meal_order),''), recipes.meal_order)" if has_meal else ""
+
     for rcode in order:
         r = recipes[rcode]
         try:
-            db.execute(text("""
+            db.execute(text(f"""
                 INSERT INTO recipes
                     (company_id, recipe_code, recipe_name, customer_name, category,
                      day_of_week, status, is_active, approval_status, version,
-                     standard_portions, created_at, updated_at)
+                     standard_portions, created_at, updated_at{meal_ins})
                 VALUES
                     (:cid, :code, :name, :cust, :cat, :day, 'ACTIVE', 1, 'APPROVED', 1,
-                     :portions, NOW(), NOW())
+                     :portions, NOW(), NOW(){meal_val})
                 ON DUPLICATE KEY UPDATE
                     recipe_name = VALUES(recipe_name),
                     customer_name = VALUES(customer_name),
                     category = VALUES(category),
                     day_of_week = VALUES(day_of_week),
                     standard_portions = VALUES(standard_portions),
-                    status='ACTIVE', is_active=1, updated_at = NOW()
+                    -- Batch 140: an existing row left over from an earlier
+                    -- partial import could be sitting on approval_status
+                    -- 'Pending', which makes it invisible to every menu query
+                    -- while still counting as "imported". Re-assert it.
+                    approval_status = 'APPROVED',
+                    status='ACTIVE', is_active=1, updated_at = NOW(){meal_upd}
             """), {"cid": company_id, "code": rcode, "name": r["name"],
-                   "cust": r["customer"], "cat": r["category"],
+                   "cust": r["customer"], "cat": r["category"], "meal": r.get("meal", ""),
                    "day": r["day"], "portions": r["portions"] or 1})
 
             rid = db.execute(text(

@@ -1,0 +1,88 @@
+{% extends "layouts/base.html" %}
+{% block title %}Logistics · {{ r.order_no }}{% endblock %}
+{% block content %}
+<div class="container-fluid py-3">
+
+  <div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-3 p-4 rounded-4 text-white"
+       style="background:linear-gradient(135deg,#08243d,#1e5bb8)">
+    <div>
+      <h2 class="mb-1 fw-bold text-white"><i class="bi bi-truck-front me-2"></i>{{ r.order_no }} · {{ r.customer_name or 'Customer' }}</h2>
+      <div class="opacity-75" style="font-size:13.5px">
+        {{ t('Dispatch No') }}: {{ r.dispatch_no }}
+        {% if order %} · {{ t('Brand') }}: <strong>{{ order.brand or '—' }}</strong>
+        · {{ t('Delivery') }}: <strong>{{ order.required_delivery_date or '—' }} {{ order.required_delivery_time or '' }}</strong>{% endif %}
+        {% if r.packed_bags %} · <strong>{{ r.packed_bags }} {{ t('Bags') }}</strong>{% endif %}
+      </div>
+    </div>
+    <div class="d-flex align-items-center gap-2">
+      <a href="/dispatch/{{ r.id }}/delivery-note" target="_blank" class="btn btn-light btn-sm fw-bold"><i class="bi bi-truck me-1"></i>{{ t('Delivery Note') }}</a>
+      <a href="/dispatch/logistics/board" class="btn btn-outline-light btn-sm fw-bold">{{ t('Back to Logistics Board') }}</a>
+    </div>
+  </div>
+
+  {% if error %}<div class="alert alert-warning py-2">{{ error }}</div>{% endif %}
+
+  <div class="card">
+    <div class="card-body">
+      <h5 class="fw-bold mb-3"><i class="bi bi-person-badge me-2"></i>{{ t('Driver & Vehicle Assignment') }}</h5>
+      <form method="post" action="/dispatch/logistics/order/{{ r.id }}/assign">
+        <div class="row g-3">
+          <div class="col-6 col-md-4"><label class="form-label small fw-bold">{{ t('Driver Name') }}</label>
+            <input class="form-control" name="driver_name" value="{{ r.driver_name or '' }}"></div>
+          <div class="col-6 col-md-4"><label class="form-label small fw-bold">{{ t('Vehicle No') }}</label>
+            <input class="form-control" name="vehicle_no" value="{{ r.vehicle_no or '' }}"></div>
+          <div class="col-6 col-md-4"><label class="form-label small fw-bold">{{ t('Temp °C') }}</label>
+            <input class="form-control" type="number" step="0.01" name="delivery_temperature_c" value="{{ r.delivery_temperature_c or 0 }}"></div>
+
+          {# Region-wise bag allocation — logistics owns this. #}
+          <div class="col-12">
+            <div class="card border">
+              <div class="card-header bg-body-highlight d-flex justify-content-between align-items-center py-2">
+                <span class="fw-bold"><i class="bi bi-geo-alt me-1"></i>{{ t('Region-wise Bag Allocation') }}</span>
+                <span class="small text-muted">{{ t('Allocated') }}: <span id="rbTotal">0</span> {{ t('Bags') }}</span>
+              </div>
+              <div class="card-body py-2">
+                <div id="rbRows">
+                  {% for rb in region_bags %}
+                  <div class="row g-2 mb-2 rb-row">
+                    <div class="col-6 col-md-4"><select class="form-select form-select-sm" name="region_name">
+                      {% for rg in regions %}<option value="{{ rg }}" {% if rb.name==rg %}selected{% endif %}>{{ rg }}</option>{% endfor %}
+                    </select></div>
+                    <div class="col-4 col-md-3"><input class="form-control form-control-sm rb-count" type="number" min="0" name="region_bag_count" value="{{ rb.bags }}" oninput="rbRecalc()"></div>
+                    <div class="col-2"><button type="button" class="btn btn-outline-danger btn-sm" onclick="this.closest('.rb-row').remove();rbRecalc();"><i class="bi bi-trash"></i></button></div>
+                  </div>
+                  {% endfor %}
+                </div>
+                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="rbAdd()"><i class="bi bi-plus-lg me-1"></i>{{ t('Add region') }}</button>
+                <span class="small text-muted ms-2">{{ t('Assign bags to one or more regions for this order.') }}</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="col-12">
+            <button class="btn btn-success fw-bold" type="submit"><i class="bi bi-check2-circle me-1"></i>{{ t('Save Logistics Assignment') }}</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+var RB_REGIONS = {{ regions|tojson }};
+function rbRow(name, bags){
+  var opts = RB_REGIONS.map(function(rg){ return '<option value="'+rg+'"'+(rg===name?' selected':'')+'>'+rg+'</option>'; }).join('');
+  var d = document.createElement('div'); d.className='row g-2 mb-2 rb-row';
+  d.innerHTML = '<div class="col-6 col-md-4"><select class="form-select form-select-sm" name="region_name">'+opts+'</select></div>'+
+    '<div class="col-4 col-md-3"><input class="form-control form-control-sm rb-count" type="number" min="0" name="region_bag_count" value="'+(bags||'')+'" oninput="rbRecalc()"></div>'+
+    '<div class="col-2"><button type="button" class="btn btn-outline-danger btn-sm" onclick="this.closest(\'.rb-row\').remove();rbRecalc();"><i class="bi bi-trash"></i></button></div>';
+  document.getElementById('rbRows').appendChild(d);
+}
+function rbAdd(){ rbRow(RB_REGIONS[0], ''); }
+function rbRecalc(){
+  var t=0; document.querySelectorAll('#rbRows .rb-count').forEach(function(i){ var v=parseInt(i.value||'0',10); if(!isNaN(v))t+=v; });
+  var el=document.getElementById('rbTotal'); if(el) el.textContent=t;
+}
+rbRecalc();
+</script>
+{% endblock %}

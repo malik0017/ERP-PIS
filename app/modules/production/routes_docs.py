@@ -118,7 +118,45 @@ def delivery_note(request: Request, dispatch_id: int, db: Session = Depends(get_
             FROM order_lines WHERE order_no = :o ORDER BY id
         """, {"o": d["order_no"]})
 
+    # ------------------------------------------------------------------
+    # Batch 148 — REGION-WISE DELIVERY NOTES
+    #
+    # When Trayline has split the bags across regions, one combined note is the
+    # wrong document: each driver leg needs its own paper showing the bags that
+    # actually go on that van.
+    #
+    # ?region=Riyadh renders the note for one region. Bags come straight from
+    # the allocation. Portions are PRO-RATED BY BAG SHARE and labelled as such,
+    # because the system does not currently record which recipe went into which
+    # region's bags — only how many bags each region gets. Presenting a
+    # pro-rata figure as if it were counted would be worse than not splitting
+    # at all, so the template states the basis on the face of the document.
+    # Capturing recipe-per-region at Trayline is the proper fix and is a
+    # separate piece of work.
+    # ------------------------------------------------------------------
+    region_bags: dict = {}
+    if d:
+        raw = _one(db, "SELECT COALESCE(region_bags,'') AS rb FROM packing_dispatch WHERE id = :i",
+                   {"i": dispatch_id})
+        if raw and raw.get("rb"):
+            try:
+                import json as _json
+                region_bags = {k: int(v) for k, v in _json.loads(raw["rb"]).items() if int(v) > 0}
+            except Exception:
+                region_bags = {}
+
+    sel_region = (request.query_params.get("region") or "").strip()
+    total_bags = sum(region_bags.values()) or 0
+    region_share = None
+    if sel_region and sel_region in region_bags and total_bags > 0:
+        region_share = region_bags[sel_region] / total_bags
+        lines = [dict(l, portions=float(l["portions"] or 0) * region_share) for l in lines]
+
     return render(request, "documents/delivery_note.html", {
         "d": d, "order": order, "lines": lines,
+        "region_bags": region_bags,
+        "sel_region": sel_region,
+        "region_share": region_share,
+        "region_bag_count": region_bags.get(sel_region) if sel_region else None,
         "page_title": f"Delivery Note — {d['dispatch_no'] if d else dispatch_id}",
     })

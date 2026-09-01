@@ -78,7 +78,7 @@
               <td>{{ r.vehicle_no or '—' }}</td>
               <td>{{ r.dispatch_date or '—' }}</td>
               <td><span class="badge {% if r.dispatch_status=='Delivered' %}bg-success{% elif r.dispatch_status in ['Rejected','Cancelled'] %}bg-danger{% else %}bg-warning text-dark{% endif %}">{{ r.dispatch_status }}</span></td>
-              <td><a href="/dispatch/{{ r.id }}" class="btn btn-primary btn-sm fw-bold"><i class="bi bi-pencil-square me-1"></i>{{ t('Assign') }}</a></td>
+              <td><a href="/dispatch/logistics/order/{{ r.id }}" class="btn btn-primary btn-sm fw-bold"><i class="bi bi-pencil-square me-1"></i>{{ t('Assign') }}</a></td>
             </tr>
             {% else %}
             <tr><td colspan="10" class="text-center text-muted py-4">{{ t('No dispatch orders to plan.') }}</td></tr>

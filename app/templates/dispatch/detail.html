@@ -36,18 +36,17 @@
             <input class="form-control" type="number" step="0.01" name="rejected_portions" value="{{ r.rejected_portions or 0 }}"></div>
           <div class="col-6 col-md-3"><label class="form-label small fw-bold">Number of Bags</label>
             <input class="form-control" type="number" min="0" step="1" name="packed_bags" value="{{ r.packed_bags or '' }}" placeholder="e.g. 12"></div>
-          <div class="col-6 col-md-3"><label class="form-label small fw-bold">Region</label>
-            <select class="form-select" name="region">
-              <option value="">-- select region --</option>
-              {% for rg in ['Riyadh','Eastern','Jeddah','Makkah','Madinah','Qassim','Other'] %}
-              <option value="{{ rg }}" {% if r.region==rg %}selected{% endif %}>{{ rg }}</option>{% endfor %}
-            </select></div>
+          {# Batch 157: the single Region select is removed — region is handled by
+             the Region-wise Bag Allocation (below) and owned by Logistics. #}
           <div class="col-6 col-md-3"><label class="form-label small fw-bold">Dispatch Date</label>
             <input class="form-control" type="date" name="dispatch_date" value="{{ r.dispatch_date or '' }}"></div>
-          <div class="col-6 col-md-3"><label class="form-label small fw-bold">Vehicle No</label>
-            <input class="form-control" name="vehicle_no" value="{{ r.vehicle_no or '' }}"></div>
-          <div class="col-6 col-md-3"><label class="form-label small fw-bold">Driver Name</label>
-            <input class="form-control" name="driver_name" value="{{ r.driver_name or '' }}"></div>
+          {# Batch 157: Vehicle / Driver are LOGISTICS attributes — shown read-only
+             here (set on the Logistics Board), so dispatch and logistics don't
+             both edit them. #}
+          <div class="col-6 col-md-3"><label class="form-label small fw-bold">Vehicle No <span class="text-muted">(logistics)</span></label>
+            <input class="form-control bg-body-secondary" value="{{ r.vehicle_no or '—' }}" readonly></div>
+          <div class="col-6 col-md-3"><label class="form-label small fw-bold">Driver Name <span class="text-muted">(logistics)</span></label>
+            <input class="form-control bg-body-secondary" value="{{ r.driver_name or '—' }}" readonly></div>
           <div class="col-6 col-md-3"><label class="form-label small fw-bold">Temp °C</label>
             <input class="form-control" type="number" step="0.01" name="delivery_temperature_c" value="{{ r.delivery_temperature_c or 0 }}"></div>
           <div class="col-6 col-md-3"><label class="form-label small fw-bold">Status</label>
@@ -65,7 +64,12 @@
           <div class="col-12">
             <div class="card border">
               <div class="card-header bg-body-highlight d-flex justify-content-between align-items-center py-2">
-                <span class="fw-bold"><i class="bi bi-geo-alt me-1"></i>Region-wise Bag Allocation</span>
+                <span class="fw-bold"><i class="bi bi-geo-alt me-1"></i>Region-wise Bag Allocation
+                  {# Batch 148: this is now ENTERED at Trayline / Packing, where the
+                     bags are physically filled. It stays editable here as a
+                     correction path for logistics, but it is no longer the place
+                     the number originates. #}
+                  <span class="badge bg-secondary-subtle text-secondary-emphasis ms-1">from Trayline — editable</span></span>
                 <span class="small text-muted">Allocated: <span id="rbTotal">0</span> bags</span>
               </div>
               <div class="card-body py-2">

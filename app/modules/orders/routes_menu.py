@@ -34,8 +34,12 @@ from fastapi import APIRouter, Depends, Request
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+import logging
+
 from app.core.rbac import require_area
 from app.database.session import get_db
+
+log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/menu", tags=["Menu Ordering"])
 
@@ -376,7 +380,11 @@ def menu_recipes(request: Request, customer: str = "", day: str = "",
     cid = _cid(request)
     day = (day or "").strip().title()
 
-    where = ["COALESCE(r.is_active, 1) = 1",
+    # Batch 140: company scope added — audit finding routes_menu.py "SELECT
+    # ['recipes'] with no company_id". :cid was already bound here but never
+    # used in the WHERE, which is the easiest kind of leak to miss on review.
+    where = ["(r.company_id = :cid OR r.company_id IS NULL)",
+             "COALESCE(r.is_active, 1) = 1",
              "COALESCE(r.approval_status, 'Approved') = 'Approved'"]
     params: dict = {"cid": cid}
 
@@ -395,6 +403,7 @@ def menu_recipes(request: Request, customer: str = "", day: str = "",
             SELECT r.recipe_code, r.recipe_name,
                    COALESCE(r.category, '') AS category,
                    COALESCE(r.day_of_week, '') AS day_of_week,
+                   COALESCE(r.meal_order, '') AS meal_order,
                    COALESCE(r.standard_portions, 1) AS standard_portions,
                    COALESCE(r.sale_price_per_portion, 0) AS price,
                    -- Batch 103: the detail the order screen shows once a
@@ -416,6 +425,7 @@ def menu_recipes(request: Request, customer: str = "", day: str = "",
         "recipes": [{
             "code": r["recipe_code"], "name": r["recipe_name"],
             "category": r["category"], "day": r["day_of_week"],
+            "meal_order": (r["meal_order"] or "").strip().upper(),
             "standard_portions": float(r["standard_portions"] or 1),
             "price": float(r["price"] or 0),
             "weight_per_portion_g": float(r["weight_per_portion_g"] or 0),
@@ -609,37 +619,110 @@ def recipes_for_date(request: Request, customer: str = "", brand: str = "",
 
     day = d.strftime("%A")           # Monday .. Sunday
     keys = menu_keys(db, customer, brand, cid)
-    params: dict = {}
+    params: dict = {"cid": cid}
     clause = _key_clause(keys, params, "r.customer_name")
     day_sql = _day_clause(day, params)
+    # Batch 140 — company scope. This route was one of the seven HIGH RISK
+    # findings from multicompany_scope_audit.py: it read `recipes` with no
+    # company_id predicate at all, so company 2's order screen would have
+    # listed company 1's menu the moment a second company existed. Legacy rows
+    # carry company_id NULL, hence the OR — same pattern as everywhere else.
+    scope_sql = "(r.company_id = :cid OR r.company_id IS NULL)"
 
+    # meal_order only exists after the Batch 158 startup guard has run. Ask
+    # information_schema rather than assuming, and fall back to a blank column
+    # so an older database degrades to "no meal grouping" instead of a 500.
     try:
-        rows = db.execute(text(f"""
-            SELECT r.recipe_code, r.recipe_name,
-                   COALESCE(r.category, '') AS category,
-                   COALESCE(r.standard_portions, 1) AS standard_portions,
-                   COALESCE(r.sale_price_per_portion, 0) AS price,
-                   COALESCE(r.food_cost_per_portion, 0) AS food_cost,
-                   COALESCE(r.weight_per_portion_g, 0) AS weight_per_portion_g
-            FROM recipes r
-            WHERE {clause}
-              AND {day_sql}
-              AND COALESCE(r.is_active, 1) = 1
-              AND COALESCE(r.approval_status, 'Approved') = 'Approved'
-            ORDER BY r.category, r.recipe_name
-            LIMIT 300
-        """), params).mappings().all()
+        has_meal = bool(db.execute(text("""
+            SELECT COUNT(*) FROM information_schema.columns
+            WHERE table_schema = DATABASE() AND table_name = 'recipes'
+              AND column_name = 'meal_order'
+        """)).scalar())
     except Exception:
-        rows = []
+        has_meal = False
+    meal_col = "COALESCE(r.meal_order, '')" if has_meal else "''"
 
-    return {
+    sql = f"""
+        SELECT r.recipe_code, r.recipe_name,
+               COALESCE(r.category, '') AS category,
+               {meal_col} AS meal_order,
+               COALESCE(r.standard_portions, 1) AS standard_portions,
+               COALESCE(r.sale_price_per_portion, 0) AS price,
+               COALESCE(r.food_cost_per_portion, 0) AS food_cost,
+               COALESCE(r.weight_per_portion_g, 0) AS weight_per_portion_g
+        FROM recipes r
+        WHERE {scope_sql}
+          AND {clause}
+          AND {day_sql}
+          AND COALESCE(r.is_active, 1) = 1
+          AND COALESCE(r.approval_status, 'Approved') = 'Approved'
+        ORDER BY r.category, r.recipe_name
+        LIMIT 300
+    """
+    err = ""
+    try:
+        rows = db.execute(text(sql), params).mappings().all()
+    except Exception as exc:                      # pragma: no cover
+        # Batch 140: this used to be a bare `rows = []`. A broken query and an
+        # empty menu were indistinguishable on screen — the user saw "0 recipes"
+        # and had no way to tell whether the data was missing or the SQL was.
+        log.exception("for-date menu query failed")
+        rows, err = [], f"Menu query failed: {exc.__class__.__name__}"
+
+    out = {
         "day": day, "date": d.isoformat(), "count": len(rows),
         "recipes": [{
             "code": r["recipe_code"], "name": r["recipe_name"],
             "category": r["category"],
+            "meal_order": (r["meal_order"] or "").strip().upper(),
             "standard_portions": float(r["standard_portions"] or 1),
             "price": float(r["price"] or 0),
             "food_cost": float(r["food_cost"] or 0),
             "weight_per_portion_g": float(r["weight_per_portion_g"] or 0),
         } for r in rows],
     }
+    if err:
+        out["error"] = err
+
+    # ?debug=1 — stage-by-stage funnel. Add it to the URL when a menu comes back
+    # short and it tells you WHICH predicate removed the rows, instead of
+    # leaving you to guess between customer keys, day matching, active flag and
+    # approval flag. Read-only; costs four COUNT(*) queries.
+    if (request.query_params.get("debug") or "").strip() in ("1", "true", "yes"):
+        out["diagnostics"] = _menu_funnel(db, cid, keys, clause, day_sql, params, day, has_meal)
+    return out
+
+
+def _menu_funnel(db: Session, cid: int, keys: list[str], clause: str,
+                 day_sql: str, params: dict, day: str, has_meal: bool) -> dict:
+    """Count survivors after each filter, one predicate at a time."""
+    stages = [
+        ("1_company_scope", "(r.company_id = :cid OR r.company_id IS NULL)"),
+        ("2_customer_keys", f"(r.company_id = :cid OR r.company_id IS NULL) AND {clause}"),
+        ("3_day_matches", f"(r.company_id = :cid OR r.company_id IS NULL) AND {clause} AND {day_sql}"),
+        ("4_is_active", f"(r.company_id = :cid OR r.company_id IS NULL) AND {clause} AND {day_sql} "
+                        "AND COALESCE(r.is_active, 1) = 1"),
+        ("5_approved", f"(r.company_id = :cid OR r.company_id IS NULL) AND {clause} AND {day_sql} "
+                       "AND COALESCE(r.is_active, 1) = 1 "
+                       "AND COALESCE(r.approval_status, 'Approved') = 'Approved'"),
+    ]
+    funnel: dict = {"weekday": day, "customer_keys": keys,
+                    "recipes_meal_order_column": has_meal}
+    for label, where in stages:
+        try:
+            funnel[label] = int(db.execute(
+                text(f"SELECT COUNT(*) FROM recipes r WHERE {where}"), params).scalar() or 0)
+        except Exception as exc:
+            funnel[label] = f"ERROR: {exc.__class__.__name__}"
+    # What the day filter is actually being compared against.
+    try:
+        funnel["distinct_day_values"] = [
+            r[0] for r in db.execute(text(f"""
+                SELECT DISTINCT COALESCE(r.day_of_week, '(null)')
+                FROM recipes r
+                WHERE (r.company_id = :cid OR r.company_id IS NULL) AND {clause}
+                LIMIT 40
+            """), params).all()]
+    except Exception:
+        funnel["distinct_day_values"] = []
+    return funnel

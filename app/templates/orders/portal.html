@@ -450,21 +450,39 @@
     });
 
     tbody.innerHTML = "";
-    // Batch 124: show recipes grouped/sorted by CATEGORY (all of one category,
-    // then the next) as requested — first category's recipes, then 2nd, etc.
+    // Batch 158: group by MEAL ORDER (Breakfast → Lunch → Dinner) for SMC-style
+    // weekly menus, then by category within each meal. A meal-header row is
+    // inserted between groups. Recipes with no meal_order fall under "MENU".
+    var MEAL_RANK = { "BREAKFAST": 1, "LUNCH": 2, "DINNER": 3, "": 9 };
     var sorted = (recipes || []).slice().sort(function (a, b) {
+      var ma = MEAL_RANK[(a.meal_order || "").toUpperCase()] || 9;
+      var mb = MEAL_RANK[(b.meal_order || "").toUpperCase()] || 9;
+      if (ma !== mb) return ma - mb;
       var ca = (a.category || "").toLowerCase(), cb = (b.category || "").toLowerCase();
       if (ca < cb) return -1; if (ca > cb) return 1;
       return (a.name || "").localeCompare(b.name || "");
     });
+    var anyMeal = sorted.some(function (r) { return (r.meal_order || "").trim(); });
+    var lastMeal = null;
+    var colCount = template.children.length || 4;
     sorted.forEach(function (rc) {
+      var meal = (rc.meal_order || "").toUpperCase();
+      if (anyMeal && meal !== lastMeal) {
+        lastMeal = meal;
+        var hdr = document.createElement("tr");
+        hdr.className = "meal-group-row";
+        var label = meal || "MENU";
+        hdr.innerHTML = '<td colspan="' + colCount + '" style="background:#eef4fb;font-weight:800;'
+          + 'text-transform:uppercase;letter-spacing:.04em;color:#1e3a5f;padding:8px 12px;">'
+          + '<i class="bi bi-clock me-1"></i>' + label + '</td>';
+        tbody.appendChild(hdr);
+      }
       const tr = template.cloneNode(true);
       tr.querySelector(".recipe-display").value = rc.code + " - " + rc.name;
       tr.querySelector(".recipe-no").value = rc.code;
       tr.querySelector(".recipe-name").value = rc.name;
       tr.querySelector(".recipe-display").setAttribute("readonly", "readonly");
       tr.querySelector(".recipe-info").textContent = "";
-      // Batch 124: fill the Category cell from the menu payload.
       var catEl = tr.querySelector(".recipe-category");
       if (catEl) catEl.textContent = rc.category || "—";
       const qty = tr.querySelector('input[name="required_portions"]');

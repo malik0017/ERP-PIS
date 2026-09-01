@@ -61,13 +61,46 @@ def sales_request_list(request: Request, db: Session = Depends(get_db)):
     if date_to:
         q = q.filter(CustomerOrder.order_date <= date_to)
 
-    # Batch 137: default to CURRENT work — delivery today or later — so back-dated
-    # requests are hidden unless the user sets a date range or ?scope=all.
+    # Batch 137 introduced a "current work only" default: hide anything whose
+    # delivery date has already passed unless a date range is set.
+    #
+    # BATCH 141 ROOT CAUSE. That rule was applied unconditionally, and it is
+    # why the screen contradicted itself:
+    #   - "Awaiting Review 1" was counted over ALL rows, but the pending
+    #     request (ORD-20260821-0004, delivery 2026-08-22) was back-dated, so
+    #     the table it fed showed zero. A KPI that says 1 above a table that
+    #     says "Nothing here" is worse than either number alone.
+    #   - Searching "Abdullah Oulbaks" returned nothing for the same reason —
+    #     an explicit search was being silently overruled by a default.
+    #   - Setting any date range switched the rule off, which is why the
+    #     pending row only appeared once dates were filled in. That looked
+    #     like "date filter is broken"; it was the only thing working.
+    #
+    # Three corrections, in order of importance:
+    #   1. PENDING IS NEVER HIDDEN. An unreviewed request is outstanding work
+    #      regardless of how old its delivery date is. Hiding it does not make
+    #      it go away, it just stops anyone from actioning it.
+    #   2. An explicit search turns the scope rule off. If someone typed a
+    #      name, they are looking for a specific record, not for today's work.
+    #   3. The KPI counts are computed over the SAME predicate as the table,
+    #      so the header can no longer disagree with the rows beneath it.
+    from datetime import date as _d
+    from sqlalchemy import func as _func
+
     scope = (request.query_params.get("scope") or "current").strip().lower()
-    if scope != "all" and not date_from and not date_to:
-        from datetime import date as _d
-        from sqlalchemy import func as _func
-        q = q.filter(_func.coalesce(CustomerOrder.required_delivery_date, _d(9999, 12, 31)) >= _d.today())
+    scope_applies = (
+        scope != "all"
+        and not date_from and not date_to
+        and not search
+        and status_f.lower() != "pending"
+    )
+    if scope_applies:
+        q = q.filter(
+            (_func.coalesce(CustomerOrder.required_delivery_date, _d(9999, 12, 31)) >= _d.today())
+            # Belt and braces: even inside the current-work view, a request
+            # still awaiting review stays visible.
+            | (func_coalesce_status() == "Pending")
+        )
 
     orders = q.order_by(
         CustomerOrder.required_delivery_date.is_(None),
@@ -90,16 +123,41 @@ def sales_request_list(request: Request, db: Session = Depends(get_db)):
             "shortages": sh[:5],
         }
 
-    all_q = db.query(CustomerOrder).filter(_company_filter(cid))
+    # Batch 141: the KPI row now counts the SAME population the table draws
+    # from — same company, same search, same date range — minus the status
+    # predicate, since each card IS a status. Only the "current work" scope is
+    # left off, so the Approved card still tells you the real total rather than
+    # just today's slice; `hidden_older` below names that difference out loud
+    # instead of leaving it as an unexplained gap.
+    base_q = db.query(CustomerOrder).filter(_company_filter(cid))
+    if search:
+        like = f"%{search}%"
+        base_q = base_q.filter(
+            (CustomerOrder.order_no.like(like)) | (CustomerOrder.customer_name.like(like)))
+    if date_from:
+        base_q = base_q.filter(CustomerOrder.order_date >= date_from)
+    if date_to:
+        base_q = base_q.filter(CustomerOrder.order_date <= date_to)
+
     counts = {
-        "pending": all_q.filter(func_coalesce_status() == "Pending").count(),
-        "approved": all_q.filter(func_coalesce_status() == "Approved").count(),
-        "rejected": all_q.filter(func_coalesce_status() == "Rejected").count(),
+        "pending": base_q.filter(func_coalesce_status() == "Pending").count(),
+        "approved": base_q.filter(func_coalesce_status() == "Approved").count(),
+        "rejected": base_q.filter(func_coalesce_status() == "Rejected").count(),
         "short": sum(1 for v in stock.values() if v["verdict"] == "SHORT"),
     }
 
+    # How many rows the current-work default is holding back, so the user can
+    # see that a filter is in play and switch it off in one click.
+    hidden_older = 0
+    if scope_applies:
+        hidden_older = base_q.filter(
+            _func.coalesce(CustomerOrder.required_delivery_date, _d(9999, 12, 31)) < _d.today(),
+            func_coalesce_status() != "Pending",
+        ).count()
+
     return render(request, "sales_review/list.html", {
         "orders": orders, "stock": stock, "counts": counts,
+        "hidden_older": hidden_older, "scope_applies": scope_applies,
         "filters": {"status": status_f, "search": search,
                     "date_from": date_from, "date_to": date_to, "scope": scope},
         "status_options": ["Pending", "Approved", "Rejected", "All"],
