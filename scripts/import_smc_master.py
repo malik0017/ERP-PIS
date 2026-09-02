@@ -45,6 +45,23 @@ def import_menu_smc(db, ws, company_id, dry):
     c_cat = col(hdr, "category")
     c_meal = col(hdr, "meal order", "meal")   # SMC column
 
+    # ---- Batch 159 per-day meal encoding -------------------------------
+    # Longest possible value is 48 chars (all 7 days, lunch + dinner), so the
+    # meal_order column is widened from VARCHAR(30) by the startup schema guard.
+    _D3 = {"Saturday": "SAT", "Sunday": "SUN", "Monday": "MON", "Tuesday": "TUE",
+           "Wednesday": "WED", "Thursday": "THU", "Friday": "FRI"}
+    _M1 = {"BREAKFAST": "B", "LUNCH": "L", "DINNER": "D"}
+
+    def _encode_daymeals(daymeals: dict) -> str:
+        parts = []
+        for d in ORDER:
+            if d in daymeals:
+                letters = "".join(_M1[m] for m in ("BREAKFAST", "LUNCH", "DINNER")
+                                  if m in daymeals[d])
+                if letters:
+                    parts.append(f"{_D3[d]}={letters}")
+        return "|".join(parts)
+
     agg: dict[str, dict] = {}
     for row in ws.iter_rows(min_row=hrow + 1, values_only=True):
         code = _s(row[c_code]) if c_code is not None else ""
@@ -54,17 +71,39 @@ def import_menu_smc(db, ws, company_id, dry):
         name = _s(row[c_name]) if c_name is not None else code
         cat = _s(row[c_cat]) if c_cat is not None else ""
         meal = (_s(row[c_meal]).upper() if c_meal is not None else "")
-        a = agg.setdefault(code, {"name": name, "cat": cat, "days": set(), "meal": meal})
+        # -------------------------------------------------------------------
+        # BATCH 159 — A RECIPE CAN BE ON MORE THAN ONE MEAL
+        #
+        # `meal` was a single string, kept from the FIRST row seen for a code
+        # ("if meal and not a['meal']"). Five Tuesday recipes appear under both
+        # LUNCH and DINNER — Clear Soup, Special Diet Salad, Boiled Chicken with
+        # Soft Rice, low-sodium Grilled Fish, Chicken Kabssa — and each was
+        # filed under whichever meal the sheet listed first, then vanished from
+        # the other. That is why the Tuesday DINNER group looked short.
+        #
+        # Menu rows for Tuesday: 49. Distinct codes: 44. The 5 missing entries
+        # are exactly the multi-meal ones.
+        #
+        # Meals are now a SET, stored the same way days already are —
+        # "LUNCH & DINNER" — and the menu endpoint expands one row per meal.
+        # -------------------------------------------------------------------
+        a = agg.setdefault(code, {"name": name, "cat": cat, "days": set(), "daymeals": {}})
         if day:
             a["days"].add(day.strip().title())
         if cat and not a["cat"]:
             a["cat"] = cat
-        if meal and not a["meal"]:
-            a["meal"] = meal
+        if day and meal:
+            a["daymeals"].setdefault(day.strip().title(), set()).add(meal)
 
     ok = fail = 0
     for code, a in agg.items():
         day_value = " & ".join(d for d in ORDER if d in a["days"])
+        # Batch 159: MEAL IS PER DAY, not per recipe. Encoding meals as a flat
+        # set over-expanded — a recipe on Monday LUNCH and Tuesday DINNER showed
+        # up at both meals on both days (Tuesday went 49 -> 52).
+        # Compact per-day map instead: "SAT=LD|MON=L|TUE=LD". Verified to
+        # reproduce the Menu sheet row count EXACTLY on all seven days.
+        meal_value = _encode_daymeals(a["daymeals"])
         if dry:
             ok += 1
             continue
@@ -86,9 +125,33 @@ def import_menu_smc(db, ws, company_id, dry):
                     -- silently removes it from /api/menu/for-date even though the
                     -- import reports it as "ok".
                     approval_status = 'APPROVED',
+                    -- Batch 159: the menu pass runs LAST and used to write
+                    -- standard_portions = 1, wiping the real batch size the
+                    -- Recipe Ingredients pass had just imported from
+                    -- "No. of portions per batch" (10, 14, 15, 30, 600...).
+                    -- Every SMC recipe therefore showed "Recipe Std Portions 1"
+                    -- and Batches = ordered portions, so a 150-portion order of
+                    -- a 10-portion recipe planned 150 batches instead of 15.
+                    -- The menu sheet has no portions data at all, so this pass
+                    -- must never overwrite it.
+                    -- Batch 159.1 HOTFIX: the INSERT value went back to 1, not
+                    -- NULL. standard_portions is NOT NULL in the schema, so
+                    -- writing NULL failed every one of the 138 menu rows with
+                    -- "Column 'standard_portions' cannot be null".
+                    --
+                    -- The 1 is only ever used when the menu pass CREATES a
+                    -- recipe the Recipe Ingredients pass never saw. For the
+                    -- normal path the row already exists with its real batch
+                    -- size, and the COALESCE below keeps it.
+                    --
+                    -- NULLIF(...,0) is added because a row can also be sitting
+                    -- on 0 from an older import; 0 is as useless as NULL for a
+                    -- divisor, and COALESCE alone would have preserved it.
+                    standard_portions = COALESCE(NULLIF(recipes.standard_portions, 0),
+                                                 VALUES(standard_portions)),
                     customer_name = :cust, status='ACTIVE', is_active=1, updated_at=NOW()
             """), {"cid": company_id, "code": code, "name": a["name"],
-                   "cust": CUSTOMER, "cat": a["cat"], "day": day_value, "meal": a["meal"]})
+                   "cust": CUSTOMER, "cat": a["cat"], "day": day_value, "meal": meal_value})
             db.commit()
             ok += 1
         except Exception as exc:

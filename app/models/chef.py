@@ -2,7 +2,6 @@
 from sqlalchemy import Boolean, Column, DateTime, Integer, String, Text, func
 from app.database.base import Base
 
-
 class Chef(Base):
     __tablename__ = "chefs"
 

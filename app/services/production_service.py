@@ -1485,6 +1485,68 @@ def process_bakery_pastry_recipe(
 
     route = [source_section, next_section, "QC", "Packing", "Dispatch"]
     recipe_name = txs[0].recipe_name or recipe_no
+
+    # ======================================================================
+    # BATCH 158 — RE-PROCESSING A RECIPE MUST CORRECT, NOT DUPLICATE
+    #
+    # Processing the same recipe three times (output 1, then 200, then 200)
+    # created THREE separate QC rows, and QC's Input Qty summed them to 401 for
+    # a single 1-portion order. Every re-run was an unconditional db.add().
+    #
+    # A chef correcting an output quantity is stating "the output is actually
+    # 200", not "produce 200 more". Treating a correction as an addition
+    # inflates QC input, inflates what Packing expects, and there is no way for
+    # QC to tell which of the three rows is the real one.
+    #
+    # So: if an output row for this (order, recipe, from_section) already exists
+    # and the downstream section has NOT started work on it, overwrite it.
+    #
+    # If QC HAS already received or processed it, a new row is still created —
+    # at that point the earlier output is a real event that was really handed
+    # over, and silently rewriting it would erase something QC has physically
+    # inspected. That case is rare and now carries an explicit remark.
+    # ======================================================================
+    existing_out = (
+        db.query(KitchenSectionTransaction)
+        .filter(
+            KitchenSectionTransaction.order_no == order_no,
+            KitchenSectionTransaction.recipe_no == recipe_no,
+            KitchenSectionTransaction.ingredient_code == recipe_no,
+            KitchenSectionTransaction.from_section == source_section,
+            KitchenSectionTransaction.current_section == next_section,
+        )
+        .order_by(KitchenSectionTransaction.id.desc())
+        .first()
+    )
+    _downstream_started = bool(existing_out) and (
+        _num(existing_out.received_qty_standard) > 0
+        or _num(existing_out.processed_qty_standard) > 0
+        or _num(existing_out.transferred_qty_standard) > 0
+    )
+
+    if existing_out is not None and not _downstream_started:
+        existing_out.standard_uom = output_uom or "Portions"
+        existing_out.issued_qty_standard = output
+        existing_out.balance_qty_standard = output
+        existing_out.transaction_status = "Pending Receive"
+        existing_out.section_remarks = (
+            f"{source_section} output (revised). Input received total: "
+            f"{total_received:.4f}. Recipe waste: {waste:.4f}. {remarks or ''}"
+        ).strip()
+        existing_out.updated_at = _now()
+        order = db.query(CustomerOrder).filter(CustomerOrder.order_no == order_no).first()
+        if order and order.status in {"Store Pending", "In Production", "BOM Generated"}:
+            order.status = "In Production"
+        db.commit()
+        db.refresh(existing_out)
+        return existing_out
+
+    _revision_note = ""
+    if _downstream_started:
+        _revision_note = (f" ADDITIONAL OUTPUT — a previous output of "
+                          f"{_num(existing_out.issued_qty_standard):.4f} was already "
+                          f"received downstream and was left untouched.")
+
     next_tx = KitchenSectionTransaction(
         company_id=getattr(txs[0], "company_id", None),
         order_no=order_no,
@@ -1510,7 +1572,8 @@ def process_bakery_pastry_recipe(
         # BATCH 143 FIX — "Bakery/Pastry" was hardcoded. This function serves
         # every section, so a Hot Kitchen mix was writing "Bakery/Pastry output"
         # into the remark that QC then reads on screen. Use the real section.
-        section_remarks=f"{source_section} output. Input received total: {total_received:.4f}. Recipe waste: {waste:.4f}. {remarks or ''}".strip(),
+        section_remarks=(f"{source_section} output. Input received total: {total_received:.4f}. "
+                         f"Recipe waste: {waste:.4f}. {remarks or ''}{_revision_note}").strip(),
     )
     db.add(next_tx)
     order = db.query(CustomerOrder).filter(CustomerOrder.order_no == order_no).first()

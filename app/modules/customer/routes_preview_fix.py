@@ -1,10 +1,4 @@
 # app/modules/customer/routes_preview_fix.py
-# ============================================================================
-# BATCH 29 — CUSTOMER PORTAL ADMIN PREVIEW UI FIX
-# ============================================================================
-# Admin can preview any customer's portal with clear UI indication
-# ============================================================================
-
 from fastapi import APIRouter, Depends, Request, Form
 from fastapi.responses import RedirectResponse
 from sqlalchemy import text

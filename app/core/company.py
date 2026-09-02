@@ -1,23 +1,5 @@
 # app/core/company.py
-"""
-Multi-company (multi-tenant) context and query-scoping helpers.
 
-Design
-------
-Every logged-in user belongs to a company (users.company_id). At login we copy
-that id into the session as ``company_id``. From then on, every request resolves
-its active company from the session, and all company-scoped queries are filtered
-through :func:`scope`. Privileged roles (SUPER_ADMIN / ADMIN) may switch the
-active company for their session via :func:`set_active_company`.
-
-Transition safety
------------------
-``scope`` is intentionally NULL-tolerant: it returns rows for the active company
-*and* rows whose company_id is still NULL (legacy / not-yet-stamped writes). This
-guarantees that no record ever "disappears" while we finish stamping every write
-path. Once all inserts call :func:`stamp`, you can tighten ``scope`` by setting
-INCLUDE_UNASSIGNED = False below for strict tenant isolation.
-"""
 from __future__ import annotations
 
 from fastapi import Request
@@ -25,16 +7,9 @@ from sqlalchemy import or_
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-# The company every legacy row was backfilled to (see the SQL migration).
 DEFAULT_COMPANY_ID = 1
-
-# While write paths are being stamped, also show rows with NULL company_id.
-# Flip to False for strict isolation once every insert calls stamp().
 INCLUDE_UNASSIGNED = True
-
-# Roles allowed to switch between companies in one session.
 COMPANY_ADMIN_ROLES = {"SUPER_ADMIN", "ADMIN", "ADMINISTRATOR"}
-
 
 def get_current_company_id(request: Request) -> int:
     """Resolve the active company id for this request from the session."""

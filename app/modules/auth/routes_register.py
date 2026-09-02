@@ -3,12 +3,10 @@
 import logging
 import re
 from datetime import datetime
-
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy import text
 from sqlalchemy.orm import Session
-
 from app.database.session import get_db
 from app.core.security import hash_password
 from app.core.templates import render

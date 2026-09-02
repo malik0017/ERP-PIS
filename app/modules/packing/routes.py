@@ -136,7 +136,14 @@ def packing_order(request: Request, packing_id: int, db: Session = Depends(get_d
                MAX(COALESCE(ol.required_portions, 0)) AS planned,
                MAX(COALESCE(k.from_section, '')) AS from_section,
                GROUP_CONCAT(COALESCE(k.section_remarks, '') SEPARATOR ' ') AS remarks,
-               MAX(k.standard_uom) AS uom
+               MAX(k.standard_uom) AS uom,
+               -- Batch 153: read the real columns. The [NUT ...] remark parse
+               -- below is kept as a fallback for rows written before this batch
+               -- and not yet back-filled, so nothing goes blank mid-migration.
+               MAX(k.protein_g) AS protein_col,
+               MAX(k.carb_g) AS carb_col,
+               MAX(k.vegetable_g) AS veg_col,
+               MAX(k.portion_weight_g) AS weight_col
         FROM kitchen_section_transactions k
         LEFT JOIN order_lines ol
           ON ol.order_no = k.order_no AND ol.recipe_no = k.recipe_no
@@ -160,13 +167,60 @@ def packing_order(request: Request, packing_id: int, db: Session = Depends(get_d
                     c = kv[2:]
         planned = float(t["planned"] or 0)
         received = float(t["received"] or 0)
+
+        # Batch 153 — column first, remark stamp second. Once the back-fill has
+        # run the stamp path stops being used, but leaving it in means an
+        # un-migrated database still shows figures instead of dashes.
+        def _pick(col_val, parsed):
+            if col_val is not None:
+                return float(col_val)
+            try:
+                return float(parsed) if str(parsed).strip() != "" else None
+            except (TypeError, ValueError):
+                return None
+
+        recv_protein = _pick(t["protein_col"], p)
+        recv_carb = _pick(t["carb_col"], c)
+        recv_veg = _pick(t["veg_col"], None)
+        weight = _pick(t["weight_col"], w)
+
         pack_lines.append({
             "recipe_no": t["recipe_no"], "recipe_name": t["recipe_name"],
             "planned": planned, "received": received,
             "lack": max(planned - received, 0),
-            "protein": p, "carb": c, "weight": w,
+            # Received side — what Hot Kitchen sent through
+            "recv_protein": recv_protein, "recv_carb": recv_carb, "recv_veg": recv_veg,
+            "protein": p, "carb": c, "weight": weight,
             "from_section": t["from_section"], "uom": t["uom"],
         })
+
+    # Batch 153 — packed weights per recipe, from packing_pack_lines when that
+    # table exists. Trayline entry per recipe is not built yet, so today this
+    # resolves to an empty map and the Packed / Excess columns show "—".
+    # That is deliberate: showing 0.00 for a line nobody has weighed would make
+    # an unreconciled recipe look reconciled. The columns and the arithmetic are
+    # in place, so the entry form is a small follow-up rather than a rework.
+    packed_nutrition: dict = {}
+    try:
+        _has = db.execute(text("""
+            SELECT COUNT(*) FROM information_schema.tables
+            WHERE table_schema = DATABASE() AND table_name = 'packing_pack_lines'
+        """)).scalar()
+        if _has:
+            for _r in db.execute(text("""
+                SELECT recipe_no,
+                       MAX(packed_protein_g) AS protein,
+                       MAX(packed_carb_g)    AS carb,
+                       MAX(packed_veg_g)     AS veg
+                FROM packing_pack_lines WHERE order_no = :o GROUP BY recipe_no
+            """), {"o": row.order_no}).mappings().all():
+                packed_nutrition[_r["recipe_no"]] = {
+                    "protein": float(_r["protein"]) if _r["protein"] is not None else None,
+                    "carb": float(_r["carb"]) if _r["carb"] is not None else None,
+                    "veg": float(_r["veg"]) if _r["veg"] is not None else None,
+                }
+    except Exception:
+        packed_nutrition = {}
 
     # Batch 152: weekday name for the delivery date (image 14).
     delivery_weekday = ""
@@ -198,8 +252,89 @@ def packing_order(request: Request, packing_id: int, db: Session = Depends(get_d
                   {"row": row, "order": order, "qc_rows": qc_rows,
                    "pack_lines": pack_lines, "delivery_weekday": delivery_weekday,
                    "region_bags": region_bags, "pack_regions": _PACK_REGIONS,
+                   # Batch 153: packed weights recorded at Trayline, keyed by
+                   # recipe. Passed explicitly — an undefined name in Jinja is
+                   # falsy, so omitting it would render a silent column of
+                   # dashes that looks like "nothing packed yet" rather than a
+                   # missing variable.
+                   "packed_nutrition": packed_nutrition,
                    "page_title": f"Packing - {row.order_no}",
                    "error": request.query_params.get("error")})
+
+
+@router.post("/{packing_id}/pack-lines")
+async def save_pack_lines(request: Request, packing_id: int, db: Session = Depends(get_db)):
+    """Batch 157 — record packed weights per recipe at Trayline.
+
+    Saves the whole grid in one submit rather than a Save button per row: the
+    operator weighs the trays for an order as one pass, and a per-row save would
+    mean 19 round trips and 19 chances to lose a value by navigating away.
+
+    Upsert on (order_no, recipe_no, region) so re-weighing corrects the existing
+    row instead of stacking duplicates. region is '' today — see the schema
+    guard in main.py for why the column exists now rather than later.
+
+    A blank box is stored as NULL, not 0. Nothing weighed is not the same as
+    weighed-and-found-zero, and the pack sheet renders the two differently
+    ("—" versus 0.00). Writing 0 for blanks would make an unweighed recipe look
+    reconciled with a shortage equal to everything received.
+    """
+    require_action(request, "packing", "edit")
+    row = db.execute(text("SELECT order_no FROM packing_dispatch WHERE id = :i"),
+                     {"i": packing_id}).mappings().first()
+    if not row:
+        return _redirect_with_error("/packing", "Packing record not found.")
+    order_no = row["order_no"]
+
+    form = await request.form()
+    recipes = form.getlist("pl_recipe_no")
+    prot = form.getlist("pl_protein")
+    carb = form.getlist("pl_carb")
+    veg = form.getlist("pl_veg")
+    portion = form.getlist("pl_portion")
+
+    def _opt(seq, i):
+        if i >= len(seq):
+            return None
+        v = (seq[i] or "").strip()
+        if v == "":
+            return None
+        try:
+            return float(v)
+        except ValueError:
+            return None
+
+    saved = 0
+    for i, rc in enumerate(recipes):
+        rc = (rc or "").strip()
+        if not rc:
+            continue
+        vals = {"o": order_no, "r": rc,
+                "p": _opt(prot, i), "c": _opt(carb, i),
+                "v": _opt(veg, i), "pp": _opt(portion, i)}
+        if all(vals[k] is None for k in ("p", "c", "v", "pp")):
+            continue
+        db.execute(text("""
+            INSERT INTO packing_pack_lines
+                (order_no, recipe_no, region, packed_portion,
+                 packed_protein_g, packed_carb_g, packed_veg_g,
+                 created_at, updated_at)
+            VALUES (:o, :r, '', :pp, :p, :c, :v, NOW(), NOW())
+            ON DUPLICATE KEY UPDATE
+                packed_portion   = VALUES(packed_portion),
+                packed_protein_g = VALUES(packed_protein_g),
+                packed_carb_g    = VALUES(packed_carb_g),
+                packed_veg_g     = VALUES(packed_veg_g),
+                updated_at       = NOW()
+        """), vals)
+        saved += 1
+    db.commit()
+
+    from urllib.parse import quote as _q
+    return RedirectResponse(
+        f"/packing/{packing_id}?toast=success&title={_q('Packed Weights Saved')}"
+        f"&msg={_q(f'{saved} recipe line(s) recorded.')}",
+        status_code=HTTP_303_SEE_OTHER)
 
 
 @router.post("/{packing_id}/update")

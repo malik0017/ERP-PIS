@@ -248,6 +248,14 @@
         </div>
       </form>
     </div>
+    <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
+      <div class="form-check form-switch mb-0">
+        <input class="form-check-input" type="checkbox" id="hcShowDelay">
+        <label class="form-check-label small" for="hcShowDelay">
+          {{ t('Show delayed orders') }} <span class="text-secondary" id="hcDelayCount"></span>
+        </label>
+      </div>
+    </div>
     <input class="hc-input mb-2" id="hcSearch" placeholder="Quick search order, customer, brand, channel, status..."
       onkeyup="filterHeadChef()">
     <div class="table-responsive">
@@ -275,14 +283,20 @@
             <th></th>
           </tr>
         </thead>
-        <tbody>{% for o in orders %}<tr>
+        {# Batch 154: rows carry their urgency so the toolbar can hide the
+           delayed ones by default. Late orders are still in the table and one
+           click away — they are just not the first fourteen rows a planner
+           sees when they open the screen to plan TODAY's cooking. #}
+        <tbody>{% for o in orders %}
+          {%- set _u = urgency.get(o.order_no, '') -%}
+          <tr data-urgency="{{ _u|lower }}" {% if _u == 'LATE' %}class="hc-late"{% endif %}>
             <td><strong>{{ o.order_no }}</strong></td>
             <td><strong>{{ o.customer_name }}</strong><br><span class="mini">{{ o.brand or '-' }} · {{ o.channel or '-'
                 }}</span></td>
             <td><span class="hc-status {% if o.status == 'Submitted' %}hc-pending{% else %}hc-ok{% endif %}">{{ 'Awaiting Planning' if o.status == 'Submitted' else o.status
                 }}</span></td>
             <td>{{ o.required_delivery_date or 'Not set' }} {{ o.required_delivery_time or '' }}
-              {% set u = urgency.get(o.order_no, '') %}
+              {% set u = _u %}
               {% if u == 'LATE' %}<span class="badge badge-phoenix badge-phoenix-danger ms-1">{{ t('Delay') }}</span>
               {% elif u == 'TODAY' %}<span class="badge badge-phoenix badge-phoenix-warning ms-1">{{ t('TODAY') }}</span>
               {% elif u == 'TOMORROW' %}<span class="badge badge-phoenix badge-phoenix-info ms-1">{{ t('TOMORROW') }}</span>{% endif %}</td>
@@ -297,7 +311,49 @@
     </div>
   </div>
 </div>
-<script>function filterHeadChef() { const q = (document.getElementById('hcSearch').value || '').toLowerCase(); document.querySelectorAll('#headChefTable tbody tr').forEach(tr => tr.style.display = tr.innerText.toLowerCase().includes(q) ? '' : 'none') }
+<style>
+/* Batch 154: one rule decides visibility, so search and the delay toggle
+   cannot contradict each other. A row hides if EITHER says hide. */
+#headChefTable tbody tr.hc-hidden,
+#headChefTable tbody tr.hc-nomatch { display: none; }
+#headChefTable tbody tr.hc-late td { background: #fff8f8; }
+</style>
+<script>
+// Batch 154: default view hides delayed rows. Persisted per browser so a
+// planner who turns them on does not have to re-enable them every visit.
+function hcApplyDelay(){
+  var on = document.getElementById('hcShowDelay');
+  var show = on ? on.checked : false;
+  try { localStorage.setItem('hcShowDelay', show ? '1' : '0'); } catch(e){}
+  var hidden = 0;
+  document.querySelectorAll('#headChefTable tbody tr[data-urgency]').forEach(function(tr){
+    if(tr.getAttribute('data-urgency') === 'late' && !show){ tr.classList.add('hc-hidden'); hidden++; }
+    else { tr.classList.remove('hc-hidden'); }
+  });
+  var c = document.getElementById('hcDelayCount');
+  if(c) c.textContent = hidden ? ('(' + hidden + ' hidden)') : '';
+  filterHeadChef();
+}
+document.addEventListener('DOMContentLoaded', function(){
+  var on = document.getElementById('hcShowDelay');
+  if(on){
+    var saved = null;
+    try { saved = localStorage.getItem('hcShowDelay'); } catch(e){}
+    on.checked = (saved === '1');
+    on.addEventListener('change', hcApplyDelay);
+  }
+  hcApplyDelay();
+});
+// Batch 154: search and the delay toggle both decide row visibility, so they
+// have to agree. Search no longer writes style.display (which would resurrect
+// rows the toggle had hidden); it sets its own class and CSS combines the two.
+function filterHeadChef() {
+  const q = (document.getElementById('hcSearch').value || '').toLowerCase();
+  document.querySelectorAll('#headChefTable tbody tr').forEach(function(tr){
+    const hit = !q || tr.innerText.toLowerCase().includes(q);
+    tr.classList.toggle('hc-nomatch', !hit);
+  });
+}
 // Batch 137: per-column filters (AND across columns).
 (function(){
   var inputs = Array.prototype.slice.call(document.querySelectorAll('#headChefTable .col-filter-row .cf'));

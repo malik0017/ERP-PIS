@@ -140,16 +140,34 @@ def order_portal_new(request: Request, db: Session = Depends(get_db)):
     # loads that day's recipes automatically once a delivery date is chosen.
     preset_info = {"key": preset, "weekly_menu": False,
                    "customer": "", "brand": "", "channel": ""}
+    # Batch 150 — PREFERRED DEFAULT PER CUSTOMER CARD.
+    #
+    # "smc" matches six customers (Accounting Department Smc1, Cafeteria Smc2,
+    # SMC 1 -(Olaya) Cafeteria, SMC 2 -(King Abdullah) Cafeteria, SMC1, SMC2).
+    # The old ORDER BY only preferred names STARTING with the key, so which one
+    # won was decided by alphabetical order — and the operator had to correct it
+    # on every single order.
+    #
+    # A new first tier prefers an EXACT name match against the configured
+    # default. Everything else about the query is unchanged, so a card with no
+    # entry here behaves exactly as before.
+    PRESET_DEFAULT_NAME = {
+        "smc": "smc1",
+    }
     if preset:
+        prefer = PRESET_DEFAULT_NAME.get(preset, preset)
         # match a customer whose code or name contains the preset key
         row = db.execute(text("""
             SELECT customer_code, customer_name FROM customers
             WHERE company_id = :cid
               AND (LOWER(customer_code) LIKE :k OR LOWER(customer_name) LIKE :k)
               AND UPPER(TRIM(COALESCE(status,''))) = 'ACTIVE'
-            ORDER BY (LOWER(customer_name) LIKE :exact) DESC, customer_name ASC
+            ORDER BY (LOWER(TRIM(customer_name)) = :prefer) DESC,
+                     (LOWER(customer_name) LIKE :exact) DESC,
+                     customer_name ASC
             LIMIT 1
-        """), {"cid": company_id, "k": f"%{preset}%", "exact": f"{preset}%"}).mappings().first()
+        """), {"cid": company_id, "k": f"%{preset}%", "exact": f"{preset}%",
+               "prefer": prefer}).mappings().first()
         if row:
             preset_info["customer"] = f"{row['customer_code']} - {row['customer_name']}"
         # FRSH uses the weekly day-wise menu

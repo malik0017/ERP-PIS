@@ -1,9 +1,4 @@
 # app/modules/auth/routes.py
-"""
-Authentication routes - login, register, logout
-Handles both API endpoints and HTML form submissions
-"""
-
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.responses import RedirectResponse, JSONResponse
 from sqlalchemy.orm import Session
@@ -27,8 +22,6 @@ from ...schemas.auth import UserLoginRequest, UserRegisterRequest, LoginResponse
 from app.core.security import needs_rehash, hash_password
 
 logger = logging.getLogger(__name__)
-
-
 
 SECURITY_COLUMNS = {
     "failed_login_attempts": "INT NOT NULL DEFAULT 0 AFTER is_verified",
@@ -205,10 +198,6 @@ def _needs_2fa(db: Session, user_id: int, company_id: int) -> bool:
         FROM users WHERE id = :id
     """), {"id": user_id}).mappings().first() or {}
 
-    # Cloudflare-style behavior: admin/user can generate an enrollment QR, but
-    # login 2FA starts only after the user scans the QR and verifies a code.
-    # If enrollment is not completed in 30 days, it is cleared automatically and
-    # will not block login.
     setup_required = bool(row.get("two_factor_setup_required"))
     expires_at = row.get("two_factor_setup_expires_at")
     if setup_required and expires_at and expires_at < datetime.now():
@@ -312,15 +301,7 @@ async def login(
     request: Request,
     db: Session = Depends(get_db)
 ):
-    """
-    Handle login - works with both:
-    1. HTML form submission (form data)
-    2. JSON API request (JSON body)
     
-    Returns:
-    - Form submission: Redirect to /dashboard or show login.html with error
-    - JSON request: JSON response with token and user data
-    """
     
     username = None
     password = None
@@ -366,8 +347,6 @@ async def login(
     
     logger.info(f"🔐 Login attempt: {username}")
 
-    # Batch 155: IP-level rate limit. Even across many usernames, one IP can only
-    # try LOGIN_MAX_ATTEMPTS times per window before being throttled.
     from ...core.security import login_rate_limited, login_rate_reset
     _client_ip = (request.client.host if request.client else "") or (request.headers.get("x-forwarded-for", "").split(",")[0].strip())
     if login_rate_limited(_client_ip):
@@ -514,9 +493,6 @@ async def login(
     request.session["_last_activity"] = _t.time()
     user_access_map = _load_user_access(db, user.id)
     user_action_map = _load_user_actions(db, user.id)
-    # Keep session cookie small. Starlette stores sessions client-side; a large
-    # nested access matrix can exceed browser cookie limits and causes login to
-    # look successful, then immediately return to /login.
     request.session["user_access"] = _compact_user_access(user_access_map)
     request.session["user_actions"] = _compact_user_actions(user_action_map)
 
@@ -526,18 +502,11 @@ async def login(
     request.session["header_title"] = branding.get("header_title") or "ISFC"
     request.session["header_subtitle"] = branding.get("header_subtitle") or "Production"
 
-    # Batch 83 fix: every user used to land on the Module Launcher after
-    # login, including customer accounts — meant to be filtered down to
-    # just their own portal by RBAC, but a customer landing on "a grid of
-    # launcher cards" (even a grid of one) is the wrong first experience
-    # for someone who should only ever see their own orders. Customers now
-    # go straight to their portal home; every other role is unchanged.
     role_name = (user.role.name if user.role else "CUSTOMER") or "CUSTOMER"
     target_url = "/my" if role_name.upper() == "CUSTOMER" else "/modules"
     
     logger.info(f"✅ Login successful: {username}")
     
-    # Return based on request type
     if is_json_request:
         # Return JSON for API requests
         return JSONResponse(
@@ -558,7 +527,6 @@ async def login(
         )
     else:
         return RedirectResponse(url=target_url, status_code=302)
-
 
 
 @router.get("/forgot-password")

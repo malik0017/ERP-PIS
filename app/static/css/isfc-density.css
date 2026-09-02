@@ -179,3 +179,78 @@ a.isfc-kpi-link {
 .isfc-combo-item:hover, .isfc-combo-item.hl { background: var(--phoenix-tertiary-bg, #eef3fb); }
 .isfc-combo-empty { padding: 10px 12px; color: var(--phoenix-tertiary-color, #97a2b5); font-size: .82rem; font-style: italic; }
 
+
+/* ==========================================================================
+   Batch 154 — TABLE READABILITY: horizontal scroll instead of column squeeze
+   ==========================================================================
+
+   THE PROBLEM, and why it looked bad on every screen at once.
+
+   The data tables sit inside `.table-responsive`, which gives horizontal
+   scrolling — but only once the table is WIDER than its container. A plain
+   <table> shrinks to fit instead, so the browser never overflows: it just
+   squeezes columns until "ORD-20260829-0001" wraps onto four lines and
+   "Ma'una Foundation(FRSH)" onto three. The table technically fits, and is
+   unreadable. That is the tall-thin-column effect circled on the Head Chef
+   queue, the Store Issuance lines and the Cutting dashboard.
+
+   The fix is not per-screen column widths — that is 30 templates and it drifts.
+   It is to stop the table shrinking: give it a min-width so it overflows its
+   container honestly, at which point .table-responsive does its job and scrolls.
+
+   Scoped to ISFC's own table classes so vendor/Phoenix widgets are untouched.
+   ========================================================================== */
+
+.table-responsive > .table-pro,
+.table-responsive > .isfc-table,
+.table-responsive > .si-table,
+.table-responsive > .po-table,
+.table-responsive > table.table {
+  min-width: 900px;                 /* overflow rather than squeeze */
+}
+
+/* Identifier columns must never wrap. An order number broken across four
+   lines is what makes a row four times taller than it needs to be. */
+.table-pro td, .isfc-table td, .si-table td, .po-table td,
+.table-pro th, .isfc-table th, .si-table th, .po-table th {
+  white-space: nowrap;
+}
+
+/* ...except the genuinely long free-text columns, which should wrap inside a
+   sensible width rather than push the table out to 3000px. */
+.table-pro td.wrap, .isfc-table td.wrap, .si-table td.wrap, .po-table td.wrap,
+.table-pro td[data-wrap], .isfc-table td[data-wrap] {
+  white-space: normal;
+  min-width: 200px;
+}
+
+/* Breathing room. The squeeze made these look cramped even where they fit. */
+.table-pro th, .isfc-table th, .si-table th, .po-table th { padding: 8px 12px; }
+.table-pro td, .isfc-table td, .si-table td, .po-table td { padding: 8px 12px; }
+
+/* Sticky header — on a table you now scroll, losing the column names two
+   screens down is worse than the original squeeze. */
+.table-responsive { max-height: 72vh; overflow: auto; }
+.table-responsive > table > thead th {
+  position: sticky; top: 0; z-index: 2;
+  background: var(--phoenix-body-bg, #fff);
+}
+html[data-bs-theme="dark"] .table-responsive > table > thead th {
+  background: var(--phoenix-body-bg, #141824);
+}
+
+/* A second sticky row for grouped headers (the Trayline pack sheet), so the
+   Received / Packed / Excess bands stay put along with their sub-columns. */
+.table-responsive > table > thead tr:nth-child(2) th { top: 36px; }
+
+/* Print: undo all of it. A printed sheet has no scrollbar and no viewport. */
+@media print {
+  .table-responsive { max-height: none; overflow: visible; }
+  .table-responsive > .table-pro,
+  .table-responsive > .isfc-table,
+  .table-responsive > .si-table,
+  .table-responsive > .po-table,
+  .table-responsive > table.table { min-width: 0; }
+  .table-pro td, .isfc-table td, .si-table td, .po-table td { white-space: normal; }
+  .table-responsive > table > thead th { position: static; }
+}

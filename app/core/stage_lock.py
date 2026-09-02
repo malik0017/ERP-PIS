@@ -1,46 +1,20 @@
 # app/core/stage_lock.py
-"""
-Batch 121 — Pipeline step-locking.
 
-Rule (client requirement): once an order has moved PAST a pipeline stage, that
-earlier stage becomes VIEW-ONLY. You can still open it and extract reports/CSV/
-PDF, but you cannot edit/re-issue/re-transfer it. Editing is only allowed on the
-stage the order is currently at (or stages it hasn't reached yet, which simply
-have nothing to edit).
-
-This is deliberately centralised so every module asks the same question the same
-way, instead of each route inventing its own status checks.
-
-Design
-------
-* PIPELINE lists the ordered production stages.
-* Each order status maps to the stage the order is currently AT (STATUS_STAGE).
-* A stage is LOCKED for editing when the order's current stage index is strictly
-  greater than that stage's index — i.e. the order has already moved on.
-* Terminal/exception statuses (Delivered, Cancelled, QC Rejected, QC Hold) lock
-  every production stage; correction happens through the dedicated flow, not by
-  silently editing a finished step.
-
-Admins can be allowed to override via `can_override` (kept centralised so the
-policy is in one place); by default override is OFF to match "enforce fully".
-"""
 from __future__ import annotations
 
-# Ordered pipeline stages (keys used by routes/templates).
 PIPELINE = [
-    "sales",        # sales request / review
-    "head_chef",    # planning & schedule approval
-    "bom",          # BOM generation
-    "store",        # store issuance
-    "kitchen",      # kitchen sections receive/process/transfer
-    "qc",           # quality control
-    "packing",      # trayline / packing
-    "dispatch",     # dispatch / delivery
+    "sales",        
+    "head_chef",    
+    "bom",         
+    "store",        
+    "kitchen",     
+    "qc",           
+    "packing",      
+    "dispatch",     
 ]
 _INDEX = {s: i for i, s in enumerate(PIPELINE)}
 
-# Map each order status to the stage the order is currently sitting AT.
-# Anything not listed is treated as the earliest stage (nothing locked yet).
+
 STATUS_STAGE = {
     # sales / intake
     "Pending": "sales",
@@ -87,6 +61,15 @@ def current_index(status: str | None) -> int:
     return _INDEX.get(current_stage(status), 0)
 
 
+# ---------------------------------------------------------------------------
+# Batch 152 — GLOBAL ENABLE SWITCH
+# ---------------------------------------------------------------------------
+def stage_locks_enabled() -> bool:
+    import os
+    return str(os.getenv("ISFC_STAGE_LOCKS", "1")).strip().lower() not in (
+        "0", "false", "no", "off")
+
+
 def is_stage_locked(status: str | None, stage: str) -> bool:
     """
     True when `stage` is view-only for an order in `status` — i.e. the order has
@@ -95,6 +78,8 @@ def is_stage_locked(status: str | None, stage: str) -> bool:
     Unknown stage names are treated as not-locked (fail open) so a typo can
     never wedge a screen; the RBAC layer still governs who may act at all.
     """
+    if not stage_locks_enabled():
+        return False
     s = (status or "").strip()
     if stage not in _INDEX:
         return False

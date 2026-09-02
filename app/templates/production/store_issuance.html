@@ -202,9 +202,37 @@
             <td><strong>{{ o.brand or '-' }}</strong></td>
             <td>{{ o.cooking_date or o.required_delivery_date or '-' }} {{ o.cooking_time or o.required_delivery_time or
               '' }}</td>
-            <td><span
-                class="si-status {% if o.status == 'Store Pending' %}si-pending{% elif o.status == 'In Production' %}si-issued{% endif %}">{{
-                o.status }}</span></td>
+            {# ============================================================
+               Batch 156 — the Status column now reports ISSUANCE state, not the
+               order's lifecycle state.
+
+               It was showing "Dispatched", "Out for Delivery", "Packing
+               Pending", "BOM Generated"... which answer a question this screen
+               is not asking. A store keeper opening the issuance queue needs to
+               know one thing: have I issued this order or not? "Out for
+               Delivery" does not tell them, and worse, it implies the order is
+               finished when there may still be unissued lines on it.
+
+               Derived from the line counts already in the row, so no new query:
+                 all lines finalized      -> Issued
+                 some finalized           -> Partial
+                 none                     -> Pending
+
+               The order's lifecycle status is still available — it is the
+               "Order Status" filter above, and it is on the order screen.
+               ============================================================ #}
+            {%- set _tot = (lm.total_lines if lm else 0) or 0 -%}
+            {%- set _fin = (lm.finalized_lines if lm else 0) or 0 -%}
+            {%- if _tot > 0 and _fin >= _tot -%}
+              {%- set _iss, _cls = 'Issued', 'si-issued' -%}
+            {%- elif _fin > 0 -%}
+              {%- set _iss, _cls = 'Partial', 'si-short' -%}
+            {%- else -%}
+              {%- set _iss, _cls = 'Pending', 'si-pending' -%}
+            {%- endif -%}
+            <td><span class="si-status {{ _cls }}" title="{{ t('Order status') }}: {{ o.status }}">{{ t(_iss) }}</span>
+              {%- if _tot > 0 and _fin > 0 and _fin < _tot %}<div class="mini text-secondary">{{ _fin }}/{{ _tot }}</div>{% endif -%}
+            </td>
             <td>{{ lm.total_lines if lm else 0 }}</td>
             <td>{{ lm.finalized_lines if lm else 0 }}</td>
             <td>{{ lm.required_qty if lm else 0 }}</td>

@@ -1,44 +1,5 @@
 # app/modules/procurement/routes_landed.py
-# =============================================================================
-# Batch 112 — LANDED COST ALLOCATION
-# -----------------------------------------------------------------------------
-# WHY THIS MATTERS FOR A FOOD BUSINESS
-#
-# The price on a supplier invoice is not what an item costs you. Freight,
-# customs duty, clearing, insurance and port handling all have to land on the
-# goods, or every downstream number is understated:
-#
-#   * recipe food cost is too low  -> margins look better than they are
-#   * inventory valuation is too low -> the balance sheet understates stock
-#   * COGS at issue is too low     -> profit is overstated, then corrected
-#                                     later by a mystery variance
-#
-# On imported goods — which for a Saudi food manufacturer is most dry stores —
-# landed cost is routinely 8–15% on top of the invoice. Ignoring it means every
-# margin you quote is wrong by roughly that much.
-#
-# SAP B1 calls this the Landed Costs document; Odoo calls it Landed Costs on a
-# receipt. Same concept, same purpose.
-#
-# THE ALLOCATION METHODS, AND WHEN EACH IS CORRECT
-#
-#   BY VALUE   default. Duty and insurance scale with what the goods are worth.
-#   BY WEIGHT  freight and handling scale with how heavy the shipment is, not
-#              its value. A pallet of flour and a pallet of saffron cost the
-#              same to ship and nothing like the same to insure.
-#   BY QTY     simple per-unit charges (per-carton handling).
-#
-# Choosing "by value" for a freight charge overstates the cost of expensive
-# items and understates cheap heavy ones, which is exactly backwards. So the
-# method is per-charge, not per-document.
-#
-# WHAT IT WRITES
-#
-# Allocation updates the RECEIPT line's unit cost and posts a matching
-# adjustment to the stock ledger, so valuation and future issues use the true
-# landed figure. It never silently rewrites history: the original invoice
-# price is kept alongside, and the whole allocation can be reversed.
-# =============================================================================
+
 from __future__ import annotations
 
 from datetime import date, datetime
@@ -152,18 +113,7 @@ def _receipt_lines(db: Session, grn_no: str, cid: int) -> list[dict]:
 
 
 def allocate(lines: list[dict], charges: list[dict]) -> list[dict]:
-    """Spread every charge across the receipt lines by its own method.
-
-    Each charge is allocated independently — a freight charge by weight and a
-    duty charge by value on the same receipt. Allocating the whole document by
-    one method is the common shortcut and it is wrong: freight does not scale
-    with value, and duty does not scale with weight.
-
-    Rounding: the last line absorbs the difference so the allocated total
-    always equals the charge exactly. Without that, a three-way split of 100.00
-    allocates 33.33 x3 = 99.99 and a cent goes missing from inventory value
-    on every single receipt.
-    """
+   
     out = []
     for ln in lines:
         qty = float(ln["received_qty"] or 0)
@@ -192,8 +142,7 @@ def allocate(lines: list[dict], charges: list[dict]) -> list[dict]:
 
         total = sum(basis)
         if total <= 0:
-            # Nothing to allocate against: split evenly rather than dropping
-            # the charge, which would understate cost across the board.
+            
             share = amount / len(out) if out else 0
             for x in out:
                 x["allocated"] = round(x["allocated"] + share, 4)

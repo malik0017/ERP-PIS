@@ -2,16 +2,13 @@
 
 from pathlib import Path
 from typing import Any
-
 from fastapi import Request
 from fastapi.templating import Jinja2Templates
-
 from app.core.i18n import translate, lang_from_request, is_rtl as _is_rtl
 from app.core.rbac import can_access, current_access, normalized_role, can_action
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 TEMPLATE_DIR = BASE_DIR / "templates"
-
 
 def _inject_common_context(context: dict[str, Any] | None) -> dict[str, Any]:
     """Add common template values used by sidebar/header.
@@ -27,10 +24,6 @@ def _inject_common_context(context: dict[str, Any] | None) -> dict[str, Any]:
         data.setdefault("user_role", normalized_role(request))
         data.setdefault("can_access", lambda area: can_access(request, area))
         data.setdefault("can_action", lambda area, action="view": can_action(request, area, action))
-        # Batch 155: CSRF token — generated once per session, exposed to every
-        # template as `csrf_token`. Forms can add {{ csrf_form_field()|safe }}
-        # (a hidden input) and enforcement middleware validates it. Provided as a
-        # global so rollout can be incremental without breaking existing forms.
         try:
             import secrets as _secrets
             _tok = request.session.get("_csrf_token")
@@ -43,40 +36,11 @@ def _inject_common_context(context: dict[str, Any] | None) -> dict[str, Any]:
         except Exception:
             data.setdefault("csrf_token", "")
             data.setdefault("csrf_form_field", lambda: "")
-        # =================================================================
-        # Batch 142 — COST VISIBILITY SWITCH
-        #
-        # Costing is not signed off yet: the BOM screen was showing a Cost
-        # column built on purchase prices that nobody has validated, next to
-        # quantities the kitchen is expected to act on. A wrong number beside
-        # a right one makes the right one look wrong too.
-        #
-        # So every cost/price column is gated on `show_costs`, which defaults
-        # to OFF and is flipped from Settings once the costing data is agreed.
-        # It lives in the shared context rather than being deleted from each
-        # template so turning it back on later is one setting, not another
-        # batch of template edits.
-        # =================================================================
-        # Resolution order: per-session override (set by an admin from the
-        # Settings screen) -> environment variable -> off.
         try:
             _sc = request.session.get("show_costs")
         except Exception:
             _sc = None
         if _sc is None:
-            # BATCH 143 HOTFIX — this line raised UnboundLocalError and took
-            # every page down, login included.
-            #
-            # Batch 142 added `import os as _os` at module level. That was
-            # correct in isolation, but ~25 lines further down this SAME
-            # function already had `import os as _os` inside a try block (the
-            # company-logo lookup). A binding anywhere in a function body makes
-            # the name local for the WHOLE body, so this read — which executes
-            # first — hit an unbound local and never reached the module-level
-            # import at all.
-            #
-            # The module-level import is removed and a distinct local name is
-            # used here, so neither block can shadow the other.
             import os as _os_cost
             _sc = _os_cost.getenv("ISFC_SHOW_COSTS", "0")
         data.setdefault("show_costs", str(_sc).strip().lower() in ("1", "true", "yes", "on"))
@@ -108,20 +72,6 @@ def _inject_common_context(context: dict[str, Any] | None) -> dict[str, Any]:
             data.setdefault("company_logo", f"/static/uploads/logos/company_{_cid}.png" if _cid and _os.path.exists(_logo_fs) else None)
         except Exception:
             data.setdefault("company_logo", None)
-        # ------------------------------------------------------------------
-        # Batch 99 — header essentials, injected globally so EVERY page's
-        # navbar has them rather than only the handful of routes that
-        # remembered to pass them.
-        #
-        #   user_avatar          the logged-in user's uploaded profile photo
-        #   unread_notifications the count for the bell badge
-        #   company_logo_small   50x50 header logo (see below)
-        #
-        # Each is wrapped defensively: a missing table or column must degrade
-        # to a sensible default, never 500 the whole application on every
-        # single page. That is the same reasoning behind the existing
-        # company_logo block above.
-        # ------------------------------------------------------------------
         try:
             import os as _os2
             _uid = request.session.get("user_id")
@@ -132,8 +82,6 @@ def _inject_common_context(context: dict[str, Any] | None) -> dict[str, Any]:
                 for _ext in ("png", "jpg", "jpeg", "webp"):
                     _fs = _os2.path.join(_base, f"user_{_uid}.{_ext}")
                     if _os2.path.exists(_fs):
-                        # Cache-bust on mtime so a re-upload shows immediately
-                        # instead of being served from the browser cache.
                         _avatar = f"/static/uploads/avatars/user_{_uid}.{_ext}?v={int(_os2.path.getmtime(_fs))}"
                         break
             data.setdefault("user_avatar", _avatar)
@@ -150,8 +98,6 @@ def _inject_common_context(context: dict[str, Any] | None) -> dict[str, Any]:
             if _uid:
                 _db = _SL()
                 try:
-                    # Batch 98 scoping applies here too — the badge must count
-                    # only what this user in THIS company can actually open.
                     _n = _db.execute(_text("""
                         SELECT COUNT(*) FROM notifications
                         WHERE (company_id = :cid OR company_id IS NULL)
@@ -215,12 +161,8 @@ class ISFCTemplates(Jinja2Templates):
 
 
 templates = ISFCTemplates(directory=str(TEMPLATE_DIR))
-
-# Also expose helpers as Jinja globals for templates that need direct checks.
 templates.env.globals["can_access_area"] = can_access
 
-
-# Batch 65: parse a JSON string in-template (used by launcher sparklines).
 def _from_json(value):
     import json as _json
     if value is None or value == "":

@@ -1,16 +1,6 @@
 # app/core/i18n.py
-"""EN/AR localization.
 
-Usage in templates (injected globally by core/templates.py):
-    {{ t('sidebar.dashboard') }}
-    <html lang="{{ lang }}" dir="{{ 'rtl' if is_rtl else 'ltr' }}">
-
-Dictionaries live in app/i18n/<lang>.json. Missing keys fall back to English,
-then to the key itself, so an incomplete Arabic file never breaks a page.
-Add languages by dropping a new JSON file (e.g. ur.json) - no code changes.
-"""
 from __future__ import annotations
-
 import json
 from functools import lru_cache
 from pathlib import Path

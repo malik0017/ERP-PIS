@@ -1,44 +1,11 @@
 # app/core/module_visibility.py
-# =============================================================================
-# Batch 65 — MODULE VISIBILITY (sellable-module gating)
-# -----------------------------------------------------------------------------
-# The business goal: ISFC will sell the system module-by-module. A given
-# customer company might buy ONLY Production first, then later switch on
-# Procurement / Inventory / Finance, etc.
-#
-# This layer answers one question: "Is a top-level ERP module switched ON for
-# this company?" It is completely SEPARATE from RBAC:
-#
-#   * RBAC (app/core/rbac.py)        -> "is THIS USER allowed to see area X?"
-#   * Module visibility (this file)  -> "did the COMPANY buy / enable module X?"
-#
-# A screen is shown only when BOTH are true. An admin can never see a module
-# that the company has switched off, because a disabled module is not part of
-# the product for that company at all.
-#
-# Storage: one row per (company_id, module_key) in `module_visibility`.
-#   enabled = 1 -> visible,  enabled = 0 -> hidden.
-# A module with NO row defaults to its DEFAULT_ENABLED value below, so a fresh
-# install already shows the "core" set and hides the not-yet-sold ones.
-#
-# The whole thing is framework-light and fail-open on infrastructure errors:
-# if the DB/table is unreachable we return the default map so the app never
-# hard-breaks because of a settings lookup.
-# =============================================================================
 
 from __future__ import annotations
-
 from functools import lru_cache
 from fastapi import Request
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-# -----------------------------------------------------------------------------
-# Catalogue of sellable modules. `key` is stored in the DB and used everywhere.
-# `areas` are the RBAC areas that belong to the module — when a module is OFF,
-# every one of its areas is treated as hidden regardless of the RBAC matrix.
-# `default` decides visibility before any admin ever touches the toggles.
-# -----------------------------------------------------------------------------
 MODULE_CATALOG: list[dict] = [
     {
         "key": "production",
@@ -109,7 +76,7 @@ MODULE_CATALOG: list[dict] = [
         "label": "Finance (AR / AP)",
         "icon": "cash-coin",
         "color": "success",
-        "default": True,   # Batch 69: Finance is complete (GL + statements) — show by default
+        "default": True,   
         "areas": {"finance"},
     },
     {
@@ -133,7 +100,7 @@ MODULE_CATALOG: list[dict] = [
         "label": "Subscriptions & Recurring Orders",
         "icon": "arrow-repeat",
         "color": "info",
-        "default": True,   # Batch 76: new module, on by default so it's usable immediately
+        "default": True,   
         "areas": {"subscriptions"},
     },
     {
@@ -141,14 +108,11 @@ MODULE_CATALOG: list[dict] = [
         "label": "Users & Access",
         "icon": "shield-lock",
         "color": "dark",
-        "default": True,     # kept on so admins never lock themselves out
+        "default": True,     
         "areas": {"users", "audit"},
     },
     {
-        # Batch 120: Sales was rendered by the launcher template but had NO
-        # catalog entry, so module_enabled("sales") fell through to False and
-        # the card never appeared. Sales is where order-to-cash begins, so it
-        # defaults ON. Its areas are the sales/portal ordering surfaces.
+       
         "key": "sales",
         "label": "Sales & Orders",
         "icon": "cart",
@@ -171,9 +135,7 @@ for _m in MODULE_CATALOG:
         _AREA_TO_MODULE[_a] = _m["key"]
 
 
-# -----------------------------------------------------------------------------
-# Schema (idempotent). Called by settings save + lazily by the reader.
-# -----------------------------------------------------------------------------
+
 def ensure_schema(db: Session) -> None:
     try:
         db.execute(text("""
@@ -195,10 +157,6 @@ def ensure_schema(db: Session) -> None:
             pass
 
 
-# -----------------------------------------------------------------------------
-# DB readers. `get_map` returns {module_key: bool} for a company, merging saved
-# rows over the defaults so unknown/new modules always resolve.
-# -----------------------------------------------------------------------------
 def get_map(db: Session, company_id: int = 1) -> dict[str, bool]:
     result = dict(_DEFAULT_MAP)
     try:
@@ -228,10 +186,6 @@ def set_map(db: Session, enabled_keys: set[str], company_id: int = 1) -> None:
     db.commit()
 
 
-# -----------------------------------------------------------------------------
-# Request-scoped cache so a single page render hits the DB once, not per-card.
-# We stash the resolved map on request.state.
-# -----------------------------------------------------------------------------
 def _map_for_request(request: Request) -> dict[str, bool]:
     cached = getattr(getattr(request, "state", None), "_module_vis", None)
     if cached is not None:
@@ -267,11 +221,7 @@ def module_enabled(request: Request, module_key: str) -> bool:
 
 
 def area_enabled(request: Request, area: str) -> bool:
-    """Is the module that owns this RBAC area switched ON?
-
-    Areas that don't map to any sellable module (edge cases) are allowed, so
-    this never over-blocks. `module_home` (the launcher itself) is always on.
-    """
+    
     if area in ("module_home", "settings"):
         return True
     mod = _AREA_TO_MODULE.get(area)

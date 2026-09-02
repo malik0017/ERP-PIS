@@ -36,7 +36,6 @@ class Brand(Base):
     revenue_stream_name = Column(String(255), nullable=True)
     default_kitchen_code = Column(String(50), nullable=True)
     status = Column(String(20), nullable=False, default="ACTIVE")
-    # Kept in database for internal audit compatibility, hidden from UI by client request.
     version = Column(Integer, nullable=False, default=1)
     is_active = Column(Boolean, nullable=False, default=True)
     approval_status = Column(String(20), nullable=False, default="APPROVED")

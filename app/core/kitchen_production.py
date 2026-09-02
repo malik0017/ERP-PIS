@@ -1,35 +1,9 @@
 # app/core/kitchen_production.py
-# =============================================================================
-# Batch 72 — KITCHEN PRODUCTION state machine (P1)
-# -----------------------------------------------------------------------------
-# The existing kitchen layer tracks INGREDIENT lines (receive → process → waste →
-# transfer, each ingredient independently). What was missing is the PRODUCT-level
-# flow a real kitchen actually runs:
-#
-#   For each RECIPE in a section:
-#     PENDING  → (receive all its ingredients) → RECEIVED
-#              → (chef cooks it as ONE final product)    → PRODUCED
-#              → (move that finished product forward)     → TRANSFERRED
-#
-# This module adds that state machine ON TOP of the ingredient transactions
-# without changing them. One row per (order_no, section, recipe_no) in
-# `kitchen_production`. The ingredient-level receive/waste/return still works;
-# "Produce Final Product" simply rolls all of a recipe's received ingredients
-# into a finished-product record and marks them processed, and "Transfer" moves
-# the whole product to the next section (re-homing its ingredient rows so the
-# next section sees them).
-#
-# The section route order (who comes after whom) is defined in SECTION_ROUTE.
-# =============================================================================
-
 from __future__ import annotations
-
 from datetime import datetime
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-# Canonical production route. A produced item flows to the next section, and
-# the last kitchen section hands off to QC → Packing → Dispatch.
 SECTION_ROUTE = [
     "Cutting", "Butchery", "Hot Kitchen", "Cold Kitchen", "Bakery/Pastry",
     "QC", "Trayline / Packing", "Dispatch",
@@ -40,7 +14,6 @@ PENDING = "PENDING"
 RECEIVED = "RECEIVED"
 PRODUCED = "PRODUCED"
 TRANSFERRED = "TRANSFERRED"
-
 
 def next_section(current: str) -> str:
     """The default next stop after `current`. Falls back to QC."""
@@ -121,8 +94,6 @@ def recipe_states(db: Session, order_no: str, section: str) -> dict:
     """), {"o": order_no, "s": section}).mappings().all():
         kp[r["recipe_no"] or ""] = dict(r)
 
-    # Batch 134: per-recipe ingredient lines so the Production View can render a
-    # collapsible ingredient breakdown under each recipe card (hidden by default).
     detail_rows = db.execute(text("""
         SELECT COALESCE(k.recipe_no,'') AS recipe_no, k.ingredient_code, k.ingredient_name,
                ROUND(COALESCE(k.issued_qty_standard,0),4) AS issued,
@@ -197,20 +168,11 @@ def produce_final_product(db: Session, order_no: str, section: str, recipe_no: s
     ensure_schema(db)
     recipe_no = recipe_no or ""
 
-    # Batch 100 — a section cannot re-cook what it has already handed on.
-    #
-    # The INSERT below uses ON DUPLICATE KEY UPDATE and unconditionally sets
-    # status back to 'PRODUCED'. Without this guard, a chef opening an old
-    # order in a section that had already transferred it would silently drag
-    # the product BACK out of the next section's queue — the next section
-    # would simply stop seeing work it had already been given, with no error
-    # anywhere and no way to tell what happened.
     if _product_status(db, order_no, section, recipe_no) == TRANSFERRED:
         raise SectionLocked(
             f"{recipe_no or 'This product'} has already been transferred out of {section}. "
             f"It is locked here — make any correction in the section that holds it now.")
 
-    # mark every received ingredient line for this recipe as processed
     db.execute(text("""
         UPDATE kitchen_section_transactions
         SET processed_qty_standard = COALESCE(received_qty_standard, issued_qty_standard, 0),
@@ -246,28 +208,18 @@ def transfer_product(db: Session, order_no: str, section: str, recipe_no: str,
     recipe_no = recipe_no or ""
     to_section = to_section or next_section(section)
 
-    # Batch 100 — two gates before work leaves a section.
     status = _product_status(db, order_no, section, recipe_no)
 
-    # 1. Already gone. Transferring twice re-homes the ingredient rows a
-    #    second time and stamps a new transferred_at, destroying the audit
-    #    trail of when it actually moved.
     if status == TRANSFERRED:
         raise SectionLocked(
             f"{recipe_no or 'This product'} has already been transferred from {section} "
             f"and is locked. It cannot be sent forward twice.")
 
-    # 2. Nothing produced yet. "Without complete information the order cannot
-    #    move to the next section" — a section must record what it actually
-    #    made (and wasted) before handing on, otherwise yield and wastage
-    #    reporting has a silent hole exactly where the work happened.
     if status != PRODUCED:
         raise SectionLocked(
             f"Record production for {recipe_no or 'this product'} before transferring it out of "
             f"{section}. Enter produced and waste portions first.")
 
-    # QC / Packing / Dispatch are handled by their own modules — when the kitchen
-    # hands off there, we still re-home the rows so those screens can see them.
     db.execute(text("""
         UPDATE kitchen_section_transactions
         SET from_section = :s, current_section = :to,

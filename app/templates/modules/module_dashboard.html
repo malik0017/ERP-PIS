@@ -1,12 +1,7 @@
 {% extends "layouts/base.html" %}
 {% block title %}{{ page_title }} | ISFC{% endblock %}
 {% block content %}
-{# ============================================================================
-   Batch 13 — Rich Module Cockpit (one template serves every module)
-   KPI tiles + time-range slicer + multi-chart grid (each chart has the
-   H-Bar/Bar/Line/Area/Pie/Donut switcher from isfc-charts.js) + quick links.
-   Phoenix + isfc-* classes only => dark mode & RTL safe.
-   ============================================================================ #}
+
 <div class="container-fluid py-3 isfc-page">
 
   <div class="isfc-hero mb-4 p-4 d-flex align-items-center justify-content-between flex-wrap gap-3">
@@ -79,8 +74,6 @@
       {% endfor %}
     </div>
 
-    {# Batch 121: absolute From/To date filter. When set it overrides the
-       relative period above and drives every KPI card and chart on the page. #}
     <form method="get" class="d-flex align-items-center gap-2 flex-wrap ms-lg-3">
       <span class="text-body-tertiary fs-9 text-uppercase fw-bold">{{ t('From') }}</span>
       <input type="date" name="date_from" value="{{ date_from }}"
@@ -119,8 +112,6 @@
     {% endfor %}
   </div>
   {% endif %}
-
-
 
 </div>
 {% endblock %}

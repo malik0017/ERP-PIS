@@ -33,7 +33,7 @@ class InventoryTransaction(Base):
     ingredient_code = Column(String(50), index=True, nullable=False)
     ingredient_name = Column(String(255), nullable=False)
     lot_no = Column(String(100), index=True, nullable=True)
-    transaction_type = Column(String(50), index=True, nullable=False)  # GRN, Issue, Return, Adjustment, Waste, Transfer
+    transaction_type = Column(String(50), index=True, nullable=False)  
     qty_standard = Column(Float, default=0)
     standard_uom = Column(String(20), default="Kg")
     from_location = Column(String(100), nullable=True)

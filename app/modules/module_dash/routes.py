@@ -1,25 +1,4 @@
 # app/modules/module_dash/routes.py — Batch 10
-"""
-Per-Module Dashboards (SAP-style module cockpits)
-
-Every ERP module now has its own dashboard page, exactly like the Production
-Intelligence Command Center, reached from the Module Launcher:
-
-    /module/{key}/dashboard
-
-The dashboards are CONFIG-DRIVEN: one route + one template
-(templates/modules/module_dashboard.html) serve all modules. Adding a new
-module dashboard = adding one entry to MODULE_DASHBOARDS below. Each entry
-defines:
-  - rbac area      (gate; admins always pass)
-  - KPI tiles      (label + safe SQL, fails to 0 if table missing)
-  - quick links    (filtered again by rbac in the template)
-  - charts         (label/value SQL rendered as ISFC multi-charts with the
-                    H-Bar/Bar/Line/Pie/Donut switcher from isfc-charts.js)
-
-All SQL is read-only COUNT/SUM with COALESCE fallbacks, so a stub module
-(e.g. HCM) still renders a professional empty cockpit rather than a 500.
-"""
 
 from fastapi import APIRouter, Depends, Request, HTTPException
 from sqlalchemy import text
@@ -31,10 +10,6 @@ from app.database import get_db
 
 router = APIRouter(tags=["Module Dashboards"])
 
-
-# ---------------------------------------------------------------------------
-# Safe scalar helper — any failure (missing table/column) returns 0.
-# ---------------------------------------------------------------------------
 def _n(db: Session, sql: str, params: dict | None = None) -> float:
     try:
         v = db.execute(text(sql), params or {}).scalar()
@@ -50,23 +25,12 @@ def _rows(db: Session, sql: str, params: dict | None = None) -> list:
         return []
 
 
-# ---------------------------------------------------------------------------
-# Dashboard configuration — ADD NEW MODULES HERE (no other code changes).
-# ---------------------------------------------------------------------------
 MODULE_DASHBOARDS: dict[str, dict] = {
     "inventory": {
         "area": "inventory_valuation",
         "title": "Inventory & Valuation Dashboard",
         "subtitle": "Stock on hand, GRN movements, issue movements, item ledger and valuation.",
         "icon": "box",
-        # Batch 87 fix: every KPI/chart in this cockpit that referenced
-        # ingredients.current_stock or ingredients.unit_cost was silently
-        # returning 0/empty — those columns don't exist on the Ingredient
-        # model at all (confirmed against app/models/ingredient.py). This
-        # system's real source of truth for stock and cost has always been
-        # the inventory_transactions ledger (exactly what the actual Stock
-        # page under Inventory already computes from) — these queries now
-        # match that, using the same avg-cost-weighted formula.
         "kpis": [
             ("Inventory Items", "SELECT COUNT(*) FROM ingredients", "materials in inventory master"),
             ("Stock Value", """
@@ -85,9 +49,9 @@ MODULE_DASHBOARDS: dict[str, dict] = {
         "links": [
             ("Inventory Valuation", "/inventory", "inventory_valuation", "box"),
             ("Ledger Verification", "/inventory/verification", "inventory_valuation", "check-circle"),
-            ("Master Upload", "/masters/upload", "master_upload", "upload-cloud"),
-            ("Procurement (GRN)", "/procurement", "procurement", "shopping-bag"),
-            ("Reports Center", "/reports", "reports", "bar-chart-2"),
+            # ("Master Upload", "/masters/upload", "master_upload", "upload-cloud"),
+            # ("Procurement (GRN)", "/procurement", "procurement", "shopping-bag"),
+            # ("Reports Center", "/reports", "reports", "bar-chart-2"),
         ],
         "charts": [
             {"title": "Stock Value by Main Category",
@@ -389,15 +353,6 @@ async def module_dashboard(request: Request, key: str, db: Session = Depends(get
         range_key = "3m"
     days = RANGES[range_key]
 
-    # ------------------------------------------------------------------
-    # Batch 121 — ABSOLUTE date-range filter (From / To).
-    #
-    # The relative slicer (7d/1m/3m…) is kept, but the cockpit now also
-    # accepts explicit date_from / date_to. When either is supplied it
-    # OVERRIDES the relative range and drives every {range} KPI and chart,
-    # so the whole page reflects the chosen window. Dates are validated to
-    # YYYY-MM-DD to keep them injection-safe before going into SQL.
-    # ------------------------------------------------------------------
     import re as _re
     def _valid_date(s):
         s = (s or "").strip()
@@ -417,20 +372,7 @@ async def module_dashboard(request: Request, key: str, db: Session = Depends(get
             return "".join(parts)
         return f" AND {col} >= DATE_SUB(CURDATE(), INTERVAL {days} DAY)" if days else ""
 
-    # ------------------------------------------------------------------
-    # Batch 111 — KPI CARDS NOW HONOUR THE PERIOD FILTER.
-    #
-    # The slicer already applied to charts (any SQL containing "{range}"),
-    # but the KPI cards ran their SQL untouched. So switching from 3 Months
-    # to 7 Days redrew every chart and left the cards showing all-time
-    # figures — the cards and the charts beneath them described different
-    # periods, with nothing on screen saying so.
-    #
-    # A KPI opts in by putting {range} in its SQL, exactly like a chart. One
-    # that genuinely should stay all-time (master data counts, stock on hand
-    # right now) simply omits it and is labelled "all time" in the UI, so the
-    # distinction is visible rather than assumed.
-    # ------------------------------------------------------------------
+   
     kpis = []
     for (label, sql, hint) in cfg["kpis"]:
         ranged = "{range}" in sql

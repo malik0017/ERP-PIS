@@ -1,59 +1,22 @@
 # app/core/gl_posting.py
-# =============================================================================
-# Batch 66 — GL AUTO-POSTING ENGINE (aligned to the ERP workflow spec)
-# -----------------------------------------------------------------------------
-# The shared "ERP Workflow & Data Movement" reference requires that EVERY
-# operational transaction auto-posts a balanced double-entry to the general
-# ledger, then rolls up to the trial balance and financial statements.
-#
-# Finance already had post_journal() and auto-posted AR, AP and payments.
-# The operational triggers that were MISSING are added here:
-#
-#   Source              Debit                       Credit                Trigger
-#   ------------------  --------------------------  --------------------  -----------------
-#   Stock receipt (GRN) 1130 Inventory              2200 GR accrual       GRN confirmed
-#   Vendor invoice (AP) 2200 GR accrual             2100 AP               invoice matched
-#   Vendor payment      2100 AP                     1110 Bank             payment run
-#   Stock issuance      5100 WIP / COGS             1130 Inventory        issue slip posted
-#   Delivery (COGS)     5100 COGS                   1130 Inventory        delivery confirmed
-#   Sales invoice (AR)  1120 AR                     4100 Revenue+2300 VAT invoice issued
-#   Customer payment    1110 Bank                   1120 AR               receipt matched
-#   Inventory adj.      1130 / 5100                 5100 / 1130           count posted
-#
-# This module is intentionally thin: it OWNS the account mapping and calls the
-# existing finance.post_journal() engine (idempotent + balanced + per-company
-# numbering). Operational modules add a single hook call at their finalize
-# point — no duplication of ledger logic.
-#
-# Backward-compatible COA: the older seed used 1000/1200/1300/2100/4000/5000.
-# We keep those AND add the workflow accounts (1110/1120/1130/2200/2300/4100/
-# 5100). ACCT maps every logical account to a concrete code so a single place
-# controls the scheme; switching an install to the legacy codes is a one-line
-# change here.
-# =============================================================================
-
 from __future__ import annotations
-
 import logging
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Logical account -> concrete GL code (workflow scheme).
-# ---------------------------------------------------------------------------
 ACCT = {
-    "bank":          "1110",   # Cash & bank
-    "ar":            "1120",   # Accounts receivable
-    "inventory":     "1130",   # Inventory
-    "ap":            "2100",   # Accounts payable
-    "gr_accrual":    "2200",   # Goods-received accrual (GRN not yet invoiced)
-    "vat_payable":   "2300",   # Output VAT
-    "revenue":       "4100",   # Sales revenue
-    "cogs":          "5100",   # COGS / WIP
-    "wastage":       "5900",   # Production wastage
-    "inv_adj":       "5100",   # Inventory adjustment expense (shares COGS group)
+    "bank":          "1110",   
+    "ar":            "1120",   
+    "inventory":     "1130",   
+    "ap":            "2100",   
+    "gr_accrual":    "2200",   
+    "vat_payable":   "2300",   
+    "revenue":       "4100",   
+    "cogs":          "5100",   
+    "wastage":       "5900",   
+    "inv_adj":       "5100",   
 }
 
 # Full chart of accounts required by the workflow (seeded idempotently).
@@ -77,8 +40,6 @@ WORKFLOW_COA = [
     ("5900", "Production Wastage", "Expense"),
 ]
 
-# Default output VAT rate (KSA standard). AR posting splits net vs VAT when the
-# caller passes a gross amount and wants VAT split; most callers pass net.
 DEFAULT_VAT_RATE = 0.15
 
 
@@ -125,12 +86,6 @@ def _post(db: Session, request, source_type: str, source_no: str,
         logger.warning("gl_posting._post %s %s failed: %s", source_type, source_no, exc)
         return None
 
-
-# ---------------------------------------------------------------------------
-# Operational triggers. Each is idempotent per (source_type, source_no) because
-# post_journal skips duplicates, so re-running a GRN/issuance never double-posts.
-# `value` is a positive money amount; zero/negative is ignored.
-# ---------------------------------------------------------------------------
 def post_grn_journal(db, request, grn_no: str, value: float,
                      supplier: str = "") -> str | None:
     """GRN confirmed:  Dr 1130 Inventory  /  Cr 2200 GR accrual."""

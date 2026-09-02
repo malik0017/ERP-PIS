@@ -3,7 +3,6 @@
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
-
 from app.database import get_db
 from app.models.user import User
 from app.core.security import create_access_token as build_access_token

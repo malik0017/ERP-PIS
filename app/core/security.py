@@ -2,13 +2,10 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 import hashlib
 import hmac
-
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from pydantic import BaseModel
-
 from ..config import SECRET_KEY, JWT_ALGORITHM, JWT_EXPIRATION_HOURS
-
 
 class TokenData(BaseModel):
     """JWT token payload"""
@@ -16,15 +13,8 @@ class TokenData(BaseModel):
     username: str
     role: str
 
-
-# ===== PASSWORD HASHING =====
-# New passwords are hashed with bcrypt. Existing users created under the old
-# SHA256+salt scheme can still log in (see verify_password), and login can
-# transparently upgrade them to bcrypt via needs_rehash().
-
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-# Legacy scheme (kept only so old hashes can still be verified once).
 _LEGACY_SALT = "isfc-salt-key-2024-production"
 _BCRYPT_PREFIXES = ("$2a$", "$2b$", "$2y$")
 
@@ -92,14 +82,6 @@ def verify_token(token: str) -> Optional[TokenData]:
         print(f"Token verification error: {e}")
         return None
 
-# ---------------------------------------------------------------------------
-# Batch 155 — IP-level login rate limiting (in-memory sliding window).
-#
-# Complements the per-account lockout: even against many DIFFERENT usernames,
-# a single IP can only attempt LOGIN_MAX_ATTEMPTS logins per LOGIN_WINDOW_SEC.
-# In-memory is fine for a single-process deploy (Laragon/uvicorn); for a
-# multi-worker deploy, move this to Redis with the same interface.
-# ---------------------------------------------------------------------------
 import time as _rl_time
 from collections import defaultdict as _rl_dd
 
@@ -127,17 +109,6 @@ def login_rate_reset(ip: str) -> None:
     """Clear an IP's attempt history (call on successful login)."""
     _LOGIN_ATTEMPTS.pop(ip, None)
 
-
-# ---------------------------------------------------------------------------
-# Batch 155 — CSRF validation helper.
-#
-# Session holds `_csrf_token`; forms submit it as `_csrf` (hidden field) or the
-# X-CSRF-Token header. Templates get the token + a {{ csrf_form_field()|safe }}
-# helper (see app/core/templates.py). Enforcement is opt-in per the CSRFMiddleware
-# in main.py, which starts in MONITOR mode (logs mismatches, does not block) so it
-# can be rolled out without breaking existing forms, then flipped to ENFORCE once
-# every POST form carries the field.
-# ---------------------------------------------------------------------------
 def csrf_valid(request) -> bool:
     """True if the request carries a CSRF token matching the session token.
     Safe methods (GET/HEAD/OPTIONS) are always valid."""

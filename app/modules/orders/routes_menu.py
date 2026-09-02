@@ -669,17 +669,61 @@ def recipes_for_date(request: Request, customer: str = "", brand: str = "",
         log.exception("for-date menu query failed")
         rows, err = [], f"Menu query failed: {exc.__class__.__name__}"
 
+    # ---------------------------------------------------------------------
+    # Batch 159 — EXPAND MULTI-MEAL RECIPES.
+    #
+    # meal_order is now stored the same way day_of_week always has been:
+    # "LUNCH & DINNER" for a recipe served at both. The portal groups by meal,
+    # so a combined string would render a bogus "LUNCH & DINNER" header instead
+    # of putting the recipe in each group.
+    #
+    # One row in, one entry PER MEAL out. A single-meal recipe is unaffected —
+    # splitting "LUNCH" yields exactly one entry — so FRSH behaviour does not
+    # change at all.
+    # ---------------------------------------------------------------------
+    MEAL_SEQ = {"BREAKFAST": 0, "LUNCH": 1, "DINNER": 2}
+    _D3 = {"Saturday": "SAT", "Sunday": "SUN", "Monday": "MON", "Tuesday": "TUE",
+           "Wednesday": "WED", "Thursday": "THU", "Friday": "FRI"}
+    _INV = {"B": "BREAKFAST", "L": "LUNCH", "D": "DINNER"}
+
+    def _meals_for_day(raw: str, weekday: str) -> list:
+        """Decode meal_order for ONE weekday.
+
+        Two formats are accepted on purpose:
+          "SAT=LD|MON=L|TUE=LD"  Batch 159 per-day map (SMC)
+          "LUNCH" / "LUNCH & DINNER" / ""   plain value (FRSH, legacy rows)
+        A database mid-migration holds both, and FRSH never gets the map form,
+        so the plain branch is permanent rather than transitional.
+        """
+        raw = (raw or "").strip().upper()
+        if "=" not in raw:
+            return [m.strip() for m in raw.split("&") if m.strip()] or [""]
+        key = _D3.get(weekday, "")
+        for part in raw.split("|"):
+            k, _, letters = part.partition("=")
+            if k.strip() == key:
+                return [_INV[c] for c in letters.strip() if c in _INV] or [""]
+        return []
+
+    recipes = []
+    for r in rows:
+        meals = _meals_for_day(r["meal_order"], day)
+        for m in meals:
+            recipes.append({
+                "code": r["recipe_code"], "name": r["recipe_name"],
+                "category": r["category"],
+                "meal_order": m,
+                "standard_portions": float(r["standard_portions"] or 1),
+                "price": float(r["price"] or 0),
+                "food_cost": float(r["food_cost"] or 0),
+                "weight_per_portion_g": float(r["weight_per_portion_g"] or 0),
+            })
+    recipes.sort(key=lambda x: (MEAL_SEQ.get(x["meal_order"], 9),
+                                x["category"] or "", x["name"] or ""))
+
     out = {
-        "day": day, "date": d.isoformat(), "count": len(rows),
-        "recipes": [{
-            "code": r["recipe_code"], "name": r["recipe_name"],
-            "category": r["category"],
-            "meal_order": (r["meal_order"] or "").strip().upper(),
-            "standard_portions": float(r["standard_portions"] or 1),
-            "price": float(r["price"] or 0),
-            "food_cost": float(r["food_cost"] or 0),
-            "weight_per_portion_g": float(r["weight_per_portion_g"] or 0),
-        } for r in rows],
+        "day": day, "date": d.isoformat(), "count": len(recipes),
+        "recipes": recipes,
     }
     if err:
         out["error"] = err

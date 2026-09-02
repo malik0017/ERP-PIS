@@ -54,6 +54,30 @@ SECTION_MAP = {
     "butchery section": "Butchery",
     "pastry section": "Bakery/Pastry",
     "section": "",
+    # ---------------------------------------------------------------------
+    # Batch 159 — the SMC workbook uses three spellings this map did not have.
+    # An unmapped value falls through to the raw text, so "Pastry/Bakery
+    # section" was stored verbatim, matched no kitchen section, and the
+    # issuance router fell back to its default — which is why Flour, Sugar,
+    # Butter and Milk Powder on a Beef Lasagna line were routed to
+    # Bakery/Pastry instead of Hot Kitchen.
+    #
+    # Counts in SMC V2: Hot Section 1616, Breakfast 374, Cold Section 94,
+    # Butchery Section 68, Pastry/Bakery section 67, Buchery Section 14.
+    # "Buchery" is a typo in the source; mapping it is cheaper and safer than
+    # asking for the file to be corrected and re-issued.
+    # ---------------------------------------------------------------------
+    "pastry/bakery section": "Bakery/Pastry",
+    "bakery/pastry section": "Bakery/Pastry",
+    "bakery section": "Bakery/Pastry",
+    "buchery section": "Butchery",          # typo in the SMC workbook
+    "butchery": "Butchery",
+    "hot kitchen": "Hot Kitchen",
+    "cold kitchen": "Cold Kitchen",
+    # SMC labels breakfast prep lines by meal rather than by station. Those are
+    # produced in the hot kitchen, same as FRSH breakfast items.
+    "breakfast": "Hot Kitchen",
+    "breakfast section": "Hot Kitchen",
 }
 
 

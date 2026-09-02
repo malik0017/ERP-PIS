@@ -1,24 +1,10 @@
 # app/modules/customer/routes.py
-"""Customer Portal — the customer's own view of the ERP.
-
-A CUSTOMER-role user sees ONLY their own orders:
-  /my            -> customer dashboard (KPIs + recent orders + status mix)
-  /my/orders     -> full order history with filters
-
-How the customer link works (resolution order):
-  1. users.customer_code column (set it on the user in Users & Access)
-  2. fallback: users.full_name matched against customers.customer_name
-Admins / internal roles can pass ?customer=<code or name> to preview any portal.
-"""
 from __future__ import annotations
-
-import logging  # Batch 23: log recipe-lookup issues instead of hiding them
-
+import logging 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy import text
 from sqlalchemy.orm import Session
-
 from app.core.templates import render
 from app.core.rbac import normalized_role, ADMIN_ROLES
 from app.database.session import get_db
@@ -36,9 +22,7 @@ def _resolve_customer(request: Request, db: Session) -> dict | None:
     """Find which customer this user represents."""
     role = normalized_role(request)
     override = (request.query_params.get("customer") or "").strip()
-    # Batch 21: keep the admin preview sticky across /my pages so the
-    # New Order / My Orders / Statement buttons keep working without
-    # re-passing ?customer= every time. ?customer=exit clears it.
+    
     if override.lower() == "exit" and role in ADMIN_ROLES:
         request.session.pop("portal_customer_override", None)
         override = ""
@@ -63,7 +47,7 @@ def _resolve_customer(request: Request, db: Session) -> dict | None:
             FROM users WHERE username = :u LIMIT 1
         """), {"u": username}).mappings().first()
     except Exception:
-        # customer_code column not migrated yet -> fall back to name match
+        
         user_row = db.execute(text("""
             SELECT '' AS customer_code, full_name, email
             FROM users WHERE username = :u LIMIT 1
@@ -120,16 +104,11 @@ def _orders_for(db: Session, customer: dict, status: str = "", search: str = "",
 async def customer_dashboard(request: Request, db: Session = Depends(get_db)):
     customer = _resolve_customer(request, db)
     if not customer:
-        # Batch 21: admins are not linked to a customer — instead of a dead
-        # end, show a customer picker so they can preview ANY portal via
-        # /my?customer=<code>. Non-admin users still see the "ask your
-        # administrator" message.
+        
         role = normalized_role(request)
         pick_list = []
         statuses = []
-        # Batch 69: admin preview picker now lists ONLY customers who have placed
-        # orders, enriched with order count / last order / total value, and
-        # supports filters (search, status, delivery date range).
+        
         f = {
             "q": (request.query_params.get("q") or "").strip(),
             "status": (request.query_params.get("status") or "").strip(),
@@ -221,13 +200,8 @@ async def customer_orders(request: Request, db: Session = Depends(get_db)):
     })
 
 
-# ============================================================================
-# Batch 12 — Customer Portal completion: order detail + account statement
-# ============================================================================
-
 _FLOW_ORDER = ["Submitted", "Head Chef Approved", "BOM Generated", "Store Pending",
                "In Production", "Packed", "Out for Delivery", "Delivered", "Closed"]
-
 
 def _safe_rows(db: Session, sql: str, params: dict | None = None) -> list:
     try:
@@ -240,7 +214,7 @@ def _safe_rows(db: Session, sql: str, params: dict | None = None) -> list:
 async def customer_order_detail(request: Request, order_no: str, db: Session = Depends(get_db)):
     """Customer view of ONE order: header, recipe lines, status timeline, delivery doc.
     Strictly scoped: the order must belong to the resolved customer."""
-    if order_no.lower() == "new":  # Batch 16: this route registered first; hand off to the form
+    if order_no.lower() == "new": 
         return await customer_order_new(request, db)
     customer = _resolve_customer(request, db)
     if not customer:
@@ -269,7 +243,6 @@ async def customer_order_detail(request: Request, order_no: str, db: Session = D
         FROM order_lines WHERE order_no = :o ORDER BY COALESCE(line_no, id)
     """, {"o": order_no})
 
-    # Status timeline: done / active / pending against the standard flow.
     cur = str(order["status"] or "Submitted")
     try:
         cur_i = _FLOW_ORDER.index(cur)
@@ -285,7 +258,6 @@ async def customer_order_detail(request: Request, order_no: str, db: Session = D
         FROM packing_dispatch WHERE order_no = :o ORDER BY id DESC LIMIT 1
     """, {"o": order_no})
 
-    # Batch 71: whether the customer may still cancel (delivery ≥ 48h away).
     can_cancel_48h = True
     try:
         _ds = str(order["delivery_date"])[:10]
@@ -344,11 +316,6 @@ async def customer_statement(request: Request, db: Session = Depends(get_db)):
     })
 
 
-# ============================================================================
-# Batch 16 — Customer self-service order creation (/my/orders/new)
-# Locked to the resolved customer; reuses the SAME production order service
-# as the internal portal, so BOM/planning flow picks these orders up normally.
-# ============================================================================
 from fastapi import Form
 from typing import List, Optional
 from datetime import datetime as _dt
@@ -359,26 +326,8 @@ from app.services.production_service import create_order as _svc_create_order
 
 
 def _active_recipes_for(db: Session, customer: dict) -> list[dict]:
-    """Recipes offered to this customer in the portal dropdown.
-
-    Batch 23 FIX — the dropdown was coming back EMPTY. The old query required
-    ALL of:
-        status = 'ACTIVE'  AND  is_active = 1
-        AND (customer_name = <this customer> OR customer_name = '')
-    and swallowed every error with `except: pass`. Any of these made it empty:
-      * recipes stored with status 'Active'/'active'/NULL (case / null variance)
-      * is_active stored as NULL rather than 1
-      * every recipe assigned to a DIFFERENT customer_name
-      * customer_name padded with spaces so the equality never matched
-
-    The query below is progressively relaxed in three tiers and returns the
-    first tier that yields rows, so the customer always sees something sensible:
-        Tier 1  this customer's recipes (or unassigned), not archived
-        Tier 2  ANY non-archived recipe
-        Tier 3  ANY recipe at all (last resort)
-    """
+   
     name = (customer or {}).get("customer_name") or ""
-
     tiers = [
         # Tier 1 — customer's own + unassigned, excluding explicitly inactive.
         ("""
@@ -461,8 +410,7 @@ async def customer_order_create(
             continue
         rec = None
         try:
-            # Batch 23 FIX: must use the SAME tolerance as the dropdown, or a
-            # recipe the customer could select would be silently priced at 0.
+           
             rec = db.execute(text("""
                 SELECT recipe_name, COALESCE(sale_price_per_portion,0) AS price
                 FROM recipes
@@ -482,8 +430,6 @@ async def customer_order_create(
     if not lines:
         return RedirectResponse("/my/orders/new?toast=danger&title=Missing lines&msg=Add at least one recipe with portions", status_code=303)
 
-    # Batch 70: 48-hour rule — the customer's chosen delivery date+time must be
-    # at least 48 hours from now. Enforced server-side so it can't be bypassed.
     def _pd(v):
         try:
             return _dt.strptime(v, "%Y-%m-%d").date() if v else None
@@ -518,10 +464,7 @@ async def customer_order_create(
         lines=lines,
     )
     try:
-        # Batch 94 FIX: company_id was never passed, so every order placed
-        # through the Customer Portal was written with company_id = NULL —
-        # unscoped in a system that is explicitly multi-company. Same bug
-        # existed on the internal Sale Requisition form; both fixed together.
+      
         order = _svc_create_order(db, payload,
                                   created_by=f"{request.session.get('username','portal')} (customer portal)",
                                   company_id=int(request.session.get("company_id") or 1))
@@ -529,16 +472,6 @@ async def customer_order_create(
         return RedirectResponse(f"/my/orders/new?toast=danger&title=Could not submit&msg={exc}", status_code=303)
 
     return RedirectResponse(f"/my/orders/{order.order_no}?toast=success&title=Order Submitted&msg=Order {order.order_no} received", status_code=303)
-
-
-# ============================================================================
-# Batch 20 — Customer order lifecycle rules
-#   * A customer can EDIT delivery date/time or CANCEL an order ONLY while it
-#     is still 'Submitted' (i.e. before the Head Chef approves the plan).
-#   * From 'Head Chef Approved' onwards the order is LOCKED for the customer —
-#     production has started committing materials against it.
-#   * Admin/internal users still manage everything via the Order Register.
-# ============================================================================
 
 CUSTOMER_EDITABLE_STATUSES = ("Submitted",)
 
@@ -597,9 +530,6 @@ async def customer_cancel_order(request: Request, order_no: str, db: Session = D
             f"/my/orders/{order_no}?toast=warning&title=Order Locked&msg=Order is {order['status']} and can no longer be cancelled online. Contact your account manager.",
             status_code=303)
 
-    # Batch 71: 48-hour cancel lock. Once an order's delivery is less than 48
-    # hours away, the customer can no longer cancel it online (materials are
-    # committed / production is imminent). They must call their account manager.
     _dd = order["required_delivery_date"]
     _tt = order["required_delivery_time"]
     if _dd:

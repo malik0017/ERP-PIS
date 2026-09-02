@@ -9,9 +9,7 @@ from sqlalchemy import (
 
 from sqlalchemy.orm import relationship
 from datetime import datetime
-
 from app.database.base import Base
-
 
 role_permissions = Table(
     "role_permissions",
@@ -29,7 +27,6 @@ role_permissions = Table(
         ForeignKey("permissions.id")
     )
 )
-
 
 class Permission(Base):
 

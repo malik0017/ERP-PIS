@@ -485,7 +485,7 @@ def _ensure_recipe_menu_columns() -> None:
                   AND column_name = 'meal_order'
             """)).scalar()
             if not has_meal:
-                _db.execute(_t("ALTER TABLE recipes ADD COLUMN meal_order VARCHAR(30) NULL"))
+                _db.execute(_t("ALTER TABLE recipes ADD COLUMN meal_order VARCHAR(64) NULL"))
                 _db.commit()
                 logger.info("Added recipes.meal_order")
         finally:
@@ -570,6 +570,161 @@ def _ensure_dispatch_region_column() -> None:
 
 
 _ensure_dispatch_region_column()
+
+
+def _ensure_output_capture_columns() -> None:
+    """Batch 153 — real columns for kitchen output and packed nutrition.
+
+    Until now these values were appended to the remark string as stamps:
+        [C12 P30 V0 Y5]        Hot Kitchen nutrition split
+        [OUT 12Gram Wt250g]    Cold Kitchen / Bakery produced portion
+        [NUT w= p= c=]         recipe-level process output
+
+    That was a deliberate short-term choice — it avoided a migration — but it
+    does not survive contact with reporting: you cannot SUM a remark, group by
+    it, or chart it. With dashboards and reporting as the next phase, these have
+    to become columns before anything is built on top of them.
+
+    Existing stamped rows are NOT lost. scripts/backfill_output_capture.py
+    parses them out of the remarks and fills these columns; run it once after
+    this guard has created them.
+
+    Idempotent: each column is checked against information_schema first, because
+    ADD COLUMN IF NOT EXISTS is not supported on this MySQL version.
+    """
+    _WANTED = {
+        "kitchen_section_transactions": [
+            ("produced_portion", "DECIMAL(14,4) NULL"),
+            ("portion_weight_g", "DECIMAL(14,4) NULL"),
+            ("output_uom", "VARCHAR(20) NULL"),
+            ("carb_g", "DECIMAL(14,4) NULL"),
+            ("protein_g", "DECIMAL(14,4) NULL"),
+            ("vegetable_g", "DECIMAL(14,4) NULL"),
+            ("yield_g", "DECIMAL(14,4) NULL"),
+        ],
+        "packing_dispatch": [
+            ("packed_protein_g", "DECIMAL(14,4) NULL"),
+            ("packed_carb_g", "DECIMAL(14,4) NULL"),
+            ("packed_veg_g", "DECIMAL(14,4) NULL"),
+        ],
+    }
+    try:
+        from app.database.session import SessionLocal as _SL
+        from sqlalchemy import text as _t
+        _db = _SL()
+        try:
+            for table, cols in _WANTED.items():
+                for col, ddl in cols:
+                    has = _db.execute(_t("""
+                        SELECT COUNT(*) FROM information_schema.columns
+                        WHERE table_schema = DATABASE() AND table_name = :t
+                          AND column_name = :c
+                    """), {"t": table, "c": col}).scalar()
+                    if not has:
+                        _db.execute(_t(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}"))
+                        _db.commit()
+                        logger.info(f"Added {table}.{col}")
+        finally:
+            _db.close()
+    except Exception as exc:
+        logger.error(f"Schema guard failed (output capture columns): {exc}")
+
+
+_ensure_output_capture_columns()
+
+
+def _ensure_packing_pack_lines_table() -> None:
+    """Batch 157 — per-recipe packed weights recorded at Trayline.
+
+    THE DESIGN DECISION I WAS BLOCKED ON, resolved without forcing it.
+
+    I asked whether packed weight should be captured once per recipe, or per
+    recipe per region. Rather than guess and risk a table that has to be rebuilt,
+    the table carries a nullable `region` column and a unique key of
+    (order_no, recipe_no, region):
+
+      * TODAY the UI writes region = '' — one row per recipe, which is the
+        simpler workflow and what the Excel sheet shows.
+      * IF you later want per-region capture, the UI writes region = 'Riyadh'
+        etc. and the same table holds both. No migration, no rebuild, and orders
+        captured under the old shape keep working because '' is just another
+        region value to the unique key.
+
+    So the answer can change later at the cost of a UI change only. That is why
+    this ships now instead of waiting.
+
+    Idempotent — checks information_schema before creating.
+    """
+    try:
+        from app.database.session import SessionLocal as _SL
+        from sqlalchemy import text as _t
+        _db = _SL()
+        try:
+            exists = _db.execute(_t("""
+                SELECT COUNT(*) FROM information_schema.tables
+                WHERE table_schema = DATABASE() AND table_name = 'packing_pack_lines'
+            """)).scalar()
+            if not exists:
+                _db.execute(_t("""
+                    CREATE TABLE packing_pack_lines (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        company_id INT NULL,
+                        order_no VARCHAR(50) NOT NULL,
+                        recipe_no VARCHAR(50) NOT NULL,
+                        region VARCHAR(100) NOT NULL DEFAULT '',
+                        packed_portion DECIMAL(14,4) NULL,
+                        packed_protein_g DECIMAL(14,4) NULL,
+                        packed_carb_g DECIMAL(14,4) NULL,
+                        packed_veg_g DECIMAL(14,4) NULL,
+                        remarks VARCHAR(255) NULL,
+                        created_at DATETIME NULL,
+                        updated_at DATETIME NULL,
+                        UNIQUE KEY uq_pack_line (order_no, recipe_no, region),
+                        KEY ix_pack_order (order_no)
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                """))
+                _db.commit()
+                logger.info("Created table packing_pack_lines")
+        finally:
+            _db.close()
+    except Exception as exc:
+        logger.error(f"Schema guard failed (packing_pack_lines): {exc}")
+
+
+_ensure_packing_pack_lines_table()
+
+def _ensure_meal_order_width() -> None:
+    """Batch 159 — widen recipes.meal_order from VARCHAR(30) to VARCHAR(64).
+
+    meal_order now holds a per-day map, at its longest
+    "SAT=LD|SUN=LD|MON=LD|TUE=LD|WED=LD|THU=LD|FRI=LD" — 48 characters.
+    At VARCHAR(30) MySQL would silently truncate that to
+    "SAT=LD|SUN=LD|MON=LD|TUE=LD|WE", leaving the last three days with no
+    meals at all: recipes would vanish from Thursday and Friday menus with no
+    error anywhere. This is the same silent overflow as the day_of_week
+    VARCHAR fix in Batch 131, so it gets the same guard.
+    """
+    try:
+        from app.database.session import SessionLocal as _SL
+        from sqlalchemy import text as _t
+        _db = _SL()
+        try:
+            ln = _db.execute(_t("""
+                SELECT CHARACTER_MAXIMUM_LENGTH FROM information_schema.columns
+                WHERE table_schema = DATABASE() AND table_name = 'recipes'
+                  AND column_name = 'meal_order'
+            """)).scalar()
+            if ln is not None and int(ln) < 64:
+                _db.execute(_t("ALTER TABLE recipes MODIFY meal_order VARCHAR(64) NULL"))
+                _db.commit()
+                logger.info(f"Widened recipes.meal_order {ln} -> 64")
+        finally:
+            _db.close()
+    except Exception as exc:
+        logger.error(f"Schema guard failed (recipes.meal_order width): {exc}")
+
+
+_ensure_meal_order_width()
 
 
 def _ensure_recipe_ingredient_section_column() -> None:

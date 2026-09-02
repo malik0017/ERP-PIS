@@ -1,34 +1,7 @@
 # app/core/notifications.py
-# =============================================================================
-# Batch 78 — real, persisted, per-user/per-role notifications.
-# -----------------------------------------------------------------------------
-# This is deliberately separate from the "pending work queue" the bell has
-# always shown (app/modules/notifications/routes.py::_collect) — that queue
-# is a LIVE, recomputed-every-time view of orders currently stuck somewhere
-# ("3 orders waiting on Head Chef approval right now"). There's nothing to
-# mark as read there because it isn't a discrete event — it's a live count
-# that changes the moment the underlying order moves.
-#
-# This module is the other half: a genuine notifications table for actual
-# EVENTS ("Order ORD-... was submitted", "QC failed on ORD-...", "Payroll
-# run #4 was finalized") that get created once, can be marked read, and
-# persist even after the underlying condition that caused them changes.
-#
-# Usage from any module:
-#   from app.core.notifications import create_notification, notify_role
-#   create_notification(db, company_id=1, user_id=42, title="...", message="...", url="/...")
-#   notify_role(db, company_id=1, role="HEAD_CHEF", title="...", message="...", url="/...")
-#
-# Both are best-effort: a notification failing to write NEVER raises and
-# NEVER rolls back the caller's own transaction — the business action (order
-# created, QC submitted, payroll finalized) must always succeed even if the
-# notification side-effect can't.
-# =============================================================================
 from __future__ import annotations
-
 from sqlalchemy import text
 from sqlalchemy.orm import Session
-
 
 def ensure_notifications_schema(db: Session) -> None:
     try:
@@ -69,10 +42,7 @@ def create_notification(
     role: str | None = None,
     category: str = "general",
 ) -> None:
-    """Create one notification, targeted at either a specific user_id OR a
-    role (every user with that role sees it), never both null. Best-effort:
-    swallows all errors so a notification can never break the real action
-    that triggered it."""
+   
     if not user_id and not role:
         return
     try:

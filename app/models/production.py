@@ -2,7 +2,6 @@ from datetime import datetime
 from sqlalchemy import Boolean, Column, Date, DateTime, Float, Integer, String, Text
 from app.database.base import Base
 
-
 class CustomerOrder(Base):
     __tablename__ = "customer_orders"
 
@@ -31,17 +30,6 @@ class CustomerOrder(Base):
     total_estimated_food_cost = Column(Float, default=0)
     total_estimated_selling_value = Column(Float, default=0)
     total_estimated_margin = Column(Float, default=0)
-    # Batch 88: an explicit Sales review checkpoint on the order itself —
-    # before it's even visible to the Head Chef, someone with sales
-    # authority confirms it should proceed at all. Deliberately a NEW,
-    # separate field rather than repurposing `status` — the existing
-    # status machine (Submitted/Head Chef Approved/BOM Generated/...) is
-    # read by many other pages, and overloading it here would risk
-    # breaking those. New orders default to Pending (the gate applies);
-    # orders that already existed before this batch are backfilled to
-    # Approved at the database level when the column is first added (see
-    # the ALTER TABLE in production/routes.py), so nothing already in
-    # flight gets newly blocked.
     sales_review_status = Column(String(20), default="Pending", nullable=True)
     sales_reviewed_by = Column(String(255), nullable=True)
     sales_reviewed_at = Column(DateTime, nullable=True)
@@ -202,6 +190,13 @@ class KitchenSectionTransaction(Base):
     waste_reason = Column(String(255), nullable=True)
     section_remarks = Column(Text, nullable=True)
     qc_hold = Column(Boolean, default=False)
+    carb_g = Column(Float, nullable=True)
+    protein_g = Column(Float, nullable=True)
+    vegetable_g = Column(Float, nullable=True)
+    yield_g = Column(Float, nullable=True)
+    produced_portion = Column(Float, nullable=True)
+    portion_weight_g = Column(Float, nullable=True)
+    output_uom = Column(String(20), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -243,22 +238,18 @@ class PackingDispatch(Base):
     customer_name = Column(String(255), nullable=True)
     packed_portions = Column(Float, default=0)
     rejected_portions = Column(Float, default=0)
-    packed_bags = Column(Integer, nullable=True)  # Batch 121: physical bag/tray count
-    region = Column(String(50), nullable=True)  # Batch 129: delivery region (Riyadh/Eastern/Jeddah/Makkah)
-    # Batch 152a: region-wise bag allocation, e.g. {"Riyadh": 10, "Dammam": 8}.
-    # Stored as a JSON string; the total should reconcile to packed_bags. Added
-    # via an import-time schema guard (raw TEXT column, no ORM lag).
+    packed_bags = Column(Integer, nullable=True)  
+    region = Column(String(50), nullable=True) 
     region_bags = Column(Text, nullable=True)
+    packed_protein_g = Column(Float, nullable=True)
+    packed_carb_g = Column(Float, nullable=True)
+    packed_veg_g = Column(Float, nullable=True)
     dispatch_date = Column(Date, nullable=True)
     vehicle_no = Column(String(80), nullable=True)
     driver_name = Column(String(255), nullable=True)
     delivery_temperature_c = Column(Float, nullable=True)
     dispatch_status = Column(String(50), default="Pending", index=True)
     remarks = Column(Text, nullable=True)
-    # Batch 80: proof-of-delivery — added defensively via ALTER TABLE in
-    # dispatch/routes.py::_ensure_delivery_confirmation_schema() on a fresh
-    # DB copy that predates this column; declared here too so the ORM
-    # actually exposes them as row attributes in templates/routes.
     delivery_otp = Column(String(10), nullable=True)
     delivery_otp_generated_at = Column(DateTime, nullable=True)
     delivery_confirmed_by = Column(String(20), nullable=True)

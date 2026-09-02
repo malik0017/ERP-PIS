@@ -1,11 +1,3 @@
-"""Executive dashboard routes.
-
-ISFC14 update:
-- Uses only current project column names, so Recent Orders and financial KPIs do not silently disappear.
-- Adds management analytics for order pipeline, recipe readiness, BOM cost, store issuance and next actions.
-- Keeps /recipes removed from dashboard router so recipe master remains handled by app.modules.recipes.routes.
-"""
-
 from fastapi.responses import RedirectResponse
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy import text
@@ -162,8 +154,6 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
         LIMIT 10
     """)
 
-    # Cost analytics are joined back to Inventory Master so the dashboard still
-    # shows section/category bars even when older BOM rows missed category fields.
     top_bom_sections = _rows(db, """
         SELECT x.label, COUNT(*) AS lines, ROUND(SUM(x.qty), 2) AS qty, ROUND(SUM(x.cost), 2) AS cost
         FROM (
@@ -264,18 +254,6 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
 
 @router.get("/production", name="production_home")
 async def production(request: Request):
-    """Batch 95 FIX — this route 500'd on every request.
-
-    Found by the route-by-route audit (scripts/route_audit.py). It rendered
-    "production/index.html", a template that does not exist anywhere in the
-    repo — so anything linking to /production, or anyone typing it, got a
-    TemplateNotFound 500. It had presumably been a stub since before the
-    production module grew its real screens.
-
-    Rather than create an empty placeholder template, this now redirects to
-    the actual production home: Head Chef Planning, which is where the
-    module's work starts. `name="production_home"` is preserved so any
-    url_for('production_home') in a template keeps resolving.
-    """
+   
     require_area(request, "dashboard")
     return RedirectResponse("/production/head-chef", status_code=303)

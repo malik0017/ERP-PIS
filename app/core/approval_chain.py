@@ -1,42 +1,5 @@
 # app/core/approval_chain.py
-# =============================================================================
-# Batch 111 — APPROVAL HIERARCHY BY VALUE
-# -----------------------------------------------------------------------------
-# Until now a 500 SAR requisition and a 500,000 SAR requisition followed the
-# identical path: one signature from anyone holding purchase_requisition/edit.
-# That undercuts the whole separation of duties Batch 94 built — the gate
-# exists, but it costs the same to pass regardless of what is at stake.
-#
-# HOW IT WORKS
-#
-# Tiers are ranges, not a ladder of individual approvers:
-#
-#     0 – 5,000        SUPERVISOR                    1 approval
-#     5,001 – 50,000   SUPERVISOR → MANAGER          2 approvals, in order
-#     50,001 +         SUPERVISOR → MANAGER → ADMIN  3 approvals, in order
-#
-# A requisition finds its tier by value, then needs every step in that tier,
-# in sequence. Step 2 cannot sign before step 1.
-#
-# FOUR RULES THAT MATTER, AND WHY
-#
-# 1. NO SELF-APPROVAL AT A HIGHER STEP. The person who raised it may satisfy
-#    step 1 if their role fits, but never a subsequent step. One person
-#    walking a large requisition through three steps alone is exactly the
-#    control this exists to prevent.
-#
-# 2. NO SAME-PERSON DOUBLE-SIGNING. Two steps, two people. A user with both
-#    MANAGER and ADMIN cannot sign for both.
-#
-# 3. VALUE IS LOCKED AT FIRST APPROVAL. Otherwise a 60,000 requisition gets
-#    step 1, is edited down to 4,000, and completes on one signature — then
-#    is edited back up. The tier is decided once and recorded.
-#
-# 4. A SUPERIOR ROLE CAN SIGN A JUNIOR STEP, BUT IT STILL COUNTS AS ONE STEP.
-#    An ADMIN may satisfy the SUPERVISOR step when nobody else is available;
-#    that does not collapse the remaining steps. Three signatures are still
-#    three signatures.
-# =============================================================================
+
 from __future__ import annotations
 
 from datetime import datetime

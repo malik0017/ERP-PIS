@@ -1,5 +1,4 @@
 from __future__ import annotations
-
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 from fastapi import Request
@@ -30,12 +29,7 @@ def write_audit(
     description: str | None = None,
     request: Request | None = None,
 ) -> None:
-    """Write audit event without breaking the business transaction.
-
-    The function supports both the original audit_logs table and the enhanced
-    table from Phase 10. If the extra columns do not exist yet, it falls back to
-    the original insert.
-    """
+   
     ip_address, user_agent = request_meta(request)
     try:
         db.execute(text(

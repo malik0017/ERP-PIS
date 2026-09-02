@@ -34,7 +34,7 @@ class Recipe(Base):
     # Batch 158: SMC weekly-menu meal slot (BREAKFAST / LUNCH / DINNER). Lets the
     # Sale Requisition group a day's menu into meal tabs. Blank for customers that
     # don't use meal ordering (e.g. FRSH). Added via import-time schema guard.
-    meal_order = Column(String(30), nullable=True, index=True)
+    meal_order = Column(String(64), nullable=True, index=True)
 
     version = Column(Integer, nullable=False, default=1)
     status = Column(String(20), nullable=False, default="ACTIVE")

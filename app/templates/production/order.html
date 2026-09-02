@@ -247,11 +247,6 @@
       Required = ordered portions · Received = weights sent by the kitchen ·
       Packed = weights recorded at Trayline · Excess/Shortage = Received − Packed.
     </div>
-    {# Batch 157: the Packed columns are now editable. The whole grid submits in
-       one action — the operator weighs an order's trays in a single pass, and a
-       Save button per row would mean 19 round trips and 19 chances to lose a
-       value by navigating away. #}
-    <form method="post" action="/packing/{{ row.id }}/pack-lines">
     <div class="table-responsive">
       <table class="table-pro">
         <thead>
@@ -287,20 +282,9 @@
             <td class="text-end">{{ '%.2f'|format(l.recv_protein) if l.recv_protein is not none else '—' }}</td>
             <td class="text-end">{{ '%.2f'|format(l.recv_carb) if l.recv_carb is not none else '—' }}</td>
             <td class="text-end">{{ '%.2f'|format(l.recv_veg) if l.recv_veg is not none else '—' }}</td>
-            {# A blank box stays blank — it is stored as NULL, not 0. Nothing
-               weighed is not the same as weighed-and-found-zero, and writing 0
-               would make an unweighed recipe show a shortage equal to
-               everything it received. #}
-            <input type="hidden" name="pl_recipe_no" value="{{ l.recipe_no }}">
-            <td><input class="form-control form-control-sm text-end" type="number" step="0.01" min="0"
-                       name="pl_protein" value="{{ '%.2f'|format(pk_p) if pk_p is not none else '' }}"
-                       placeholder="—" {% if _p_locked %}readonly{% endif %} style="width:92px"></td>
-            <td><input class="form-control form-control-sm text-end" type="number" step="0.01" min="0"
-                       name="pl_carb" value="{{ '%.2f'|format(pk_c) if pk_c is not none else '' }}"
-                       placeholder="—" {% if _p_locked %}readonly{% endif %} style="width:92px"></td>
-            <td><input class="form-control form-control-sm text-end" type="number" step="0.01" min="0"
-                       name="pl_veg" value="{{ '%.2f'|format(pk_v) if pk_v is not none else '' }}"
-                       placeholder="—" {% if _p_locked %}readonly{% endif %} style="width:92px"></td>
+            <td class="text-end">{{ '%.2f'|format(pk_p) if pk_p is not none else '—' }}</td>
+            <td class="text-end">{{ '%.2f'|format(pk_c) if pk_c is not none else '—' }}</td>
+            <td class="text-end">{{ '%.2f'|format(pk_v) if pk_v is not none else '—' }}</td>
             {%- for rv, pv in [(l.recv_protein, pk_p), (l.recv_carb, pk_c), (l.recv_veg, pk_v)] %}
             <td class="text-end">
               {%- if rv is not none and pv is not none -%}
@@ -314,12 +298,6 @@
           </tr>{% endfor %}</tbody>
       </table>
     </div>
-    {% if not _p_locked %}
-    <div class="text-end mt-2">
-      <button class="btn btn-primary btn-sm"><i class="bi bi-save me-1"></i>{{ t('Save Packed Weights') }}</button>
-    </div>
-    {% endif %}
-    </form>
   </div>
 </div>
 <script>

@@ -1169,23 +1169,21 @@ async def section_order_page(request: Request, section_name: str, order_no: str,
         "issued": sum(float(t.issued_qty_standard or 0) for t in txs),
         "received": sum(float(t.received_qty_standard or 0) for t in txs),
         "processed": sum(float(t.processed_qty_standard or 0) for t in txs),
+        # BATCH 150 — the header card labelled "Transferred (Gram)" was reading
+        # totals.processed. Same wrong-field bug Batch 143 fixed on the By Line
+        # column and Batch 149 on the group pills; this was the last survivor.
+        # A line processed 30 g and transferred 25 g made the card read 30.00
+        # while the row underneath correctly read 25.00.
+        "transferred": sum(float(t.transferred_qty_standard or 0) for t in txs),
         "balance": sum(float(t.balance_qty_standard or 0) for t in txs),
         "completed": sum(1 for t in txs if str(t.transaction_status or '').upper().startswith('COMPLETED') or str(t.transaction_status or '').upper() == 'TRANSFERRED'),
         # Batch 136: dominant UOM across the order's lines, for the KPI labels.
         "uom": (max(((t.standard_uom or "") for t in txs), key=lambda u: sum(1 for x in txs if (x.standard_uom or "") == u)) if txs else ""),
     }
 
-    if request.query_params.get("export") == "csv":
-        output = io.StringIO()
-        writer = csv.writer(output)
-        writer.writerow(["Order", "Section", "Recipe Name", "Recipe Code", "Ingredient Name", "Ingredient Code", "Received Qty", "Transferred Qty", "Waste Qty", "Return Qty", "Balance Qty", "UOM", "Status"])
-        for tx in txs:
-            writer.writerow([tx.order_no, section, tx.recipe_name, tx.recipe_no, tx.ingredient_name, tx.ingredient_code, tx.received_qty_standard or tx.issued_qty_standard, tx.processed_qty_standard, tx.waste_qty_standard, tx.returned_qty_standard, tx.balance_qty_standard, tx.standard_uom, tx.transaction_status])
-        output.seek(0)
-        return StreamingResponse(iter(['\ufeff' + output.getvalue()]), media_type="text/csv", headers={"Content-Disposition": f"attachment; filename={order_no}_{_section_slug(section)}_receiving.csv"})
-
-    next_sections = ["Cutting", "Butchery", "Hot Kitchen", "Cold Kitchen", "Bakery/Pastry", "QC", "Trayline / Packing", "Dispatch"]  # Batch 19: Thawing/Marination retired; Packing unified into Trayline / Packing
-
+    # Batch 150: cutting_map is built BEFORE the CSV branch now. It used to
+    # sit ~20 lines further down, AFTER the early `return` that streams the
+    # export, so Cutting Method did not exist yet when the CSV was written.
     # Batch 136: Butchery-only — map ingredient_code -> cutting/portion text so the
     # butcher sees the exact cut (e.g. "Chicken Breast Butterfly - 140 g"). Only
     # queried for Butchery to avoid overhead on the other four sections.
@@ -1199,6 +1197,21 @@ async def section_order_page(request: Request, section_name: str, order_no: str,
                                       _RI.cutting_portion_size.isnot(None)).all()):
                 if cut and code not in cutting_map:
                     cutting_map[code] = cut
+
+
+    if request.query_params.get("export") == "csv":
+        output = io.StringIO()
+        writer = csv.writer(output)
+        # Batch 150: "Transferred Qty" wrote processed_qty_standard — the same
+        # wrong-field bug fixed on screen in 143/149. Both are separate columns
+        # now, plus Cutting Method so the CSV matches the workstation.
+        writer.writerow(["Order", "Section", "Recipe Name", "Recipe Code", "Ingredient Name", "Ingredient Code", "Cutting Method", "Received Qty", "Processed Qty", "Transferred Qty", "Waste Qty", "Return Qty", "Balance Qty", "UOM", "Status"])
+        for tx in txs:
+            writer.writerow([tx.order_no, section, tx.recipe_name, tx.recipe_no, tx.ingredient_name, tx.ingredient_code, cutting_map.get(tx.ingredient_code, ""), tx.received_qty_standard or tx.issued_qty_standard, tx.processed_qty_standard, tx.transferred_qty_standard, tx.waste_qty_standard, tx.returned_qty_standard, tx.balance_qty_standard, tx.standard_uom, tx.transaction_status])
+        output.seek(0)
+        return StreamingResponse(iter(['\ufeff' + output.getvalue()]), media_type="text/csv", headers={"Content-Disposition": f"attachment; filename={order_no}_{_section_slug(section)}_receiving.csv"})
+
+    next_sections = ["Cutting", "Butchery", "Hot Kitchen", "Cold Kitchen", "Bakery/Pastry", "QC", "Trayline / Packing", "Dispatch"]  # Batch 19: Thawing/Marination retired; Packing unified into Trayline / Packing
 
     # Batch 149: main/sub category per ingredient (image 12) — helps decide the
     # next-section transfer. Looked up once from the Ingredient master, keyed by
@@ -1383,6 +1396,35 @@ async def bulk_transfer_section_order(request: Request, section_name: str, order
         processed_total, bulk_waste, bulk_return, transfer_total,
         next_section or None, None, bulk_remark, user)
     failed += skipped
+
+    # ------------------------------------------------------------------
+    # Batch 158 — persist the bulk capture fields.
+    #
+    # Without this the new toolbar boxes would post and be discarded: bulk
+    # processing would silently produce rows with no nutrition while
+    # single-line processing recorded it, and nothing on screen would say so.
+    #
+    # Split PRO-RATA by each line's received share, matching how waste, return
+    # and transfer are already apportioned two lines above. The chef weighs the
+    # batch once; the batch's carb is divided across the lines that made it up,
+    # in the same proportion as everything else.
+    # ------------------------------------------------------------------
+    _caps = {
+        "carb_g": _f("bulk_carb"), "protein_g": _f("bulk_protein"),
+        "vegetable_g": _f("bulk_veg"), "yield_g": _f("bulk_yield"),
+        "produced_portion": _f("bulk_ck_portion"),
+        "portion_weight_g": _f("bulk_ck_weight"),
+    }
+    _uom = (form.get("bulk_ck_uom") or "").strip()
+    if (any(v for v in _caps.values()) or _uom) and total_recv > 0:
+        for _tx in eligible:
+            _share = float(_tx.received_qty_standard or _tx.issued_qty_standard or 0) / total_recv
+            for _attr, _total in _caps.items():
+                if _total and hasattr(_tx, _attr):
+                    setattr(_tx, _attr, round(_total * _share, 4))
+            if _uom and hasattr(_tx, "output_uom"):
+                _tx.output_uom = _uom
+        db.commit()
 
     # Batch 121: the old message never said WHERE the lines went, which read as
     # "wrong" when the chef had picked a specific destination. Name it clearly.
@@ -1570,6 +1612,16 @@ async def transfer_tx(
     waste_reason: str = Form(""),
     section_remarks: str = Form(""),
     next_section: str = Form(""),
+    # Batch 153 — capture fields now persisted to real columns rather than only
+    # being stamped into the remark. Optional, so Cutting/Butchery (which post
+    # none of these) are unaffected.
+    hk_carb: str = Form(""),
+    hk_protein: str = Form(""),
+    hk_veg: str = Form(""),
+    hk_yield: str = Form(""),
+    ck_portion: str = Form(""),
+    ck_weight: str = Form(""),
+    ck_uom: str = Form(""),
     db: Session = Depends(get_db),
 ):
     require_action(request, "kitchen", "edit")
@@ -1595,6 +1647,24 @@ async def transfer_tx(
         if abs(float(transferred_qty_standard) - full_amount) > 0.0001 and not waste_reason.strip():
             return redirect_with_error(f"/production/section/{fallback_section}",
                                         "Transfer quantity was changed from the full amount — a reason is required.")
+
+    # Batch 153: write the capture values to their columns. Guarded on the
+    # attribute existing so a database that has not yet run the startup schema
+    # guard degrades to the old remark-only behaviour instead of raising.
+    if tx is not None:
+        def _optf(v):
+            try:
+                return float(str(v).strip()) if str(v).strip() != "" else None
+            except (TypeError, ValueError):
+                return None
+        for _attr, _val in (("carb_g", _optf(hk_carb)), ("protein_g", _optf(hk_protein)),
+                            ("vegetable_g", _optf(hk_veg)), ("yield_g", _optf(hk_yield)),
+                            ("produced_portion", _optf(ck_portion)),
+                            ("portion_weight_g", _optf(ck_weight))):
+            if _val is not None and hasattr(tx, _attr):
+                setattr(tx, _attr, _val)
+        if (ck_uom or "").strip() and hasattr(tx, "output_uom"):
+            tx.output_uom = ck_uom.strip()
 
     try:
         tx = transfer_transaction(
@@ -1950,6 +2020,14 @@ async def store_issuance_by_section_export(request: Request, db: Session = Depen
             from reportlab.lib.styles import ParagraphStyle
             cell = ParagraphStyle("cell", parent=styles["Normal"], fontSize=6.5, leading=8)
             cellB = ParagraphStyle("cellB", parent=cell, fontName="Helvetica-Bold")
+            # Batch 150: header text was black Paragraphs on the dark slate
+            # header band, so column names were near-invisible. TableStyle
+            # TEXTCOLOR does not reach text inside a Paragraph — the Paragraph
+            # carries its own colour — which is why setting the band colour
+            # alone never fixed it. White, matching the Brand-wise BOM PDF.
+            from reportlab.lib import colors as _rlc
+            cellH = ParagraphStyle("cellH", parent=cell, fontName="Helvetica-Bold",
+                                   textColor=_rlc.white)
 
             def P(v, bold=False):
                 return Paragraph(str(v if v is not None else "").replace("&", "&amp;"),
@@ -1978,7 +2056,7 @@ async def store_issuance_by_section_export(request: Request, db: Session = Depen
                 head = ["Section", "Order", "Customer", "Recipe", "Ingredient",
                         "Required", "Issued", "UOM", "Status"]
                 col_widths = [22*mm, 30*mm, 34*mm, 44*mm, 46*mm, 20*mm, 20*mm, 14*mm, 22*mm]
-            data = [[P(h, bold=True) for h in head]]
+            data = [[Paragraph(str(h), cellH) for h in head]]
             for r in rows:
                 if consolidated:
                     data.append([

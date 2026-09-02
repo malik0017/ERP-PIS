@@ -1,37 +1,18 @@
 # app/modules/admin/routes_audit.py
-# =============================================================================
-# Batch 106 — AUDIT LOG VIEWER
-# -----------------------------------------------------------------------------
-# The data has been captured since early batches; there was no way to read it.
-# An audit trail nobody can query is a compliance checkbox, not a control.
-#
-# What this answers, which is what an auditor or a manager actually asks:
-#   "who approved this requisition, and when"
-#   "who changed this recipe's cost last week"
-#   "what did this user do on the day the stock went missing"
-#
-# Company scoping: audit_logs has no company_id column. Rather than pretend
-# otherwise, rows are scoped through the USER — you see entries by users that
-# belong to your company. That is the honest boundary given the schema, and it
-# is stated on screen so nobody assumes more isolation than exists.
-# =============================================================================
-from __future__ import annotations
 
+from __future__ import annotations
 import io
 from datetime import date, timedelta
-
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy import text
 from sqlalchemy.orm import Session
-
 from app.core.rbac import require_area
 from app.core.templates import render
 from app.database.session import get_db
 
 router = APIRouter(prefix="/admin/audit", tags=["Admin"])
 
-# Coarse grouping so the filter is usable without knowing every action string.
 CATEGORIES = {
     "Approvals": ["APPROV", "REJECT", "SIGN"],
     "Security": ["LOGIN", "LOGOUT", "PASSWORD", "LOCK", "UNLOCK", "2FA", "ACCESS"],
@@ -81,7 +62,6 @@ def _query(db: Session, request: Request, limit: int = 500) -> tuple[list[dict],
             ors.append(f"UPPER(COALESCE(a.action,'')) LIKE :k{i}")
         where.append("(" + " OR ".join(ors) + ")")
 
-    # Scoped through the acting user — audit_logs itself has no company_id.
     where.append("(u.company_id = :cid OR u.company_id IS NULL OR a.user_id IS NULL)")
 
     try:
