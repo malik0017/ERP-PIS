@@ -33,7 +33,11 @@
             <span class="badge badge-phoenix badge-phoenix-secondary fs-10">{{ t('all time') }}</span>
             {% endif %}
           </p>
-          <h2 class="mb-1 text-body-emphasis">{{ k.value }}</h2>
+          {# Batch 165: a KPI whose query failed shows an em dash, not 0.
+             `_n()` returns 0.0 on any exception, so a broken card used to be
+             indistinguishable from a genuinely empty one — a confident zero
+             that reads as real data. #}
+          <h2 class="mb-1 text-body-emphasis">{% if k.error %}<span class="text-body-tertiary" title="{{ t('This figure could not be calculated — check the server log.') }}">—</span>{% else %}{{ k.value }}{% endif %}</h2>
           <p class="fs-9 text-body-tertiary mb-0">{{ t(k.hint) }}</p>
         </div>
       </div>

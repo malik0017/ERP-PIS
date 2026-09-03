@@ -9,36 +9,59 @@
     grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
     gap: 18px;
   }
+
   .cust-card {
-    position: relative;
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
-    gap: 14px;
-    background: #fff; border: 1px solid #dce8f2; border-radius: 18px;
-    padding: 28px 18px; min-height: 190px;
+    position: relative; overflow: hidden;
+    display: flex; flex-direction: column; align-items: center;
+    gap: 12px;
+    background: #fff; border: 1px solid #dce8f2; border-radius: 20px;
+    padding: 26px 20px 22px; min-height: 250px;
     text-decoration: none; color: #142a46;
-    transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease;
+    transition: transform .14s ease, box-shadow .14s ease, border-color .14s ease;
   }
+
+  .cust-card.active::before {
+    content: ""; position: absolute; inset: 0 0 40% 0;
+    background: linear-gradient(180deg, #d7f0dd 0%, #eef9f1 60%, #fff 100%);
+    z-index: 0;
+  }
+  .cust-card > * { position: relative; z-index: 1; }
   .cust-card.active:hover {
     transform: translateY(-4px);
-    box-shadow: 0 14px 32px rgba(15, 30, 50, .14);
-    border-color: #1e5bb8;
+    box-shadow: 0 16px 34px rgba(15, 30, 50, .16);
+    border-color: #1b7f4b;
   }
   .cust-logo-wrap {
-    height: 90px; width: 100%;
+    height: 96px; width: 100%;
     display: flex; align-items: center; justify-content: center;
   }
-  .cust-logo-wrap img { max-height: 82px; max-width: 88%; object-fit: contain; }
-  .cust-name { font-weight: 800; font-size: 16px; text-align: center; }
-  .cust-icon { font-size: 46px; color: #1e5bb8; }
-  .cust-card.disabled {
-    opacity: .6; cursor: not-allowed; background: #f7fafd;
-    border-style: dashed;
+
+  .cust-logo-tile {
+    background: #fff; border-radius: 14px; padding: 10px 16px;
+    box-shadow: 0 2px 10px rgba(16, 40, 70, .10);
+    display: flex; align-items: center; justify-content: center;
+    max-width: 92%;
   }
-  .cust-card.placeholder .cust-icon { color: #adb9c7; }
+  .cust-logo-tile img { max-height: 66px; max-width: 100%; object-fit: contain; }
+  .cust-name { font-weight: 800; font-size: 18px; text-align: center; }
+  .cust-icon { font-size: 44px; color: #1b7f4b; }
+  .cust-cta {
+    margin-top: auto; width: 100%; max-width: 210px;
+    background: #14532d; color: #fff; border-radius: 999px;
+    padding: 9px 16px; font-weight: 700; font-size: 13.5px;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+  }
+  .cust-card.active:hover .cust-cta { background: #0f3d21; }
+  .cust-cta.soon {
+    background: #fff; color: #8a93a2; border: 1px solid #dfe6ee; font-weight: 600;
+  }
+  .cust-card.disabled { background: #fbfdff; cursor: not-allowed; }
+  .cust-card.disabled .cust-logo-tile img { filter: grayscale(.55); opacity: .85; }
+  .cust-card.placeholder .cust-icon { color: #b6c2d1; }
   .soon-badge {
-    position: absolute; top: 12px; right: 12px;
+    position: absolute; top: 12px; right: 12px; z-index: 2;
     font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em;
-    background: #fef3c7; color: #92660c; border-radius: 999px; padding: 3px 9px;
+    background: #fef3c7; color: #92660c; border-radius: 999px; padding: 4px 10px;
   }
 </style>
 
@@ -53,31 +76,35 @@
   <div class="cust-grid">
     {% for c in cards %}
       {% if c.active %}
-        {# Active card → open the order form, preset to this customer (or the
-           immediate-order form for the Immediate card). #}
+     
         {% set href = '/orders/portal/immediate' if c.immediate else ('/orders/portal/new?customer=' ~ c.key) %}
         <a class="cust-card active" href="{{ href }}">
           <div class="cust-logo-wrap">
             {% if c.logo %}
-              <img src="{{ c.logo }}" alt="{{ c.name }}">
+              <div class="cust-logo-tile"><img src="{{ c.logo }}" alt="{{ c.name }}"></div>
             {% else %}
-              <i class="bi bi-{{ c.icon or 'shop' }} cust-icon"></i>
+              <div class="cust-logo-tile"><i class="bi bi-{{ c.icon or 'shop' }} cust-icon"></i></div>
             {% endif %}
           </div>
           <div class="cust-name">{{ c.name }}</div>
+          <!-- <div class="cust-desc">{{ t(c.description) if c.description else '' }}</div> -->
+          <span class="cust-cta">{{ t('Open System') }} <i class="bi bi-arrow-right"></i></span>
         </a>
       {% else %}
-        {# Coming-soon / placeholder card → non-clickable. #}
+        {# Coming-soon / placeholder -> non-clickable, and visibly so: no green
+           wash, a muted outline button instead of the solid one. #}
         <div class="cust-card disabled {% if c.placeholder %}placeholder{% endif %}">
           <span class="soon-badge">{{ t('Coming soon') }}</span>
           <div class="cust-logo-wrap">
             {% if c.logo %}
-              <img src="{{ c.logo }}" alt="{{ c.name }}" style="filter:grayscale(.4)">
+              <div class="cust-logo-tile"><img src="{{ c.logo }}" alt="{{ c.name }}"></div>
             {% else %}
-              <i class="bi bi-{{ c.icon or 'hourglass-split' }} cust-icon"></i>
+              <div class="cust-logo-tile"><i class="bi bi-{{ c.icon or 'hourglass-split' }} cust-icon"></i></div>
             {% endif %}
           </div>
           <div class="cust-name">{{ c.name }}</div>
+          <!-- <div class="cust-desc">{{ t(c.description) if c.description else t('More great systems on the way') }}</div> -->
+          <span class="cust-cta soon"><i class="bi bi-clock"></i> {{ t('Coming Soon') }}</span>
         </div>
       {% endif %}
     {% endfor %}

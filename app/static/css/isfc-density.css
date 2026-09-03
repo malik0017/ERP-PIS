@@ -229,8 +229,18 @@ a.isfc-kpi-link {
 .table-pro td, .isfc-table td, .si-table td, .po-table td { padding: 8px 12px; }
 
 /* Sticky header — on a table you now scroll, losing the column names two
-   screens down is worse than the original squeeze. */
-.table-responsive { max-height: 72vh; overflow: auto; }
+   screens down is worse than the original squeeze.
+
+   Batch 161: the 72vh cap is GONE. Batch 154 turned every table into its own
+   scroll box, which meant a 300-line Store Issuance grid scrolled inside a
+   window two thirds of the screen tall while the page around it stayed
+   still — two scrollbars fighting, and the Finalize button stranded below.
+
+   position:sticky binds to the nearest scrolling ancestor. With no height cap
+   that ancestor becomes the PAGE, so the header still sticks while the whole
+   page scrolls normally. Horizontal overflow is kept, which is what actually
+   fixed the column squeeze. */
+.table-responsive { overflow-x: auto; }
 .table-responsive > table > thead th {
   position: sticky; top: 0; z-index: 2;
   background: var(--phoenix-body-bg, #fff);
@@ -245,7 +255,7 @@ html[data-bs-theme="dark"] .table-responsive > table > thead th {
 
 /* Print: undo all of it. A printed sheet has no scrollbar and no viewport. */
 @media print {
-  .table-responsive { max-height: none; overflow: visible; }
+  .table-responsive { overflow: visible; }
   .table-responsive > .table-pro,
   .table-responsive > .isfc-table,
   .table-responsive > .si-table,

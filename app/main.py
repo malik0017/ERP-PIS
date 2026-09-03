@@ -602,6 +602,11 @@ def _ensure_output_capture_columns() -> None:
             ("vegetable_g", "DECIMAL(14,4) NULL"),
             ("yield_g", "DECIMAL(14,4) NULL"),
         ],
+        "bom_lines": [
+            # Batch 167 — pre-trim requirement, so the yield gap is visible
+            # whatever basis the BOM was generated on.
+            ("gross_required_qty_standard", "DECIMAL(18,4) NULL"),
+        ],
         "packing_dispatch": [
             ("packed_protein_g", "DECIMAL(14,4) NULL"),
             ("packed_carb_g", "DECIMAL(14,4) NULL"),

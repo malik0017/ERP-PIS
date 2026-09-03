@@ -45,6 +45,11 @@ from app.services.production_service import (
     update_store_issuance_line,
 )
 
+# Batch 168: canonical section list for the report filter — imported rather
+# than re-listed, so a new section appears in the filter automatically instead
+# of needing a second list kept in sync (the two-section-maps lesson).
+from app.core.production_constants import KITCHEN_SECTIONS  # noqa: E402
+
 router = APIRouter(prefix="/production", tags=["Production"])
 
 
@@ -621,7 +626,24 @@ async def order_detail(request: Request, order_no: str, db: Session = Depends(ge
     recipe_meta = {}
     if lines:
         recipe_codes = [l.recipe_no for l in lines]
-        recipes = db.query(Recipe).filter(Recipe.recipe_code.in_(recipe_codes), func.upper(func.trim(Recipe.status)) == "ACTIVE", Recipe.is_active == True).all()
+        # Batch 160 — company scope + deterministic version pick.
+        #
+        # This query had no company_id filter and no version filter. The
+        # recipes unique key is (company_id, recipe_code, version), so a code
+        # can legitimately have several rows. The dict comprehension kept
+        # whichever the database happened to return LAST — which on a re-import
+        # can be an older version still carrying standard_portions = 1.
+        #
+        # Ordering by version ascending means the highest version is written
+        # last and therefore wins, rather than it being luck.
+        recipes = (db.query(Recipe)
+                   .filter(Recipe.recipe_code.in_(recipe_codes),
+                           func.upper(func.trim(Recipe.status)) == "ACTIVE",
+                           Recipe.is_active == True,
+                           (Recipe.company_id == _company_id_from_session(request))
+                           | (Recipe.company_id.is_(None)))
+                   .order_by(Recipe.version.asc())
+                   .all())
         recipe_meta = {r.recipe_code: r for r in recipes}
 
     # Batch 80: stock shortage preview — only worth computing before the BOM
@@ -2161,19 +2183,66 @@ async def issue_consolidated_ingredient(request: Request, db: Session = Depends(
     if not lines:
         return redirect_with_error(back, f"{ingredient_code}: nothing left to issue in {section}.")
 
+    # ----------------------------------------------------------------------
+    # BATCH 163 — EDITABLE QUANTITY ON THE CONSOLIDATED ROW.
+    #
+    # Until now this issued each line at its own required quantity, full stop.
+    # But the store keeper weighs what is physically on the shelf, and it is
+    # rarely the theoretical total — 840 g required, 850 g actually handed over
+    # because that is what the bag held.
+    #
+    # An `issue_qty` may now be posted for the whole consolidated row. It is
+    # split across the pending lines IN PROPORTION to what each one required,
+    # because the row is an aggregate of several orders and they each have to
+    # end up with a defensible share. Issuing 850 g against three orders needing
+    # 400/300/140 gives them 405.2/303.9/141.8, not 283.3 each.
+    #
+    # The last line absorbs the rounding remainder so the parts sum EXACTLY to
+    # what was typed. Without that, three lines rounded to 4dp can miss the
+    # total by a hair and the row never reads as fully issued.
+    #
+    # No issue_qty posted -> unchanged behaviour, each line at its required qty.
+    # ----------------------------------------------------------------------
+    raw_qty = (form.get("issue_qty") or "").strip()
+    try:
+        override_total = float(raw_qty) if raw_qty else None
+    except ValueError:
+        override_total = None
+    if override_total is not None and override_total < 0:
+        return redirect_with_error(back, "Issue quantity cannot be negative.")
+
+    def _need(l):
+        return float(getattr(l, "required_qty_with_waste_standard", None)
+                     or getattr(l, "required_qty_standard", None) or 0)
+
+    total_need = sum(_need(l) for l in lines)
+    if override_total is not None and total_need <= 0:
+        return redirect_with_error(
+            back, f"{ingredient_code}: cannot split {override_total} — "
+                  "the pending lines have no required quantity to apportion against.")
+
     issued_total = 0.0
     failed = 0
     uom = ""
-    for l in lines:
-        qty = float(getattr(l, "required_qty_with_waste_standard", None)
-                    or getattr(l, "required_qty_standard", None) or 0)
+    allocated = 0.0
+    for idx, l in enumerate(lines):
+        need = _need(l)
+        if override_total is None:
+            qty = need
+        elif idx == len(lines) - 1:
+            qty = round(override_total - allocated, 4)      # absorb the remainder
+        else:
+            qty = round(override_total * (need / total_need), 4)
+        allocated += qty
         if qty <= 0:
             continue
         uom = getattr(l, "standard_uom", None) or uom or "Kg"
+        note = ("Issued from consolidated picking list"
+                if override_total is None else
+                f"Issued from consolidated picking list "
+                f"(row total {override_total:g}, apportioned by required qty)")
         try:
-            update_store_issuance_line(
-                db, l.id, qty, uom, section, "", "",
-                "Issued from consolidated picking list")
+            update_store_issuance_line(db, l.id, qty, uom, section, "", "", note)
             issued_total += qty
         except ValueError:
             failed += 1
@@ -2185,6 +2254,133 @@ async def issue_consolidated_ingredient(request: Request, db: Session = Depends(
     sep = "&" if "?" in back else "?"
     return RedirectResponse(f"{back}{sep}toast=success&title={_q('Issued')}&msg={_q(msg)}",
                             status_code=HTTP_303_SEE_OTHER)
+
+
+@router.get("/reports/section")
+async def section_production_report(request: Request, db: Session = Depends(get_db)):
+    """Batch 168 — SECTION PRODUCTION REPORT (the FRSH Butcher Summary sheet).
+
+    Two shapes of the same data, chosen with ?mode=:
+
+      mode=summary   one row per RECIPE — recipe, total qty, portion size.
+                     This is the Butchery sheet you sent: "Chicken creamy mint
+                     4900, Chicken Breast Butterfly - 140 g".
+
+      mode=detail    one row per RECIPE + INGREDIENT, with standard portions
+                     and required portions alongside. This is the Hot Kitchen
+                     sheet — the same report, not a second one, because the
+                     only thing that differs is the grouping.
+
+    Filters: section, date range (cooking date), customer, single order.
+
+    WHY THIS READS bom_lines AND NOT recipe_ingredients
+
+    The report has to state what is being made for REAL ORDERS on a date, so it
+    is built from the BOM — quantities already scaled to ordered portions and
+    already routed to a section. Reading the recipe master instead would give
+    theoretical batch quantities that match no actual order, which is the sort
+    of report people quietly stop trusting.
+
+    Portion size comes from recipe_ingredients.cutting_portion_size, which is
+    where the importer puts the workbook's "Portion Size"/cutting method column.
+    """
+    require_area(request, "production_orders")
+    cid = _company_id_from_session(request)
+
+    section = (request.query_params.get("section") or "Butchery").strip()
+    mode = (request.query_params.get("mode") or "summary").strip()
+    date_from = (request.query_params.get("date_from") or "").strip()
+    date_to = (request.query_params.get("date_to") or "").strip()
+    customer = (request.query_params.get("customer") or "").strip()
+    order_no = (request.query_params.get("order") or "").strip()
+
+    where = ["(bl.company_id = :cid OR bl.company_id IS NULL)"]
+    params: dict = {"cid": cid}
+    if section and section.lower() != "all":
+        where.append("COALESCE(bl.default_issue_section,'') = :sec")
+        params["sec"] = section
+    if order_no:
+        where.append("bl.order_no = :ord")
+        params["ord"] = order_no
+    if customer:
+        where.append("co.customer_name LIKE :cust")
+        params["cust"] = f"%{customer}%"
+    # Cooking date is the operational date a section works to; delivery date is
+    # the customer promise. A butcher planning Saturday's work wants the former.
+    if date_from:
+        where.append("COALESCE(co.cooking_date, co.required_delivery_date) >= :df")
+        params["df"] = date_from
+    if date_to:
+        where.append("COALESCE(co.cooking_date, co.required_delivery_date) <= :dt")
+        params["dt"] = date_to
+    w = " AND ".join(where)
+
+    rows = []
+    try:
+        if mode == "detail":
+            rows = db.execute(text(f"""
+                SELECT bl.order_no, co.customer_name, co.brand,
+                       COALESCE(co.cooking_date, co.required_delivery_date) AS work_date,
+                       bl.recipe_no, bl.recipe_name,
+                       bl.ingredient_code, bl.ingredient_name,
+                       COALESCE(r.standard_portions, 0) AS std_portions,
+                       COALESCE(ol.required_portions, 0) AS req_portions,
+                       COALESCE(bl.total_required_with_waste_standard, 0) AS qty,
+                       COALESCE(bl.standard_uom,'') AS uom,
+                       COALESCE(ri.cutting_portion_size,'') AS portion_size
+                FROM bom_lines bl
+                JOIN customer_orders co ON co.order_no = bl.order_no
+                LEFT JOIN order_lines ol
+                       ON ol.order_no = bl.order_no AND ol.recipe_no = bl.recipe_no
+                LEFT JOIN recipes r ON r.recipe_code = bl.recipe_no
+                LEFT JOIN recipe_ingredients ri
+                       ON ri.recipe_id = r.id AND ri.inventory_code = bl.ingredient_code
+                WHERE {w}
+                ORDER BY work_date, bl.recipe_name, bl.ingredient_name
+            """), params).mappings().all()
+        else:
+            rows = db.execute(text(f"""
+                SELECT bl.recipe_no, bl.recipe_name,
+                       MIN(COALESCE(co.cooking_date, co.required_delivery_date)) AS work_date,
+                       GROUP_CONCAT(DISTINCT co.customer_name ORDER BY co.customer_name
+                                    SEPARATOR ', ') AS customers,
+                       GROUP_CONCAT(DISTINCT bl.order_no ORDER BY bl.order_no
+                                    SEPARATOR ', ') AS orders,
+                       SUM(COALESCE(ol.required_portions, 0)) AS req_portions,
+                       SUM(COALESCE(bl.total_required_with_waste_standard, 0)) AS qty,
+                       MAX(COALESCE(bl.standard_uom,'')) AS uom,
+                       MAX(COALESCE(ri.cutting_portion_size,'')) AS portion_size
+                FROM bom_lines bl
+                JOIN customer_orders co ON co.order_no = bl.order_no
+                LEFT JOIN order_lines ol
+                       ON ol.order_no = bl.order_no AND ol.recipe_no = bl.recipe_no
+                LEFT JOIN recipes r ON r.recipe_code = bl.recipe_no
+                LEFT JOIN recipe_ingredients ri
+                       ON ri.recipe_id = r.id AND ri.inventory_code = bl.ingredient_code
+                WHERE {w}
+                GROUP BY bl.recipe_no, bl.recipe_name
+                ORDER BY qty DESC
+            """), params).mappings().all()
+    except Exception as exc:                        # pragma: no cover
+        # Surfaced, not swallowed. An empty report and a broken query look
+        # identical on screen otherwise — the mistake Batch 140 fixed on the
+        # menu endpoint and Batch 165 on the cockpit KPIs.
+        import logging as _lg
+        _lg.getLogger("isfc.production").exception("section production report failed")
+        return render(request, "production/section_report.html", {
+            "rows": [], "mode": mode, "section": section,
+            "sections": KITCHEN_SECTIONS, "filters": {},
+            "error": f"Report query failed: {exc.__class__.__name__}",
+            "page_title": "Section Production Report"})
+
+    total_qty = sum(float(r["qty"] or 0) for r in rows)
+    return render(request, "production/section_report.html", {
+        "rows": [dict(r) for r in rows], "mode": mode, "section": section,
+        "sections": KITCHEN_SECTIONS, "total_qty": total_qty,
+        "filters": {"section": section, "mode": mode, "date_from": date_from,
+                    "date_to": date_to, "customer": customer, "order": order_no},
+        "page_title": f"{section} Production Report",
+    })
 
 
 @router.get("/store-issuance/by-section")
@@ -2249,11 +2445,33 @@ async def store_issuance_by_section(request: Request, db: Session = Depends(get_
         if not r["finalized"]:
             g["pending"] += 1
         key = (r["ingredient_code"], r["uom"])
+        # ------------------------------------------------------------------
+        # BATCH 163 — why every consolidated row said "Issued" while the header
+        # said "38 pending line(s)".
+        #
+        # The row's status was derived from QUANTITY: issued >= required.
+        # But issued_qty is `input_material_issued`, which is PRE-FILLED to the
+        # required amount when the BOM is generated — before anyone has issued
+        # anything. So issued == required from the moment the line is created,
+        # and the consolidated list showed "Issued" for material still sitting
+        # on the shelf.
+        #
+        # Issued-ness is `finalized`, not a quantity comparison. Counting the
+        # lines behind each row makes the two halves of the screen agree, and
+        # gives the quick-issue action something real to act on.
+        # ------------------------------------------------------------------
         c = g["consolidated"].setdefault(key, {"ingredient_code": r["ingredient_code"],
                                                "ingredient_name": r["ingredient_name"],
-                                               "uom": r["uom"], "required": 0.0, "issued": 0.0, "orders": set()})
+                                               "uom": r["uom"], "required": 0.0, "issued": 0.0,
+                                               "orders": set(),
+                                               "lines": 0, "pending_lines": 0,
+                                               "pending_required": 0.0})
         c["required"] += float(r["required_qty"] or 0)
         c["issued"] += float(r["issued_qty"] or 0)
+        c["lines"] += 1
+        if not r["finalized"]:
+            c["pending_lines"] += 1
+            c["pending_required"] += float(r["required_qty"] or 0)
         c["orders"].add(r["order_no"])
 
     section_groups = []
@@ -2289,13 +2507,7 @@ async def api_bakery_consolidated(db: Session = Depends(get_db)):
 
 @router.get("/kitchen-summary")
 async def kitchen_summary(request: Request, db: Session = Depends(get_db)):
-    """All Section Summary - one row per kitchen section with live workload.
-
-    Fixes the sidebar 404: /production/kitchen-summary now exists.
-    Batch 81: added date-range + order-number filtering — this page
-    previously had no filter at all, so "today's workload" vs. "everything
-    ever processed" were impossible to tell apart.
-    """
+ 
     require_area(request, "kitchen_summary")
     date_from = (request.query_params.get("date_from") or "").strip()
     date_to = (request.query_params.get("date_to") or "").strip()

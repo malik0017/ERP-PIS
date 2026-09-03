@@ -396,8 +396,35 @@ order.status), instead of a fixed string. #}
             <td>{{ l.line_no }}</td>
             <td>{{ l.recipe_no }} - {{ l.recipe_name }}</td>
             <td>{{ l.required_portions }}</td>
-            {% set rm = recipe_meta.get(l.recipe_no) if recipe_meta is defined else None %}<td>{{ (rm.standard_portions|int if rm and rm.standard_portions == rm.standard_portions|int else rm.standard_portions) if rm else 1 }}</td>
-            <td>{{ '%.2f'|format(l.planned_batches or 0) }}</td>
+            {# ================================================================
+               Batch 160 — this cell used to fall back to a hardcoded 1 whenever
+               the recipe lookup missed. A missing recipe and a genuine
+               1-portion recipe rendered identically, so "Recipe Std Portions 1"
+               could mean either "the batch really is 1 portion" or "we could not
+               find this recipe at all" — and there was no way to tell which.
+               A miss now shows an em dash with a tooltip.
+               ================================================================ #}
+            {% set rm = recipe_meta.get(l.recipe_no) if recipe_meta is defined else None %}
+            <td>{% if rm and rm.standard_portions %}{{ rm.standard_portions|int if rm.standard_portions == rm.standard_portions|int else rm.standard_portions }}{% else %}<span class="text-danger" title="{{ t('No active recipe found for this code in this company — re-run the master import.') }}">—</span>{% endif %}</td>
+            {# Batches is a STORED SNAPSHOT on the order line, written when the
+               BOM was generated. It does not recompute when standard_portions
+               changes in the recipe master. If the two disagree, the BOM was
+               generated against the old value and needs regenerating. #}
+            {# BATCH 168 HOTFIX — both operands are coerced with |float.
+               MySQL returns DECIMAL columns as decimal.Decimal, while
+               required_portions arrives as a float, and Python refuses to
+               divide the two: "unsupported operand type(s) for /: 'float' and
+               'decimal.Decimal'". It 500'd the whole Production Order page.
+               My Batch 160 change introduced this; I wrote the division
+               without checking what the ORM actually hands back for a DECIMAL
+               column. #}
+            {% set _live = (l.required_portions|float / rm.standard_portions|float) if (rm and rm.standard_portions) else None %}
+            <td>{{ '%.2f'|format(l.planned_batches or 0) }}
+              {%- if _live is not none and (l.planned_batches|float or 0) > 0 and (_live - l.planned_batches|float)|abs > 0.005 %}
+              <div class="sub text-danger" title="{{ t('Stored when the BOM was generated. Regenerate the BOM to apply the current recipe batch size.') }}">
+                {{ t('stale — now') }} {{ '%.2f'|format(_live) }}</div>
+              {%- endif %}
+            </td>
           </tr>{% endfor %}
         </table>
       </div>
@@ -423,7 +450,18 @@ order.status), instead of a fixed string. #}
             <td>{{ b.ingredient_sub_category or '-' }}</td>
             <td>{{ b.ingredient_code }} - {{ b.ingredient_name }}</td>
             <td class="text-end">{{ '%.2f'|format(order_total_portions or 0) }}</td>
-            <td class="text-end">{{ '%.4f'|format(b.total_required_with_waste_standard or 0) }}</td>
+            {# Batch 167: where the pre-trim requirement exceeds what is being
+               issued, say so on the line. On the NET basis this is the amount
+               the trimming section will come up short by — it belongs on the
+               BOM, not discovered at the bench. #}
+            {%- set _g = b.gross_required_qty_standard if b.gross_required_qty_standard is defined else None -%}
+            {%- set _q = b.total_required_with_waste_standard or 0 -%}
+            <td class="text-end">{{ '%.4f'|format(_q) }}
+              {%- if _g and _g > _q * 1.0005 %}
+              <div class="sub text-warning" title="{{ t('Pre-trim (gross) requirement. The difference is yield loss at the prep section.') }}">
+                {{ t('gross') }} {{ '%.4f'|format(_g) }} (+{{ '%.1f'|format((_g - _q) / _q * 100 if _q else 0) }}%)</div>
+              {%- endif %}
+            </td>
             <td>{{ b.standard_uom }}</td>
             {% if show_costs %}<td class="text-end">{{ '%.2f'|format(b.total_estimated_cost or 0) }}</td>{% endif %}
           </tr>{% else %}<tr>

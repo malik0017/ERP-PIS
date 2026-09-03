@@ -1,0 +1,156 @@
+{% extends "layouts/base.html" %}
+{% block content %}
+
+<div class="container-fluid py-3">
+
+  <div class="pis-hero mb-4" style="background:linear-gradient(135deg,#08243d,#1e5bb8);border-radius:22px;color:#fff;padding:26px 30px;">
+    <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
+      <div>
+        <h2 class="mb-1 text-white"> <i class="bi bi-clipboard-data me-2"></i>{{ section }} {{ t('Production Report') }}</h2>
+      </div>
+    </div>
+     <p class="mb-0 opacity-75">
+        {{ t('What this section has to produce for real orders, by cooking date.') }}
+      </p>
+  </div>
+
+  {% if error %}
+  <div class="alert alert-danger">{{ error }}</div>
+  {% endif %}
+
+  <div class="card border mb-3">
+    <div class="card-body py-3">
+      <form method="get" class="row g-2 align-items-end">
+        <div class="col-6 col-md-2">
+          <label class="form-label small fw-bold mb-1">{{ t('Section') }}</label>
+          <select class="form-select form-select-sm" name="section">
+            <option value="All" {% if section == 'All' %}selected{% endif %}>{{ t('All sections') }}</option>
+            {% for s in sections %}
+            <option value="{{ s }}" {% if section == s %}selected{% endif %}>{{ s }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-6 col-md-2">
+          <label class="form-label small fw-bold mb-1">{{ t('Report') }}</label>
+          <select class="form-select form-select-sm" name="mode">
+            <option value="summary" {% if mode == 'summary' %}selected{% endif %}>{{ t('Summary — by recipe') }}</option>
+            <option value="detail" {% if mode == 'detail' %}selected{% endif %}>{{ t('Detail — recipe + ingredients') }}</option>
+          </select>
+        </div>
+        <div class="col-6 col-md-2">
+          <label class="form-label small fw-bold mb-1">{{ t('Cooking from') }}</label>
+          <input class="form-control form-control-sm" type="date" name="date_from" value="{{ filters.date_from or '' }}">
+        </div>
+        <div class="col-6 col-md-2">
+          <label class="form-label small fw-bold mb-1">{{ t('Cooking to') }}</label>
+          <input class="form-control form-control-sm" type="date" name="date_to" value="{{ filters.date_to or '' }}">
+        </div>
+        <div class="col-6 col-md-2">
+          <label class="form-label small fw-bold mb-1">{{ t('Customer') }}</label>
+          <input class="form-control form-control-sm" name="customer" placeholder="{{ t('Name contains...') }}"
+                 value="{{ filters.customer or '' }}">
+        </div>
+        <div class="col-6 col-md-2 d-flex gap-2">
+          <button class="btn btn-sm btn-primary flex-grow-1"><i class="bi bi-search me-1"></i>{{ t('Apply') }}</button>
+          <a class="btn btn-sm btn-outline-secondary" href="/production/reports/section">{{ t('Reset') }}</a>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="card border">
+    <div class="card-header bg-body-highlight d-flex justify-content-between align-items-center flex-wrap gap-2">
+      <span class="fw-bold">
+        {{ rows|length }} {{ t('row(s)') }}
+        {%- if filters.order %} · {{ t('Order') }} {{ filters.order }}{% endif %}
+      </span>
+      <span class="small text-secondary">
+        {{ t('Total quantity') }}: <strong>{{ '%.3f'|format(total_qty or 0) }}</strong>
+      </span>
+    </div>
+    <div class="card-body">
+      <div class="table-responsive">
+        {% if mode == 'detail' %}
+        <table class="table table-sm align-middle table-pro"
+               data-isfc-table data-isfc-colfilters
+               data-isfc-title="{{ section }} Production Report — Detail"
+               data-isfc-subtitle="Cooking {{ filters.date_from or 'any' }} to {{ filters.date_to or 'any' }}{% if filters.customer %} · {{ filters.customer }}{% endif %}">
+          <thead>
+            <tr>
+              <th>{{ t('Cooking Date') }}</th>
+              <th>{{ t('Order') }}</th>
+              <th>{{ t('Customer') }}</th>
+              <th>{{ t('Recipe') }}</th>
+              <th>{{ t('Ingredient') }}</th>
+              <th class="num">{{ t('Std Portions') }}</th>
+              <th class="num">{{ t('Required Portions') }}</th>
+              <th class="num">{{ t('Qty') }}</th>
+              <th>{{ t('UOM') }}</th>
+              <th>{{ t('Portion Size / Method') }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in rows %}
+            <tr>
+              <td>{{ r.work_date or '—' }}</td>
+              <td>{{ r.order_no }}</td>
+              <td>{{ r.customer_name or '—' }}</td>
+              <td><strong>{{ r.recipe_name }}</strong><br><span class="sub text-secondary">{{ r.recipe_no }}</span></td>
+              <td>{{ r.ingredient_name }}<br><span class="sub text-secondary">{{ r.ingredient_code }}</span></td>
+              <td class="num">{{ '%.0f'|format(r.std_portions|float) if r.std_portions else '—' }}</td>
+              <td class="num">{{ '%.2f'|format(r.req_portions|float) }}</td>
+              <td class="num fw-bold">{{ '%.3f'|format(r.qty|float) }}</td>
+              <td>{{ r.uom }}</td>
+              <td>{{ r.portion_size or '—' }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="10" class="text-secondary py-4 text-center">
+              {{ t('Nothing to produce for this section and period. Check that the BOM has been generated for those orders.') }}
+            </td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <table class="table table-sm align-middle table-pro"
+               data-isfc-table data-isfc-colfilters
+               data-isfc-title="{{ section }} Production Report — Summary"
+               data-isfc-subtitle="Cooking {{ filters.date_from or 'any' }} to {{ filters.date_to or 'any' }}{% if filters.customer %} · {{ filters.customer }}{% endif %}">
+          <thead>
+            <tr>
+              <th>{{ t('Cooking Date') }}</th>
+              <th>{{ t('Recipe') }}</th>
+              <th class="num">{{ t('Required Portions') }}</th>
+              <th class="num">{{ t('Total Qty') }}</th>
+              <th>{{ t('UOM') }}</th>
+              <th>{{ t('Portion Size / Method') }}</th>
+              <th>{{ t('Customers') }}</th>
+              <th>{{ t('Orders') }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in rows %}
+            <tr>
+              <td>{{ r.work_date or '—' }}</td>
+              <td><strong>{{ r.recipe_name }}</strong><br><span class="sub text-secondary">{{ r.recipe_no }}</span></td>
+              <td class="num">{{ '%.2f'|format(r.req_portions|float) }}</td>
+              {# The headline number on the Butcher sheet — deliberately the
+                 largest thing in the row, because it is what the section reads. #}
+              <td class="num fw-bold fs-9">{{ '%.0f'|format(r.qty|float) }}</td>
+              <td>{{ r.uom }}</td>
+              <td>{{ r.portion_size or '—' }}</td>
+              <td class="sub">{{ r.customers or '—' }}</td>
+              <td class="sub">{{ r.orders or '—' }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="8" class="text-secondary py-4 text-center">
+              {{ t('Nothing to produce for this section and period. Check that the BOM has been generated for those orders.') }}
+            </td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

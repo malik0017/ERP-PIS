@@ -112,19 +112,36 @@
           {% for c in g.consolidated %}
           <tr><td>{{ c.ingredient_code }}</td><td>{{ c.ingredient_name }}</td>
               <td class="text-end fw-bold">{{ '%.3f'|format(c.required) }}</td>
-              <td class="text-end">{{ '%.3f'|format(c.issued) }}</td>
+              <td class="text-end">{{ '%.3f'|format(c.issued) }}
+                {%- if c.pending_lines %}<div class="mini text-warning">{{ c.pending_lines }}/{{ c.lines }} {{ t('pending') }}</div>{% endif -%}
+              </td>
               <td>{{ c.uom }}</td><td class="small">{{ c.orders|join(', ') }}</td>
+              {# Batch 163: status comes from PENDING LINE COUNT, not from
+                 issued >= required. issued_qty is pre-filled to the required
+                 amount at BOM generation, so the quantity test reported
+                 "Issued" for material nobody had touched — which is why the
+                 header said "38 pending line(s)" above a list of green ticks. #}
               <td>
-                {% if c.issued >= c.required - 0.0005 %}
+                {% if c.pending_lines == 0 %}
                   <span class="si-tag si-done"><i class="bi bi-lock-fill"></i> Issued</span>
                 {% else %}
-                <form method="post" action="/production/store-issuance/by-section/issue-ingredient" class="d-inline"
-                      data-confirm="Issue {{ '%.3f'|format(c.required) }} {{ c.uom }} of {{ c.ingredient_name }} to {{ g.section }}?"
+                <form method="post" action="/production/store-issuance/by-section/issue-ingredient"
+                      class="d-flex align-items-center gap-1"
+                      data-confirm="Issue this quantity of {{ c.ingredient_name }} to {{ g.section }}? It will be split across {{ c.pending_lines }} pending line(s) in proportion to what each order requires."
                       data-confirm-title="Issue Consolidated Line" data-confirm-ok="Issue" data-confirm-variant="success">
                   <input type="hidden" name="section" value="{{ g.section }}">
                   <input type="hidden" name="ingredient_code" value="{{ c.ingredient_code }}">
                   {% if filters.order %}<input type="hidden" name="order_no" value="{{ filters.order }}">{% endif %}
-                  <button class="btn btn-sm btn-success"><i class="bi bi-box-arrow-in-right"></i> Issue</button>
+                  {# Pre-filled with what is still outstanding, not the row
+                     total — part-issued rows would otherwise re-issue material
+                     that has already gone out. Editable because the store
+                     keeper weighs what is actually on the shelf. #}
+                  <input class="form-control form-control-sm text-end" type="number" step="0.001" min="0"
+                         name="issue_qty" style="width:104px"
+                         value="{{ '%.3f'|format(c.pending_required) }}"
+                         title="{{ t('Quantity to issue now — split across') }} {{ c.pending_lines }} {{ t('pending line(s)') }}">
+                  <span class="small text-muted">{{ c.uom }}</span>
+                  <button class="btn btn-sm btn-success"><i class="bi bi-box-arrow-in-right"></i> {{ t('Issue') }}</button>
                 </form>
                 {% endif %}
               </td></tr>

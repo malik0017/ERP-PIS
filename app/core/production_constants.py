@@ -73,6 +73,31 @@ EXCEL_SECTION_TO_SYSTEM = {
     "bakery/pastry": "Bakery/Pastry",
     "trayline / packing": "Trayline / Packing",
     "cutting": "Cutting",
+    # -----------------------------------------------------------------------
+    # Batch 161 — THE SECOND SECTION MAP.
+    #
+    # Batch 159 fixed SECTION_MAP in scripts/import_frsh_master.py. It did not
+    # fix this one, and this is the map that actually decides where the store
+    # issues to: resolve_issue_section() is called at BOM generation time and
+    # writes store_issuance_lines.issue_to_section.
+    #
+    # Two maps for one concept, in two files, is how "Pastry/Bakery section"
+    # ended up correct on the recipe line and still wrong on the issuance line.
+    # The three SMC spellings that were missing here are the same three that
+    # were missing there:
+    #
+    #   Pastry/Bakery section   67 lines   -> was unmapped -> Hot Kitchen default
+    #   Breakfast              374 lines   -> was unmapped -> Hot Kitchen default
+    #   Buchery Section         14 lines   -> was unmapped -> Hot Kitchen default
+    #
+    # "Breakfast" happened to land on the right answer by accident, because the
+    # default IS Hot Kitchen. The other two did not.
+    # -----------------------------------------------------------------------
+    "pastry/bakery section": "Bakery/Pastry",
+    "bakery/pastry section": "Bakery/Pastry",
+    "buchery section": "Butchery",          # typo in the SMC workbook
+    "breakfast": "Hot Kitchen",
+    "breakfast section": "Hot Kitchen",
 }
 
 CUTTING_ITEM_CODE_PREFIX = "PRD1"

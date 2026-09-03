@@ -126,6 +126,19 @@
         {# Batch 136: "Re-route Sections" button removed — it hung on click and the
            routing is already applied at BOM time. #}
         <a class="btn btn-light fw-bold" href="/production/store-issuance/by-section{% if order %}?order={{ order.order_no }}{% endif %}"><i class="bi bi-layers me-1"></i> Issuance by Section</a>
+        {# Batch 162: the backfill route has existed since Batch 131 with no way
+           to reach it — no button, no CLI. A repair nobody can run is the same
+           as no repair. Admin-gated because it rewrites routing across every
+           open order, and confirmed because it is not obvious from the label
+           how much it touches. #}
+        {% if can_action and can_action('store_issuance', 'edit') %}
+        <form method="post" action="/production/store-issuance/backfill-sections" class="d-inline"
+              data-confirm="Re-apply the section routing rule to all BOM lines and all PENDING issuance lines? Already-issued lines are left untouched."
+              data-confirm-title="Re-route Sections" data-confirm-ok="Re-route" data-confirm-variant="warning">
+          <button class="btn btn-light fw-bold" title="{{ t('Recompute issue-to-section from the recipe workbook for data created before the routing fix') }}">
+            <i class="bi bi-signpost-split me-1"></i> {{ t('Re-route Sections') }}</button>
+        </form>
+        {% endif %}
       </div>
     </div>
   </div>
@@ -265,21 +278,30 @@
     </div>
     </div>
     <div class="table-responsive">
-      <table class="table table-sm table-bordered align-middle si-table">
+      {# Batch 161: per-column filters. A 1498-portion order runs to hundreds of
+         lines and finding one ingredient meant scrolling the whole grid. The
+         columns holding form inputs (Issue Qty, UOM, Issue To Section, Save)
+         are marked nofilter — their values live in <input>/<select> elements,
+         which the text filter cannot read, so a filter box there would look
+         broken rather than simply be absent. #}
+      <table class="table table-sm table-bordered align-middle si-table"
+             data-isfc-table data-isfc-colfilters
+             data-isfc-title="Store Issuance Lines — {{ order.order_no if order else '' }}"
+             data-isfc-search-placeholder="Filter ingredient, recipe, category...">
         <thead>
           <tr>
-            <th><input type="checkbox"
+            <th data-isfc-nofilter><input type="checkbox"
                 onclick="document.querySelectorAll('.issue-check').forEach(c=>c.checked=this.checked)"></th>
             <th>Main Category</th>
             <th>Sub Category</th>
             <th>Ingredient</th>
             <th>Recipe</th>
             <th>Required</th>
-            <th>Issue Qty</th>
-            <th>UOM</th>
-            <th>Issue To Section</th>
+            <th data-isfc-nofilter>Issue Qty</th>
+            <th data-isfc-nofilter>UOM</th>
+            <th data-isfc-nofilter>Issue To Section</th>
             <th>Status</th>
-            <th>Save</th>
+            <th data-isfc-nofilter>Save</th>
           </tr>
         </thead>
         <tbody>{% for l in lines %}<tr class="{% if l.finalized %}table-success{% endif %}">
@@ -297,11 +319,15 @@
               <span class="mini text-muted">{{ l.recipe_no }}</span>
             </td>
             <td>{{ '%.4f'|format(l.required_qty_with_waste_standard or 0) }} {{ l.standard_uom }}</td>
-            <td><input form="issue-form-{{ l.id }}" class="form-control form-control-sm" type="number" step="0.0001" name="input_material_issued"
+            <td><input form="issue-form-{{ l.id }}" class="form-control form-control-sm" type="number" step="0.0001" name="input_material_issued" style="min-width:110px"
                 value="{{ l.input_material_issued if l.input_material_issued is not none else (l.required_qty_with_waste_standard or 0) }}" {% if l.finalized %}readonly{% endif %}></td>
+            {# Batch 161: the UOM value was never missing — the input had no width
+               and collapsed to ~30px, so "Gram" was scrolled out of sight inside
+               its own box. Same fallback chain as before, now readable. #}
             <td><input form="issue-form-{{ l.id }}" class="form-control form-control-sm" name="issued_uom"
-                value="{{ l.issued_uom or l.standard_uom }}" {% if l.finalized %}readonly{% endif %}></td>
-            <td><select form="issue-form-{{ l.id }}" class="form-select form-select-sm" name="issue_to_section" {% if l.finalized %}disabled{% endif %}>{% for sec in
+                style="min-width:84px" title="{{ l.issued_uom or l.standard_uom or l.requested_uom or '' }}"
+                value="{{ l.issued_uom or l.standard_uom or l.requested_uom or '' }}" {% if l.finalized %}readonly{% endif %}></td>
+            <td><select form="issue-form-{{ l.id }}" class="form-select form-select-sm" name="issue_to_section" style="min-width:140px" {% if l.finalized %}disabled{% endif %}>{% for sec in
                 ['Cutting','Butchery','Hot Kitchen','Cold Kitchen','Bakery/Pastry'] %}<option {% if l.issue_to_section==sec %}selected{% endif %}>{{ sec }}</option>{% endfor %}</select></td>
             <td><span class="si-status {% if l.finalized %}si-issued{% elif l.issuance_status == 'Issued' %}si-issued{% elif l.issuance_status == 'Short Issued' %}si-short{% else %}si-pending{% endif %}">{% if l.finalized %}Locked / Issued{% else %}{{ l.issuance_status }}{% endif %}</span></td>
             <td>

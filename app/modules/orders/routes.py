@@ -111,14 +111,22 @@ def order_portal(request: Request, db: Session = Depends(get_db)):
     except Exception:
         can_immediate = False
     cards = [
-        {"key": "smc",       "name": "SMC",        "logo": "/static/img/customers/smc.png",       "active": True,  "match": ["SMC", "SMC1"]},
-        {"key": "frsh",      "name": "FRSH",       "logo": "/static/img/customers/frsh.png",      "active": True,  "match": ["FRSH", "FRSH1"]},
-        {"key": "immediate", "name": "Immediate Order", "logo": None, "icon": "lightning-charge-fill", "active": can_immediate, "immediate": True},
-        {"key": "dietworld", "name": "Diet World", "logo": "/static/img/customers/dietworld.jpg", "active": False},
-        {"key": "afya",      "name": "Afya",       "logo": "/static/img/customers/afya.jpg",      "active": False},
-        {"key": "soon1",     "name": "Coming Soon", "logo": None, "icon": "hourglass-split", "active": False, "placeholder": True},
-        {"key": "soon2",     "name": "Coming Soon", "logo": None, "icon": "hourglass-split", "active": False, "placeholder": True},
-        {"key": "soon3",     "name": "Coming Soon", "logo": None, "icon": "hourglass-split", "active": False, "placeholder": True},
+        {"key": "smc",       "name": "SMC",        "logo": "/static/img/customers/smc.png",       "active": True,  "match": ["SMC", "SMC1"],
+         "description": ""},
+        {"key": "frsh",      "name": "FRSH",       "logo": "/static/img/customers/frsh.png",      "active": True,  "match": ["FRSH", "FRSH1"],
+         "description": "Fresh weekly-menu meal delivery"},
+        {"key": "immediate", "name": "Immediate Order", "logo": None, "icon": "lightning-charge-fill", "active": can_immediate, "immediate": True,
+         "description": "Quick ordering and fulfilment"},
+        {"key": "dietworld", "name": "Diet World", "logo": "/static/img/customers/dietworld.jpg", "active": False,
+         "description": "Healthy living, simplified"},
+        {"key": "afya",      "name": "Afya",       "logo": "/static/img/customers/afya.jpg",      "active": False,
+         "description": "Delivering better health"},
+        {"key": "soon1",     "name": "Coming Soon", "logo": None, "icon": "hourglass-split", "active": False, "placeholder": True,
+         "description": "More great systems on the way"},
+        {"key": "soon2",     "name": "Coming Soon", "logo": None, "icon": "hourglass-split", "active": False, "placeholder": True,
+         "description": "More great systems on the way"},
+        {"key": "soon3",     "name": "Coming Soon", "logo": None, "icon": "hourglass-split", "active": False, "placeholder": True,
+         "description": "More great systems on the way"},
     ]
     return render(request, "orders/portal_landing.html",
                   {"page_title": "Sale Requisitions", "cards": cards})

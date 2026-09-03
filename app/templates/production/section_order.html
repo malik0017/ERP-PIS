@@ -83,8 +83,14 @@
       <div class="d-flex gap-2 flex-wrap align-items-start">
         <a class="pis-btn pis-soft text-nowrap" href="/production/section/{{ section_slug }}">Back to {{ section }} Orders</a>
         <a class="pis-btn text-nowrap" style="background:#fff;color:#132947" href="/production/kitchen/{{ section_slug }}/{{ order_no }}"><i class="bi bi-fire"></i> Production View</a>
-        <a class="pis-btn pis-soft text-nowrap" href="/production/section/{{ section_slug }}/orders/{{ order_no }}?export=csv"><i class="bi bi-download"></i> CSV</a>
-        <button type="button" class="pis-btn pis-soft text-nowrap" onclick="window.print()"><i class="bi bi-printer"></i> Print</button>
+        {# Batch 168: the header CSV and Print buttons are replaced by a link to
+           the Section Report. They exported the raw workstation grid for ONE
+           order in ONE view — no column control, no PDF, and no way to cover a
+           date range or a customer, which is what people were actually asking
+           the export for. The report does all of that and keeps the export
+           matching what is on screen. The per-table toolbar (CSV/PDF/copy/
+           print/columns) is still on each pane below. #}
+        <a class="pis-btn pis-soft text-nowrap" href="/production/reports/section?section={{ section }}&order={{ order_no }}"><i class="bi bi-clipboard-data"></i> {{ t('Section Report') }}</a>
       </div>
     </div>
   </div>
@@ -209,7 +215,19 @@
                  Processed is now shown underneath so both numbers are visible and
                  a partial transfer is self-evident. #}
               <td class="num">{{ '%.2f'|format(tx.transferred_qty_standard or 0) }}
-                <div class="sub">{{ t('Proc') }} {{ '%.2f'|format(tx.processed_qty_standard or 0) }}{% if (tx.waste_qty_standard or 0) > 0 %} · {{ t('Waste') }} {{ '%.2f'|format(tx.waste_qty_standard) }}{% endif %}</div>
+                {# Batch 164: the "Proc 0.00" sub-line is gone.
+                   Batch 143 added it to prove the Transferred column was
+                   finally showing the right field. It did that job, then
+                   outlived its usefulness: processing and transferring happen
+                   in ONE action, so Proc equals Transferred on every completed
+                   line and reads 0.00 on every pending one. A number that is
+                   either redundant or zero on every row is noise — it was
+                   repeated down all 51 lines of a Cutting order.
+                   Waste is still shown, because waste is a real second fact
+                   and only appears when there IS some. #}
+                {%- if (tx.waste_qty_standard or 0) > 0 %}
+                <div class="sub">{{ t('Waste') }} {{ '%.2f'|format(tx.waste_qty_standard) }}</div>
+                {%- endif %}
               </td>
               <td><span class="st {{ stcls }}">{{ st or 'Pending Receive' }}</span></td>
               <td>
@@ -308,7 +326,7 @@
                 {% if section == 'Butchery' %}<td><span class="sub">{{ cutting_map.get(d.ingredient_code, '—') }}</span></td>{% endif %}
                 <td class="num">{{ '%.2f'|format(d.received_qty_standard or d.issued_qty_standard or 0) }}</td>
                 <td class="num">{{ '%.2f'|format(d.transferred_qty_standard or 0) }}
-                  <div class="sub">Proc {{ '%.2f'|format(d.processed_qty_standard or 0) }}{% if (d.waste_qty_standard or 0) > 0 %} · Waste {{ '%.2f'|format(d.waste_qty_standard) }}{% endif %}</div>
+                  {%- if (d.waste_qty_standard or 0) > 0 %}<div class="sub">{{ t('Waste') }} {{ '%.2f'|format(d.waste_qty_standard) }}</div>{% endif -%}
                 </td>
                 <td><span class="sub">{{ d.standard_uom or '' }}</span></td>
                 <td>{% set _s = (d.transaction_status or 'Pending')|lower %}<span class="st {{ 'st-done' if ('transferred' in _s or 'completed' in _s) else ('st-received' if 'received' in _s and 'pending' not in _s else 'st-pending') }}">{{ d.transaction_status or 'Pending' }}</span></td></tr>
@@ -389,7 +407,7 @@
           <div class="grp-body">
             <table class="mini">
               <thead><tr><th>Code</th><th>Ingredient</th>{% if section == 'Butchery' %}<th>Cutting Method</th>{% endif %}<th class="num">Received</th><th class="num">Transferred</th><th>UOM</th><th>Status</th></tr></thead>
-              <tbody>{% for d in r.details %}<tr><td class="sub">{{ d.ingredient_code }}</td><td class="rc">{{ d.ingredient_name }}</td>{% if section == 'Butchery' %}<td class="sub">{{ cutting_map.get(d.ingredient_code, '—') }}</td>{% endif %}<td class="num">{{ '%.2f'|format(d.received_qty_standard or d.issued_qty_standard or 0) }}</td><td class="num">{{ '%.2f'|format(d.transferred_qty_standard or 0) }}<div class="sub">Proc {{ '%.2f'|format(d.processed_qty_standard or 0) }}{% if (d.waste_qty_standard or 0) > 0 %} · Waste {{ '%.2f'|format(d.waste_qty_standard) }}{% endif %}</div></td><td class="sub">{{ d.standard_uom or '' }}</td><td>{% set _s = (d.transaction_status or 'Pending')|lower %}<span class="st {{ 'st-done' if ('transferred' in _s or 'completed' in _s) else ('st-received' if 'received' in _s and 'pending' not in _s else 'st-pending') }}">{{ d.transaction_status or 'Pending' }}</span></td></tr>{% endfor %}</tbody>
+              <tbody>{% for d in r.details %}<tr><td class="sub">{{ d.ingredient_code }}</td><td class="rc">{{ d.ingredient_name }}</td>{% if section == 'Butchery' %}<td class="sub">{{ cutting_map.get(d.ingredient_code, '—') }}</td>{% endif %}<td class="num">{{ '%.2f'|format(d.received_qty_standard or d.issued_qty_standard or 0) }}</td><td class="num">{{ '%.2f'|format(d.transferred_qty_standard or 0) }}{% if (d.waste_qty_standard or 0) > 0 %}<div class="sub">{{ t('Waste') }} {{ '%.2f'|format(d.waste_qty_standard) }}</div>{% endif %}</td><td class="sub">{{ d.standard_uom or '' }}</td><td>{% set _s = (d.transaction_status or 'Pending')|lower %}<span class="st {{ 'st-done' if ('transferred' in _s or 'completed' in _s) else ('st-received' if 'received' in _s and 'pending' not in _s else 'st-pending') }}">{{ d.transaction_status or 'Pending' }}</span></td></tr>{% endfor %}</tbody>
             </table>
 
             {% if not _k_locked %}

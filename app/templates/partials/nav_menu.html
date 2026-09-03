@@ -1,10 +1,16 @@
 
+{# Batch 166: "Sales Cockpit" added as the first child of Sales — the only major
+   module that had no cockpit. Placed first to match Planning and Inventory,
+   where the cockpit leads and the working screens follow.
+   NOTE: comments cannot go INSIDE the list below — Jinja parses it as a single
+   expression, so a {# #} in there is a syntax error, not a comment. #}
 {% set NAV_MODULES = [
   {"key": "main", "title": "Main", "icon": "uil-apps", "children": [
     {"title": "Module Launcher", "url": "/modules", "area": "dashboard", "feather": "grid"},
     {"title": "Command Center", "url": "/dashboard", "area": "dashboard", "feather": "monitor"},
   ]},
   {"key": "sales", "title": "Sales", "icon": "uil-shopping-cart-alt", "children": [
+    {"title": "Sales Cockpit", "url": "/module/sales/dashboard", "area": "sales_review", "feather": "activity", "match": "/module/sales"},
     {"title": "Sale Requisitions", "url": "/orders/portal", "area": "order_portal", "feather": "shopping-cart", "match": "/orders/portal"},
     {"title": "Sales Requests", "url": "/sales-requests", "area": "sales_review", "feather": "check-square", "match": "/sales-requests"},
   ]},
@@ -29,6 +35,7 @@
     {"title": "Top-Up Requests", "url": "/production/topups", "area": "store_issuance", "feather": "plus-square", "match": "/production/topups"},
   ]},
   {"key": "kitchen", "title": "Kitchen", "icon": "uil-fire", "children": [
+    {"title": "Section Report", "url": "/production/reports/section", "area": "production_orders", "feather": "clipboard", "match": "/production/reports/section"},
     {"title": "All Section Summary", "url": "/production/kitchen-summary", "area": "kitchen_summary", "feather": "layers"},
     {"title": "Cutting", "url": "/production/section/Cutting", "area": "section_cutting", "feather": "scissors"},
     {"title": "Butchery", "url": "/production/section/Butchery", "area": "section_butchery", "feather": "crosshair"},

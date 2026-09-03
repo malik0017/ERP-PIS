@@ -82,6 +82,11 @@ class BOMLine(Base):
     unit_cost_standard = Column(Float, default=0)
     estimated_cost = Column(Float, default=0)
     default_issue_section = Column(String(80), default="Hot Kitchen")
+    # Batch 167: pre-trim (gross) requirement, always recorded so the yield gap
+    # is visible whichever basis the BOM was generated on. Nullable — lines
+    # created before this batch simply have no gross figure, which is different
+    # from having zero, and the screen shows nothing rather than a false 0.
+    gross_required_qty_standard = Column(Float, nullable=True)
     route_template = Column(Text, nullable=True)
     bom_status = Column(String(50), default="Generated", index=True)
     approved_by_head_chef = Column(Boolean, default=False)

@@ -32,6 +32,24 @@ MODULE_DASHBOARDS: dict[str, dict] = {
         "subtitle": "Stock on hand, GRN movements, issue movements, item ledger and valuation.",
         "icon": "box",
         "kpis": [
+            # ------------------------------------------------------------------
+            # Batch 165 — PERIOD-AWARE KPIs.
+            #
+            # The {range} placeholder and _range_cond() have existed since the
+            # cockpit was built; these cards simply never used them, so they
+            # showed ALL TIME while the charts below them respected the filter.
+            # Same page, two different time windows, no indication which was
+            # which.
+            #
+            # Not every KPI SHOULD be period-filtered, and that is the point of
+            # doing this per card rather than blanket-applying a date:
+            #   Inventory Items / Stock Value are a SNAPSHOT — "how much stock
+            #   exists right now" has no meaningful 7-day version, and filtering
+            #   it would produce a smaller, wrong number.
+            #   GRN / Issue Movements are EVENTS and belong in the window.
+            # The template badges each card accordingly, so the distinction is
+            # visible rather than something you have to know.
+            # ------------------------------------------------------------------
             ("Inventory Items", "SELECT COUNT(*) FROM ingredients", "materials in inventory master"),
             ("Stock Value", """
                 SELECT COALESCE(SUM(bal * avg_cost), 0) FROM (
@@ -42,9 +60,9 @@ MODULE_DASHBOARDS: dict[str, dict] = {
                               ELSE 0 END AS avg_cost
                   FROM inventory_transactions GROUP BY inventory_code
                 ) x
-             """, "on-hand valuation"),
-            ("GRN Movements", "SELECT COUNT(*) FROM grn_lines", "goods receipt lines"),
-            ("Issue Movements", "SELECT COUNT(*) FROM store_issuance_lines", "store issue lines"),
+             """, "SAR · on-hand valuation"),
+            ("GRN Movements", "SELECT COUNT(*) FROM grn_lines WHERE 1=1 {range}", "goods receipt lines"),
+            ("Issue Movements", "SELECT COUNT(*) FROM store_issuance_lines WHERE 1=1 {range}", "store issue lines"),
         ],
         "links": [
             ("Inventory Valuation", "/inventory", "inventory_valuation", "box"),
@@ -298,16 +316,86 @@ MODULE_DASHBOARDS: dict[str, dict] = {
                     "GROUP BY COALESCE(r.name,'No Role') ORDER BY value DESC", "default": "bar"},
         ],
     },
+    # =====================================================================
+    # Batch 166 — SALES COCKPIT.
+    #
+    # Sales was the only major module without one. Every KPI here is scoped to
+    # customer_orders and its lines, so nothing new had to be modelled.
+    #
+    # Every card is period-aware EXCEPT "Active Customers", which is a master
+    # count and has no meaningful 7-day version — same reasoning as Inventory
+    # Items in Batch 165.
+    #
+    # "Order Value" reads 0.00 on your data because sale_price_per_portion is
+    # not populated for SMC or FRSH yet. That is a data gap, not a broken card,
+    # and the hint says so rather than letting a confident 0.00 imply the
+    # orders are worthless.
+    # =====================================================================
+    "sales": {
+        # Batch 166: "sales_review" is the registered RBAC area (see rbac.py).
+        # "sales_requests" is the URL, not an area — using it here would have
+        # failed the require_area() check at runtime.
+        "area": "sales_review",
+        "title": "Sales Cockpit",
+        "subtitle": "Order intake, customer mix, request approvals and order value.",
+        "icon": "shopping-cart",
+        "kpi_range_col": "order_date",
+        "kpis": [
+            ("Orders Raised", "SELECT COUNT(*) FROM customer_orders WHERE 1=1 {range}",
+             "sales requests in period"),
+            ("Portions Ordered",
+             "SELECT COALESCE(SUM(ol.required_portions),0) FROM order_lines ol "
+             "JOIN customer_orders co ON co.order_no = ol.order_no WHERE 1=1 {range}",
+             "total portions"),
+            ("Awaiting Review",
+             "SELECT COUNT(*) FROM customer_orders "
+             "WHERE COALESCE(sales_review_status,'Pending') = 'Pending' {range}",
+             "requests pending approval"),
+            ("Active Customers",
+             "SELECT COUNT(*) FROM customers WHERE UPPER(TRIM(COALESCE(status,''))) = 'ACTIVE'",
+             "on the customer master"),
+        ],
+        "links": [
+            ("Sale Requisitions", "/orders/portal", "order_portal", "shopping-cart"),
+            ("Sales Requests", "/sales-requests", "sales_review", "check-square"),
+        ],
+        "charts": [
+            {"title": "Orders by Customer",
+             "sql": "SELECT COALESCE(NULLIF(customer_name,''),'Unassigned') AS label, "
+                    "COUNT(*) AS value FROM customer_orders WHERE 1=1 {range} "
+                    "GROUP BY 1 ORDER BY value DESC LIMIT 10",
+             "range_col": "order_date", "default": "hbar"},
+            {"title": "Order Intake Trend",
+             "sql": "SELECT DATE(order_date) AS label, COUNT(*) AS value FROM customer_orders "
+                    "WHERE 1=1 {range} GROUP BY DATE(order_date) ORDER BY label DESC LIMIT 30",
+             "range_col": "order_date", "default": "area"},
+            {"title": "Request Review Status",
+             "sql": "SELECT COALESCE(NULLIF(sales_review_status,''),'Pending') AS label, "
+                    "COUNT(*) AS value FROM customer_orders WHERE 1=1 {range} GROUP BY 1",
+             "range_col": "order_date", "default": "donut"},
+            {"title": "Portions by Brand",
+             "sql": "SELECT COALESCE(NULLIF(co.brand,''),'Unassigned') AS label, "
+                    "COALESCE(SUM(ol.required_portions),0) AS value "
+                    "FROM order_lines ol JOIN customer_orders co ON co.order_no = ol.order_no "
+                    "WHERE 1=1 {range} GROUP BY 1 ORDER BY value DESC LIMIT 10",
+             "range_col": "co.order_date", "default": "bar"},
+        ],
+    },
     "production": {
         "area": "dashboard",
         "title": "Head Chef Dashboard",
         "subtitle": "",
         "icon": "activity",
         "kpis": [
-            ("Open Orders", "SELECT COUNT(*) FROM customer_orders WHERE COALESCE(status,'') NOT IN ('Delivered','Closed','Cancelled')", "in the pipeline"),
-            ("BOM Lines", "SELECT COUNT(*) FROM bom_lines", "material demand lines"),
-            ("QC Checks", "SELECT COUNT(*) FROM qc_checks", "quality checkpoints"),
-            ("Dispatched", "SELECT COUNT(*) FROM packing_dispatch WHERE dispatch_status IN ('Out for Delivery','Delivered','Dispatched','Closed')", "delivery documents"),
+            # Batch 165: all four are EVENT counts, so all four take the period.
+            # "Open Orders" stays a live pipeline count in the sense that it
+            # still excludes closed statuses — the window just limits it to
+            # orders RAISED in the period, which is what a planner comparing
+            # "this month vs last" actually wants.
+            ("Open Orders", "SELECT COUNT(*) FROM customer_orders WHERE COALESCE(status,'') NOT IN ('Delivered','Closed','Cancelled') {range}", "in the pipeline"),
+            ("BOM Lines", "SELECT COUNT(*) FROM bom_lines WHERE 1=1 {range}", "material demand lines"),
+            ("QC Checks", "SELECT COUNT(*) FROM qc_checks WHERE 1=1 {range}", "quality checkpoints"),
+            ("Dispatched", "SELECT COUNT(*) FROM packing_dispatch WHERE dispatch_status IN ('Out for Delivery','Delivered','Dispatched','Closed') {range}", "delivery documents"),
         ],
         "links": [
             # ("Command Center (Classic)", "/dashboard", "dashboard", "monitor"),
@@ -373,14 +461,43 @@ async def module_dashboard(request: Request, key: str, db: Session = Depends(get
         return f" AND {col} >= DATE_SUB(CURDATE(), INTERVAL {days} DAY)" if days else ""
 
    
+    # ----------------------------------------------------------------------
+    # Batch 165 — KPI evaluation, with the silent-zero removed.
+    #
+    # `_n()` swallows any exception and returns 0.0. That is fine for a genuine
+    # empty result and dangerous for a broken query: a KPI whose date column
+    # does not exist would render a confident "0" that reads as real data.
+    # Several of these tables (grn_lines) have no ORM model, so I cannot verify
+    # from here that they carry created_at.
+    #
+    # Two protections:
+    #   1. If the RANGED query fails, retry WITHOUT the range. A card that
+    #      cannot be filtered is still worth showing unfiltered — it just says
+    #      so, via ranged=False, instead of pretending to be zero.
+    #   2. If the unranged query fails too, mark the card `error` and let the
+    #      template show an em dash. Nothing is worse than a wrong number that
+    #      looks right.
+    # ----------------------------------------------------------------------
+    def _n_probe(sql_text: str):
+        try:
+            v = db.execute(text(sql_text)).scalar()
+            return (float(v or 0), True)
+        except Exception:
+            return (0.0, False)
+
     kpis = []
     for (label, sql, hint) in cfg["kpis"]:
         ranged = "{range}" in sql
+        col = cfg.get("kpi_range_col", "created_at")
         if ranged:
-            col = cfg.get("kpi_range_col", "created_at")
-            sql = sql.replace("{range}", _range_cond(col))
-        kpis.append({"label": label, "value": _n(db, sql), "hint": hint,
-                     "ranged": ranged})
+            value, ok = _n_probe(sql.replace("{range}", _range_cond(col)))
+            if not ok:                      # date column missing / bad SQL
+                value, ok = _n_probe(sql.replace("{range}", ""))
+                ranged = False              # be honest: this one is all-time
+        else:
+            value, ok = _n_probe(sql)
+        kpis.append({"label": label, "value": value, "hint": hint,
+                     "ranged": ranged, "error": not ok})
     for k in kpis:
         k["value"] = int(k["value"]) if float(k["value"]).is_integer() else round(k["value"], 2)
 

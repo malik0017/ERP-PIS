@@ -47,7 +47,45 @@ from app.core.production_constants import (
 #       once yield loss is accounted for. See the note at the call site.
 # =============================================================================
 BOM_APPLY_WASTAGE = False
-BOM_QTY_BASIS = "per_portion"
+
+# =============================================================================
+# Batch 167 — BOM QUANTITY BASIS
+#
+#   "net"          issue the NET (post-trim) weight.            <-- CURRENT
+#   "gross"        issue the GROSS (pre-trim) weight.
+#   "gross_prep"   GROSS only where the recipe records a yield
+#                  loss; NET everywhere else.                   <-- RECOMMENDED
+#
+# WHY THIS IS A REAL CHOICE, measured on the SMC V2 workbook (2232 lines):
+#
+#   624 lines (28%) have yield < 100%. Overall NET understates the weight the
+#   store must hand over by 8.31% — but that average hides where it lands:
+#
+#     Butchery Section      +28.4%      Frz Beef Tendrloin  51.40% yield
+#     Buchery Section       +26.3%      100 g net  ->  194.55 g gross
+#     Cold Section          +18.5%
+#     Pastry/Bakery         +12.3%
+#     Hot Section            +4.9%
+#     Breakfast              +2.0%
+#
+# So "net" is nearly right for Hot Kitchen and badly wrong for Butchery, where
+# the section is handed 100 g of tenderloin and asked to produce 100 g of
+# trimmed meat from it. The shortfall is not distributed noise; it is
+# concentrated in the sections that physically trim.
+#
+# WHY "gross_prep" IS THE RIGHT ANSWER RATHER THAN A COMPROMISE:
+#
+# Yield loss is not an estimate to pad for — it is a physical fact already
+# recorded per line in the workbook. Issue GROSS where a yield is recorded and
+# the trimming section receives what it actually needs; the difference then
+# shows up as WASTE at that section, which the kitchen screens already capture.
+# The books balance: issued = used + waste. Under "net" the same loss silently
+# becomes an unexplained shortage instead.
+#
+# Where yield is 100% (dry goods, packaged items) gross == net, so those lines
+# are untouched by any of the three settings.
+# =============================================================================
+BOM_QTY_BASIS = "net"
 
 
 def _num(value: Any) -> float:
@@ -328,13 +366,37 @@ def generate_bom_for_order(db: Session, order_no: str, approved_by: str | None =
             # instead of plate quantities — nothing else needs to change.
             # -----------------------------------------------------------------
             line_portions = _num(getattr(ri, "portions", 0)) or std_portions
-            qty_per_portion = 0.0
-            if BOM_QTY_BASIS == "gross" and _num(ri.qty_batch) > 0 and line_portions > 0:
-                qty_per_portion = _num(ri.qty_batch) / line_portions
+
+            # Batch 167 — compute BOTH figures every time, then pick.
+            # net_pp  : qty_per_portion, the workbook's post-trim weight
+            # gross_pp: gross-per-batch / portions-per-batch, pre-trim
+            net_pp = _num(ri.qty_per_portion)
+            if net_pp <= 0 and _num(ri.qty_batch) > 0:
+                net_pp = _num(ri.qty_batch) / (line_portions or std_portions)
+
+            gross_pp = 0.0
+            if _num(ri.qty_batch) > 0 and line_portions > 0:
+                gross_pp = _num(ri.qty_batch) / line_portions
+
+            # A line "has yield loss" when gross exceeds net by more than a
+            # rounding hair. Derived from the data, not from a section name —
+            # a section list would drift the moment a recipe is re-routed.
+            has_yield_loss = gross_pp > net_pp * 1.0005 and net_pp > 0
+
+            if BOM_QTY_BASIS == "gross" and gross_pp > 0:
+                qty_per_portion = gross_pp
+            elif BOM_QTY_BASIS == "gross_prep" and has_yield_loss:
+                qty_per_portion = gross_pp
+            else:
+                qty_per_portion = net_pp
             if qty_per_portion <= 0:
-                qty_per_portion = _num(ri.qty_per_portion)
-            if qty_per_portion <= 0 and _num(ri.qty_batch) > 0:
-                qty_per_portion = _num(ri.qty_batch) / (line_portions or std_portions)
+                qty_per_portion = net_pp or gross_pp
+
+            # Always record the alternative so the shortfall is visible on
+            # screen instead of surfacing as an unexplained shortage in the
+            # kitchen. Under "net" this is what the section will actually need.
+            gross_required_std = convert_to_standard(
+                gross_pp * order_portions, recipe_uom, standard_uom, conv) if gross_pp > 0 else 0.0
 
             required_recipe_qty = qty_per_portion * order_portions
             required_std = convert_to_standard(required_recipe_qty, recipe_uom, standard_uom, conv)
@@ -387,6 +449,14 @@ def generate_bom_for_order(db: Session, order_no: str, approved_by: str | None =
                 required_qty_recipe_uom=required_recipe_qty,
                 standard_uom=standard_uom,
                 required_qty_standard=required_std,
+                # Batch 167: the pre-trim weight, recorded on every line
+                # regardless of the active basis. Under "net" this is what the
+                # trimming section will actually need, and the difference is
+                # the yield loss — better on the screen than discovered as a
+                # shortage at the bench. Guarded: if the column has not been
+                # created yet the line still saves.
+                **({"gross_required_qty_standard": gross_required_std}
+                   if hasattr(BOMLine, "gross_required_qty_standard") else {}),
                 wastage_pct=waste_pct,
                 expected_waste_qty_standard=expected_waste,
                 total_required_with_waste_standard=required_with_waste,
