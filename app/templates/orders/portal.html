@@ -155,8 +155,6 @@
       <h1 class="mb-1 fw-bold text-white">
         {% if immediate %}<i class="bi bi-lightning-fill me-2"></i>{{ t('Immediate Order') }}
         {% else %}<i class="bi bi-cart-plus me-2"></i>{{ t('Sale Requisitions') }}{% endif %}
-        {# Batch 126: surface the picked customer (e.g. FRSH) in the header so
-        the user always knows which customer this order is for. #}
         {% if preset_customer %}<span class="badge bg-white text-dark ms-2 align-middle"
           style="font-size:.5em;vertical-align:middle">{{ preset_customer|upper }}</span>{% endif %}</h1>
       <p class="mb-0 opacity-75">

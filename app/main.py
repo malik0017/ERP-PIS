@@ -297,6 +297,18 @@ app.include_router(reports_workflow_router)
 app.include_router(finance_statements_router)
 app.include_router(finance_periods_router)
 
+# Batch 170: SLA Management + Performance Targets
+from app.modules.sla.routes import router as sla_router  # noqa: E402
+# BATCH 173 — the requisitions module was never registered. Its templates link
+# to /requisitions, /requisitions/new and /requisitions/{id}/approve, all of
+# which 404'd: five dead links and a whole module unreachable.
+from app.modules.requisitions.routes import router as requisitions_router  # noqa: E402
+app.include_router(requisitions_router)
+
+app.include_router(sla_router)
+from app.modules.sla.routes import ops_router as sla_ops_router  # noqa: E402
+app.include_router(sla_ops_router)
+
 # ===== ROUTES =====
 
 @app.get("/modules")
@@ -730,6 +742,112 @@ def _ensure_meal_order_width() -> None:
 
 
 _ensure_meal_order_width()
+
+def _ensure_sla_target_tables() -> None:
+    """Batch 170 — SLA rules + Performance Targets.
+
+    order_sla holds ONE SNAPSHOT PER ORDER, written when the rule is applied.
+    Deliberately not recomputed from sla_rules on every read: an order judged
+    under a 4-hour SLA must stay judged under it when someone later changes the
+    rule to 6 hours. A live join would silently rewrite history, and SLA history
+    is exactly the thing people argue about.
+
+    sla_exceptions is separate from the instance so an approved extension never
+    overwrites the original deadline — you can always see both.
+
+    Idempotent via information_schema.
+    """
+    _DDL = {
+        "sla_rules": """
+            CREATE TABLE sla_rules (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                company_id INT NULL,
+                rule_name VARCHAR(150) NOT NULL,
+                customer_name VARCHAR(255) NULL,
+                order_type VARCHAR(80) NULL,
+                sla_minutes INT NOT NULL DEFAULT 480,
+                at_risk_minutes INT NOT NULL DEFAULT 120,
+                grace_minutes INT NOT NULL DEFAULT 15,
+                starts_on VARCHAR(30) NOT NULL DEFAULT 'CONFIRMED',
+                ends_on VARCHAR(30) NOT NULL DEFAULT 'DELIVERED',
+                basis VARCHAR(20) NOT NULL DEFAULT 'DEADLINE',
+                priority INT NOT NULL DEFAULT 100,
+                notify_at_risk TINYINT(1) NOT NULL DEFAULT 1,
+                notify_overdue TINYINT(1) NOT NULL DEFAULT 1,
+                status VARCHAR(20) NOT NULL DEFAULT 'Active',
+                created_at DATETIME NULL, updated_at DATETIME NULL,
+                KEY ix_sla_cust (customer_name), KEY ix_sla_status (status)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """,
+        "order_sla": """
+            CREATE TABLE order_sla (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                company_id INT NULL,
+                order_no VARCHAR(50) NOT NULL,
+                sla_rule_id INT NULL,
+                rule_name VARCHAR(150) NULL,
+                started_at DATETIME NULL,
+                due_at DATETIME NULL,
+                at_risk_at DATETIME NULL,
+                grace_until DATETIME NULL,
+                completed_at DATETIME NULL,
+                status VARCHAR(20) NOT NULL DEFAULT 'ON_TRACK',
+                created_at DATETIME NULL, updated_at DATETIME NULL,
+                UNIQUE KEY uq_order_sla (order_no),
+                KEY ix_osla_status (status), KEY ix_osla_due (due_at)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """,
+        "sla_exceptions": """
+            CREATE TABLE sla_exceptions (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                company_id INT NULL,
+                order_no VARCHAR(50) NOT NULL,
+                extend_minutes INT NOT NULL DEFAULT 0,
+                reason VARCHAR(255) NULL,
+                approved_by VARCHAR(120) NULL,
+                created_at DATETIME NULL,
+                KEY ix_slaex_order (order_no)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """,
+        "performance_targets": """
+            CREATE TABLE performance_targets (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                company_id INT NULL,
+                target_name VARCHAR(150) NOT NULL,
+                metric_code VARCHAR(40) NOT NULL,
+                customer_name VARCHAR(255) NULL,
+                period VARCHAR(20) NOT NULL DEFAULT 'DAILY',
+                target_value DECIMAL(18,4) NOT NULL DEFAULT 0,
+                unit VARCHAR(30) NULL,
+                effective_from DATE NULL,
+                effective_to DATE NULL,
+                status VARCHAR(20) NOT NULL DEFAULT 'Active',
+                created_at DATETIME NULL, updated_at DATETIME NULL,
+                KEY ix_tgt_metric (metric_code), KEY ix_tgt_status (status)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """,
+    }
+    try:
+        from app.database.session import SessionLocal as _SL
+        from sqlalchemy import text as _t
+        _db = _SL()
+        try:
+            for table, ddl in _DDL.items():
+                exists = _db.execute(_t("""
+                    SELECT COUNT(*) FROM information_schema.tables
+                    WHERE table_schema = DATABASE() AND table_name = :t
+                """), {"t": table}).scalar()
+                if not exists:
+                    _db.execute(_t(ddl))
+                    _db.commit()
+                    logger.info(f"Created table {table}")
+        finally:
+            _db.close()
+    except Exception as exc:
+        logger.error(f"Schema guard failed (sla/targets): {exc}")
+
+
+_ensure_sla_target_tables()
 
 
 def _ensure_recipe_ingredient_section_column() -> None:

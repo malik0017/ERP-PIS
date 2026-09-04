@@ -32,24 +32,6 @@ MODULE_DASHBOARDS: dict[str, dict] = {
         "subtitle": "Stock on hand, GRN movements, issue movements, item ledger and valuation.",
         "icon": "box",
         "kpis": [
-            # ------------------------------------------------------------------
-            # Batch 165 — PERIOD-AWARE KPIs.
-            #
-            # The {range} placeholder and _range_cond() have existed since the
-            # cockpit was built; these cards simply never used them, so they
-            # showed ALL TIME while the charts below them respected the filter.
-            # Same page, two different time windows, no indication which was
-            # which.
-            #
-            # Not every KPI SHOULD be period-filtered, and that is the point of
-            # doing this per card rather than blanket-applying a date:
-            #   Inventory Items / Stock Value are a SNAPSHOT — "how much stock
-            #   exists right now" has no meaningful 7-day version, and filtering
-            #   it would produce a smaller, wrong number.
-            #   GRN / Issue Movements are EVENTS and belong in the window.
-            # The template badges each card accordingly, so the distinction is
-            # visible rather than something you have to know.
-            # ------------------------------------------------------------------
             ("Inventory Items", "SELECT COUNT(*) FROM ingredients", "materials in inventory master"),
             ("Stock Value", """
                 SELECT COALESCE(SUM(bal * avg_cost), 0) FROM (
@@ -316,25 +298,8 @@ MODULE_DASHBOARDS: dict[str, dict] = {
                     "GROUP BY COALESCE(r.name,'No Role') ORDER BY value DESC", "default": "bar"},
         ],
     },
-    # =====================================================================
-    # Batch 166 — SALES COCKPIT.
-    #
-    # Sales was the only major module without one. Every KPI here is scoped to
-    # customer_orders and its lines, so nothing new had to be modelled.
-    #
-    # Every card is period-aware EXCEPT "Active Customers", which is a master
-    # count and has no meaningful 7-day version — same reasoning as Inventory
-    # Items in Batch 165.
-    #
-    # "Order Value" reads 0.00 on your data because sale_price_per_portion is
-    # not populated for SMC or FRSH yet. That is a data gap, not a broken card,
-    # and the hint says so rather than letting a confident 0.00 imply the
-    # orders are worthless.
-    # =====================================================================
+   
     "sales": {
-        # Batch 166: "sales_review" is the registered RBAC area (see rbac.py).
-        # "sales_requests" is the URL, not an area — using it here would have
-        # failed the require_area() check at runtime.
         "area": "sales_review",
         "title": "Sales Cockpit",
         "subtitle": "Order intake, customer mix, request approvals and order value.",
@@ -387,11 +352,6 @@ MODULE_DASHBOARDS: dict[str, dict] = {
         "subtitle": "",
         "icon": "activity",
         "kpis": [
-            # Batch 165: all four are EVENT counts, so all four take the period.
-            # "Open Orders" stays a live pipeline count in the sense that it
-            # still excludes closed statuses — the window just limits it to
-            # orders RAISED in the period, which is what a planner comparing
-            # "this month vs last" actually wants.
             ("Open Orders", "SELECT COUNT(*) FROM customer_orders WHERE COALESCE(status,'') NOT IN ('Delivered','Closed','Cancelled') {range}", "in the pipeline"),
             ("BOM Lines", "SELECT COUNT(*) FROM bom_lines WHERE 1=1 {range}", "material demand lines"),
             ("QC Checks", "SELECT COUNT(*) FROM qc_checks WHERE 1=1 {range}", "quality checkpoints"),
@@ -461,23 +421,6 @@ async def module_dashboard(request: Request, key: str, db: Session = Depends(get
         return f" AND {col} >= DATE_SUB(CURDATE(), INTERVAL {days} DAY)" if days else ""
 
    
-    # ----------------------------------------------------------------------
-    # Batch 165 — KPI evaluation, with the silent-zero removed.
-    #
-    # `_n()` swallows any exception and returns 0.0. That is fine for a genuine
-    # empty result and dangerous for a broken query: a KPI whose date column
-    # does not exist would render a confident "0" that reads as real data.
-    # Several of these tables (grn_lines) have no ORM model, so I cannot verify
-    # from here that they carry created_at.
-    #
-    # Two protections:
-    #   1. If the RANGED query fails, retry WITHOUT the range. A card that
-    #      cannot be filtered is still worth showing unfiltered — it just says
-    #      so, via ranged=False, instead of pretending to be zero.
-    #   2. If the unranged query fails too, mark the card `error` and let the
-    #      template show an em dash. Nothing is worse than a wrong number that
-    #      looks right.
-    # ----------------------------------------------------------------------
     def _n_probe(sql_text: str):
         try:
             v = db.execute(text(sql_text)).scalar()

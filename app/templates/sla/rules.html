@@ -1,0 +1,184 @@
+{% extends "layouts/base.html" %}
+{% block content %}
+<div class="container-fluid py-3">
+  <div class="req-hero d-flex align-items-center justify-content-between flex-wrap gap-3 mb-3">
+    <div>
+      <h1 class="mb-1 fw-bold text-white"><i class="bi bi-stopwatch me-2"></i>{{ t('SLA Management') }}</h1>
+      <p class="mb-0 opacity-75">{{ t('Configure delivery and operational service-level rules.') }}</p>
+    </div>
+    {% if can_action and can_action('settings','edit') %}
+    <button class="btn btn-light fw-bold" data-bs-toggle="modal" data-bs-target="#slaModal"
+            onclick="slaNew()"><i class="bi bi-plus-lg me-1"></i>{{ t('Add SLA Rule') }}</button>
+    {% endif %}
+  </div>
+
+  {% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+  {% if request.query_params.get('error') %}<div class="alert alert-danger">{{ request.query_params.get('error') }}</div>{% endif %}
+
+  {# Live effect of the rules, not just their definition. A config screen that
+     only lists rules cannot tell you whether they are working. #}
+  <div class="row g-3 mb-3">
+    <div class="col-6 col-lg-3"><div class="card border h-100"><div class="card-body">
+      <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Active Rules') }}</div>
+      <div class="fs-3 fw-bold">{{ rules|selectattr('status','equalto','Active')|list|length }}</div>
+    </div></div></div>
+    <div class="col-6 col-lg-3"><div class="card border h-100"><div class="card-body">
+      <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('At Risk') }}</div>
+      <div class="fs-3 fw-bold text-warning">{{ live.at_risk }}</div>
+    </div></div></div>
+    <div class="col-6 col-lg-3"><div class="card border h-100"><div class="card-body">
+      <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Overdue') }}</div>
+      <div class="fs-3 fw-bold text-danger">{{ live.overdue }}</div>
+    </div></div></div>
+    <div class="col-6 col-lg-3"><div class="card border h-100"><div class="card-body">
+      <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Breached') }}</div>
+      <div class="fs-3 fw-bold text-danger">{{ live.breached }}</div>
+    </div></div></div>
+  </div>
+
+  <div class="card border">
+    <div class="card-body">
+      <div class="table-responsive">
+        <table class="table table-sm align-middle table-pro" data-isfc-table
+               data-isfc-title="SLA Rules">
+          <thead><tr>
+            <th>{{ t('Rule') }}</th><th>{{ t('Customer') }}</th><th>{{ t('Order Type') }}</th>
+            <th class="num">{{ t('SLA') }}</th><th class="num">{{ t('At Risk') }}</th>
+            <th class="num">{{ t('Grace') }}</th><th>{{ t('Basis') }}</th>
+            <th class="num">{{ t('Priority') }}</th><th>{{ t('Status') }}</th><th></th>
+          </tr></thead>
+          <tbody>
+            {% for r in rules %}
+            <tr>
+              <td><strong>{{ r.rule_name }}</strong></td>
+              {# NULL means "all" — shown as such, because a blank cell reads as
+                 missing data rather than as a deliberate wildcard. #}
+              <td>{{ r.customer_name or t('All customers') }}</td>
+              <td>{{ r.order_type or t('All types') }}</td>
+              <td class="num">{{ r.sla_minutes }}m</td>
+              <td class="num">{{ r.at_risk_minutes }}m</td>
+              <td class="num">{{ r.grace_minutes }}m</td>
+              <td>{{ r.basis }}</td>
+              <td class="num">{{ r.priority }}</td>
+              <td><span class="badge badge-phoenix badge-phoenix-{{ 'success' if r.status == 'Active' else 'secondary' }}">{{ r.status }}</span></td>
+              <td>{% if can_action and can_action('settings','edit') %}
+                <button class="btn btn-sm btn-phoenix-secondary" data-bs-toggle="modal"
+                        data-bs-target="#slaModal"
+                        onclick='slaEdit({{ r|tojson }})'><i class="bi bi-pencil"></i></button>
+              {% endif %}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="10" class="text-secondary text-center py-4">
+              {{ t('No SLA rules yet. Add a global default first, then customer-specific rules on top of it.') }}
+            </td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="slaModal" tabindex="-1">
+  <div class="modal-dialog modal-lg"><div class="modal-content">
+    <form method="post" action="/system/sla/save">
+      <div class="modal-header"><h5 class="modal-title" id="slaTitle">{{ t('Create SLA Rule') }}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <input type="hidden" name="id" id="sla_id">
+        <div class="row g-3">
+          <div class="col-md-6"><label class="form-label small fw-bold">{{ t('Rule Name') }}</label>
+            <input class="form-control" name="rule_name" id="sla_rule_name" required></div>
+          <div class="col-md-3"><label class="form-label small fw-bold">{{ t('Customer') }}</label>
+            <select class="form-select" name="customer_name" id="sla_customer_name">
+              <option value="">{{ t('All customers') }}</option>
+              {% for c in customers %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+            </select></div>
+          <div class="col-md-3"><label class="form-label small fw-bold">{{ t('Order Type') }}</label>
+            <input class="form-control" name="order_type" id="sla_order_type"
+                   placeholder="{{ t('All types') }}"></div>
+
+          <div class="col-12"><hr class="my-1"><span class="small fw-bold text-body-tertiary">{{ t('SLA CONFIGURATION') }}</span></div>
+
+          <div class="col-md-4"><label class="form-label small fw-bold">{{ t('SLA Duration (minutes)') }}</label>
+            <input class="form-control" type="number" min="0" name="sla_minutes" id="sla_minutes" value="480"></div>
+          <div class="col-md-4"><label class="form-label small fw-bold">{{ t('At Risk (minutes before due)') }}</label>
+            <input class="form-control" type="number" min="0" name="at_risk_minutes" id="sla_at_risk_minutes" value="120"></div>
+          <div class="col-md-4"><label class="form-label small fw-bold">{{ t('Grace Period (minutes)') }}</label>
+            <input class="form-control" type="number" min="0" name="grace_minutes" id="sla_grace_minutes" value="15"></div>
+
+          <div class="col-md-4"><label class="form-label small fw-bold">{{ t('Basis') }}</label>
+            <select class="form-select" name="basis" id="sla_basis">
+              <option value="DEADLINE">{{ t('Delivery deadline (use order delivery time)') }}</option>
+              <option value="DURATION">{{ t('Duration (start + SLA minutes)') }}</option>
+            </select>
+            <div class="form-text">{{ t('Deadline falls back to Duration when an order has no delivery time.') }}</div></div>
+          <div class="col-md-4"><label class="form-label small fw-bold">{{ t('SLA Starts') }}</label>
+            <select class="form-select" name="starts_on" id="sla_starts_on">
+              <option value="CREATED">{{ t('Order Created') }}</option>
+              <option value="CONFIRMED">{{ t('Confirmed Order') }}</option>
+              <option value="PRODUCTION">{{ t('Production Started') }}</option>
+            </select></div>
+          <div class="col-md-4"><label class="form-label small fw-bold">{{ t('SLA Ends') }}</label>
+            <select class="form-select" name="ends_on" id="sla_ends_on">
+              <option value="DISPATCHED">{{ t('Dispatched') }}</option>
+              <option value="DELIVERED">{{ t('Delivered') }}</option>
+            </select></div>
+
+          <div class="col-md-4"><label class="form-label small fw-bold">{{ t('Priority') }}</label>
+            <input class="form-control" type="number" name="priority" id="sla_priority" value="100">
+            <div class="form-text">{{ t('Lower wins when two equally specific rules match.') }}</div></div>
+          <div class="col-md-4"><label class="form-label small fw-bold">{{ t('Status') }}</label>
+            <select class="form-select" name="status" id="sla_status">
+              <option value="Active">{{ t('Active') }}</option>
+              <option value="Inactive">{{ t('Inactive') }}</option>
+            </select></div>
+          <div class="col-md-4 d-flex flex-column justify-content-end">
+            <div class="form-check"><input class="form-check-input" type="checkbox" name="notify_at_risk" id="sla_notify_at_risk" checked>
+              <label class="form-check-label small" for="sla_notify_at_risk">{{ t('Notify when At Risk') }}</label></div>
+            <div class="form-check"><input class="form-check-input" type="checkbox" name="notify_overdue" id="sla_notify_overdue" checked>
+              <label class="form-check-label small" for="sla_notify_overdue">{{ t('Notify when Overdue') }}</label></div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-phoenix-secondary" data-bs-dismiss="modal">{{ t('Cancel') }}</button>
+        <button class="btn btn-primary">{{ t('Save SLA Rule') }}</button>
+      </div>
+    </form>
+  </div></div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function slaNew(){
+  document.getElementById('slaTitle').textContent = 'Create SLA Rule';
+  ['id','rule_name','order_type'].forEach(function(k){ document.getElementById('sla_'+k).value=''; });
+  document.getElementById('sla_customer_name').value='';
+  document.getElementById('sla_minutes').value=480;
+  document.getElementById('sla_at_risk_minutes').value=120;
+  document.getElementById('sla_grace_minutes').value=15;
+  document.getElementById('sla_priority').value=100;
+  document.getElementById('sla_basis').value='DEADLINE';
+  document.getElementById('sla_status').value='Active';
+}
+function slaEdit(r){
+  document.getElementById('slaTitle').textContent = 'Edit SLA Rule';
+  document.getElementById('sla_id').value = r.id || '';
+  document.getElementById('sla_rule_name').value = r.rule_name || '';
+  document.getElementById('sla_customer_name').value = r.customer_name || '';
+  document.getElementById('sla_order_type').value = r.order_type || '';
+  document.getElementById('sla_minutes').value = r.sla_minutes;
+  document.getElementById('sla_at_risk_minutes').value = r.at_risk_minutes;
+  document.getElementById('sla_grace_minutes').value = r.grace_minutes;
+  document.getElementById('sla_priority').value = r.priority;
+  document.getElementById('sla_basis').value = r.basis || 'DEADLINE';
+  document.getElementById('sla_starts_on').value = r.starts_on || 'CONFIRMED';
+  document.getElementById('sla_ends_on').value = r.ends_on || 'DELIVERED';
+  document.getElementById('sla_status').value = r.status || 'Active';
+  document.getElementById('sla_notify_at_risk').checked = !!r.notify_at_risk;
+  document.getElementById('sla_notify_overdue').checked = !!r.notify_overdue;
+}
+</script>
+{% endblock %}

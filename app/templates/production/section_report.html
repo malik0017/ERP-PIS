@@ -3,56 +3,144 @@
 
 <div class="container-fluid py-3">
 
-  <div class="pis-hero mb-4" style="background:linear-gradient(135deg,#08243d,#1e5bb8);border-radius:22px;color:#fff;padding:26px 30px;">
-    <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
-      <div>
-        <h2 class="mb-1 text-white"> <i class="bi bi-clipboard-data me-2"></i>{{ section }} {{ t('Production Report') }}</h2>
-      </div>
-    </div>
-     <p class="mb-0 opacity-75">
-        {{ t('What this section has to produce for real orders, by cooking date.') }}
+   <div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-3 p-4 rounded-4 text-white"
+       style="background:linear-gradient(135deg,#08243d,#1e5bb8)">
+    <div>
+      <h1 class="mb-1 fw-bold text-white"> <i class="bi bi-clipboard-data me-2"></i>{{ section }} {{ t('Production Report') }}</h1>
+      {# Batch 174: the active filters spelled out. A sheet printed and pinned to
+         a kitchen wall with no date range on it is one nobody can trust a week
+         later. #}
+      <p class="mb-0 opacity-75 fs-9">
+        {{ t('Cooking') }}: {{ filters.date_from or t('any date') }} → {{ filters.date_to or t('any date') }}
+        {%- if filters.customer %} · {{ filters.customer }}{% endif %}
+        {%- if filters.categories %} · {{ filters.categories|join(', ') }}{% endif %}
       </p>
+      <p class="mb-0 opacity-75"> {{ t('What this section has to produce for real orders, by cooking date.') }}</p>
+    </div>
   </div>
 
   {% if error %}
   <div class="alert alert-danger">{{ error }}</div>
   {% endif %}
 
-  <div class="card border mb-3">
-    <div class="card-body py-3">
-      <form method="get" class="row g-2 align-items-end">
-        <div class="col-6 col-md-2">
-          <label class="form-label small fw-bold mb-1">{{ t('Section') }}</label>
-          <select class="form-select form-select-sm" name="section">
-            <option value="All" {% if section == 'All' %}selected{% endif %}>{{ t('All sections') }}</option>
-            {% for s in sections %}
-            <option value="{{ s }}" {% if section == s %}selected{% endif %}>{{ s }}</option>
-            {% endfor %}
-          </select>
-        </div>
-        <div class="col-6 col-md-2">
-          <label class="form-label small fw-bold mb-1">{{ t('Report') }}</label>
-          <select class="form-select form-select-sm" name="mode">
-            <option value="summary" {% if mode == 'summary' %}selected{% endif %}>{{ t('Summary — by recipe') }}</option>
-            <option value="detail" {% if mode == 'detail' %}selected{% endif %}>{{ t('Detail — recipe + ingredients') }}</option>
-          </select>
-        </div>
-        <div class="col-6 col-md-2">
-          <label class="form-label small fw-bold mb-1">{{ t('Cooking from') }}</label>
-          <input class="form-control form-control-sm" type="date" name="date_from" value="{{ filters.date_from or '' }}">
-        </div>
-        <div class="col-6 col-md-2">
-          <label class="form-label small fw-bold mb-1">{{ t('Cooking to') }}</label>
-          <input class="form-control form-control-sm" type="date" name="date_to" value="{{ filters.date_to or '' }}">
-        </div>
-        <div class="col-6 col-md-2">
-          <label class="form-label small fw-bold mb-1">{{ t('Customer') }}</label>
-          <input class="form-control form-control-sm" name="customer" placeholder="{{ t('Name contains...') }}"
-                 value="{{ filters.customer or '' }}">
-        </div>
-        <div class="col-6 col-md-2 d-flex gap-2">
-          <button class="btn btn-sm btn-primary flex-grow-1"><i class="bi bi-search me-1"></i>{{ t('Apply') }}</button>
-          <a class="btn btn-sm btn-outline-secondary" href="/production/reports/section">{{ t('Reset') }}</a>
+  {# ================================================================
+     Batch 175 — filter card rebuilt.
+
+     The native <select multiple> is why only one category ever stuck: it
+     needs Ctrl/Cmd-click, which nobody discovers and which is impossible on a
+     touch screen. Replaced with a checkbox dropdown — every option is a plain
+     click, and the trigger shows what is selected without opening it.
+
+     Layout: filters grouped into a labelled panel with the actions on their
+     own row, instead of six equal-width boxes and a stray button column.
+     ================================================================ #}
+  <div class="card border mb-3 rpt-filters">
+    <div class="card-header bg-body-highlight py-2 d-flex align-items-center justify-content-between">
+      <span class="fw-bold fs-9 text-uppercase text-body-tertiary">
+        <i class="bi bi-funnel me-1"></i>{{ t('Report Filters') }}
+      </span>
+      {% if filters.date_from or filters.date_to or filters.customer or filters.categories %}
+      <span class="badge badge-phoenix badge-phoenix-info">{{ t('Filtered') }}</span>
+      {% endif %}
+    </div>
+    <div class="card-body">
+      <form method="get">
+        <div class="row g-3">
+
+          <div class="col-12 col-md-6 col-xl-3">
+            <label class="form-label fs-9 fw-bold text-body-tertiary text-uppercase mb-1">{{ t('Section') }}</label>
+            {# Batch 174: "All sections" removed — see the route for why. #}
+            <select class="form-select" name="section">
+              {% for s in sections %}
+              <option value="{{ s }}" {% if section == s %}selected{% endif %}>{{ s }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="col-12 col-md-6 col-xl-3">
+            <label class="form-label fs-9 fw-bold text-body-tertiary text-uppercase mb-1">{{ t('Report Shape') }}</label>
+            <select class="form-select" name="mode">
+              <option value="summary" {% if mode == 'summary' %}selected{% endif %}>{{ t('Summary — by recipe') }}</option>
+              <option value="consolidated" {% if mode == 'consolidated' %}selected{% endif %}>{{ t('Consolidated — by ingredient') }}</option>
+              <option value="detail" {% if mode == 'detail' %}selected{% endif %}>{{ t('Detail — recipe + ingredients') }}</option>
+            </select>
+          </div>
+
+          <div class="col-12 col-xl-6">
+            <label class="form-label fs-9 fw-bold text-body-tertiary text-uppercase mb-1">{{ t('Cooking Date Range') }}</label>
+            <div class="input-group">
+              <span class="input-group-text"><i class="bi bi-calendar3"></i></span>
+              <input class="form-control" type="date" name="date_from" value="{{ filters.date_from or '' }}"
+                     aria-label="{{ t('Cooking from') }}">
+              <span class="input-group-text">→</span>
+              <input class="form-control" type="date" name="date_to" value="{{ filters.date_to or '' }}"
+                     aria-label="{{ t('Cooking to') }}">
+            </div>
+          </div>
+
+          <div class="col-12 col-md-6">
+            {# Batch 169: real customers, not free text — a typo returned an
+               empty report that read as "no work scheduled". #}
+            <label class="form-label fs-9 fw-bold text-body-tertiary text-uppercase mb-1">{{ t('Customer') }}</label>
+            <select class="form-select" name="customer">
+              <option value="">{{ t('All customers') }}</option>
+              {% for c in customer_options %}
+              <option value="{{ c }}" {% if filters.customer == c %}selected{% endif %}>{{ c }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="col-12 col-md-6">
+            <label class="form-label fs-9 fw-bold text-body-tertiary text-uppercase mb-1">
+              {{ t('Recipe Category') }}
+            </label>
+            {# A checkbox list in a dropdown. Checkboxes with the SAME name post
+               as repeated ?category= parameters, which is exactly what
+               getlist() on the route already expects — so the server side is
+               unchanged. #}
+            <div class="dropdown w-100">
+              <button class="form-select text-start d-flex align-items-center justify-content-between"
+                      type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside">
+                <span id="catSummary" class="text-truncate">
+                  {%- if filters.categories -%}
+                    {{ filters.categories|length }} {{ t('selected') }}
+                  {%- else -%}
+                    <span class="text-body-tertiary">{{ t('All categories') }}</span>
+                  {%- endif -%}
+                </span>
+              </button>
+              <div class="dropdown-menu w-100 p-2" style="max-height:280px;overflow:auto">
+                {% if category_options %}
+                <div class="d-flex justify-content-between mb-2 pb-2 border-bottom">
+                  <button type="button" class="btn btn-sm btn-link p-0 fs-9" onclick="catAll(true)">{{ t('Select all') }}</button>
+                  <button type="button" class="btn btn-sm btn-link p-0 fs-9" onclick="catAll(false)">{{ t('Clear') }}</button>
+                </div>
+                {% for c in category_options %}
+                <div class="form-check">
+                  <input class="form-check-input cat-cb" type="checkbox" name="category"
+                         value="{{ c }}" id="cat{{ loop.index }}"
+                         {% if c in filters.categories %}checked{% endif %} onchange="catSync()">
+                  <label class="form-check-label w-100" for="cat{{ loop.index }}">{{ c }}</label>
+                </div>
+                {% endfor %}
+                {% else %}
+                <div class="text-body-tertiary fs-9 p-2">{{ t('No categories in this section') }}</div>
+                {% endif %}
+              </div>
+            </div>
+            {% if filters.categories %}
+            <div class="mt-2">
+              {% for c in filters.categories %}
+              <span class="badge badge-phoenix badge-phoenix-info me-1 mb-1">{{ c }}</span>
+              {% endfor %}
+            </div>
+            {% endif %}
+          </div>
+
+          <div class="col-12 d-flex gap-2 pt-1 border-top mt-1">
+            <button class="btn btn-primary px-4"><i class="bi bi-search me-1"></i>{{ t('Apply Filters') }}</button>
+            <a class="btn btn-phoenix-secondary" href="/production/reports/section?section={{ section }}">{{ t('Reset') }}</a>
+          </div>
         </div>
       </form>
     </div>
@@ -69,8 +157,54 @@
       </span>
     </div>
     <div class="card-body">
+      {% if truncated %}
+      {# Batch 169: say it, do not silently cut. A truncated report that looks
+         complete is worse than no report — someone would plan production from
+         it. #}
+      <div class="alert alert-warning py-2 px-3 small mb-3">
+        <i class="bi bi-exclamation-triangle me-1"></i>
+        {{ t('Showing the first') }} {{ row_cap }} {{ t('rows only — there is more data than this view can render.') }}
+        {{ t('Narrow the date range, pick one section, or switch to Consolidated to see the full picture.') }}
+      </div>
+      {% endif %}
       <div class="table-responsive">
-        {% if mode == 'detail' %}
+        {% if mode == 'consolidated' %}
+        {# One row per ingredient across every recipe and order in the filter —
+           what the store and the section actually work from. #}
+        <table class="table table-sm align-middle table-pro"
+               data-isfc-table data-isfc-colfilters
+               data-isfc-title="{{ section }} Consolidated Ingredient Requirement"
+               data-isfc-subtitle="Cooking {{ filters.date_from or 'any' }} to {{ filters.date_to or 'any' }}{% if filters.customer %} · {{ filters.customer }}{% endif %}">
+          <thead>
+            <tr>
+              <th>{{ t('Code') }}</th>
+              <th>{{ t('Ingredient') }}</th>
+              <th class="num">{{ t('Total Qty') }}</th>
+              <th>{{ t('UOM') }}</th>
+              <th class="num">{{ t('Recipes') }}</th>
+              <th class="num">{{ t('Orders') }}</th>
+              <th>{{ t('From') }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in rows %}
+            <tr>
+              <td>{{ r.ingredient_code }}</td>
+              <td><strong>{{ r.ingredient_name }}</strong></td>
+              <td class="num fw-bold fs-9">{{ '%.3f'|format(r.qty|float) }}</td>
+              <td>{{ r.uom }}</td>
+              <td class="num">{{ r.recipe_count }}</td>
+              <td class="num">{{ r.order_count }}</td>
+              <td>{{ r.work_date or '—' }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="7" class="text-secondary py-4 text-center">
+              {{ t('Nothing to produce for this section and period. Check that the BOM has been generated for those orders.') }}
+            </td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% elif mode == 'detail' %}
         <table class="table table-sm align-middle table-pro"
                data-isfc-table data-isfc-colfilters
                data-isfc-title="{{ section }} Production Report — Detail"
@@ -153,4 +287,31 @@
     </div>
   </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Batch 175: keep the trigger label honest as boxes are ticked, without a
+// round trip. The label is the only thing visible when the menu is closed, so
+// if it goes stale the user cannot tell what the report will actually filter on.
+function catSync(){
+  var boxes = document.querySelectorAll('.cat-cb');
+  var picked = [];
+  boxes.forEach(function(b){ if(b.checked) picked.push(b.value); });
+  var el = document.getElementById('catSummary');
+  if(!el) return;
+  if(picked.length === 0){
+    el.innerHTML = '<span class="text-body-tertiary">All categories</span>';
+  } else if(picked.length === 1){
+    el.textContent = picked[0];
+  } else {
+    el.textContent = picked.length + ' selected';
+  }
+}
+function catAll(state){
+  document.querySelectorAll('.cat-cb').forEach(function(b){ b.checked = state; });
+  catSync();
+}
+document.addEventListener('DOMContentLoaded', catSync);
+</script>
 {% endblock %}

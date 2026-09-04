@@ -2287,18 +2287,34 @@ async def section_production_report(request: Request, db: Session = Depends(get_
     require_area(request, "production_orders")
     cid = _company_id_from_session(request)
 
+    # Batch 169: a hard cap. 1633 rows already made the page sluggish and
+    # "All sections" hung the browser outright — every row is rendered into the
+    # DOM. Capped in SQL, not in Python, so a huge result is never fetched.
+    ROW_CAP = 800
+
     section = (request.query_params.get("section") or "Butchery").strip()
     mode = (request.query_params.get("mode") or "summary").strip()
     date_from = (request.query_params.get("date_from") or "").strip()
     date_to = (request.query_params.get("date_to") or "").strip()
     customer = (request.query_params.get("customer") or "").strip()
     order_no = (request.query_params.get("order") or "").strip()
+    # Batch 174: MULTI-SELECT categories. getlist() returns every repeated
+    # ?category= parameter; a single value still arrives as a one-item list, so
+    # existing bookmarks and the old single-select behaviour keep working.
+    categories = [c.strip() for c in request.query_params.getlist("category") if c.strip()]
 
     where = ["(bl.company_id = :cid OR bl.company_id IS NULL)"]
     params: dict = {"cid": cid}
-    if section and section.lower() != "all":
-        where.append("COALESCE(bl.default_issue_section,'') = :sec")
-        params["sec"] = section
+    # Batch 174: "All sections" is gone. A section report that can be run across
+    # every section is not a section report — it was also the option that hung
+    # the browser and forced the 800-row cap. If a cross-section view is wanted
+    # later it should be its own screen with its own aggregation, not a value in
+    # this dropdown. An old ?section=All bookmark falls back to Butchery rather
+    # than silently returning everything.
+    if not section or section.lower() in ("all", "all sections"):
+        section = "Butchery"
+    where.append("COALESCE(bl.default_issue_section,'') = :sec")
+    params["sec"] = section
     if order_no:
         where.append("bl.order_no = :ord")
         params["ord"] = order_no
@@ -2313,9 +2329,82 @@ async def section_production_report(request: Request, db: Session = Depends(get_
     if date_to:
         where.append("COALESCE(co.cooking_date, co.required_delivery_date) <= :dt")
         params["dt"] = date_to
+    if categories:
+        # Batch 174: exact IN match, not LIKE. LIKE '%Salad%' also matched
+        # "Salad Dressing" and "Chicken Salad Sandwich", so picking one category
+        # quietly pulled in others. The values come from a dropdown built out of
+        # the recipes table, so they are already exact — a wildcard was solving
+        # a problem that did not exist and creating one that did.
+        binds = []
+        for i, c in enumerate(categories):
+            key = f"cat{i}"
+            binds.append(f":{key}")
+            params[key] = c
+        where.append(f"""EXISTS (SELECT 1 FROM recipes rc
+                                  WHERE rc.recipe_code = bl.recipe_no
+                                    AND COALESCE(rc.category,'') IN ({','.join(binds)}))""")
     w = " AND ".join(where)
 
+    # Customers currently on the order book, for the filter dropdown. Scoped to
+    # the same section/date window so the list only offers names that can
+    # actually return rows — a dropdown full of dead options is worse than a
+    # free-text box.
+    customer_options: list = []
+    category_options: list = []
+    try:
+        customer_options = [r[0] for r in db.execute(text(f"""
+            SELECT DISTINCT co.customer_name FROM bom_lines bl
+            JOIN customer_orders co ON co.order_no = bl.order_no
+            WHERE {" AND ".join(x for x in where if ':cust' not in x)}
+              AND COALESCE(co.customer_name,'') <> ''
+            ORDER BY co.customer_name LIMIT 100
+        """), {k: v for k, v in params.items() if k != "cust"}).all()]
+        # Batch 174: only categories that actually appear in THIS section's
+        # workload. The old list was every category in the recipe master, so
+        # Butchery offered "Bakery", "Bread" and "Dessert" — pick one and the
+        # report comes back empty, which reads as a bug rather than as a filter
+        # that could never match.
+        category_options = [r[0] for r in db.execute(text(f"""
+            SELECT DISTINCT rc.category
+            FROM bom_lines bl
+            JOIN customer_orders co ON co.order_no = bl.order_no
+            JOIN recipes rc ON rc.recipe_code = bl.recipe_no
+            WHERE {" AND ".join(x for x in where if ':cat' not in x)}
+              AND COALESCE(rc.category,'') <> ''
+            ORDER BY rc.category LIMIT 100
+        """), {k: v for k, v in params.items() if not k.startswith("cat")}).all()]
+    except Exception:
+        customer_options, category_options = [], []
+
+    # ----------------------------------------------------------------------
+    # BATCH 169 — three fixes to the queries themselves.
+    #
+    # 1. DUPLICATE ROWS. The old query joined recipe_ingredients on
+    #    (recipe_id, inventory_code). A recipe that lists Butter on three
+    #    separate lines produced THREE identical report rows — the Butter/Salt
+    #    repetition you circled. Joining recipes on recipe_code multiplied it
+    #    again wherever more than one version exists. Both are now correlated
+    #    SCALAR subqueries: one value per BOM line, by construction.
+    #
+    # 2. SIZE. 1633 rows for one section, and "All sections" was enough to hang
+    #    the browser because every row is rendered into the DOM at once. A cap
+    #    is applied in SQL and the screen says when it has been hit, rather than
+    #    silently truncating.
+    #
+    # 3. A CONSOLIDATED SHAPE. Line-wise answers "what does this order need";
+    #    the store and the sections ask "how much of this ingredient in total".
+    #    That is a GROUP BY, not a filter, so it is a third mode.
+    # ----------------------------------------------------------------------
     rows = []
+    truncated = False
+    _PORTION_SQ = """(SELECT MAX(ri2.cutting_portion_size)
+                        FROM recipe_ingredients ri2
+                        JOIN recipes r3 ON r3.id = ri2.recipe_id
+                       WHERE r3.recipe_code = bl.recipe_no
+                         AND ri2.inventory_code = bl.ingredient_code)"""
+    _STD_SQ = """(SELECT MAX(r2.standard_portions) FROM recipes r2
+                   WHERE r2.recipe_code = bl.recipe_no
+                     AND (r2.company_id = :cid OR r2.company_id IS NULL))"""
     try:
         if mode == "detail":
             rows = db.execute(text(f"""
@@ -2323,21 +2412,36 @@ async def section_production_report(request: Request, db: Session = Depends(get_
                        COALESCE(co.cooking_date, co.required_delivery_date) AS work_date,
                        bl.recipe_no, bl.recipe_name,
                        bl.ingredient_code, bl.ingredient_name,
-                       COALESCE(r.standard_portions, 0) AS std_portions,
+                       {_STD_SQ} AS std_portions,
                        COALESCE(ol.required_portions, 0) AS req_portions,
                        COALESCE(bl.total_required_with_waste_standard, 0) AS qty,
                        COALESCE(bl.standard_uom,'') AS uom,
-                       COALESCE(ri.cutting_portion_size,'') AS portion_size
+                       {_PORTION_SQ} AS portion_size
                 FROM bom_lines bl
                 JOIN customer_orders co ON co.order_no = bl.order_no
                 LEFT JOIN order_lines ol
                        ON ol.order_no = bl.order_no AND ol.recipe_no = bl.recipe_no
-                LEFT JOIN recipes r ON r.recipe_code = bl.recipe_no
-                LEFT JOIN recipe_ingredients ri
-                       ON ri.recipe_id = r.id AND ri.inventory_code = bl.ingredient_code
                 WHERE {w}
                 ORDER BY work_date, bl.recipe_name, bl.ingredient_name
-            """), params).mappings().all()
+                LIMIT :cap
+            """), {**params, "cap": ROW_CAP + 1}).mappings().all()
+
+        elif mode == "consolidated":
+            rows = db.execute(text(f"""
+                SELECT bl.ingredient_code, bl.ingredient_name,
+                       MIN(COALESCE(co.cooking_date, co.required_delivery_date)) AS work_date,
+                       COUNT(DISTINCT bl.recipe_no) AS recipe_count,
+                       COUNT(DISTINCT bl.order_no) AS order_count,
+                       SUM(COALESCE(bl.total_required_with_waste_standard, 0)) AS qty,
+                       MAX(COALESCE(bl.standard_uom,'')) AS uom
+                FROM bom_lines bl
+                JOIN customer_orders co ON co.order_no = bl.order_no
+                WHERE {w}
+                GROUP BY bl.ingredient_code, bl.ingredient_name
+                ORDER BY qty DESC
+                LIMIT :cap
+            """), {**params, "cap": ROW_CAP + 1}).mappings().all()
+
         else:
             rows = db.execute(text(f"""
                 SELECT bl.recipe_no, bl.recipe_name,
@@ -2349,18 +2453,20 @@ async def section_production_report(request: Request, db: Session = Depends(get_
                        SUM(COALESCE(ol.required_portions, 0)) AS req_portions,
                        SUM(COALESCE(bl.total_required_with_waste_standard, 0)) AS qty,
                        MAX(COALESCE(bl.standard_uom,'')) AS uom,
-                       MAX(COALESCE(ri.cutting_portion_size,'')) AS portion_size
+                       MAX({_PORTION_SQ}) AS portion_size
                 FROM bom_lines bl
                 JOIN customer_orders co ON co.order_no = bl.order_no
                 LEFT JOIN order_lines ol
                        ON ol.order_no = bl.order_no AND ol.recipe_no = bl.recipe_no
-                LEFT JOIN recipes r ON r.recipe_code = bl.recipe_no
-                LEFT JOIN recipe_ingredients ri
-                       ON ri.recipe_id = r.id AND ri.inventory_code = bl.ingredient_code
                 WHERE {w}
                 GROUP BY bl.recipe_no, bl.recipe_name
                 ORDER BY qty DESC
-            """), params).mappings().all()
+                LIMIT :cap
+            """), {**params, "cap": ROW_CAP + 1}).mappings().all()
+
+        if len(rows) > ROW_CAP:
+            rows = rows[:ROW_CAP]
+            truncated = True
     except Exception as exc:                        # pragma: no cover
         # Surfaced, not swallowed. An empty report and a broken query look
         # identical on screen otherwise — the mistake Batch 140 fixed on the
@@ -2370,6 +2476,8 @@ async def section_production_report(request: Request, db: Session = Depends(get_
         return render(request, "production/section_report.html", {
             "rows": [], "mode": mode, "section": section,
             "sections": KITCHEN_SECTIONS, "filters": {},
+            "truncated": False, "row_cap": ROW_CAP,
+            "customer_options": [], "category_options": [],
             "error": f"Report query failed: {exc.__class__.__name__}",
             "page_title": "Section Production Report"})
 
@@ -2377,8 +2485,11 @@ async def section_production_report(request: Request, db: Session = Depends(get_
     return render(request, "production/section_report.html", {
         "rows": [dict(r) for r in rows], "mode": mode, "section": section,
         "sections": KITCHEN_SECTIONS, "total_qty": total_qty,
+        "truncated": truncated, "row_cap": ROW_CAP,
+        "customer_options": customer_options, "category_options": category_options,
         "filters": {"section": section, "mode": mode, "date_from": date_from,
-                    "date_to": date_to, "customer": customer, "order": order_no},
+                    "date_to": date_to, "customer": customer, "order": order_no,
+                    "categories": categories},
         "page_title": f"{section} Production Report",
     })
 
@@ -2507,7 +2618,13 @@ async def api_bakery_consolidated(db: Session = Depends(get_db)):
 
 @router.get("/kitchen-summary")
 async def kitchen_summary(request: Request, db: Session = Depends(get_db)):
- 
+    """All Section Summary - one row per kitchen section with live workload.
+
+    Fixes the sidebar 404: /production/kitchen-summary now exists.
+    Batch 81: added date-range + order-number filtering — this page
+    previously had no filter at all, so "today's workload" vs. "everything
+    ever processed" were impossible to tell apart.
+    """
     require_area(request, "kitchen_summary")
     date_from = (request.query_params.get("date_from") or "").strip()
     date_to = (request.query_params.get("date_to") or "").strip()

@@ -7,6 +7,7 @@
 {% set NAV_MODULES = [
   {"key": "main", "title": "Main", "icon": "uil-apps", "children": [
     {"title": "Module Launcher", "url": "/modules", "area": "dashboard", "feather": "grid"},
+    {"title": "Operations Overview", "url": "/dashboard/operations", "area": "dashboard", "feather": "activity", "match": "/dashboard/operations"},
     {"title": "Command Center", "url": "/dashboard", "area": "dashboard", "feather": "monitor"},
   ]},
   {"key": "sales", "title": "Sales", "icon": "uil-shopping-cart-alt", "children": [
@@ -114,6 +115,8 @@
     {"title": "Prepare Recipe", "url": "/recipes/prepare", "area": "recipe_prepare", "feather": "edit-3"},
   ]},
   {"key": "system", "title": "System", "icon": "uil-setting", "children": [
+    {"title": "SLA Management", "url": "/system/sla", "area": "settings", "feather": "clock", "match": "/system/sla"},
+    {"title": "Performance Targets", "url": "/system/targets", "area": "settings", "feather": "target", "match": "/system/targets"},
     {"title": "Users & Access", "url": "/admin/users", "area": "users", "feather": "users", "match": "/admin/users"},
     {"title": "HCM Cockpit", "url": "/module/hr/dashboard", "area": "hr", "feather": "user"},
     {"title": "Employees", "url": "/hr/employees", "area": "hr", "feather": "users", "match": "/hr/employees"},

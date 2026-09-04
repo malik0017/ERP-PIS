@@ -2,13 +2,6 @@
 {% extends "layouts/launcher_base.html" %}
 {% block title %}ERP Modules | ISFC{% endblock %}
 {% block content %}
-{# ============================================================================
-   Batch 73 — Module Launcher redesign.
-   Clean, corporate cards: a coloured left accent bar, icon + title, one big
-   metric with a compact delta and inline sparkline. The wordy description
-   paragraph is gone (replaced by a single short tag). Matches the reference
-   card aesthetic. Dark-mode + RTL safe, no external chart lib.
-   ============================================================================ #}
 
 {% macro spark(series_json, color) -%}
   {% set pts = series_json|from_json if series_json else [] %}
@@ -57,14 +50,9 @@
   </div>
   {% endif %}
 
-  {# key | access | href | icon | color(hex) | title | tag #}
-  {# Batch 119: Sales was missing from the launcher entirely, even though it is
-     where the whole order-to-cash chain starts. Placed first because it is the
-     screen most people open first. A Jinja comment cannot sit INSIDE a {% set %}
-     expression — that is a syntax error, not a comment. #}
   {% set catalog = [
     ('sales', can_access('order_portal') or can_access('sales_review'),
-      '/orders/portal', 'cart', '#22c55e', 'Sales', 'Requisitions · Orders'),
+      '/module/sales/dashboard', 'cart', '#22c55e', 'Sales', 'Requisitions · Orders'),
     ('procurement', can_access('procurement'),
       '/module/procurement/dashboard', 'bag', '#f59e0b', 'Procurement', 'PO · GRN · AP'),
     ('inventory', can_access('inventory_valuation'),

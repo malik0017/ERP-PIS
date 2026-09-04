@@ -627,7 +627,7 @@
   }
 </style>
 {% endblock %}
-
+ 
 {% block content %}
 {% set max_status = (order_status | map(attribute='total') | max) if order_status else 1 %}
 {% set max_section_cost = (top_bom_sections | map(attribute='cost') | max) if top_bom_sections else 1 %}

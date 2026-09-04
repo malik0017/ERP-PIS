@@ -9,12 +9,15 @@
     <div>
       <h1 class="mb-1">{{ t('Yield & Wastage Report') }}</h1>
     </div>
-    <a class="btn btn-light"
-       href="/reports/yield-wastage?export=csv&order_no={{ filters.order_no }}&section={{ filters.section }}&status={{ filters.status }}&from_date={{ filters.from_date }}&to_date={{ filters.to_date }}">
-      <span data-feather="download" class="me-1"></span>{{ t('Download CSV (filtered)') }}</a>
+    {# Batch 169: the header download moved onto the Transactions table itself.
+       A download button in the page header is ambiguous once the page holds two
+       tables — it exported the transactions, but sat closer to the summary. #}
   </div>
 
-  {% set active_step = 'Kitchen' %}{% include 'partials/process_status_row.html' %}
+  {# Batch 169: the Order -> Head Chef -> ... stage strip is removed. It is a
+     navigation aid for working ONE order through the pipeline; this is a
+     cross-order analytical report, so the strip pointed nowhere useful and
+     took the top third of the screen. #}
 
   <div class="card mb-3">
     <div class="card-body">
@@ -79,7 +82,13 @@
       <span class="badge badge-phoenix badge-phoenix-primary">{{ rows|length }}</span>
     </div>
     <div class="card-body p-0"><div class="table-responsive">
-      <table class="table table-sm fs-9 mb-0 isfc-sortable" id="yieldTxTable">
+      {# Batch 169: the shared toolbar — CSV, PDF, copy, print and column
+         show/hide — attached to the table it exports, so the download matches
+         what is on screen including any column you have hidden. #}
+      <table class="table table-sm fs-9 mb-0 isfc-sortable" id="yieldTxTable"
+             data-isfc-table data-isfc-colfilters
+             data-isfc-title="Yield & Wastage — Transactions"
+             data-isfc-subtitle="{% if filters.section %}{{ filters.section }} · {% endif %}{{ filters.from_date or 'any' }} to {{ filters.to_date or 'any' }}">
         <thead><tr class="text-uppercase text-body-tertiary fs-10">
           <th class="ps-4">{{ t('Order') }}</th><th>{{ t('Section') }}</th><th>{{ t('Recipe') }}</th>
           <th>{{ t('Item') }}</th><th class="text-end">{{ t('Input') }}</th><th class="text-end">{{ t('Output') }}</th>

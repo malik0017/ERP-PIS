@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.core.auth import get_current_user
 from app.core.templates import render
-from app.core.rbac import require_area, can_access, normalized_role
+from app.core.rbac import require_area, require_action, can_access, normalized_role
 from app.core.company import get_current_company_id, scope
 from app.models.chef import Chef
 from app.models.customer import Customer
@@ -523,7 +523,12 @@ def pending_masters(request: Request, db: Session = Depends(get_db)):
 
 
 @router.post("/masters/archive/{record_id}/approve")
-def approve_master_record(record_id: int, db: Session = Depends(get_db)):
+def approve_master_record(record_id: int, request: Request, db: Session = Depends(get_db)):
+    # BATCH 173 SECURITY FIX — this route had no permission check and no
+    # `request` parameter at all, so any authenticated user could approve a
+    # master record by POSTing the URL. Approval is the control that decides
+    # what reaches production; it must be an explicit permission.
+    require_action(request, "master_approvals", "edit")
     row = db.query(MasterRecord).filter(MasterRecord.id == record_id).first()
     if row:
         row.approval_status = "APPROVED"
@@ -534,7 +539,9 @@ def approve_master_record(record_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/masters/archive/{record_id}/reject")
-def reject_master_record(record_id: int, db: Session = Depends(get_db)):
+def reject_master_record(record_id: int, request: Request, db: Session = Depends(get_db)):
+    # BATCH 173 SECURITY FIX — same gap as approve above.
+    require_action(request, "master_approvals", "edit")
     row = db.query(MasterRecord).filter(MasterRecord.id == record_id).first()
     if row:
         row.approval_status = "REJECTED"

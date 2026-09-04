@@ -1,0 +1,282 @@
+{% extends "layouts/base.html" %}
+{% block content %}
+{# Batch 171 — the four levels from your brief:
+   1 what is happening   KPIs
+   2 what needs action   Needs Attention + Today
+   3 where is the work   Pipeline + Delivery Health
+   4 detail              Targets + Recent Orders
+   Colour carries meaning only: green healthy, amber at risk, red critical,
+   blue neutral/informational. #}
+<div class="container-fluid py-3">
+
+  <!-- <div class="req-hero d-flex align-items-center justify-content-between flex-wrap gap-3 mb-3">
+    <div>
+      <h1 class="mb-1 fw-bold text-white"><i class="bi bi-activity me-2"></i>{{ t('Operations Overview') }}</h1>
+      <p class="mb-0 opacity-75">{{ t('What is happening, what is late, and what needs action.') }}</p>
+    </div>
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+      <select class="form-select form-select-sm" style="width:auto"
+              onchange="location.href='/dashboard/operations?view='+this.value">
+        {% for k, v in views.items() %}
+        <option value="{{ k }}" {% if view_key == k %}selected{% endif %}>{{ t(v.label) }} {{ t('view') }}</option>
+        {% endfor %}
+      </select>
+      <a class="btn btn-light fw-bold" href="/dashboard"><i class="bi bi-grid me-1"></i>{{ t('Command Center') }}</a>
+    </div>
+  </div> -->
+
+  <div class="exec-hero d-flex justify-content-between align-items-center flex-wrap gap-3 p-4 mb-3">
+    <div>
+     <h1 class="mb-1 fw-bold text-white"><i class="bi bi-activity me-2"></i>{{ t('Operations Overview') }}</h1>
+      <p class="mb-0 opacity-75">{{ t('What is happening, what is late, and what needs action.') }}</p>
+    </div>
+   <div class="d-flex align-items-center gap-2 flex-wrap">
+      <select class="form-select form-select-sm" style="width:auto"
+              onchange="location.href='/dashboard/operations?view='+this.value">
+        {% for k, v in views.items() %}
+        <option value="{{ k }}" {% if view_key == k %}selected{% endif %}>{{ t(v.label) }} {{ t('view') }}</option>
+        {% endfor %}
+      </select>
+      <a class="btn btn-light fw-bold" href="/dashboard"><i class="bi bi-grid me-1"></i>{{ t('Command Center') }}</a>
+    </div>
+  </div>
+
+  {# ---- Level 1 ---------------------------------------------------------- #}
+  <div class="row g-3 mb-3">
+    {% set cards_keyed = [
+      ('Open Orders', kpis.open_orders, 'in the pipeline', '/production/orders', 'primary', 'open_orders'),
+      ('In Production', kpis.in_production, 'being made now', '/production/orders', 'primary', 'in_production'),
+      ('QC Pending', kpis.qc_pending, 'awaiting quality check', '/qc', 'danger', 'qc_pending'),
+      ('Pending Dispatch', kpis.pending_dispatch, 'not yet on a van', '/dispatch', 'warning', 'pending_dispatch'),
+      ('Store Lines Pending', kpis.store_pending, 'material not issued', '/production/store-issuance', 'warning', 'store_pending')
+    ] %}
+    {# Batch 172: `key` added so a view can select which cards it wants. When a
+       view lists none, all are shown — the default arrangement is unchanged. #}
+    {% for label, value, hint, url, tone, key in cards_keyed %}
+    {% if not kpi_keys or key in kpi_keys %}
+    <div class="col-6 col-lg">
+      <a href="{{ url }}" class="text-decoration-none">
+        <div class="card border h-100">
+          <div class="card-body">
+            <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t(label) }}</div>
+            <div class="fs-3 fw-bold {% if (value or 0) > 0 and tone in ('danger','warning') %}text-{{ tone }}{% endif %}">{{ value or 0 }}</div>
+            <div class="fs-9 text-body-tertiary">{{ t(hint) }}</div>
+            <div class="fs-10 text-primary mt-2">{{ t('View') }} <i class="bi bi-arrow-right"></i></div>
+          </div>
+        </div>
+      </a>
+    </div>
+    {% endif %}
+    {% endfor %}
+    {% if not kpi_keys or 'margin' in kpi_keys %}
+    <div class="col-6 col-lg">
+      <div class="card border h-100"><div class="card-body">
+        <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Gross Margin') }}</div>
+        <div class="fs-3 fw-bold text-success">{{ '{:,.0f}'.format(kpis.margin or 0) }}</div>
+        <div class="fs-9 text-body-tertiary">SAR · {{ t('on the open order book') }}</div>
+      </div></div>
+    </div>
+    {% endif %}
+  </div>
+
+  {# ---- Level 2 ---------------------------------------------------------- #}
+  {# Batch 172: each panel is gated on the view. Column widths adapt so a view
+     showing only one of a pair does not leave a hole beside it. #}
+  {% if 'attention' in panels or 'today' in panels %}
+  <div class="row g-3 mb-3">
+    {% if 'attention' in panels %}
+    <div class="{{ 'col-lg-7' if 'today' in panels else 'col-12' }}">
+      <div class="card border h-100">
+        <div class="card-header bg-body-highlight fw-bold">
+          <i class="bi bi-exclamation-triangle me-1"></i>{{ t('Needs Attention') }}
+        </div>
+        <div class="card-body p-0">
+          {% for a in attention %}
+          <a href="{{ a.url }}" class="d-flex align-items-center justify-content-between p-3 border-bottom text-decoration-none">
+            <div class="d-flex align-items-center gap-3">
+              <span class="badge bg-{{ a.tone }}" style="width:10px;height:10px;border-radius:50%;padding:0"></span>
+              <div>
+                <div class="fw-bold text-body-emphasis">{{ a.count }} {{ t(a.label) }}</div>
+                <div class="fs-9 text-body-tertiary">{{ t(a.detail) }}</div>
+              </div>
+            </div>
+            <span class="text-primary fs-9">{{ t('Open') }} <i class="bi bi-arrow-right"></i></span>
+          </a>
+          {% else %}
+          {# An empty state that says "nothing is wrong", not a blank panel —
+             a blank panel reads as broken. #}
+          <div class="p-4 text-center text-body-tertiary">
+            <i class="bi bi-check-circle fs-4 d-block mb-2 text-success"></i>
+            {{ t('Nothing needs attention right now.') }}
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    {% endif %}
+    {% if 'today' in panels %}
+    <div class="{{ 'col-lg-5' if 'attention' in panels else 'col-12' }}">
+      <div class="card border h-100">
+        <div class="card-header bg-body-highlight fw-bold">{{ t("Today's Production") }}</div>
+        <div class="card-body">
+          <table class="table table-sm mb-3">
+            <tbody>
+              <tr><td>{{ t('Orders received') }}</td><td class="text-end fw-bold">{{ today.received or 0 }}</td></tr>
+              <tr><td>{{ t('In production') }}</td><td class="text-end fw-bold">{{ today.in_production or 0 }}</td></tr>
+              <tr><td>{{ t('QC completed') }}</td><td class="text-end fw-bold">{{ today.qc_done or 0 }}</td></tr>
+              <tr><td>{{ t('Packed') }}</td><td class="text-end fw-bold">{{ today.packed or 0 }}</td></tr>
+              <tr><td>{{ t('Dispatched') }}</td><td class="text-end fw-bold">{{ today.dispatched or 0 }}</td></tr>
+            </tbody>
+          </table>
+          {% if today.completion is not none %}
+          <div class="d-flex justify-content-between fs-9 fw-bold mb-1">
+            <span>{{ t('Completion') }}</span><span>{{ today.completion }}%</span>
+          </div>
+          <div class="progress" style="height:8px">
+            <div class="progress-bar bg-{{ 'success' if today.completion >= 80 else ('warning' if today.completion >= 50 else 'danger') }}"
+                 style="width:{{ [today.completion, 100]|min }}%"></div>
+          </div>
+          {% else %}
+          {# No orders received today means no denominator. 0% would read as
+             total failure rather than "nothing scheduled". #}
+          <div class="fs-9 text-body-tertiary">{{ t('No orders received today — completion is not applicable.') }}</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {# ---- Level 3 ---------------------------------------------------------- #}
+  {% if 'pipeline' in panels or 'health' in panels %}
+  <div class="row g-3 mb-3">
+    {% if 'pipeline' in panels %}
+    <div class="{{ 'col-lg-7' if 'health' in panels else 'col-12' }}">
+      <div class="card border h-100">
+        <div class="card-header bg-body-highlight fw-bold">{{ t('Production Pipeline') }}
+          <span class="fs-10 fw-normal text-body-tertiary ms-2">{{ t('click a stage to open its queue') }}</span></div>
+        <div class="card-body">
+          {% for p in pipeline %}
+          <a href="{{ p.url }}" class="d-block text-decoration-none mb-2">
+            <div class="d-flex justify-content-between fs-9 mb-1">
+              <span class="fw-bold text-body-emphasis">{{ t(p.label) }}</span>
+              <span class="fw-bold">{{ p.count }}</span>
+            </div>
+            <div class="progress" style="height:14px">
+              <div class="progress-bar" style="width:{{ (p.count / pipeline_max * 100)|round }}%"></div>
+            </div>
+          </a>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    {% endif %}
+    {% if 'health' in panels %}
+    <div class="{{ 'col-lg-5' if 'pipeline' in panels else 'col-12' }}">
+      <div class="card border h-100">
+        <div class="card-header bg-body-highlight fw-bold">{{ t('Delivery Health') }}</div>
+        <div class="card-body">
+          {% if health.total %}
+          {% for key, label, tone in [('on_track','On Time','success'),('at_risk','At Risk','warning'),('overdue','Overdue','danger'),('breached','Breached','danger'),('completed','Completed','info')] %}
+          {% if health[key] %}
+          <div class="d-flex justify-content-between fs-9 mb-1">
+            <span><span class="badge bg-{{ tone }}" style="width:9px;height:9px;border-radius:50%;padding:0"></span>
+              {{ t(label) }}</span><span class="fw-bold">{{ health[key] }}</span>
+          </div>
+          <div class="progress mb-2" style="height:10px">
+            <div class="progress-bar bg-{{ tone }}" style="width:{{ (health[key] / health.total * 100)|round }}%"></div>
+          </div>
+          {% endif %}
+          {% endfor %}
+          {% else %}
+          <div class="text-body-tertiary fs-9">
+            {{ t('No SLA instances yet. Configure at least one rule in System → SLA Management, then reload.') }}
+          </div>
+          {% endif %}
+
+          {% if health.unmeasured %}
+          {# Reported, never hidden. A green board that is green because orders
+             have no SLA at all is worse than an amber one. #}
+          <div class="alert alert-warning py-2 px-3 fs-10 mt-2 mb-0">
+            {{ health.unmeasured }} {{ t('open order(s) have no SLA rule and are not counted above.') }}
+            <a href="/system/sla">{{ t('Configure rules') }} →</a>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {# ---- Level 4 ---------------------------------------------------------- #}
+  {% if 'targets' in panels or 'recent' in panels %}
+  <div class="row g-3">
+    {% if 'targets' in panels %}
+    <div class="{{ 'col-lg-5' if 'recent' in panels else 'col-12' }}">
+      <div class="card border h-100">
+        <div class="card-header bg-body-highlight fw-bold d-flex justify-content-between">
+          <span>{{ t('Target vs Actual') }}</span>
+          <a class="fs-10" href="/system/targets">{{ t('Manage') }} →</a>
+        </div>
+        <div class="card-body p-0">
+          <table class="table table-sm mb-0">
+            <thead><tr><th>{{ t('Metric') }}</th><th class="text-end">{{ t('Target') }}</th>
+              <th class="text-end">{{ t('Actual') }}</th><th class="text-end">%</th></tr></thead>
+            <tbody>
+              {% for r in targets[:8] %}
+              <tr>
+                <td>{{ r.metric_label }}</td>
+                <td class="text-end">{{ '%.0f'|format(r.target_value|float) }}</td>
+                <td class="text-end">{% if r.actual is not none %}{{ '%.0f'|format(r.actual) }}{% else %}—{% endif %}</td>
+                <td class="text-end fw-bold text-{{ 'success' if r.state=='exceeded' else ('warning' if r.state=='close' else ('danger' if r.state=='below' else 'body-tertiary')) }}">
+                  {% if r.achievement is not none %}{{ r.achievement }}%{% else %}—{% endif %}</td>
+              </tr>
+              {% else %}
+              <tr><td colspan="4" class="text-body-tertiary text-center py-3 fs-9">
+                {{ t('No targets configured.') }} <a href="/system/targets">{{ t('Add one') }} →</a></td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    {% endif %}
+    {% if 'recent' in panels %}
+    <div class="{{ 'col-lg-7' if 'targets' in panels else 'col-12' }}">
+      <div class="card border h-100">
+        <div class="card-header bg-body-highlight fw-bold d-flex justify-content-between">
+          <span>{{ t('Recent Orders') }}</span>
+          <a class="fs-10" href="/production/orders">{{ t('View all') }} →</a>
+        </div>
+        <div class="card-body p-0">
+          <table class="table table-sm mb-0">
+            <thead><tr><th>{{ t('Order') }}</th><th>{{ t('Customer') }}</th>
+              <th>{{ t('Status') }}</th><th>{{ t('Delivery') }}</th>
+              <th class="text-end">{{ t('Portions') }}</th></tr></thead>
+            <tbody>
+              {% for o in recent %}
+              <tr>
+                <td><a href="/production/orders/{{ o.order_no }}">{{ o.order_no }}</a></td>
+                <td class="fs-9">{{ o.customer_name or '—' }}</td>
+                <td><span class="badge badge-phoenix badge-phoenix-secondary fs-10">{{ o.status }}</span></td>
+                <td class="fs-9">{{ o.required_delivery_date or '—' }}</td>
+                <td class="text-end">{{ '%.1f'|format(o.total_portions|float) if o.total_portions else '—' }}</td>
+              </tr>
+              {% else %}
+              <tr><td colspan="5" class="text-body-tertiary text-center py-3 fs-9">{{ t('No orders yet.') }}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

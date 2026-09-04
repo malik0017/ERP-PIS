@@ -1,0 +1,121 @@
+{% extends "layouts/base.html" %}
+{% block content %}
+<div class="container-fluid py-3">
+  <div class="req-hero d-flex align-items-center justify-content-between flex-wrap gap-3 mb-3">
+    <div>
+      <h1 class="mb-1 fw-bold text-white"><i class="bi bi-bullseye me-2"></i>{{ t('Performance Targets') }}</h1>
+      <p class="mb-0 opacity-75">{{ t('Manage operational targets and performance benchmarks.') }}</p>
+    </div>
+    {% if can_action and can_action('settings','edit') %}
+    <button class="btn btn-light fw-bold" data-bs-toggle="modal" data-bs-target="#tgtModal"><i class="bi bi-plus-lg me-1"></i>{{ t('Add Target') }}</button>
+    {% endif %}
+  </div>
+
+  {% if request.query_params.get('error') %}<div class="alert alert-danger">{{ request.query_params.get('error') }}</div>{% endif %}
+
+  <div class="row g-3 mb-3">
+    <div class="col-6 col-lg-3"><div class="card border h-100"><div class="card-body">
+      <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Active Targets') }}</div>
+      <div class="fs-3 fw-bold">{{ summary.active }}</div></div></div></div>
+    <div class="col-6 col-lg-3"><div class="card border h-100"><div class="card-body">
+      <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Achievement') }}</div>
+      {# An em dash, not 0% — nothing measured is not the same as missing every
+         target, and 0% would read as a catastrophe. #}
+      <div class="fs-3 fw-bold">{% if summary.achievement is not none %}{{ summary.achievement }}%{% else %}<span class="text-body-tertiary">—</span>{% endif %}</div></div></div></div>
+    <div class="col-6 col-lg-3"><div class="card border h-100"><div class="card-body">
+      <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Below Target') }}</div>
+      <div class="fs-3 fw-bold text-danger">{{ summary.below }}</div></div></div></div>
+    <div class="col-6 col-lg-3"><div class="card border h-100"><div class="card-body">
+      <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Exceeded') }}</div>
+      <div class="fs-3 fw-bold text-success">{{ summary.exceeded }}</div></div></div></div>
+  </div>
+
+  <div class="card border mb-3"><div class="card-body py-3">
+    <form method="get" class="row g-2 align-items-end">
+      <div class="col-6 col-md-3"><label class="form-label small fw-bold mb-1">{{ t('From') }}</label>
+        <input class="form-control form-control-sm" type="date" name="date_from" value="{{ filters.date_from }}"></div>
+      <div class="col-6 col-md-3"><label class="form-label small fw-bold mb-1">{{ t('To') }}</label>
+        <input class="form-control form-control-sm" type="date" name="date_to" value="{{ filters.date_to }}"></div>
+      <div class="col-md-3"><button class="btn btn-sm btn-primary w-100">{{ t('Apply') }}</button></div>
+      <div class="col-md-3"><a class="btn btn-sm btn-outline-secondary w-100" href="/system/targets">{{ t('Reset') }}</a></div>
+    </form>
+  </div></div>
+
+  <div class="card border"><div class="card-body">
+    <div class="table-responsive">
+      <table class="table table-sm align-middle table-pro" data-isfc-table data-isfc-title="Performance Targets">
+        <thead><tr>
+          <th>{{ t('Target') }}</th><th>{{ t('Metric') }}</th><th>{{ t('Customer') }}</th>
+          <th>{{ t('Period') }}</th><th class="num">{{ t('Target') }}</th>
+          <th class="num">{{ t('Actual') }}</th><th class="num">{{ t('Achievement') }}</th>
+          <th>{{ t('Status') }}</th>
+        </tr></thead>
+        <tbody>
+          {% for r in results %}
+          <tr>
+            <td><strong>{{ r.target_name }}</strong></td>
+            <td>{{ r.metric_label }}</td>
+            <td>{{ r.customer_name or t('All customers') }}</td>
+            <td>{{ r.period }}</td>
+            <td class="num">{{ '%.2f'|format(r.target_value|float) }}</td>
+            <td class="num">{% if r.actual is not none %}{{ '%.2f'|format(r.actual) }}{% else %}<span class="text-body-tertiary" title="{{ t('This metric could not be measured for the selected period.') }}">—</span>{% endif %}</td>
+            <td class="num fw-bold">{% if r.achievement is not none %}{{ r.achievement }}%{% else %}—{% endif %}</td>
+            <td>
+              {% if r.state == 'exceeded' %}<span class="badge badge-phoenix badge-phoenix-success">{{ t('Exceeded') }}</span>
+              {% elif r.state == 'close' %}<span class="badge badge-phoenix badge-phoenix-warning">{{ t('Close') }}</span>
+              {% elif r.state == 'below' %}<span class="badge badge-phoenix badge-phoenix-danger">{{ t('Below') }}</span>
+              {% else %}<span class="badge badge-phoenix badge-phoenix-secondary">{{ t('Not measured') }}</span>{% endif %}
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="8" class="text-secondary text-center py-4">
+            {{ t('No targets configured yet. Add one to start tracking achievement.') }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div></div>
+</div>
+
+<div class="modal fade" id="tgtModal" tabindex="-1">
+  <div class="modal-dialog"><div class="modal-content">
+    <form method="post" action="/system/targets/save">
+      <div class="modal-header"><h5 class="modal-title">{{ t('Create Performance Target') }}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <div class="row g-3">
+          <div class="col-12"><label class="form-label small fw-bold">{{ t('Target Name') }}</label>
+            <input class="form-control" name="target_name" required></div>
+          <div class="col-md-6"><label class="form-label small fw-bold">{{ t('Metric') }}</label>
+            {# Closed list: the engine must know how to calculate each metric,
+               so free text is not offered. #}
+            <select class="form-select" name="metric_code" required>
+              {% for code, label, unit in metrics %}<option value="{{ code }}">{{ label }}</option>{% endfor %}
+            </select></div>
+          <div class="col-md-6"><label class="form-label small fw-bold">{{ t('Customer') }}</label>
+            <select class="form-select" name="customer_name">
+              <option value="">{{ t('All customers') }}</option>
+              {% for c in customers %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+            </select></div>
+          <div class="col-md-6"><label class="form-label small fw-bold">{{ t('Target Value') }}</label>
+            <input class="form-control" type="number" step="0.01" name="target_value" value="0"></div>
+          <div class="col-md-6"><label class="form-label small fw-bold">{{ t('Period') }}</label>
+            <select class="form-select" name="period">
+              <option value="DAILY">{{ t('Daily') }}</option>
+              <option value="WEEKLY">{{ t('Weekly') }}</option>
+              <option value="MONTHLY">{{ t('Monthly') }}</option>
+            </select></div>
+          <div class="col-md-6"><label class="form-label small fw-bold">{{ t('Effective From') }}</label>
+            <input class="form-control" type="date" name="effective_from"></div>
+          <div class="col-md-6"><label class="form-label small fw-bold">{{ t('Effective Until') }}</label>
+            <input class="form-control" type="date" name="effective_to"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-phoenix-secondary" data-bs-dismiss="modal">{{ t('Cancel') }}</button>
+        <button class="btn btn-primary">{{ t('Save Target') }}</button>
+      </div>
+    </form>
+  </div></div>
+</div>
+{% endblock %}
