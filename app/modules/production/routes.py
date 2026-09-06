@@ -34,6 +34,7 @@ from app.services.production_service import (
     bulk_process_transfer_ingredient,
     bulk_process_transfer_recipe,
     _prorata_process_transfer,
+    _eligible_lines,
     process_bakery_pastry_recipe,
     consolidated_bom,
     create_order,
@@ -401,15 +402,53 @@ def _order_flow_status(db: Session, order_no: str, order=None) -> dict:
     }
 
 
+def _issuance_status_label(required_qty: float, issued_qty: float, all_finalized: bool, uom: str) -> str:
+    """Batch 187 (Img 6, 7) — shared, signed status text for store-issuance
+    screens. Previously "Issued" vs "Partial / Pending" said nothing about
+    HOW MUCH excess or short — you had to open line detail and subtract by
+    hand. This is the one place that logic lives, used by the Consolidated
+    Picking List export/preview AND the Store Issuance by Section screen,
+    so the two can never describe the same numbers two different ways.
+
+    Tolerance of 0.001 absorbs float rounding noise from unit conversions —
+    without it, a line that's actually exact could show "Excess 0.0003 Kg",
+    which is noise, not information.
+    """
+    if not all_finalized:
+        return "Partial / Pending"
+    diff = float(issued_qty or 0) - float(required_qty or 0)
+    if diff > 0.001:
+        return f"Issued — Excess {diff:.3f} {uom}".strip()
+    if diff < -0.001:
+        return f"Issued — Short {abs(diff):.3f} {uom}".strip()
+    return "Issued"
+
+
 def _store_order_summary(db: Session, request: Request):
     q, filters = _filtered_orders_query(db, request, date_column="cooking")
-    # Batch 137: priority order — nearest cooking date first (NULLs last), then
-    # nearest delivery. Matches how the store actually works: issue for what's
-    # cooking soonest. (Was newest-first, which buried urgent work.)
-    rows = q.order_by(CustomerOrder.cooking_date.is_(None),
+    # Batch 186 (Img 5) — TWO-TIER sort, not a straight reversion of Batch 137.
+    #
+    # Batch 137 deliberately moved this list from newest-first to
+    # cooking-date-priority, because newest-first was burying urgent work —
+    # a real problem, and that reasoning still holds for orders the store
+    # has already started on.
+    #
+    # But Img 5's complaint is specifically about brand-new orders — status
+    # "Store Pending", meaning released to store with nothing issued yet —
+    # landing wherever their (possibly distant) delivery date puts them,
+    # which reads as "did this order even come through?" A brand-new,
+    # completely untouched order needs to be SEEN, distinct from "urgent
+    # among orders already in motion."
+    #
+    # So: Store Pending orders are pinned above everything else, newest
+    # first (nothing to prioritize by yet — there's no progress to weigh).
+    # Every other order keeps Batch 137's exact cooking-date-priority sort,
+    # unchanged. Neither goal is sacrificed for the other.
+    rows = q.order_by(CustomerOrder.status != "Store Pending",
+                      CustomerOrder.id.desc(),
+                      CustomerOrder.cooking_date.is_(None),
                       CustomerOrder.cooking_date.asc(),
-                      CustomerOrder.required_delivery_date.asc(),
-                      CustomerOrder.id.desc()).limit(300).all()
+                      CustomerOrder.required_delivery_date.asc()).limit(300).all()
     ids = [o.order_no for o in rows]
     line_map = {}
     if ids:
@@ -1117,9 +1156,25 @@ async def section_page(request: Request, section_name: str, db: Session = Depend
         GROUP BY k.order_no
         {having}
         ORDER BY
-            -- unfinished orders first, then by nearest delivery (priority)
-            (SUM(CASE WHEN UPPER(COALESCE(k.transaction_status,'')) LIKE 'COMPLETED%' OR UPPER(COALESCE(k.transaction_status,'')) = 'TRANSFERRED' THEN 1 ELSE 0 END) >= COUNT(*)) ASC,
-            COALESCE(MAX(co.required_delivery_date), '9999-12-31') ASC,
+            -- Batch 186 (Img 8, 13) — TWO-TIER, same reasoning as the Store
+            -- Issuance fix above: a section-local "brand new" order is one
+            -- with ZERO lines received yet in THIS section — pin those
+            -- above everything else, newest first. Every order that has
+            -- already been started (received_lines > 0) keeps the exact
+            -- unfinished-first / nearest-delivery sort this query already
+            -- had, unchanged.
+            --
+            -- Each CASE below is scoped to its own tier and evaluates to
+            -- NULL for the other tier's rows; MySQL sorts NULL first in
+            -- ASC, so a tier's own rows never see the other tier's
+            -- ordering terms — the two sorts run independently within
+            -- their own group rather than interfering with each other.
+            (received_lines > 0) ASC,
+            CASE WHEN received_lines = 0 THEN k.order_no END DESC,
+            CASE WHEN received_lines > 0 THEN
+                (SUM(CASE WHEN UPPER(COALESCE(k.transaction_status,'')) LIKE 'COMPLETED%' OR UPPER(COALESCE(k.transaction_status,'')) = 'TRANSFERRED' THEN 1 ELSE 0 END) >= COUNT(*))
+            END ASC,
+            CASE WHEN received_lines > 0 THEN COALESCE(MAX(co.required_delivery_date), '9999-12-31') END ASC,
             k.order_no DESC
     """), params).mappings().all()
 
@@ -1439,8 +1494,22 @@ async def bulk_transfer_section_order(request: Request, section_name: str, order
     }
     _uom = (form.get("bulk_ck_uom") or "").strip()
     if (any(v for v in _caps.values()) or _uom) and total_recv > 0:
-        for _tx in eligible:
-            _share = float(_tx.received_qty_standard or _tx.issued_qty_standard or 0) / total_recv
+        # BUG (Batch 158, fixed here — Img 18): `eligible` is a list of
+        # (tx, received_qty) tuples — see the docstring on
+        # _prorata_process_transfer and the `eligible.append((tx, recv))`
+        # line above. This loop iterated `for _tx in eligible` and then
+        # called `_tx.received_qty_standard`, i.e. called that attribute on
+        # the TUPLE itself, not the transaction inside it — hence "'tuple'
+        # object has no attribute 'received_qty_standard'". Only surfaced
+        # when nutrition-capture values were actually posted, which is why
+        # this only crashed sections with those fields exposed (Hot
+        # Kitchen's carb/protein/veg/yield toolbar) and only on submit, not
+        # on page load. Fixed by unpacking the tuple; reusing `_recv` from
+        # it (rather than re-deriving from the object) is also more
+        # correct — it's the exact received amount this line was already
+        # given credit for above, not a fresh re-read that could disagree.
+        for _tx, _recv in eligible:
+            _share = _recv / total_recv
             for _attr, _total in _caps.items():
                 if _total and hasattr(_tx, _attr):
                     setattr(_tx, _attr, round(_total * _share, 4))
@@ -1614,6 +1683,52 @@ async def recipe_bulk_process_passthrough(request: Request, section_name: str, o
         db, order_no, section, recipe_no,
         P, _f("waste_qty_standard"), _f("returned_qty_standard"), T,
         next_section, waste_reason, remarks, current_user_name(request))
+
+    # ------------------------------------------------------------------
+    # BATCH 192 FIX — By Recipe's Carb/Protein/Vegetable/Yield and
+    # Produced-Portion/Portion-Weight/Output-UOM fields were rendered on
+    # screen and collected in the form, but this handler never read or
+    # applied ANY of them. bulk_process_transfer_recipe() only ever took
+    # process/waste/return/transfer/next_section/remark — a chef filling
+    # in Hot Kitchen's Carb/Protein/Veg boxes on the By Recipe tab (not
+    # just Cold Kitchen/Bakery-Pastry, which Batch 188 only just enabled
+    # onto this same route) had those values silently discarded, for as
+    # long as this route has existed. This is not new breakage from this
+    # session's fixes — it predates them — but Batch 188 routes two more
+    # sections through this same gap, so it needs fixing now rather than
+    # extending the loss to Cold Kitchen and Bakery/Pastry too.
+    #
+    # Mirrors the exact pattern already used (and already fixed for the
+    # tuple-unpacking bug — Batch 183) in bulk_transfer_section_order():
+    # re-fetch the same eligible lines this recipe touched, split the
+    # entered totals pro-rata by each line's received share, exactly the
+    # same math already used for process/waste/return/transfer above.
+    # ------------------------------------------------------------------
+    _caps = {
+        "carb_g": _f("hk_carb"), "protein_g": _f("hk_protein"),
+        "vegetable_g": _f("hk_veg"), "yield_g": _f("hk_yield"),
+        "produced_portion": _f("ck_portion"),
+        "portion_weight_g": _f("ck_weight"),
+    }
+    _uom = (form.get("ck_uom") or "").strip()
+    if any(v for v in _caps.values()) or _uom:
+        _txs = db.query(KitchenSectionTransaction).filter(
+            KitchenSectionTransaction.order_no == order_no,
+            KitchenSectionTransaction.current_section == section,
+            KitchenSectionTransaction.recipe_no == recipe_no,
+        ).all()
+        _eligible = _eligible_lines(_txs)
+        _total_recv = sum(r for _, r in _eligible)
+        if _total_recv > 0:
+            for _tx, _recv in _eligible:
+                _share = _recv / _total_recv
+                for _attr, _total in _caps.items():
+                    if _total and hasattr(_tx, _attr):
+                        setattr(_tx, _attr, round(_total * _share, 4))
+                if _uom and hasattr(_tx, "output_uom"):
+                    _tx.output_uom = _uom
+            db.commit()
+
     db.commit()
     dest = next_section or "the next section"
     msg = f"{ok} line(s) of {recipe_no} processed & transferred to {dest}." if ok else "No lines were transferred."
@@ -1979,6 +2094,12 @@ async def store_issuance_by_section_export(request: Request, db: Session = Depen
                     "ingredient_name": r["ingredient_name"], "uom": r["uom"],
                     "required_qty": 0.0, "issued_qty": 0.0,
                     "orders": set(), "customers": set(),
+                    # Batch 187 (Img 6): "give recipe column" — a consolidated
+                    # ingredient row can span several recipes (that's the
+                    # whole point of consolidating), so this collects every
+                    # distinct recipe touching this ingredient/section, the
+                    # same pattern already used for orders/customers below.
+                    "recipes": set(),
                     "all_finalized": True,
                 }
             a = agg[key]
@@ -1988,6 +2109,8 @@ async def store_issuance_by_section_export(request: Request, db: Session = Depen
                 a["orders"].add(r["order_no"])
             if r["customer_name"]:
                 a["customers"].add(r["customer_name"])
+            if r.get("recipe_name"):
+                a["recipes"].add(r["recipe_name"])
             if not int(r["finalized"] or 0):
                 a["all_finalized"] = False
         rows = []
@@ -1996,24 +2119,47 @@ async def store_issuance_by_section_export(request: Request, db: Session = Depen
                 "section": a["section"],
                 "ingredient_code": a["ingredient_code"],
                 "ingredient_name": a["ingredient_name"],
+                "recipes": ", ".join(sorted(a["recipes"])),
                 "uom": a["uom"],
                 "required_qty": a["required_qty"],
                 "issued_qty": a["issued_qty"],
                 "orders": ", ".join(sorted(a["orders"])),
                 "customers": ", ".join(sorted(a["customers"])),
-                "issuance_status": "Issued" if a["all_finalized"] else "Partial / Pending",
+                # Batch 187 (Img 6, 7): "Status" was static "Issued" / "Partial
+                # / Pending" text with no mention of HOW MUCH excess or
+                # short — you had to open the line detail and do the
+                # subtraction by hand to know if "Issued" meant exact or
+                # overshot. Now signed against required, using the same
+                # excess/shortage language already established for Packing
+                # (Batch 178) rather than inventing a second vocabulary.
+                "issuance_status": _issuance_status_label(a["required_qty"], a["issued_qty"], a["all_finalized"], a["uom"]),
             })
     else:
-        rows = [dict(r) for r in raw_rows]
+        # Batch 187 (Img 7): line-detail rows carry a real per-line workflow
+        # status (Pending / Issued / Short Issued, from Batch 176's 176-A
+        # fix) — that status itself is correct and untouched. What was
+        # missing is EXCESS visibility: an over-issued line still correctly
+        # says "Issued" (the workflow step did complete), but gave no hint
+        # it went over. Layering the amount onto "Issued" specifically
+        # (leaving Pending/Short Issued exactly as they already are) adds
+        # that visibility without touching the underlying workflow value.
+        rows = []
+        for r in raw_rows:
+            r = dict(r)
+            if (r.get("issuance_status") or "").strip() == "Issued":
+                diff = float(r.get("issued_qty") or 0) - float(r.get("required_qty") or 0)
+                if diff > 0.001:
+                    r["issuance_status"] = f'Issued — Excess {diff:.3f} {r.get("uom") or ""}'.strip()
+            rows.append(r)
 
     output = io.StringIO()
     writer = csv.writer(output)
     if consolidated:
-        writer.writerow(["Section", "Ingredient Code", "Ingredient Name",
+        writer.writerow(["Section", "Ingredient Code", "Ingredient Name", "Recipes",
                           "Total Required", "Total Issued", "UOM",
                           "Orders", "Customers", "Status"])
         for r in rows:
-            writer.writerow([r["section"], r["ingredient_code"], r["ingredient_name"],
+            writer.writerow([r["section"], r["ingredient_code"], r["ingredient_name"], r["recipes"],
                               f'{r["required_qty"]:.3f}', f'{r["issued_qty"]:.3f}', r["uom"],
                               r["orders"], r["customers"], r["issuance_status"]])
     else:
@@ -2076,26 +2222,30 @@ async def store_issuance_by_section_export(request: Request, db: Session = Depen
                 Spacer(1, 5 * mm),
             ]
             if consolidated:
-                head = ["Section", "Code", "Ingredient", "Total Required",
+                head = ["Section", "Code", "Ingredient", "Recipes", "Total Required",
                         "Total Issued", "UOM", "Orders", "Customers", "Status"]
-                col_widths = [24*mm, 20*mm, 42*mm, 22*mm, 22*mm, 14*mm, 55*mm, 40*mm, 22*mm]
+                col_widths = [20*mm, 18*mm, 34*mm, 38*mm, 18*mm, 18*mm, 12*mm, 40*mm, 32*mm, 25*mm]
             else:
-                head = ["Section", "Order", "Customer", "Recipe", "Ingredient",
-                        "Required", "Issued", "UOM", "Status"]
-                col_widths = [22*mm, 30*mm, 34*mm, 44*mm, 46*mm, 20*mm, 20*mm, 14*mm, 22*mm]
+                head = ["Section", "Order", "Customer", "Recipe Name", "Recipe Code",
+                        "Ingredient", "Stock Code", "Required", "Issued", "UOM", "Status"]
+                col_widths = [20*mm, 26*mm, 28*mm, 34*mm, 20*mm, 30*mm, 18*mm, 16*mm, 16*mm, 12*mm, 20*mm]
             data = [[Paragraph(str(h), cellH) for h in head]]
             for r in rows:
                 if consolidated:
                     data.append([
                         P(r["section"]), P(r["ingredient_code"]), P(r["ingredient_name"] or ""),
+                        P(r.get("recipes") or ""),
                         P(f'{r["required_qty"]:.3f}'), P(f'{r["issued_qty"]:.3f}'), P(r["uom"]),
                         P(r["orders"]), P(r["customers"]), P(r["issuance_status"]),
                     ])
                 else:
                     data.append([
                         P(r["section"]), P(r["order_no"]), P(r["customer_name"] or ""),
-                        P(f'{r["recipe_no"] or ""} — {r["recipe_name"] or ""}'.strip(" —")),
-                        P(f'{r["ingredient_code"] or ""} — {r["ingredient_name"] or ""}'.strip(" —")),
+                        # Batch 187: was one combined "code — name" cell — same
+                        # class of bug as 176-D (Img 4/5), fixed the same way:
+                        # split into two real columns instead of concatenating.
+                        P(r["recipe_name"] or ""), P(r["recipe_no"] or ""),
+                        P(r["ingredient_name"] or ""), P(r["ingredient_code"] or ""),
                         P(f'{float(r["required_qty"] or 0):.2f}'),
                         P(f'{float(r["issued_qty"] or 0):.2f}'),
                         P(r["uom"]), P(r["issuance_status"]),
@@ -2555,7 +2705,38 @@ async def section_production_report(request: Request, db: Session = Depends(get_
                                     SEPARATOR ', ') AS customers,
                        GROUP_CONCAT(DISTINCT bl.order_no ORDER BY bl.order_no
                                     SEPARATOR ', ') AS orders,
-                       SUM(COALESCE(ol.required_portions, 0)) AS req_portions,
+                       -- Batch 190 (Img 15) ROOT CAUSE — "wrong required
+                       -- portion, here show the order portion at the time
+                       -- of sale request."
+                       --
+                       -- order_lines has ONE row per (order, recipe) — its
+                       -- required_portions is a per-recipe-per-order fact.
+                       -- bom_lines has ONE row per (order, recipe,
+                       -- INGREDIENT) — many rows per recipe. Joining the
+                       -- two and then SUM()-ing required_portions sums the
+                       -- SAME portions value once for every ingredient
+                       -- line the recipe has — a recipe with 7 ingredients
+                       -- showed 7x the real portion count (this is exactly
+                       -- why 175 appeared for what should have been a much
+                       -- smaller, human-sized order quantity).
+                       --
+                       -- SUM(DISTINCT ...) fixes the common case (different
+                       -- orders almost always order different portion
+                       -- counts) without a full query rewrite. Known
+                       -- edge case, worth naming rather than hiding: if
+                       -- two DIFFERENT orders for the same recipe in the
+                       -- same filtered window happen to request the exact
+                       -- same portion count, DISTINCT collapses them to one
+                       -- and slightly UNDER-counts — a far smaller, rarer
+                       -- error than the multiplication bug this replaces,
+                       -- and one that undercounts rather than silently
+                       -- inflating. A fully precise fix needs a derived-
+                       -- table restructure (aggregate order_lines by
+                       -- (order_no, recipe_no) before ever joining to
+                       -- bom_lines) — flagged for a follow-up batch rather
+                       -- than risked here without a live DB to verify it
+                       -- against your real data first.
+                       SUM(DISTINCT COALESCE(ol.required_portions, 0)) AS req_portions,
                        SUM(COALESCE(bl.total_required_with_waste_standard, 0)) AS qty,
                        MAX(COALESCE(bl.standard_uom,'')) AS uom,
                        MAX({_PORTION_SQ}) AS portion_size
@@ -2655,7 +2836,18 @@ async def store_issuance_by_section(request: Request, db: Session = Depends(get_
         sec = r["section"] or "Unassigned"
         g = groups.setdefault(sec, {"section": sec, "lines": [], "total_required": 0.0,
                                      "total_issued": 0.0, "pending": 0, "consolidated": {}})
-        g["lines"].append(dict(r))
+        _line = dict(r)
+        # Batch 187 (Img 7): "In status its just show issue here it mention
+        # clearly excess issue" — an over-issued line's real workflow status
+        # is still correctly "Issued" (the step did complete); it just gave
+        # no hint it went over required. Annotate the label only —
+        # `is_issued` below still reads the original DB value, so nothing
+        # about the pending/lock logic changes, only what the badge says.
+        if (_line.get("issuance_status") or "").strip() == "Issued":
+            _diff = float(_line.get("issued_qty") or 0) - float(_line.get("required_qty") or 0)
+            if _diff > 0.001:
+                _line["issuance_status_label"] = f'Excess {_diff:.3f} {_line.get("uom") or ""}'.strip()
+        g["lines"].append(_line)
         g["total_required"] += float(r["required_qty"] or 0)
         g["total_issued"] += float(r["issued_qty"] or 0)
         # ------------------------------------------------------------------

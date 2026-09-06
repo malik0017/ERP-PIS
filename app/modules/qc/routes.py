@@ -141,31 +141,56 @@ def qc_order(request: Request, order_no: str, db: Session = Depends(get_db)):
     if not txs:
         return _redirect_with_error("/qc", "No QC lines found for this order. Transfer from kitchen section to QC first.")
 
-    # Batch 127: parse the [NUT w= p= c=] tag Hot Kitchen writes into the remark
-    # so QC can show weight/protein/carb per portion in dedicated columns.
+    # ------------------------------------------------------------------
+    # BATCH 192 ROOT-CAUSE FIX (Img 3) — Weight/Protein/Carb columns always
+    # blank, no matter what the kitchen section actually captured.
+    #
+    # This block was parsing a "[NUT w=... p=... c=...]" tag out of the
+    # free-text remark (Batch 127) — but the real capture code, everywhere
+    # else in this system since Batch 143, stamps a DIFFERENT tag format:
+    # "[C.. P.. V.. Y..]" (see section_order.html's submit-time JS). The
+    # regex here was hunting for a tag that hasn't been written in this
+    # shape for a long time — it was never wrong about ONE order, it could
+    # never have matched ANY order.
+    #
+    # The real values have lived in carb_g / protein_g / vegetable_g /
+    # portion_weight_g columns directly since those batches — no text
+    # parsing needed at all. Reading them straight off the transaction
+    # (the row QC already has) is both simpler and actually correct.
+    # ------------------------------------------------------------------
     import re as _re
     tx_rows = []
+    recipe_groups: dict[str, dict] = {}
     for t in txs:
         rm = t.section_remarks or ""
-        w = p = c = ""
-        m = _re.search(r"\[NUT\s+([^\]]*)\]", rm)
-        if m:
-            for kv in m.group(1).split():
-                if kv.startswith("w="):
-                    w = kv[2:]
-                elif kv.startswith("p="):
-                    p = kv[2:]
-                elif kv.startswith("c="):
-                    c = kv[2:]
-        tx_rows.append({
+        row = {
             "recipe_no": t.recipe_no, "recipe_name": t.recipe_name,
             "ingredient_code": t.ingredient_code, "ingredient_name": t.ingredient_name,
             "from_section": t.from_section, "issued_qty_standard": t.issued_qty_standard,
             "received_qty_standard": t.received_qty_standard, "standard_uom": t.standard_uom,
             "transaction_status": t.transaction_status,
-            "nut_w": w, "nut_p": p, "nut_c": c,
-            "clean_remark": _re.sub(r"\s*\[NUT[^\]]*\]", "", rm).strip(),
+            "nut_w": t.portion_weight_g, "nut_p": t.protein_g,
+            "nut_c": t.carb_g, "nut_v": t.vegetable_g,
+            # Old [NUT ...] tags may still exist on historical rows written
+            # before Batch 143 — stripped from the visible remark either
+            # way so nobody sees a dead tag format that no longer means
+            # anything, whether or not it happens to still parse. Also
+            # strips the [C.. P.. V.. Y..] and [OUT .. Wt..g] tags the
+            # current capture JS stamps — those are for internal
+            # traceability, not something a QC user needs to read as text
+            # when the same numbers are now in their own real columns.
+            "clean_remark": _re.sub(r"\s*\[(?:NUT\s|C\d|OUT\s)[^\]]*\]", "", rm).strip(),
+        }
+        tx_rows.append(row)
+        key = t.recipe_no or "—"
+        g = recipe_groups.setdefault(key, {
+            "recipe_no": t.recipe_no, "recipe_name": t.recipe_name,
+            "lines": [], "received_qty": 0.0, "issued_qty": 0.0,
         })
+        g["lines"].append(row)
+        g["received_qty"] += float(t.received_qty_standard or 0)
+        g["issued_qty"] += float(t.issued_qty_standard or 0)
+    recipe_groups_list = sorted(recipe_groups.values(), key=lambda x: x["recipe_name"] or "")
     totals = {
         "lines": len(txs),
         "input_qty": sum(float(t.issued_qty_standard or 0) for t in txs),
@@ -177,7 +202,8 @@ def qc_order(request: Request, order_no: str, db: Session = Depends(get_db)):
     return render(
         request,
         "qc/order.html",
-        {"order": order, "txs": txs, "tx_rows": tx_rows, "totals": totals, "page_title": f"QC - {order_no}", "error": request.query_params.get("error")},
+        {"order": order, "txs": txs, "tx_rows": tx_rows, "recipe_groups": recipe_groups_list,
+         "totals": totals, "page_title": f"QC - {order_no}", "error": request.query_params.get("error")},
     )
 
 

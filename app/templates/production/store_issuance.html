@@ -126,18 +126,30 @@
         {# Batch 136: "Re-route Sections" button removed — it hung on click and the
            routing is already applied at BOM time. #}
         <a class="btn btn-light fw-bold" href="/production/store-issuance/by-section{% if order %}?order={{ order.order_no }}{% endif %}"><i class="bi bi-layers me-1"></i> Issuance by Section</a>
-        {# Batch 162: the backfill route has existed since Batch 131 with no way
-           to reach it — no button, no CLI. A repair nobody can run is the same
-           as no repair. Admin-gated because it rewrites routing across every
-           open order, and confirmed because it is not obvious from the label
-           how much it touches. #}
+        {# Batch 186 (Img 5): "why this button here, remove from here" — this
+           is Batch 162's admin repair tool (re-applies section routing to
+           historical BOM/issuance lines), not the old broken Batch 136
+           button of the same name. It's real, occasionally-needed
+           functionality, so it isn't removed — just moved out of the
+           primary row into its own small admin dropdown, so it no longer
+           sits next to "Issuance by Section" (used every day) where it's
+           one misclick away. #}
         {% if can_action and can_action('store_issuance', 'edit') %}
-        <form method="post" action="/production/store-issuance/backfill-sections" class="d-inline"
-              data-confirm="Re-apply the section routing rule to all BOM lines and all PENDING issuance lines? Already-issued lines are left untouched."
-              data-confirm-title="Re-route Sections" data-confirm-ok="Re-route" data-confirm-variant="warning">
-          <button class="btn btn-light fw-bold" title="{{ t('Recompute issue-to-section from the recipe workbook for data created before the routing fix') }}">
-            <i class="bi bi-signpost-split me-1"></i> {{ t('Re-route Sections') }}</button>
-        </form>
+        <div class="dropdown">
+          <button class="btn btn-light fw-bold dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+            <i class="bi bi-gear me-1"></i> {{ t('Admin Tools') }}
+          </button>
+          <ul class="dropdown-menu dropdown-menu-end">
+            <li>
+              <form method="post" action="/production/store-issuance/backfill-sections"
+                    data-confirm="Re-apply the section routing rule to all BOM lines and all PENDING issuance lines? Already-issued lines are left untouched."
+                    data-confirm-title="Re-route Sections" data-confirm-ok="Re-route" data-confirm-variant="warning">
+                <button class="dropdown-item" title="{{ t('Recompute issue-to-section from the recipe workbook for data created before the routing fix') }}">
+                  <i class="bi bi-signpost-split me-1"></i> {{ t('Re-route Sections') }}</button>
+              </form>
+            </li>
+          </ul>
+        </div>
         {% endif %}
       </div>
     </div>

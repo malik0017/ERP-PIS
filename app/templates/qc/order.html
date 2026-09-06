@@ -189,9 +189,55 @@
       {% endif %}
     </div>
     <hr>
-    
+
+    {# Batch 192 (Img 3): "here show recipe wise... same like other kitchen
+       section show BY recipe Tab" — QC previously had only a single flat
+       ingredient list for the whole order, with no recipe grouping at all,
+       unlike every kitchen section (Cutting/Butchery/Hot Kitchen/Cold
+       Kitchen/Bakery-Pastry all group By Recipe). This is now the default
+       view; the flat list becomes the opt-in detail — "hide the recipe
+       wise order and ingredient hide but QC user can view ingredient if
+       they want" is exactly this: grouped by default, ingredient detail
+       one click away, not gone. #}
+    <h4 class="mb-2"><i class="bi bi-journal-text"></i> {{ t('By Recipe') }}</h4>
+    <div class="mb-3">
+      {% for g in recipe_groups %}
+      <div class="cardx mb-2" style="padding:0">
+        <div class="d-flex justify-content-between align-items-center p-2" style="cursor:pointer" onclick="this.nextElementSibling.classList.toggle('d-none'); this.querySelector('.bi-chevron-down,.bi-chevron-up').classList.toggle('bi-chevron-down'); this.querySelector('.bi-chevron-down,.bi-chevron-up').classList.toggle('bi-chevron-up')">
+          <div><i class="bi bi-chevron-down me-1"></i> <strong>{{ g.recipe_name or '—' }}</strong> <span class="text-body-tertiary small">{{ g.recipe_no }}</span></div>
+          <div class="small text-body-tertiary">{{ g.lines|length }} {{ t('ingredients') }} · {{ t('Received') }} {{ '%.2f'|format(g.received_qty) }}</div>
+        </div>
+        <div class="table-responsive d-none">
+          <table class="table-pro">
+            <thead><tr>
+              <th>{{ t('Item') }}</th><th>{{ t('From Section') }}</th>
+              <th>{{ t('Qty') }}</th><th>{{ t('Received') }}</th><th>{{ t('Status') }}</th>
+              <th>{{ t('Weight(g)') }}</th><th>{{ t('Protein(g)') }}</th><th>{{ t('Carb(g)') }}</th><th>{{ t('Veg(g)') }}</th>
+              <th>{{ t('Remarks') }}</th>
+            </tr></thead>
+            <tbody>{% for t in g.lines %}
+              <tr>
+                <td>{{ t.ingredient_code }}<br>{{ t.ingredient_name }}</td>
+                <td>{{ t.from_section or '—' }}</td>
+                <td>{{ '%.2f'|format(t.issued_qty_standard or 0) }} {{ t.standard_uom }}</td>
+                <td>{{ '%.2f'|format(t.received_qty_standard or 0) }} {{ t.standard_uom }}</td>
+                <td>{{ t.transaction_status }}</td>
+                <td>{{ '%.2f'|format(t.nut_w) if t.nut_w is not none else '—' }}</td>
+                <td>{{ '%.2f'|format(t.nut_p) if t.nut_p is not none else '—' }}</td>
+                <td>{{ '%.2f'|format(t.nut_c) if t.nut_c is not none else '—' }}</td>
+                <td>{{ '%.2f'|format(t.nut_v) if t.nut_v is not none else '—' }}</td>
+                <td>{{ t.clean_remark or '—' }}</td>
+              </tr>{% endfor %}</tbody>
+          </table>
+        </div>
+      </div>
+      {% else %}
+      <div class="text-body-tertiary p-3">{{ t('No recipes found for this order.') }}</div>
+      {% endfor %}
+    </div>
+
     <button type="button" class="btn-pro btn-outline mb-2" id="qcLinesToggle" onclick="toggleQcLines()">
-      <i class="bi bi-list-ul"></i> Show Ingredient Lines (<span id="qcLinesCount">{{ txs|length }}</span>)
+      <i class="bi bi-list-ul"></i> Show All Ingredient Lines (<span id="qcLinesCount">{{ txs|length }}</span>)
       <i class="bi bi-chevron-down"></i>
     </button>
     <div class="table-responsive d-none" id="qcLinesTable">
@@ -207,6 +253,7 @@
             <th>Weight(g)</th>
             <th>Protein(g)</th>
             <th>Carb(g)</th>
+            <th>Veg(g)</th>
             <th>Remarks</th>
           </tr>
         </thead>
@@ -218,9 +265,10 @@
             <td>{{ '%.2f'|format(t.issued_qty_standard or 0) }} {{ t.standard_uom }}</td>
             <td>{{ '%.2f'|format(t.received_qty_standard or 0) }} {{ t.standard_uom }}</td>
             <td>{{ t.transaction_status }}</td>
-            <td>{{ t.nut_w or '—' }}</td>
-            <td>{{ t.nut_p or '—' }}</td>
-            <td>{{ t.nut_c or '—' }}</td>
+            <td>{{ '%.2f'|format(t.nut_w) if t.nut_w is not none else '—' }}</td>
+            <td>{{ '%.2f'|format(t.nut_p) if t.nut_p is not none else '—' }}</td>
+            <td>{{ '%.2f'|format(t.nut_c) if t.nut_c is not none else '—' }}</td>
+            <td>{{ '%.2f'|format(t.nut_v) if t.nut_v is not none else '—' }}</td>
             <td>{{ t.clean_remark or '—' }}</td>
           </tr>{% endfor %}</tbody>
       </table>
@@ -231,8 +279,8 @@
         var btn = document.getElementById('qcLinesToggle');
         var hidden = el.classList.toggle('d-none');
         btn.innerHTML = hidden
-          ? '<i class="bi bi-list-ul"></i> Show Ingredient Lines (<span id="qcLinesCount">{{ txs|length }}</span>) <i class="bi bi-chevron-down"></i>'
-          : '<i class="bi bi-list-ul"></i> Hide Ingredient Lines <i class="bi bi-chevron-up"></i>';
+          ? '<i class="bi bi-list-ul"></i> Show All Ingredient Lines (<span id="qcLinesCount">{{ txs|length }}</span>) <i class="bi bi-chevron-down"></i>'
+          : '<i class="bi bi-list-ul"></i> Hide All Ingredient Lines <i class="bi bi-chevron-up"></i>';
       }
     </script>
   </div>

@@ -165,6 +165,21 @@
           <div class="fld" style="width:100px"><label class="small-muted d-block">Produced Portion</label><input class="pis-input num" type="number" step="0.01" min="0" name="bulk_ck_portion" value="0"></div>
           <div class="fld" style="width:100px"><label class="small-muted d-block">Portion Wt g</label><input class="pis-input num" type="number" step="0.01" min="0" name="bulk_ck_weight" value="0"></div>
           <div class="fld" style="width:100px"><label class="small-muted d-block">Output UOM</label><select class="pis-input" name="bulk_ck_uom"><option selected>Gram</option><option>Portion</option><option>Box</option><option>Kg</option><option>Ml</option></select></div>
+          {# Batch 192 (Img 2, 3 — Packing/QC): Packing's Recipe Pack Detail
+             and the QC Checklist both expect Protein/Carb/Veg weight for a
+             recipe regardless of which section produced it, but only Hot
+             Kitchen ever captured those fields — so any Cold Kitchen or
+             Bakery/Pastry recipe showed permanently blank Received Weight
+             downstream, not a data-migration gap but a structural one.
+             Added here as INFORMATIONAL fields only — deliberately NOT
+             wired into this section's existing Transfer auto-calculation
+             (which already correctly derives Transfer from
+             received/waste/return for these two sections) — so nothing
+             about their already-tested balance logic changes; this only
+             adds data Packing/QC can read. #}
+          <div class="fld" style="width:88px"><label class="small-muted d-block">Carb g</label><input class="pis-input num" type="number" step="0.0001" min="0" name="bulk_carb" id="bulkCarb" value="0"></div>
+          <div class="fld" style="width:88px"><label class="small-muted d-block">Protein g</label><input class="pis-input num" type="number" step="0.0001" min="0" name="bulk_protein" id="bulkProtein" value="0"></div>
+          <div class="fld" style="width:88px"><label class="small-muted d-block">Vegetable g</label><input class="pis-input num" type="number" step="0.0001" min="0" name="bulk_veg" id="bulkVeg" value="0"></div>
           {% endif %}
           <div class="fld" style="width:90px"><label class="small-muted d-block">Waste</label><input class="pis-input num" type="number" step="0.0001" min="0" name="bulk_waste" id="bulkWaste" value="0" oninput="bulkRecalc()"></div>
           <div class="fld" style="width:90px"><label class="small-muted d-block">Return</label><input class="pis-input num" type="number" step="0.0001" min="0" name="bulk_return" id="bulkReturn" value="0" oninput="bulkRecalc()"></div>
@@ -195,6 +210,15 @@
             {% if not _k_locked %}<th style="width:34px" data-isfc-nofilter></th>{% endif %}
             <th style="min-width:150px">Recipe</th><th style="min-width:190px">Ingredient</th>
             <th style="min-width:100px">{{ t('Main Cat.') }}</th><th style="min-width:110px">{{ t('Sub Cat.') }}</th>
+            {# Batch 188-C (Img 10): "Change these column with 'Issue To
+               Section' column show in excel 'section column'" — your
+               reference workbook has a per-line Section column saying
+               where that ingredient issues to next. The routing engine
+               already tracks exactly this on each transaction
+               (`to_section`, set at transfer time in transfer_transaction()
+               and used for the Locked/Issued badge elsewhere) — this
+               surfaces it as its own column instead of leaving it implicit. #}
+            <th style="min-width:130px">{{ t('Issue To Section') }}</th>
             {% if section == 'Butchery' %}<th style="min-width:150px">{{ t('Cutting Method') }}</th>{% endif %}
             <th class="num">{{ t('Received') }}</th><th class="num">{{ t('Transferred') }}</th><th>{{ t('Status') }}</th><th style="min-width:120px" data-isfc-nofilter>{{ t('Action') }}</th>
           </tr></thead>
@@ -214,6 +238,7 @@
               {% set _cat = category_map.get(tx.ingredient_code, {}) %}
               <td><span class="sub">{{ _cat.main or '—' }}</span></td>
               <td><span class="sub">{{ _cat.sub or '—' }}</span></td>
+              <td><span class="sub">{{ tx.to_section or '—' }}</span></td>
               {% if section == 'Butchery' %}<td><span class="sub">{{ cutting_map.get(tx.ingredient_code, '—') }}</span></td>{% endif %}
               <td class="num">{{ '%.2f'|format(tx.received_qty_standard or tx.issued_qty_standard or 0) }} <span class="sub">{{ tx.standard_uom }}</span></td>
               {# BATCH 143 FIX — this cell is headed "Transferred" but was rendering
@@ -268,7 +293,8 @@
                   <div class="fld" style="width:88px"><label>Carb g</label><input form="txf{{ tx.id }}" class="pis-input num hk-carb" data-tx="{{ tx.id }}" type="number" step="0.0001" min="0" name="hk_carb" value="0"></div>
                   <div class="fld" style="width:88px"><label>Protein g</label><input form="txf{{ tx.id }}" class="pis-input num hk-protein" data-tx="{{ tx.id }}" type="number" step="0.0001" min="0" name="hk_protein" value="0"></div>
                   <div class="fld" style="width:88px"><label>Vegetable g</label><input form="txf{{ tx.id }}" class="pis-input num hk-veg" data-tx="{{ tx.id }}" type="number" step="0.0001" min="0" name="hk_veg" value="0"></div>
-                  <div class="fld" style="width:88px"><label>Yield g</label><input form="txf{{ tx.id }}" class="pis-input num hk-yield" data-tx="{{ tx.id }}" type="number" step="0.0001" name="hk_yield" value="0" readonly title="Auto = Processed − (Carb+Protein+Vegetable)"></div>
+                  <div class="fld" style="width:88px"><label>Other g</label><input form="txf{{ tx.id }}" class="pis-input num hk-yield" data-tx="{{ tx.id }}" type="number" step="0.0001" name="hk_yield" value="0" readonly title="Batch 183: renamed from 'Yield g' — this is Processed minus (Carb+Protein+Vegetable), i.e. weight not attributed to any of the three (moisture loss, plating waste, etc). It was never a percentage and was never Yield in the correct sense — see the real Yield % field below."></div>
+                  <div class="fld" style="width:88px"><label>Yield %</label><input class="pis-input num hk-yield-pct" data-tx="{{ tx.id }}" type="text" value="—" readonly title="Batch 183 — the correct formula: Transfer (good output) ÷ Processed (raw material input) × 100, matching your recipe master's own Yield % column and the standard food-production definition. Live-computed as you fill in Transfer."></div>
                   {% endif %}
                   {% if section in ('Cold Kitchen', 'Bakery/Pastry') %}
                   {# Batch 151: the produced-portion / portion-weight / output-UOM
@@ -282,6 +308,18 @@
                   <div class="fld" style="width:100px"><label>Produced Portion</label><input form="txf{{ tx.id }}" class="pis-input num ck-portion" data-tx="{{ tx.id }}" type="number" step="0.01" min="0" name="ck_portion" value="0"></div>
                   <div class="fld" style="width:100px"><label>Portion Wt g</label><input form="txf{{ tx.id }}" class="pis-input num ck-weight" data-tx="{{ tx.id }}" type="number" step="0.01" min="0" name="ck_weight" value="0"></div>
                   <div class="fld" style="width:100px"><label>Output UOM</label><select form="txf{{ tx.id }}" class="pis-input ck-uom" name="ck_uom"><option selected>Gram</option><option>Portion</option><option>Box</option><option>Kg</option><option>Ml</option></select></div>
+                  {# Batch 192 (Img 2, 3) — Packing's Recipe Pack Detail and
+                     the QC Checklist both need Protein/Carb/Veg regardless
+                     of which section produced a recipe; only Hot Kitchen
+                     captured it before. Added here as plain informational
+                     fields, NOT wired into this section's own Transfer
+                     auto-calc (which already correctly derives Transfer
+                     from Processed/Waste/Return above) — this only adds
+                     data for Packing/QC to read, without touching this
+                     section's already-tested balance logic. #}
+                  <div class="fld" style="width:88px"><label>Carb g</label><input form="txf{{ tx.id }}" class="pis-input num" data-tx="{{ tx.id }}" type="number" step="0.0001" min="0" name="hk_carb" value="0"></div>
+                  <div class="fld" style="width:88px"><label>Protein g</label><input form="txf{{ tx.id }}" class="pis-input num" data-tx="{{ tx.id }}" type="number" step="0.0001" min="0" name="hk_protein" value="0"></div>
+                  <div class="fld" style="width:88px"><label>Vegetable g</label><input form="txf{{ tx.id }}" class="pis-input num" data-tx="{{ tx.id }}" type="number" step="0.0001" min="0" name="hk_veg" value="0"></div>
                   {% endif %}
                   <div class="fld" style="width:92px"><label>By-product</label><input form="txf{{ tx.id }}" class="pis-input num tx-byproduct" data-tx="{{ tx.id }}" type="number" step="0.0001" min="0" name="byproduct_qty_standard" value="0" title="Optional — kept and used elsewhere (e.g. bones/trim), not discarded (Waste) or sent back (Return)"></div>
                   <div class="fld" style="width:92px"><label>Waste</label><input form="txf{{ tx.id }}" class="pis-input num tx-waste" data-tx="{{ tx.id }}" type="number" step="0.0001" min="0" name="waste_qty_standard" value="0"></div>
@@ -329,10 +367,11 @@
                  the chef has actually transferred, because processing and
                  transferring are recorded in one action. Numeric columns are
                  right-aligned via .num so the decimals line up. #}
-              <thead><tr><th>Recipe</th>{% if section == 'Butchery' %}<th>Cutting Method</th>{% endif %}<th class="num">Received</th><th class="num">Transferred</th><th>UOM</th><th>Status</th></tr></thead>
+              <thead><tr><th>Recipe</th><th>{{ t('Issue To Section') }}</th>{% if section == 'Butchery' %}<th>Cutting Method</th>{% endif %}<th class="num">Received</th><th class="num">Transferred</th><th>UOM</th><th>Status</th></tr></thead>
               <tbody>
               {% for d in g.details %}
                 <tr><td><span class="rc">{{ d.recipe_no }}</span> <span class="sub">{{ d.recipe_name }}</span></td>
+                <td><span class="sub">{{ d.to_section or '—' }}</span></td>
                 {% if section == 'Butchery' %}<td><span class="sub">{{ cutting_map.get(d.ingredient_code, '—') }}</span></td>{% endif %}
                 <td class="num">{{ '%.2f'|format(d.received_qty_standard or d.issued_qty_standard or 0) }}</td>
                 <td class="num">{{ '%.2f'|format(d.transferred_qty_standard or 0) }}
@@ -371,7 +410,8 @@
                 <div class="fld" style="width:88px"><label>Carb g</label><input class="pis-input num ip-carb" type="number" step="0.0001" min="0" name="hk_carb" value="0"></div>
                 <div class="fld" style="width:88px"><label>Protein g</label><input class="pis-input num ip-protein" type="number" step="0.0001" min="0" name="hk_protein" value="0"></div>
                 <div class="fld" style="width:88px"><label>Vegetable g</label><input class="pis-input num ip-veg" type="number" step="0.0001" min="0" name="hk_veg" value="0"></div>
-                <div class="fld" style="width:88px"><label>Yield g</label><input class="pis-input num ip-yield" type="number" step="0.0001" name="hk_yield" value="0" readonly title="Auto = Processed - (Carb+Protein+Vegetable)"></div>
+                <div class="fld" style="width:88px"><label>Other g</label><input class="pis-input num ip-yield" type="number" step="0.0001" name="hk_yield" value="0" readonly title="Batch 183: renamed from 'Yield g' — this is Processed minus (Carb+Protein+Vegetable), i.e. weight not attributed to any of the three. Never a percentage, never Yield in the correct sense — see Yield % below."></div>
+                <div class="fld" style="width:88px"><label>Yield %</label><input class="pis-input num ip-yield-pct" type="text" value="—" readonly title="Batch 183 — Transfer ÷ Processed × 100, matching your recipe master's Yield % column."></div>
                 {% endif %}
                 {% if section in ('Cold Kitchen', 'Bakery/Pastry') %}
                 {# Batch 151: same produced-portion set as the By Line pane. The
@@ -381,6 +421,12 @@
                 <div class="fld" style="width:100px"><label>Produced Portion</label><input class="pis-input num ip-ckportion" type="number" step="0.01" min="0" name="ck_portion" value="0"></div>
                 <div class="fld" style="width:100px"><label>Portion Wt g</label><input class="pis-input num ip-ckweight" type="number" step="0.01" min="0" name="ck_weight" value="0"></div>
                 <div class="fld" style="width:100px"><label>Output UOM</label><select class="pis-input ip-ckuom" name="ck_uom"><option selected>Gram</option><option>Portion</option><option>Box</option><option>Kg</option><option>Ml</option></select></div>
+                {# Batch 192 (Img 2, 3): informational Carb/Protein/Veg for
+                   Packing/QC — not wired into this pane's own Transfer
+                   auto-calc, same reasoning as the By Line pane. #}
+                <div class="fld" style="width:88px"><label>Carb g</label><input class="pis-input num" type="number" step="0.0001" min="0" name="hk_carb" value="0"></div>
+                <div class="fld" style="width:88px"><label>Protein g</label><input class="pis-input num" type="number" step="0.0001" min="0" name="hk_protein" value="0"></div>
+                <div class="fld" style="width:88px"><label>Vegetable g</label><input class="pis-input num" type="number" step="0.0001" min="0" name="hk_veg" value="0"></div>
                 {% endif %}
                 <div class="fld" style="width:92px"><label>Waste</label><input class="pis-input num ip-waste" type="number" step="0.0001" min="0" name="waste_qty_standard" value="0"></div>
                 <div class="fld" style="width:92px"><label>Return</label><input class="pis-input num ip-return" type="number" step="0.0001" min="0" name="returned_qty_standard" value="0"></div>
@@ -416,8 +462,8 @@
           </div>
           <div class="grp-body">
             <table class="mini">
-              <thead><tr><th>Code</th><th>Ingredient</th>{% if section == 'Butchery' %}<th>Cutting Method</th>{% endif %}<th class="num">Received</th><th class="num">Transferred</th><th>UOM</th><th>Status</th></tr></thead>
-              <tbody>{% for d in r.details %}<tr><td class="sub">{{ d.ingredient_code }}</td><td class="rc">{{ d.ingredient_name }}</td>{% if section == 'Butchery' %}<td class="sub">{{ cutting_map.get(d.ingredient_code, '—') }}</td>{% endif %}<td class="num">{{ '%.2f'|format(d.received_qty_standard or d.issued_qty_standard or 0) }}</td><td class="num">{{ '%.2f'|format(d.transferred_qty_standard or 0) }}{% if (d.waste_qty_standard or 0) > 0 %}<div class="sub">{{ t('Waste') }} {{ '%.2f'|format(d.waste_qty_standard) }}</div>{% endif %}</td><td class="sub">{{ d.standard_uom or '' }}</td><td>{% set _s = (d.transaction_status or 'Pending')|lower %}<span class="st {{ 'st-done' if ('transferred' in _s or 'completed' in _s) else ('st-received' if 'received' in _s and 'pending' not in _s else 'st-pending') }}">{{ d.transaction_status or 'Pending' }}</span></td></tr>{% endfor %}</tbody>
+              <thead><tr><th>Code</th><th>Ingredient</th><th>{{ t('Issue To Section') }}</th>{% if section == 'Butchery' %}<th>Cutting Method</th>{% endif %}<th class="num">Received</th><th class="num">Transferred</th><th>UOM</th><th>Status</th></tr></thead>
+              <tbody>{% for d in r.details %}<tr><td class="sub">{{ d.ingredient_code }}</td><td class="rc">{{ d.ingredient_name }}</td><td class="sub">{{ d.to_section or '—' }}</td>{% if section == 'Butchery' %}<td class="sub">{{ cutting_map.get(d.ingredient_code, '—') }}</td>{% endif %}<td class="num">{{ '%.2f'|format(d.received_qty_standard or d.issued_qty_standard or 0) }}</td><td class="num">{{ '%.2f'|format(d.transferred_qty_standard or 0) }}{% if (d.waste_qty_standard or 0) > 0 %}<div class="sub">{{ t('Waste') }} {{ '%.2f'|format(d.waste_qty_standard) }}</div>{% endif %}</td><td class="sub">{{ d.standard_uom or '' }}</td><td>{% set _s = (d.transaction_status or 'Pending')|lower %}<span class="st {{ 'st-done' if ('transferred' in _s or 'completed' in _s) else ('st-received' if 'received' in _s and 'pending' not in _s else 'st-pending') }}">{{ d.transaction_status or 'Pending' }}</span></td></tr>{% endfor %}</tbody>
             </table>
 
             {% if not _k_locked %}
@@ -438,7 +484,27 @@
                and it is the direct cause of the duplicate QC rows: each
                Process created another output row.
                ================================================================= #}
-            {% if section in ['Bakery/Pastry','Cold Kitchen'] %}
+            {# Batch 191 (Img 19) — CONFIRMED BUG, not a feature request.
+               Batch 158's own comment two sections above this says the goal
+               was making the By Recipe pane use "the same TRANSFER field
+               set... the same one its By Line and By Ingredient panes use"
+               for every section — and the unified form with exactly that
+               field set (including the Cold Kitchen / Bakery-Pastry
+               Produced Portion / Portion Wt / Output UOM fields) already
+               exists below, in the {% else %} branch. But THIS condition
+               was never removed, so Cold Kitchen and Bakery/Pastry never
+               actually reached that fixed form — they were still being
+               routed into this older, different-semantics bulk-output form
+               (posting to /production/bakery-pastry/process, a different
+               endpoint with different behavior) every time. Exactly Img
+               19's ask: "this is perfect in Cold Kitchen [By Line, By
+               Ingredient] — I want to show same in By Recipe." Forced to
+               False rather than restructuring the if/else/endif skeleton
+               on a large template — the dead branch is left in place as a
+               visible record of what this used to do, not deleted, so a
+               future cleanup can remove it deliberately once confirmed
+               nothing else depends on the shape of this markup. #}
+            {% if False and section in ['Bakery/Pastry','Cold Kitchen'] %}
               {% if not _fully %}<div class="alert alert-warning py-2 my-2"><i class="bi bi-info-circle me-1"></i>Receive all lines first. Received {{ '%.2f'|format(_received) }} of {{ '%.2f'|format(_issued) }}.</div>{% endif %}
               <form method="post" action="/production/bakery-pastry/process" class="proc-grid bulk-process-form" data-received="{{ _received }}" data-issued="{{ _issued }}">
                 <input type="hidden" name="order_no" value="{{ r.order_no }}"><input type="hidden" name="recipe_no" value="{{ r.recipe_no }}"><input type="hidden" name="section" value="{{ section }}">
@@ -489,7 +555,8 @@
                 <div class="fld" style="width:88px"><label>Carb g</label><input class="pis-input num rc-carb" type="number" step="0.0001" min="0" name="hk_carb" value="0"></div>
                 <div class="fld" style="width:88px"><label>Protein g</label><input class="pis-input num rc-protein" type="number" step="0.0001" min="0" name="hk_protein" value="0"></div>
                 <div class="fld" style="width:88px"><label>Vegetable g</label><input class="pis-input num rc-veg" type="number" step="0.0001" min="0" name="hk_veg" value="0"></div>
-                <div class="fld" style="width:88px"><label>Yield g</label><input class="pis-input num rc-yield" type="number" step="0.0001" name="hk_yield" value="0" readonly title="Auto = Processed - (Carb+Protein+Vegetable)"></div>
+                <div class="fld" style="width:88px"><label>Other g</label><input class="pis-input num rc-yield" type="number" step="0.0001" name="hk_yield" value="0" readonly title="Batch 183: renamed from 'Yield g' — this is Processed minus (Carb+Protein+Vegetable), i.e. weight not attributed to any of the three. Never a percentage, never Yield in the correct sense — see Yield % below."></div>
+                <div class="fld" style="width:88px"><label>Yield %</label><input class="pis-input num rc-yield-pct" type="text" value="—" readonly title="Batch 183 — Transfer ÷ Processed × 100, matching your recipe master's Yield % column."></div>
                 {% endif %}
                 {% if section in ('Cold Kitchen', 'Bakery/Pastry') %}
                 {# Batch 151: same produced-portion set as the By Line pane. The
@@ -499,6 +566,12 @@
                 <div class="fld" style="width:100px"><label>Produced Portion</label><input class="pis-input num rc-ckportion" type="number" step="0.01" min="0" name="ck_portion" value="0"></div>
                 <div class="fld" style="width:100px"><label>Portion Wt g</label><input class="pis-input num rc-ckweight" type="number" step="0.01" min="0" name="ck_weight" value="0"></div>
                 <div class="fld" style="width:100px"><label>Output UOM</label><select class="pis-input rc-ckuom" name="ck_uom"><option selected>Gram</option><option>Portion</option><option>Box</option><option>Kg</option><option>Ml</option></select></div>
+                {# Batch 192 (Img 2, 3): informational Carb/Protein/Veg for
+                   Packing/QC, not wired into this pane's Transfer auto-calc,
+                   same reasoning as the By Line and By Ingredient panes. #}
+                <div class="fld" style="width:88px"><label>Carb g</label><input class="pis-input num" type="number" step="0.0001" min="0" name="hk_carb" value="0"></div>
+                <div class="fld" style="width:88px"><label>Protein g</label><input class="pis-input num" type="number" step="0.0001" min="0" name="hk_protein" value="0"></div>
+                <div class="fld" style="width:88px"><label>Vegetable g</label><input class="pis-input num" type="number" step="0.0001" min="0" name="hk_veg" value="0"></div>
                 {% endif %}
                 <div class="fld" style="width:92px"><label>Waste</label><input class="pis-input num rc-waste" type="number" step="0.0001" min="0" name="waste_qty_standard" value="0"></div>
                 <div class="fld" style="width:92px"><label>Return</label><input class="pis-input num rc-return" type="number" step="0.0001" min="0" name="returned_qty_standard" value="0"></div>
@@ -527,8 +600,27 @@ document.querySelectorAll('#modeTabs button').forEach(function(b){
     document.querySelectorAll('.mode-pane').forEach(x=>x.classList.remove('active'));
     b.classList.add('active');
     document.getElementById('pane-'+b.dataset.mode).classList.add('active');
+    // Batch 183 (Img 14): remember which tab the user is on, per order, so
+    // it survives the full page reload every Process & Transfer action does
+    // (a server redirect back to this same URL) — see the restore block
+    // below. Previously every transfer silently dumped the user back onto
+    // "By Line" even when they were working in By Ingredient or By Recipe.
+    try{ localStorage.setItem('isfc_section_tab_{{ order_no }}', b.dataset.mode); }catch(e){}
   });
 });
+(function(){
+  try{
+    var savedMode = localStorage.getItem('isfc_section_tab_{{ order_no }}');
+    var pane = savedMode && document.getElementById('pane-'+savedMode);
+    if(pane){
+      document.querySelectorAll('#modeTabs button').forEach(x=>x.classList.remove('active'));
+      document.querySelectorAll('.mode-pane').forEach(x=>x.classList.remove('active'));
+      var btn = document.querySelector('#modeTabs button[data-mode="'+savedMode+'"]');
+      if(btn) btn.classList.add('active');
+      pane.classList.add('active');
+    }
+  }catch(e){}
+})();
 function toggleGrp(head){ head.closest('.grp').classList.toggle('open'); }
 function filterGroups(){
   var q=(document.getElementById('lineSearch').value||'').toLowerCase();
@@ -537,6 +629,21 @@ function filterGroups(){
 }
 (function(){
   function n(v){var x=parseFloat(v);return isNaN(x)?0:x;}
+  // Batch 183 — the CORRECT Yield % (Img 16/17: "the yields is wrong
+  // calculation, he is doing process=carb+protein+veg, its totally wrong").
+  // Real formula, matching the recipe master's own "Yield %" column
+  // (Usable ÷ Original × 100): Transfer (good output) ÷ Processed (raw
+  // material input) × 100. The old "Yield g" field (renamed "Other g")
+  // computed something different on purpose — a residual weight, in grams,
+  // not a percentage — and was never meant to be read as a yield figure.
+  function updateYieldPct(tx){
+    var avail=n(document.querySelector('.tx-processed[data-tx="'+tx+'"]')?.dataset.avail);
+    var tra=document.querySelector('.tx-transfer[data-tx="'+tx+'"]');
+    var out=document.querySelector('.hk-yield-pct[data-tx="'+tx+'"]');
+    if(!tra||!out) return;
+    if(avail<=0){ out.value='—'; return; }
+    out.value=((n(tra.value)/avail)*100).toFixed(1)+'%';
+  }
   function group(tx){return{
     avail:n(document.querySelector('.tx-processed[data-tx="'+tx+'"]')?.dataset.avail),
     full:document.querySelector('.tx-transfer[data-tx="'+tx+'"]')?.dataset.full,
@@ -565,6 +672,7 @@ function filterGroups(){
       g.tra.value=+transfer.toFixed(4);
       var y=g.avail-transfer-n(g.waste.value)-n(g.ret.value)-bp();
       yld.value=+(y>0?y:0).toFixed(4);
+      updateYieldPct(tx);
       return;
     }
     if(el.classList.contains('tx-transfer')){
@@ -581,6 +689,7 @@ function filterGroups(){
       // Batch 143: any waste in Hot Kitchen requires a remark.
       if(yld&&g.reason){var hasWaste=n(g.waste.value)>0;g.reason.required=g.reason.required||hasWaste;g.reason.placeholder=(g.reason.required)?'Reason — required':'Reason (optional)';}
     }
+    updateYieldPct(tx);
   });
   document.addEventListener('submit',function(e){
     var form=e.target;if(!form.id||!form.id.startsWith('txf'))return;
@@ -616,7 +725,15 @@ document.querySelectorAll('.ing-proc-form').forEach(function(f){
   // Kept identical on purpose: three panes computing the same figure three
   // slightly different ways is how the numbers start disagreeing.
   var carb=f.querySelector('.ip-carb'),prot=f.querySelector('.ip-protein'),
-      veg=f.querySelector('.ip-veg'),yld=f.querySelector('.ip-yield');
+      veg=f.querySelector('.ip-veg'),yld=f.querySelector('.ip-yield'),
+      yldPct=f.querySelector('.ip-yield-pct');
+  // Batch 183 — real Yield % (Transfer ÷ Processed × 100), form-scoped like
+  // everything else in this pane. Same formula and same reasoning as the
+  // By Line pane's updateYieldPct() — kept identical on purpose.
+  function ipYieldPct(){
+    if(!yldPct||!tra) return;
+    yldPct.value = avail>0 ? ((n(tra.value)/avail)*100).toFixed(1)+'%' : '—';
+  }
   function ipNut(){
     if(!carb||!prot||!veg||!yld||!tra)return;
     var t=n(carb.value)+n(prot.value)+n(veg.value);
@@ -624,6 +741,7 @@ document.querySelectorAll('.ing-proc-form').forEach(function(f){
     tra.value=+t.toFixed(4);
     var y=avail-t-n(waste?waste.value:0)-n(ret?ret.value:0);
     yld.value=+(y>0?y:0).toFixed(4);
+    ipYieldPct();
   }
   [carb,prot,veg].forEach(function(el){if(el)el.addEventListener('input',ipNut);});
   // Fold the breakdown into the remark for traceability, exactly as By Line does.
@@ -642,8 +760,8 @@ document.querySelectorAll('.ing-proc-form').forEach(function(f){
     }
   });
 
-  if(tra) tra.addEventListener('input',function(){var w=avail-n(tra.value)-n(ret.value);waste.value=(w>0?w:0).toFixed(4);});
-  if(waste) waste.addEventListener('input',function(){var r=avail-n(tra.value)-n(waste.value);ret.value=(r>0?r:0).toFixed(4);});
+  if(tra) tra.addEventListener('input',function(){var w=avail-n(tra.value)-n(ret.value);waste.value=(w>0?w:0).toFixed(4);ipYieldPct();});
+  if(waste) waste.addEventListener('input',function(){var r=avail-n(tra.value)-n(waste.value);ret.value=(r>0?r:0).toFixed(4);ipYieldPct();});
 });
 /* Batch 134: same auto-calc for the By-Recipe process form (prep sections). */
 document.querySelectorAll('.rc-proc-form').forEach(function(f){
@@ -655,7 +773,12 @@ document.querySelectorAll('.rc-proc-form').forEach(function(f){
   // Kept identical on purpose: three panes computing the same figure three
   // slightly different ways is how the numbers start disagreeing.
   var carb=f.querySelector('.rc-carb'),prot=f.querySelector('.rc-protein'),
-      veg=f.querySelector('.rc-veg'),yld=f.querySelector('.rc-yield');
+      veg=f.querySelector('.rc-veg'),yld=f.querySelector('.rc-yield'),
+      yldPct=f.querySelector('.rc-yield-pct');
+  function rcYieldPct(){
+    if(!yldPct||!tra) return;
+    yldPct.value = avail>0 ? ((n(tra.value)/avail)*100).toFixed(1)+'%' : '—';
+  }
   function rcNut(){
     if(!carb||!prot||!veg||!yld||!tra)return;
     var t=n(carb.value)+n(prot.value)+n(veg.value);
@@ -663,6 +786,7 @@ document.querySelectorAll('.rc-proc-form').forEach(function(f){
     tra.value=+t.toFixed(4);
     var y=avail-t-n(waste?waste.value:0)-n(ret?ret.value:0);
     yld.value=+(y>0?y:0).toFixed(4);
+    rcYieldPct();
   }
   [carb,prot,veg].forEach(function(el){if(el)el.addEventListener('input',rcNut);});
   // Fold the breakdown into the remark for traceability, exactly as By Line does.
@@ -681,8 +805,8 @@ document.querySelectorAll('.rc-proc-form').forEach(function(f){
     }
   });
 
-  if(tra) tra.addEventListener('input',function(){var w=avail-n(tra.value)-n(ret.value);waste.value=(w>0?w:0).toFixed(4);});
-  if(waste) waste.addEventListener('input',function(){var r=avail-n(tra.value)-n(waste.value);ret.value=(r>0?r:0).toFixed(4);});
+  if(tra) tra.addEventListener('input',function(){var w=avail-n(tra.value)-n(ret.value);waste.value=(w>0?w:0).toFixed(4);rcYieldPct();});
+  if(waste) waste.addEventListener('input',function(){var r=avail-n(tra.value)-n(waste.value);ret.value=(r>0?r:0).toFixed(4);rcYieldPct();});
 });
 document.querySelectorAll('.bulk-process-form').forEach(function(f){
   var out=f.querySelector('.bp-output'),waste=f.querySelector('.bp-waste');

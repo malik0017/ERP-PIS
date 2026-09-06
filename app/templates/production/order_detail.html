@@ -184,7 +184,20 @@ order.status), instead of a fixed string. #}
         <h2 class="mb-1">Production Order Document: {{ order.customer_name }} </h2>
         <p class="mb-0 opacity-75"> {{ order.order_no }} · {{ order.brand or '-' }} · {{ order.channel or '-' }} ·
           Delivery: {{ order.required_delivery_date or '-' }} {{ order.required_delivery_time or '' }}</p>
-      </div><a href="/production/orders" class="od-btn od-soft">Back to Orders</a>
+      </div>
+      <div class="d-flex gap-2 flex-wrap align-items-start">
+        {# Batch 185 (Img 1, 2): the Bill of Quantity button now lives here —
+           on the specific order, gated on BOM already existing (`bom` is
+           already computed above for the flow-step indicator) — instead of
+           on the generic Head Chef queue where it applied to a date range
+           of orders rather than "this one." Pre-filled to this order via
+           order_no so the preview opens already scoped, no re-typing. #}
+        {% if bom %}
+        <a class="od-btn od-soft" href="/production/boq/preview?order_no={{ order.order_no }}">
+          <i class="bi bi-list-check me-1"></i>Bill of Quantity</a>
+        {% endif %}
+        <a href="/production/orders" class="od-btn od-soft">Back to Orders</a>
+      </div>
     </div>
   </div>
   {% if error %}

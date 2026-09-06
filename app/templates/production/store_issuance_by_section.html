@@ -112,8 +112,17 @@
     <details class="mb-3" open>
       <summary class="fw-bold">Consolidated picking list ({{ g.consolidated|length }} ingredients)</summary>
       <div class="table-responsive mt-2">
-        <table class="table table-sm si-table">
-          <thead><tr><th>Code</th><th>Ingredient</th><th class="text-end">Total Required</th><th class="text-end">Issued</th><th>UOM</th><th>Orders</th><th class="si-action-col">Action</th></tr></thead>
+        {# Batch 190 (Img 6): "give recipe column but user can manage report
+           column" — this on-screen table had no column management, filters,
+           or export at all; the static PDF/CSV links at the top of the
+           page were the only way to get a file, with none of the same
+           flexibility. Single flat header row (Code/Ingredient/Total
+           Required/Issued/UOM/Orders/Action) — safe for the shared
+           toolbar, unlike Packing's two-row Recipe Pack Detail header. #}
+        <table class="table table-sm si-table" data-isfc-table data-isfc-colfilters
+               data-isfc-title="Store Issuance — {{ g.section }} Consolidated"
+               data-isfc-subtitle="{{ filters.order or 'All orders' }}">
+          <thead><tr><th>Code</th><th>Ingredient</th><th class="text-end">Total Required</th><th class="text-end">Issued</th><th>UOM</th><th>Orders</th><th class="si-action-col" data-isfc-nofilter>Action</th></tr></thead>
           <tbody>
           {% for c in g.consolidated %}
           <tr><td>{{ c.ingredient_code }}</td><td>{{ c.ingredient_name }}</td>
@@ -145,8 +154,16 @@
                   <input class="form-control form-control-sm text-end" type="number" step="0.001" min="0"
                          name="issue_qty" style="width:104px"
                          value="{{ '%.3f'|format(c.pending_required) }}"
-                         title="{{ t('Quantity to issue now — split across') }} {{ c.pending_lines }} {{ t('pending line(s)') }}">
-                  <span class="small text-muted">{{ c.uom }}</span>
+                         title="{{ t('Quantity to issue now — split across') }} {{ c.pending_lines }} {{ t('pending line(s)') }} ({{ c.uom }})">
+                  {# Batch 187 (Img 7): "Remove these UOM because its column
+                     is already their and it will effect the issue button UI"
+                     — the UOM already has its own column on this row (the
+                     <td>{{ c.uom }}</td> above); repeating it here as a
+                     second small label between the qty input and the button
+                     was squeezing the button's layout for information
+                     already visible two columns to the left. Kept in the
+                     input's title tooltip instead, so the unit is still one
+                     hover away without permanently eating space. #}
                   <button class="btn btn-sm btn-success"><i class="bi bi-box-arrow-in-right"></i> {{ t('Issue') }}</button>
                 </form>
                 {% endif %}
@@ -160,7 +177,9 @@
     <details class="mb-2">
       <summary class="fw-bold text-secondary">Line detail ({{ g.lines|length }} lines)</summary>
       <div class="table-responsive mt-2">
-      <table class="table align-middle si-table">
+      <table class="table align-middle si-table" data-isfc-table data-isfc-colfilters
+             data-isfc-title="Store Issuance — {{ g.section }} Line Detail"
+             data-isfc-subtitle="{{ filters.order or 'All orders' }}">
         <thead><tr><th>Priority</th><th>Order</th><th>Customer</th><th>Recipe</th><th>Ingredient</th><th class="text-end">Required</th><th class="text-end">Issued</th><th>Status</th></tr></thead>
         <tbody>
         {% for l in g.lines %}
@@ -168,7 +187,7 @@
           <td><strong>{{ l.delivery_date or '—' }}</strong><br><span class="text-secondary small">{{ l.delivery_time }}</span></td>
           <td>{{ l.order_no }}</td>
           <td><strong>{{ l.customer_name }}</strong></td>
-          <td>{{ l.recipe_no }}<br><span class="text-secondary small">{{ l.recipe_name }}</span></td>
+          <td><strong>{{ l.recipe_name }}</strong><br><span class="text-secondary small">{{ l.recipe_no }}</span></td>
           <td><strong>{{ l.ingredient_code }}</strong><br>{{ l.ingredient_name }}</td>
           <td class="text-end">{{ '%.3f'|format(l.required_qty or 0) }} {{ l.uom }}</td>
           <td class="text-end">{{ '%.3f'|format(l.issued_qty or 0) }}</td>
@@ -180,6 +199,11 @@
           <td>
             {% if l.finalized %}
               <span class="si-tag si-done"><i class="bi bi-lock-fill"></i> Locked / Issued</span>
+            {% elif l.issuance_status_label %}
+              {# Batch 187 (Img 7): "In status its just show issue, here it
+                 mention clearly excess issue" — same si-done green (the
+                 step DID complete), but the label now says how much over. #}
+              <span class="si-tag si-done"><i class="bi bi-arrow-up-circle-fill"></i> {{ l.issuance_status_label }}</span>
             {% elif l.issuance_status == 'Issued' %}
               <span class="si-tag si-done"><i class="bi bi-check-circle-fill"></i> Issued</span>
             {% elif l.issuance_status == 'Short Issued' %}

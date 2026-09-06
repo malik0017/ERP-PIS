@@ -391,9 +391,7 @@ table tbody tr:hover td,
   font-size: 0.72rem !important;
 }
 
-.active,
-.pis-active,
-.si-issued {
+.mode-tabs .active {
   background: #d9fbd0 !important;
   color: #1c6c09 !important;
 }

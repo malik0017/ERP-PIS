@@ -157,58 +157,13 @@
       <div>
         <h4 class="mb-1">{{ t('Head Chef Order Queue') }}</h4>
       </div>
-      {# Batch 105: Bill of Quantity export. The filters already on this screen
-         (delivery dates, status, quick search) are passed straight through, so
-         what you download is exactly what you are looking at.
-
-         The consolidated sheet is the one the store keeper needs at 5am: one
-         line per ingredient across every order in the filter, rather than
-         twelve separate lists that each ask for flour. Expected wastage is
-         included — a pick list that ignores it sends the kitchen short every
-         time. #}
-      <div class="d-flex gap-2 flex-wrap">
-        {# Batch 106: goes to the PREVIEW, not straight to a download. Seeing
-           what the filter produced before opening Excel is the difference
-           between one click and three round-trips. #}
-        <a class="btn btn-phoenix-primary btn-sm"
-           href="/production/boq/preview?date_from={{ filters.date_from or '' }}&date_to={{ filters.date_to or '' }}">
-          <i class="bi bi-list-check me-1"></i>{{ t('Bill of Quantity') }}</a>
-        <button type="button" class="btn btn-phoenix-secondary btn-sm" data-bs-toggle="collapse"
-                data-bs-target="#boqFilters">
-          <i class="bi bi-funnel me-1"></i>{{ t('BOQ Filters') }}</button>
-      </div>
-    </div>
-
-    <div class="collapse mb-3" id="boqFilters">
-      <form method="get" action="/production/boq/preview" class="row g-2 align-items-end border rounded p-3">
-        <div class="col-md-2">
-          <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('Delivery From') }}</label>
-          <input type="date" name="date_from" value="{{ filters.date_from or '' }}" class="form-control form-control-sm">
-        </div>
-        <div class="col-md-2">
-          <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('Delivery To') }}</label>
-          <input type="date" name="date_to" value="{{ filters.date_to or '' }}" class="form-control form-control-sm">
-        </div>
-        <div class="col-md-2">
-          <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('Customer') }}</label>
-          <input name="customer" class="form-control form-control-sm" placeholder="{{ t('Any') }}">
-        </div>
-        <div class="col-md-2">
-          <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('Order No') }}</label>
-          <input name="order_no" class="form-control form-control-sm" placeholder="{{ t('Any') }}">
-        </div>
-        <div class="col-md-2">
-          <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('Brand') }}</label>
-          <input name="brand" class="form-control form-control-sm" placeholder="{{ t('Any') }}">
-        </div>
-        <div class="col-md-2">
-          <button class="btn btn-primary btn-sm w-100">
-            <i class="bi bi-search me-1"></i>{{ t('Preview BOQ') }}</button>
-        </div>
-        <div class="col-12 fs-9 text-body-tertiary">
-          {{ t('Opens a preview you can check before downloading. Three sheets: consolidated pick list, per-order detail, customer summary. Cancelled and rejected orders excluded.') }}
-        </div>
-      </form>
+      {# Batch 185 (Img 1, 2): "Remove BOQ from here — it should show on
+         the specific order, and only once BOM is generated." A multi-order,
+         date-range BOQ export sitting on this generic queue screen was the
+         wrong place for a per-order question ("what's this ONE order's
+         bill of quantity"). The button and its filter form move to the
+         specific order's BOM page (production/orders/{order_no}) — see
+         that template for the replacement, gated on BOM already existing. #}
     </div>
 
     {# Batch 81 fix: the quick-view chips (Today/Week/...) and the manual
