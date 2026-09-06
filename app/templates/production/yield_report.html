@@ -1,0 +1,85 @@
+{% extends "layouts/base.html" %}
+{% block content %}
+<style>
+.yr-hero{background:linear-gradient(135deg,#08243d,#1e5bb8);border-radius:22px;color:#fff;padding:24px 28px}
+.yr-card{background:#fff;border:1px solid #dce8f2;border-radius:18px;box-shadow:0 12px 28px rgba(15,30,50,.06)}
+.yr-table th{background:#f4f8fc;font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:#152b49}
+.yr-pct{font-weight:800}
+.yr-ok{color:#11783f}
+.yr-low{color:#b3261e}
+.yr-badge{display:inline-block;border-radius:999px;padding:3px 10px;font-weight:800;font-size:11px}
+.yr-badge-low{background:#fdeceb;color:#b3261e}
+</style>
+<div class="container-fluid py-3">
+  <div class="yr-hero mb-4 d-flex justify-content-between flex-wrap gap-3 align-items-center">
+    <div>
+      <h2 class="mb-1">Yield Report — {{ section }}</h2>
+      <div class="small opacity-75">Good Output ÷ Raw Material Input × 100. Built from Process &amp; Transfer records already captured for this section.</div>
+    </div>
+  </div>
+
+  <div class="yr-card p-3 mb-4">
+    <form method="get" class="d-flex flex-wrap gap-3 align-items-end">
+      <div><label class="form-label fw-bold">Section</label>
+        <select name="section" class="form-select">
+          {% for s in ["Cutting","Butchery","Hot Kitchen","Cold Kitchen","Bakery/Pastry"] %}
+          <option value="{{ s }}" {% if filters.section == s %}selected{% endif %}>{{ s }}</option>
+          {% endfor %}
+        </select></div>
+      <div><label class="form-label fw-bold">From</label>
+        <input type="date" name="date_from" value="{{ filters.date_from }}" class="form-control"></div>
+      <div><label class="form-label fw-bold">To</label>
+        <input type="date" name="date_to" value="{{ filters.date_to }}" class="form-control"></div>
+      <div><label class="form-label fw-bold">Customer</label>
+        <input type="text" name="customer" value="{{ filters.customer }}" class="form-control" placeholder="Name" style="min-width:180px"></div>
+      <div><button class="btn btn-primary fw-bold"><i class="bi bi-search"></i> Apply</button></div>
+    </form>
+  </div>
+
+  <div class="yr-card p-3">
+    <div class="table-responsive">
+      <table class="table table-sm yr-table" data-isfc-table data-isfc-colfilters
+             data-isfc-title="Yield Report — {{ section }}"
+             data-isfc-subtitle="{{ filters.date_from or 'any date' }} → {{ filters.date_to or 'any date' }}{% if filters.customer %} · {{ filters.customer }}{% endif %}">
+        <thead>
+          <tr>
+            <th>Recipe</th><th>Ingredient</th>
+            <th class="text-end">Input</th><th class="text-end">Good Output</th>
+            <th class="text-end">Waste</th><th class="text-end">Returned</th>
+            <th class="text-end">By-product</th>
+            <th>UOM</th>
+            <th class="text-end">Actual Yield</th><th class="text-end">Target</th><th data-isfc-nofilter>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for l in lines %}
+          <tr>
+            <td>{{ l.recipe_name or '—' }}<div class="text-secondary small">{{ l.recipe_no }}</div></td>
+            <td>{{ l.ingredient_name }}<div class="text-secondary small">{{ l.ingredient_code }}</div></td>
+            <td class="text-end">{{ '%.3f'|format(l.input_qty) }}</td>
+            <td class="text-end">{{ '%.3f'|format(l.good_output) }}</td>
+            <td class="text-end">{{ '%.3f'|format(l.waste_qty) }}</td>
+            <td class="text-end">{{ '%.3f'|format(l.returned_qty) }}</td>
+            <td class="text-end">{{ '%.3f'|format(l.byproduct_qty) if l.byproduct_qty else '—' }}</td>
+            <td>{{ l.uom }}</td>
+            <td class="text-end yr-pct {{ 'yr-low' if l.below_target else 'yr-ok' }}">
+              {{ ('%.1f'|format(l.actual_pct) + '%') if l.actual_pct is not none else '—' }}
+            </td>
+            <td class="text-end text-secondary">
+              {{ ('%.0f'|format(l.expected_pct) + '%') if l.expected_pct is not none else '—' }}
+            </td>
+            <td>
+              {% if l.below_target %}<span class="yr-badge yr-badge-low"><i class="bi bi-exclamation-triangle-fill"></i> Below Target</span>
+              {% elif l.actual_pct is not none %}<span class="text-secondary small">OK</span>
+              {% else %}<span class="text-secondary small">—</span>{% endif %}
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="11" class="text-center text-secondary py-4">No processed lines for this section/date range yet.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

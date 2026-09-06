@@ -295,8 +295,17 @@ async def upload_recipe_excel(
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
 
+    # Batch 176 — 176-C UI surfacing. import_recipe_excel() now flags a UOM
+    # whose unit family (Mass/Volume/Count) disagrees with its ingredient
+    # master's — the exact bug behind "why is chicken in Ml" (Section
+    # Report). Only the count crosses the redirect; the full list (recipe,
+    # ingredient, row UOM, expected family) is in result["uom_mismatches"]
+    # if a dedicated review screen is wanted later — this is deliberately
+    # the minimal surfacing (a count + a warning banner), not a new page.
+    mismatch_count = len(result.get("uom_mismatches") or [])
     return RedirectResponse(
-        url=f"/recipes?upload=success&created={result['created']}&updated={result['updated']}&lines={result['lines']}",
+        url=(f"/recipes?upload=success&created={result['created']}&updated={result['updated']}"
+             f"&lines={result['lines']}&uom_mismatches={mismatch_count}"),
         status_code=303,
     )
 

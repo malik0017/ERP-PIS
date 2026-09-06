@@ -304,6 +304,18 @@
             Lines: <b>{{ request.query_params.get("lines", "0") }}</b>
         </div>
     </div>
+    {% set _uom_mismatches = request.query_params.get("uom_mismatches", "0")|int %}
+    {% if _uom_mismatches > 0 %}
+    <div class="pis-card">
+        <div class="pis-card-body" style="border-left: 5px solid #d97706;">
+            <i class="bi bi-exclamation-triangle-fill text-warning me-1"></i>
+            <b>{{ _uom_mismatches }}</b> imported line(s) have a UOM that doesn't match their ingredient's
+            expected unit (e.g. a weight ingredient imported in Ml) — this is the "why is chicken in Ml"
+            class of issue. Run <code>scripts/audit_recipe_uom_mismatches.sql</code> against the database
+            to see exactly which recipes and ingredients are affected; nothing was changed automatically.
+        </div>
+    </div>
+    {% endif %}
     {% endif %}
 
     <div class="pis-toolbar pis-card ">

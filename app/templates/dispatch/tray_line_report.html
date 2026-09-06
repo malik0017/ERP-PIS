@@ -1,0 +1,96 @@
+{% extends "layouts/base.html" %}
+{% block content %}
+<style>
+.tl-hero{background:linear-gradient(135deg,#08243d,#1e5bb8);border-radius:22px;color:#fff;padding:24px 28px}
+.tl-card{background:#fff;border:1px solid #dce8f2;border-radius:18px;box-shadow:0 12px 28px rgba(15,30,50,.06);margin-bottom:20px}
+.tl-region-head{background:#eef5fb;border-radius:14px 14px 0 0;padding:12px 18px;font-weight:800;display:flex;justify-content:space-between;align-items:center}
+.tl-table{width:100%}
+.tl-table th{background:#f4f8fc;font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:#152b49}
+.tl-table td,.tl-table th{padding:8px 12px;border-bottom:1px solid #e7eef5}
+.tl-total-row td{font-weight:800;background:#f8fafc}
+.tl-sig{padding:14px 18px;color:#152b49;font-size:13px}
+@media print{
+  .no-print{display:none!important}
+  .tl-card{box-shadow:none;border:1px solid #000;break-inside:avoid}
+}
+</style>
+<div class="container-fluid py-3">
+  <div class="tl-hero mb-4 d-flex justify-content-between flex-wrap gap-3 align-items-center no-print">
+    <div>
+      <h2 class="mb-1 text-white">Tray Line Report</h2>
+      <div class="small opacity-75">Digital version of the paper delivery-bags form — one row per receiver, per region.</div>
+    </div>
+  </div>
+
+  <div class="tl-card p-3 no-print">
+    <form method="get" class="d-flex flex-wrap gap-3 align-items-end">
+      <div><label class="form-label fw-bold">Date</label>
+        <input type="date" name="date" value="{{ date }}" class="form-control"></div>
+      <div><button class="btn btn-primary fw-bold"><i class="bi bi-search"></i> Load</button></div>
+      <div class="ms-auto d-flex gap-2">
+        <button type="button" class="btn btn-outline-secondary fw-bold" onclick="window.print()">
+          <i class="bi bi-printer"></i> Print / Save as PDF</button>
+      </div>
+    </form>
+  </div>
+
+  <form method="post" action="/dispatch/logistics/tray-line/save" id="trayForm">
+    <input type="hidden" name="dispatch_date" value="{{ date }}">
+
+    <div class="tl-card">
+      <div class="p-3 pb-0"><strong>ISFC</strong> <span class="text-secondary">· Date: {{ date }}</span></div>
+
+      {% for region, g in regions.items() %}
+      <div class="p-3">
+        <div class="tl-region-head">
+          <span><i class="bi bi-geo-alt me-1"></i>{{ region }} delivery Bags</span>
+        </div>
+        <div class="table-responsive">
+          <table class="tl-table">
+            <thead>
+              <tr>
+                <th style="width:26%">Receiver</th>
+                <th class="text-end">Total Boxes</th>
+                <th class="text-end" style="width:14%">Received Boxes</th>
+                <th style="width:12%">Time</th>
+                <th>Comments</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for r in g.rows %}
+              <tr>
+                <td>{{ r.customer_name }}
+                  <input type="hidden" name="dc_region" value="{{ region }}">
+                  <input type="hidden" name="dc_customer" value="{{ r.customer_name }}">
+                  <input type="hidden" name="dc_expected" value="{{ r.bags }}">
+                </td>
+                <td class="text-end">{{ r.bags }}</td>
+                <td><input class="form-control form-control-sm text-end" type="number" min="0" name="dc_received"
+                           value="{{ r.received_boxes if r.received_boxes is not none else '' }}" placeholder="—"></td>
+                <td><input class="form-control form-control-sm" type="time" name="dc_time" value="{{ r.confirmed_time or '' }}"></td>
+                <td><input class="form-control form-control-sm" type="text" name="dc_comments" value="{{ r.comments or '' }}"></td>
+              </tr>
+              {% endfor %}
+              <tr class="tl-total-row">
+                <td>Total Bags</td>
+                <td class="text-end">{{ g.bags }}</td>
+                <td colspan="3"></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {% else %}
+      <div class="p-5 text-center text-secondary">No packed/dispatched bags found for {{ date }}.</div>
+      {% endfor %}
+
+      <div class="tl-sig d-flex justify-content-between flex-wrap gap-2">
+        <div>Signature Tray Line Sp: ______________________</div>
+        <div class="no-print">
+          {% if regions %}<button class="btn btn-primary fw-bold"><i class="bi bi-save me-1"></i>Save Confirmations</button>{% endif %}
+        </div>
+      </div>
+    </div>
+  </form>
+</div>
+{% endblock %}

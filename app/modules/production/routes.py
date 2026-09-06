@@ -1644,6 +1644,10 @@ async def transfer_tx(
     ck_portion: str = Form(""),
     ck_weight: str = Form(""),
     ck_uom: str = Form(""),
+    # Batch 176 — 176-H: optional third deduction alongside Waste/Returned —
+    # by-product kept and used elsewhere. Defaults to 0, so any section that
+    # doesn't render this field behaves exactly as before.
+    byproduct_qty_standard: float = Form(0),
     db: Session = Depends(get_db),
 ):
     require_action(request, "kitchen", "edit")
@@ -1700,6 +1704,7 @@ async def transfer_tx(
             waste_reason,
             section_remarks,
             next_section or None,
+            byproduct_qty=byproduct_qty_standard,
         )
     except ValueError as exc:
         return redirect_with_error(f"/production/section/{fallback_section}", str(exc))
@@ -2256,6 +2261,98 @@ async def issue_consolidated_ingredient(request: Request, db: Session = Depends(
                             status_code=HTTP_303_SEE_OTHER)
 
 
+@router.get("/reports/yield")
+async def yield_report(request: Request, db: Session = Depends(get_db)):
+    """Batch 176 — 176-H. HOT KITCHEN YIELD TRACKING.
+
+        Yield % = Good Output (transferred) / Raw Material Input (received) x 100
+
+    Deliberately reads columns that already exist and are already written by
+    the live "Process & Transfer" action (transfer_transaction() in
+    production_service.py) — received_qty_standard, transferred_qty_standard,
+    waste_qty_standard — so this is a report on data already being captured,
+    not a new capture workflow. No migration, no new form for the kitchen to
+    fill in.
+
+    Compares actual yield against Ingredient.expected_yield_pct (already on
+    the ingredient master) and flags anything materially under target, the
+    same way Store Issuance flags SHORT stock.
+
+    Batch 176 — 176-H follow-up: By-product is now included as its own
+    column, reading the new byproduct_qty_standard column added this same
+    batch (transfer_transaction() in production_service.py).
+    """
+    require_area(request, "production_orders")
+    cid = _company_id_from_session(request)
+
+    section = (request.query_params.get("section") or "Hot Kitchen").strip()
+    date_from = (request.query_params.get("date_from") or "").strip()
+    date_to = (request.query_params.get("date_to") or "").strip()
+    customer = (request.query_params.get("customer") or "").strip()
+
+    where = ["(k.company_id = :cid OR k.company_id IS NULL)", "k.current_section = :sec"]
+    params: dict = {"cid": cid, "sec": section}
+    if date_from:
+        where.append("COALESCE(co.cooking_date, co.required_delivery_date) >= :df")
+        params["df"] = date_from
+    if date_to:
+        where.append("COALESCE(co.cooking_date, co.required_delivery_date) <= :dt")
+        params["dt"] = date_to
+    if customer:
+        where.append("co.customer_name LIKE :cust")
+        params["cust"] = f"%{customer}%"
+    # Only lines that have actually been through Process & Transfer have a
+    # meaningful yield — an untouched line would show a false 0% and drown
+    # out the real numbers.
+    where.append("COALESCE(k.received_qty_standard, k.issued_qty_standard, 0) > 0")
+    w = " AND ".join(where)
+
+    rows = db.execute(text(f"""
+        SELECT k.recipe_no, MAX(k.recipe_name) AS recipe_name,
+               k.ingredient_code, MAX(k.ingredient_name) AS ingredient_name,
+               MAX(k.standard_uom) AS uom,
+               ROUND(SUM(COALESCE(k.received_qty_standard, k.issued_qty_standard, 0)), 3) AS input_qty,
+               ROUND(SUM(COALESCE(k.transferred_qty_standard, 0)), 3) AS good_output,
+               ROUND(SUM(COALESCE(k.waste_qty_standard, 0)), 3) AS waste_qty,
+               ROUND(SUM(COALESCE(k.returned_qty_standard, 0)), 3) AS returned_qty,
+               ROUND(SUM(COALESCE(k.byproduct_qty_standard, 0)), 3) AS byproduct_qty,
+               MAX(i.expected_yield_pct) AS expected_yield_pct
+        FROM kitchen_section_transactions k
+        LEFT JOIN customer_orders co ON co.order_no = k.order_no
+        LEFT JOIN ingredients i ON i.ingredient_code = k.ingredient_code
+        WHERE {w}
+        GROUP BY k.recipe_no, k.ingredient_code
+        ORDER BY MAX(k.recipe_name), MAX(k.ingredient_name)
+        LIMIT 800
+    """), params).mappings().all()
+
+    lines = []
+    for r in rows:
+        input_qty = float(r["input_qty"] or 0)
+        good = float(r["good_output"] or 0)
+        actual_pct = round(good / input_qty * 100, 1) if input_qty > 0 else None
+        expected_pct = float(r["expected_yield_pct"]) if r["expected_yield_pct"] is not None else None
+        lines.append({
+            "recipe_no": r["recipe_no"], "recipe_name": r["recipe_name"],
+            "ingredient_code": r["ingredient_code"], "ingredient_name": r["ingredient_name"],
+            "uom": r["uom"],
+            "input_qty": input_qty, "good_output": good,
+            "waste_qty": float(r["waste_qty"] or 0), "returned_qty": float(r["returned_qty"] or 0),
+            "byproduct_qty": float(r["byproduct_qty"] or 0),
+            "actual_pct": actual_pct, "expected_pct": expected_pct,
+            # Below target by more than 5 points is a real production issue,
+            # not rounding noise — same tolerance style as SHORT stock badges.
+            "below_target": (actual_pct is not None and expected_pct is not None
+                             and actual_pct < expected_pct - 5),
+        })
+
+    return render(request, "production/yield_report.html", {
+        "lines": lines, "section": section,
+        "filters": {"section": section, "date_from": date_from, "date_to": date_to, "customer": customer},
+        "page_title": f"Yield Report — {section}",
+    })
+
+
 @router.get("/reports/section")
 async def section_production_report(request: Request, db: Session = Depends(get_db)):
     """Batch 168 — SECTION PRODUCTION REPORT (the FRSH Butcher Summary sheet).
@@ -2416,7 +2513,15 @@ async def section_production_report(request: Request, db: Session = Depends(get_
                        COALESCE(ol.required_portions, 0) AS req_portions,
                        COALESCE(bl.total_required_with_waste_standard, 0) AS qty,
                        COALESCE(bl.standard_uom,'') AS uom,
-                       {_PORTION_SQ} AS portion_size
+                       {_PORTION_SQ} AS portion_size,
+                       -- Batch 176 — 176-D follow-up (Img 5): this ingredient
+                       -- line is itself a produced sub-recipe (not a
+                       -- purchased raw item) when its code matches another
+                       -- recipe's code. Scalar subquery, so it costs nothing
+                       -- on the common case (a real raw ingredient, no match).
+                       (SELECT MAX(rc2.recipe_name) FROM recipes rc2
+                         WHERE rc2.recipe_code = bl.ingredient_code
+                           AND (rc2.company_id = :cid OR rc2.company_id IS NULL)) AS sub_recipe_name
                 FROM bom_lines bl
                 JOIN customer_orders co ON co.order_no = bl.order_no
                 LEFT JOIN order_lines ol
@@ -2553,24 +2658,34 @@ async def store_issuance_by_section(request: Request, db: Session = Depends(get_
         g["lines"].append(dict(r))
         g["total_required"] += float(r["required_qty"] or 0)
         g["total_issued"] += float(r["issued_qty"] or 0)
-        if not r["finalized"]:
+        # ------------------------------------------------------------------
+        # BATCH 176 ROOT CAUSE — a consolidated row kept showing an editable
+        # quantity + an active "Issue" button after the store keeper had
+        # already issued it (screenshot: "we already issue... but it still
+        # shows no lock, no status change").
+        #
+        # `finalized` is a DIFFERENT, LATER milestone: it is set only when
+        # the whole order's issuance is locked for the kitchen (see
+        # finalize_store_issuance()). Actually issuing a quantity — via the
+        # quick-issue form or the per-line form — only ever updates
+        # `issuance_status` (Pending / Short Issued / Issued), inside
+        # update_store_issuance_line(). It never touches `finalized`.
+        #
+        # This block was gating BOTH the group's pending count and the
+        # consolidated row's pending_lines on `finalized`, so a line that was
+        # fully issued but not yet finalized still counted as pending
+        # everywhere — which is exactly the stuck row in the screenshot.
+        #
+        # Fix: "pending" now means "not yet issued" (issuance_status !=
+        # 'Issued'), which is what this screen is actually about. `finalized`
+        # is kept as a SEPARATE, stronger "locked" flag — still checked in
+        # the template for the lock icon — so nothing downstream that relies
+        # on `finalized` staying a hard commit is affected.
+        # ------------------------------------------------------------------
+        is_issued = (r["issuance_status"] or "") == "Issued"
+        if not is_issued:
             g["pending"] += 1
         key = (r["ingredient_code"], r["uom"])
-        # ------------------------------------------------------------------
-        # BATCH 163 — why every consolidated row said "Issued" while the header
-        # said "38 pending line(s)".
-        #
-        # The row's status was derived from QUANTITY: issued >= required.
-        # But issued_qty is `input_material_issued`, which is PRE-FILLED to the
-        # required amount when the BOM is generated — before anyone has issued
-        # anything. So issued == required from the moment the line is created,
-        # and the consolidated list showed "Issued" for material still sitting
-        # on the shelf.
-        #
-        # Issued-ness is `finalized`, not a quantity comparison. Counting the
-        # lines behind each row makes the two halves of the screen agree, and
-        # gives the quick-issue action something real to act on.
-        # ------------------------------------------------------------------
         c = g["consolidated"].setdefault(key, {"ingredient_code": r["ingredient_code"],
                                                "ingredient_name": r["ingredient_name"],
                                                "uom": r["uom"], "required": 0.0, "issued": 0.0,
@@ -2580,7 +2695,7 @@ async def store_issuance_by_section(request: Request, db: Session = Depends(get_
         c["required"] += float(r["required_qty"] or 0)
         c["issued"] += float(r["issued_qty"] or 0)
         c["lines"] += 1
-        if not r["finalized"]:
+        if not is_issued:
             c["pending_lines"] += 1
             c["pending_required"] += float(r["required_qty"] or 0)
         c["orders"].add(r["order_no"])

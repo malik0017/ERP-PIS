@@ -59,16 +59,42 @@ def _ensure_delivery_confirmation_schema(db: Session) -> None:
                 db.rollback()
 
 
-@router.get("/logistics", response_class=HTMLResponse)
-def logistics_report(request: Request, db: Session = Depends(get_db)):
-    """Batch 129 — Logistics report: region-wise bag counts by customer
-    (image 13). Groups packing_dispatch by region + customer, summing bags and
-    portions. CSV export supported via ?export=csv."""
-    require_area(request, "dispatch")
-    _ensure_delivery_confirmation_schema(db)
-    q = request.query_params
-    from_date = (q.get("from_date") or "").strip()
-    to_date = (q.get("to_date") or "").strip()
+def _ensure_tray_line_schema(db: Session) -> None:
+    """Batch 176 — 176-E4. One row per (region, customer, delivery date) —
+    matches exactly how the Logistics report already aggregates bags, so a
+    confirmation always lines up with the row it was entered against, even
+    though the underlying bags may have come from several packing_dispatch
+    records split across regions."""
+    try:
+        db.execute(text("""
+            CREATE TABLE IF NOT EXISTS delivery_confirmations (
+                id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+                company_id INT NULL,
+                dispatch_date DATE NOT NULL,
+                region VARCHAR(100) NOT NULL,
+                customer_name VARCHAR(255) NOT NULL,
+                expected_boxes INT NOT NULL DEFAULT 0,
+                received_boxes INT NULL,
+                confirmed_time VARCHAR(20) NULL,
+                comments VARCHAR(500) NULL,
+                confirmed_by VARCHAR(255) NULL,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uq_delivery_confirmation (dispatch_date, region, customer_name)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        """))
+        db.commit()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+
+
+def _logistics_region_rows(db: Session, from_date: str, to_date: str) -> dict:
+    """Batch 176 — extracted from logistics_report() so the Tray Line report
+    (176-E4) can build on the exact same region+customer aggregation instead
+    of a second, subtly different one. No behaviour change to the existing
+    Logistics report — this is the same body it always ran."""
     where = "1=1"
     params: dict = {}
     if from_date:
@@ -86,10 +112,6 @@ def logistics_report(request: Request, db: Session = Depends(get_db)):
         ORDER BY region, customer_name
     """), params).mappings().all()
 
-    # Batch 152a: expand each dispatch into per-region bag rows. When a dispatch
-    # has a region_bags allocation (e.g. {"Riyadh":10,"Dammam":8}), its bags are
-    # split across those regions; otherwise it counts once under its single
-    # region. Portions stay with the primary region to avoid double-counting.
     import json as _json
     expanded = []
     for r in rows:
@@ -110,24 +132,36 @@ def logistics_report(request: Request, db: Session = Depends(get_db)):
             expanded.append({"region": r["region"], "customer_name": r["customer_name"],
                              "orders": 1, "bags": int(r["bags"] or 0), "portions": float(r["portions"] or 0)})
 
-    # collapse to region + customer
     _agg = {}
     for e in expanded:
         key = (e["region"], e["customer_name"])
         if key not in _agg:
             _agg[key] = {"region": e["region"], "customer_name": e["customer_name"], "orders": 0, "bags": 0, "portions": 0.0}
         _agg[key]["orders"] += e["orders"]; _agg[key]["bags"] += e["bags"]; _agg[key]["portions"] += e["portions"]
-    rows = sorted(_agg.values(), key=lambda x: (x["region"], x["customer_name"]))
+    flat_rows = sorted(_agg.values(), key=lambda x: (x["region"], x["customer_name"]))
 
-    # group into region -> [customer rows], with region totals
     regions: dict = {}
-    for r in rows:
+    for r in flat_rows:
         regions.setdefault(r["region"], {"rows": [], "bags": 0, "orders": 0, "portions": 0})
         g = regions[r["region"]]
         g["rows"].append(r)
         g["bags"] += int(r["bags"] or 0)
         g["orders"] += int(r["orders"] or 0)
         g["portions"] += float(r["portions"] or 0)
+    return regions, flat_rows
+
+
+@router.get("/logistics", response_class=HTMLResponse)
+def logistics_report(request: Request, db: Session = Depends(get_db)):
+    """Batch 129 — Logistics report: region-wise bag counts by customer
+    (image 13). Groups packing_dispatch by region + customer, summing bags and
+    portions. CSV export supported via ?export=csv."""
+    require_area(request, "dispatch")
+    _ensure_delivery_confirmation_schema(db)
+    q = request.query_params
+    from_date = (q.get("from_date") or "").strip()
+    to_date = (q.get("to_date") or "").strip()
+    regions, rows = _logistics_region_rows(db, from_date, to_date)
 
     if q.get("export") == "csv":
         import csv, io
@@ -149,6 +183,101 @@ def logistics_report(request: Request, db: Session = Depends(get_db)):
                   {"regions": regions, "grand": grand, "flat_rows": rows,
                    "filters": {"from_date": from_date, "to_date": to_date},
                    "page_title": "Logistics Report"})
+
+
+@router.get("/logistics/tray-line", response_class=HTMLResponse)
+def tray_line_report(request: Request, db: Session = Depends(get_db)):
+   
+    require_area(request, "dispatch")
+    _ensure_tray_line_schema(db)
+    d = (request.query_params.get("date") or date.today().isoformat()).strip()
+    regions, _ = _logistics_region_rows(db, d, d)
+
+    confirmations = {
+        (c["region"], c["customer_name"]): c
+        for c in db.execute(text("""
+            SELECT region, customer_name, received_boxes, confirmed_time, comments, confirmed_by
+            FROM delivery_confirmations WHERE dispatch_date = :d
+        """), {"d": d}).mappings().all()
+    }
+    for region, g in regions.items():
+        for r in g["rows"]:
+            c = confirmations.get((region, r["customer_name"]))
+            r["received_boxes"] = c["received_boxes"] if c else None
+            r["confirmed_time"] = c["confirmed_time"] if c else None
+            r["comments"] = c["comments"] if c else None
+
+    return render(request, "dispatch/tray_line_report.html", {
+        "regions": regions, "date": d, "page_title": "Tray Line Report",
+    })
+
+
+@router.post("/logistics/tray-line/save")
+async def tray_line_save(request: Request, db: Session = Depends(get_db)):
+  
+    require_action(request, "dispatch", "edit")
+    _ensure_tray_line_schema(db)
+    form = await request.form()
+    dispatch_date = (form.get("dispatch_date") or "").strip()
+    if not dispatch_date:
+        return _redirect_with_error("/dispatch/logistics/tray-line", "Date is required.")
+
+    regions_f = form.getlist("dc_region")
+    customers_f = form.getlist("dc_customer")
+    expected_f = form.getlist("dc_expected")
+    received_f = form.getlist("dc_received")
+    time_f = form.getlist("dc_time")
+    comments_f = form.getlist("dc_comments")
+    user = request.session.get("username") or request.session.get("user_name") or ""
+
+    def _opt_int(seq, i):
+        if i >= len(seq):
+            return None
+        v = (seq[i] or "").strip()
+        if v == "":
+            return None
+        try:
+            return int(float(v))
+        except ValueError:
+            return None
+
+    saved = 0
+    for i, region in enumerate(regions_f):
+        region = (region or "").strip()
+        customer = (customers_f[i] or "").strip() if i < len(customers_f) else ""
+        if not region or not customer:
+            continue
+        expected = _opt_int(expected_f, i) or 0
+        received = _opt_int(received_f, i)
+        confirmed_time = (time_f[i] or "").strip() if i < len(time_f) else ""
+        comments = (comments_f[i] or "").strip() if i < len(comments_f) else ""
+        # Skip rows nobody touched — an untouched row should stay absent from
+        # delivery_confirmations, not create a row of blanks that looks like
+        # "confirmed with nothing filled in".
+        if received is None and not confirmed_time and not comments:
+            continue
+        db.execute(text("""
+            INSERT INTO delivery_confirmations
+                (dispatch_date, region, customer_name, expected_boxes,
+                 received_boxes, confirmed_time, comments, confirmed_by, updated_at)
+            VALUES (:d, :rg, :cu, :exp, :rc, :ti, :co, :by, NOW())
+            ON DUPLICATE KEY UPDATE
+                expected_boxes = VALUES(expected_boxes),
+                received_boxes = VALUES(received_boxes),
+                confirmed_time = VALUES(confirmed_time),
+                comments = VALUES(comments),
+                confirmed_by = VALUES(confirmed_by),
+                updated_at = NOW()
+        """), {"d": dispatch_date, "rg": region, "cu": customer, "exp": expected,
+               "rc": received, "ti": confirmed_time, "co": comments, "by": user})
+        saved += 1
+    db.commit()
+
+    from urllib.parse import quote as _q
+    return RedirectResponse(
+        f"/dispatch/logistics/tray-line?date={dispatch_date}"
+        f"&toast=success&title={_q('Saved')}&msg={_q(f'{saved} receiver(s) confirmed.')}",
+        status_code=HTTP_303_SEE_OTHER)
 
 
 @router.get("/logistics/board", response_class=HTMLResponse)

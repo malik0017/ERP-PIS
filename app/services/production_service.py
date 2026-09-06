@@ -1128,6 +1128,7 @@ def transfer_transaction(
     waste_reason: str | None = None,
     remarks: str | None = None,
     next_section_override: str | None = None,
+    byproduct_qty: float = 0.0,
 ) -> KitchenSectionTransaction:
     tx = db.query(KitchenSectionTransaction).filter(KitchenSectionTransaction.id == tx_id).first()
     if not tx:
@@ -1142,14 +1143,21 @@ def transfer_transaction(
     waste = _num(waste_qty)
     returned = _num(returned_qty)
     transfer = _num(transferred_qty)
-    if transfer > received - waste - returned + 0.0001:
+    # Batch 176 — 176-H: by-product (kept and used elsewhere — e.g. bones/
+    # trim for stock) is a THIRD deduction from what's available to
+    # transfer, alongside Waste and Returned. Optional and defaults to 0, so
+    # a section that never uses it behaves exactly as before.
+    byproduct = _num(byproduct_qty)
+    if transfer > received - waste - returned - byproduct + 0.0001:
         raise ValueError("Transferred quantity cannot exceed available quantity")
 
     tx.processed_qty_standard = processed
     tx.waste_qty_standard = waste
     tx.returned_qty_standard = returned
     tx.transferred_qty_standard = transfer
-    tx.balance_qty_standard = max(0, received - waste - returned - transfer)
+    if hasattr(tx, "byproduct_qty_standard"):
+        tx.byproduct_qty_standard = byproduct if byproduct > 0 else None
+    tx.balance_qty_standard = max(0, received - waste - returned - byproduct - transfer)
     tx.processed_by = user
     tx.transferred_by = user
     tx.processed_at = _now()
@@ -1202,6 +1210,36 @@ def transfer_transaction(
             balance_qty_standard=transfer,
             transaction_status="Pending Receive",
         )
+        # ----------------------------------------------------------------
+        # BATCH 176 — 176-E2 ROOT CAUSE.
+        #
+        # Every transfer creates a NEW transaction row for the next section
+        # (above) rather than moving the existing one forward — that part is
+        # by design, so each section keeps its own received/processed/
+        # transferred figures. But the nutrition columns Hot Kitchen writes
+        # (carb_g/protein_g/vegetable_g/yield_g/produced_portion/
+        # portion_weight_g/output_uom, via the hk_carb/hk_protein/hk_veg
+        # fields on the transfer form) were never copied onto the new row —
+        # only qty/section/routing fields were. Those values then sit
+        # forever on the OLD, now-locked ("Transferred") Hot Kitchen row,
+        # while every downstream screen (QC, and Packing's "Recipe Pack
+        # Detail" — screenshot: "it does not show weights ... excess/
+        # shortage field are not working") reads them off the CURRENT row,
+        # which has always been NULL. Received Weight was never actually
+        # broken as a query — the data just never survived the handoff.
+        #
+        # These are recipe-level facts fixed once at Hot Kitchen, not
+        # per-section state, so they now travel forward exactly like
+        # recipe_no/recipe_name/ingredient_name already do above. Excess/
+        # Shortage in Packing is a pure subtraction on these same values
+        # (order.html: `rv - pv`), so fixing the carry-forward fixes both
+        # symptoms in the screenshot at once.
+        # ----------------------------------------------------------------
+        for _attr in ("carb_g", "protein_g", "vegetable_g", "yield_g",
+                      "produced_portion", "portion_weight_g", "output_uom"):
+            _val = getattr(tx, _attr, None)
+            if _val is not None and hasattr(new_tx, _attr):
+                setattr(new_tx, _attr, _val)
         db.add(new_tx)
     else:
         tx.transaction_status = "Completed"

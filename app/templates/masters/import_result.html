@@ -108,6 +108,37 @@
       </tbody>
     </table>
   </div>
+
+  {# Batch 176 — 176-G UI surfacing. import_customers() now flags (never
+     auto-merges) a newly imported customer code whose name collides, after
+     whitespace/case normalization, with an existing customer under a
+     DIFFERENT code — e.g. "Ma'una Foundation (FRSH)" vs "Ma'una
+     Foundation(FRSH)". Shown here, next to the import it came from, using
+     the same <details> pattern as the Errors column above, rather than a
+     separate screen. #}
+  {% set _dupes = results.get('customers', {}).get('possible_duplicates', []) %}
+  {% if _dupes %}
+  <div class="pis-card mt-3">
+    <div class="pis-card-body" style="border-left: 5px solid #d97706;">
+      <i class="bi bi-people-fill text-warning me-1"></i>
+      <b>{{ _dupes|length }}</b> newly imported customer(s) have a name that closely matches an
+      existing customer under a <em>different</em> code — nothing was merged automatically.
+      <details class="mt-2">
+        <summary>View possible duplicates</summary>
+        <table class="table table-sm mt-2">
+          <thead><tr><th>New Code</th><th>Existing Code</th><th>Name</th></tr></thead>
+          <tbody>
+            {% for d in _dupes[:40] %}
+            <tr><td>{{ d.new_code }}</td><td>{{ d.existing_code }}</td><td>{{ d.name }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        Run <code>scripts/audit_duplicate_customers.sql</code> for the full picture across the whole
+        system, then decide which code is canonical before merging — orders/history point at both.
+      </details>
+    </div>
+  </div>
+  {% endif %}
 </div>
 {% endblock %} {% block extra_js %}
 <script>

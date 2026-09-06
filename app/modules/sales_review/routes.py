@@ -35,6 +35,35 @@ def _company_filter(cid: int):
     return (CustomerOrder.company_id == cid) | (CustomerOrder.company_id.is_(None))
 
 
+def _back_to_list(request: Request, toast: str, title: str, msg: str) -> RedirectResponse:
+    """Batch 176 — 176-F ROOT CAUSE.
+
+    approve()/reject() used to redirect to a bare "/sales-requests", which
+    drops every filter the reviewer had set — including the LIST route's own
+    default, status=Pending (see sales_request_list below). The moment a
+    request is approved it is no longer Pending, so redirecting to the
+    unfiltered default immediately made it vanish from view. This is not the
+    "hide past-delivery work" scope rule (that one already has a "Show all
+    dates" escape hatch) — it is a different bug: the decision itself throws
+    away the page the reviewer was looking at. "Sale request should be shown
+    after approval" is this: approve something while viewing Status=All, and
+    the very next page you land on quietly narrows back to Pending-only.
+
+    Fix: redirect back to the REFERRING page's own query string (same
+    referer-preserving pattern already used in
+    production/routes.py::issue_consolidated_ingredient), so approving or
+    rejecting a request never changes which filter the reviewer is looking
+    through — they see their own approved/rejected row right where it was.
+    """
+    from urllib.parse import quote as _q, urlparse, parse_qsl, urlencode
+    referer = request.headers.get("referer") or "/sales-requests"
+    parsed = urlparse(referer)
+    path = parsed.path if parsed.path.startswith("/sales-requests") else "/sales-requests"
+    params = dict(parse_qsl(parsed.query))
+    params.update({"toast": toast, "title": title, "msg": msg})
+    return RedirectResponse(f"{path}?{urlencode(params)}", status_code=303)
+
+
 # ---------------------------------------------------------------------------
 # List
 # ---------------------------------------------------------------------------
@@ -334,14 +363,11 @@ async def approve(request: Request, order_no: str, db: Session = Depends(get_db)
     order = db.query(CustomerOrder).filter(
         CustomerOrder.order_no == order_no, _company_filter(cid)).first()
     if not order:
-        return RedirectResponse("/sales-requests?toast=danger&title=Not found&msg=Request not found",
-                                status_code=303)
+        return _back_to_list(request, "danger", "Not found", "Request not found")
 
     current = order.sales_review_status or "Approved"
     if current != "Pending":
-        return RedirectResponse(
-            f"/sales-requests?toast=warning&title=Already reviewed"
-            f"&msg={order_no} is already {current}.", status_code=303)
+        return _back_to_list(request, "warning", "Already reviewed", f"{order_no} is already {current}.")
 
     order.sales_review_status = "Approved"
     order.sales_reviewed_by = _user(request)
@@ -353,11 +379,7 @@ async def approve(request: Request, order_no: str, db: Session = Depends(get_db)
                 message=f"{order.customer_name} — approved by {_user(request)}, ready for Head Chef scheduling.",
                 url=f"/production/orders/{order_no}", category="sales_review_approved")
 
-
-    return RedirectResponse(
-        "/sales-requests?toast=success&title=Approved"
-        f"&msg={order_no} approved Sent to Head Chef Planning.",
-        status_code=303)
+    return _back_to_list(request, "success", "Approved", f"{order_no} approved — sent to Head Chef Planning.")
 
 
 @router.post("/{order_no}/reject")
@@ -377,12 +399,9 @@ async def reject(request: Request, order_no: str, db: Session = Depends(get_db))
     order = db.query(CustomerOrder).filter(
         CustomerOrder.order_no == order_no, _company_filter(cid)).first()
     if not order:
-        return RedirectResponse("/sales-requests?toast=danger&title=Not found&msg=Request not found",
-                                status_code=303)
+        return _back_to_list(request, "danger", "Not found", "Request not found")
     if (order.sales_review_status or "Approved") != "Pending":
-        return RedirectResponse(
-            f"/sales-requests?toast=warning&title=Already reviewed&msg={order_no} is already reviewed.",
-            status_code=303)
+        return _back_to_list(request, "warning", "Already reviewed", f"{order_no} is already reviewed.")
 
     order.sales_review_status = "Rejected"
     order.sales_reviewed_by = _user(request)
@@ -390,10 +409,11 @@ async def reject(request: Request, order_no: str, db: Session = Depends(get_db))
     order.sales_review_reason = reason[:500]
     db.commit()
 
-    # Batch 139: return to the Sales Requests index after rejecting.
-    return RedirectResponse(
-        f"/sales-requests?toast=warning&title=Rejected&msg={order_no} rejected — it will not reach Head Chef Planning.",
-        status_code=303)
+    # Batch 176 — 176-F: preserve the reviewer's filters on redirect (see
+    # _back_to_list) instead of always bouncing to the unfiltered default,
+    # which used to make a just-rejected (no-longer-Pending) request look
+    # like it had disappeared.
+    return _back_to_list(request, "warning", "Rejected", f"{order_no} rejected — it will not reach Head Chef Planning.")
 
 
 def _next_pending(db: Session, cid: int) -> str | None:

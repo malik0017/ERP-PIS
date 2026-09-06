@@ -14,6 +14,29 @@ from app.models.recipe import Recipe, RecipeIngredient
 
 NULL_TEXTS = {"", "-", "—", "None", "none", "NULL", "null", "N/A", "n/a"}
 
+_UOM_GROUPS = {
+    "mass": {"g", "gram", "grams", "kg", "kilogram", "kilograms", "mg"},
+    "volume": {"ml", "milliliter", "milliliters", "l", "liter", "liters", "litre", "litres", "cl"},
+    "count": {"each", "pc", "pcs", "piece", "pieces", "unit", "units", "dozen"},
+}
+
+
+def _uom_family(uom: str | None) -> str | None:
+    key = (uom or "").strip().lower()
+    for family, members in _UOM_GROUPS.items():
+        if key in members:
+            return family
+    return None
+
+
+def _ingredient_uom_family(ingredient: "Ingredient | None") -> str | None:
+    if not ingredient:
+        return None
+    group = (getattr(ingredient, "uom_group", None) or "").strip().lower()
+    if group in _UOM_GROUPS:
+        return group
+    return _uom_family(getattr(ingredient, "standard_uom", None))
+
 
 def _norm(value: Any) -> str:
     return " ".join(str(value or "").replace("\n", " ").strip().lower().split())
@@ -145,11 +168,7 @@ def _pending_recipe(db: Session, company_id: int, recipe_code: str) -> Recipe | 
 
 
 def _import_target_recipe(db: Session, company_id: int, recipe_code: str) -> tuple[Recipe, str]:
-    """Return the recipe row that should receive this import.
-
-    First upload creates ACTIVE V1. Uploading the same recipe again creates/updates one PENDING V2.
-    This protects production from changing approved recipes without approval.
-    """
+    
     active = _active_recipe(db, company_id, recipe_code)
     if not active:
         existing_v1 = (
@@ -224,8 +243,6 @@ def _read_recipe_master_rows(recipe_ws) -> tuple[dict[str, dict[str, Any]], int]
             "brand_name": _s(_get(recipe_ws, row, headers, "Brand Name", "Brand Code")),
             "customer_name": _s(_get(recipe_ws, row, headers, "Customer Name")),
             "category": _s(_get(recipe_ws, row, headers, "Category")),
-            # Batch 101: Day is what drives the Frsh weekly menu. Read it here
-            # too so both import paths behave the same.
             "day_of_week": _s(_get(recipe_ws, row, headers, "Day", "Days")),
             "has_sub_recipe": _b(_get(recipe_ws, row, headers, "Has Sub Recipe?", "Has Sub Recipe")),
             "linked_sub_recipe_code": _code(_get(recipe_ws, row, headers, "Sub Recipe ID", "Sub Recipe Ref")),
@@ -262,19 +279,6 @@ def _read_recipe_rows_from_ingredients(line_ws) -> tuple[dict[str, dict[str, Any
             "recipe_name": _s(_get(line_ws, row, headers, "Recipe Name")) or recipe_code,
             "brand_name": _s(_get(line_ws, row, headers, "Brand Name")),
             "customer_name": _s(_get(line_ws, row, headers, "Customer Name")),
-            # Batch 101 FIX — this was hard-coded to None, which is why every
-            # RCP-FRSH-* recipe shows "—" in the Category column.
-            #
-            # This is the FALLBACK path, used when the workbook has no
-            # "Master Recipes" sheet and recipes have to be reconstructed from
-            # the "Recipe Ingredients" sheet alone. Whoever wrote it assumed
-            # that sheet carries no recipe-level metadata. It does: the
-            # Recipe Ingredients sheet has both a "Category" and a "Day"
-            # column, and they were being read past and thrown away.
-            #
-            # The Frsh recipes were loaded through exactly this path, so all
-            # 55 of them lost their category on import even though it was
-            # sitting in the file.
             "category": _s(_get(line_ws, row, headers, "Category")),
             "day_of_week": _s(_get(line_ws, row, headers, "Day", "Days")),
             "has_sub_recipe": False,
@@ -302,8 +306,6 @@ def _apply_recipe_meta(recipe: Recipe, recipe_code: str, meta: dict[str, Any]) -
     recipe.brand_name = meta.get("brand_name") or recipe.brand_name
     recipe.customer_name = meta.get("customer_name") or recipe.customer_name
     recipe.category = meta.get("category") or recipe.category
-    # Batch 101: only set when the model actually has the column, so this file
-    # keeps working against a database that has not run the migration yet.
     if hasattr(recipe, "day_of_week"):
         recipe.day_of_week = meta.get("day_of_week") or getattr(recipe, "day_of_week", None)
     recipe.is_sub_recipe = recipe_code.startswith("SUB-") or recipe_code.startswith("RCP-MS-")
@@ -428,6 +430,10 @@ def import_recipe_excel(db: Session, file_path: str, company_id: int) -> dict[st
         db.flush()
 
         inventory_costs = _inventory_costs(db)
+        ingredient_by_code: dict[str, Ingredient] = {
+            i.ingredient_code: i for i in db.query(Ingredient).all()
+        }
+        uom_mismatches: list[dict[str, str]] = []
         line_headers = _headers(line_ws)
         line_start_row = _header_row(line_ws, line_headers) + 1
         line_numbers: dict[str, int] = {}
@@ -461,6 +467,19 @@ def import_recipe_excel(db: Session, file_path: str, company_id: int) -> dict[st
             if cost_uom <= 0 and inventory_code:
                 cost_uom = inventory_costs.get(inventory_code, Decimal("0"))
 
+            line_uom = _s(_get(line_ws, row, line_headers, "St. UOM", "UOM", "Unit"))
+            master_ing = ingredient_by_code.get(inventory_code) if inventory_code else None
+            line_family = _uom_family(line_uom)
+            master_family = _ingredient_uom_family(master_ing)
+            if line_family and master_family and line_family != master_family:
+                uom_mismatches.append({
+                    "recipe_code": recipe_code,
+                    "inventory_code": inventory_code or "",
+                    "item_name": item_name,
+                    "row_uom": line_uom or "",
+                    "expected_family": master_family,
+                })
+
             db.add(
                 RecipeIngredient(
                     recipe_id=recipe.id,
@@ -469,11 +488,8 @@ def import_recipe_excel(db: Session, file_path: str, company_id: int) -> dict[st
                     sub_recipe_code=_code(_get(line_ws, row, line_headers, "Sub Recipe ID", "Sub Recipe Ref")),
                     inventory_code=inventory_code,
                     item_name=item_name,
-                    # Batch 131 — raw "Section" value from the recipe workbook
-                    # (e.g. "Hot Section", "Butchery Section"). Drives store-
-                    # issuance routing at BOM time. Stored raw; mapped later.
                     kitchen_section=_s(_get(line_ws, row, line_headers, "Section", "Kitchen Section")),
-                    uom=_s(_get(line_ws, row, line_headers, "St. UOM", "UOM", "Unit")),
+                    uom=line_uom,
                     qty_batch=_d(_get(line_ws, row, line_headers, "Qty req per Batch (g/pcs)", "Qty Batch", "Batch Qty")),
                     portions=_d(_get(line_ws, row, line_headers, "No. of portions per batch", "Portions"), "1"),
                     qty_per_portion=_d(_get(line_ws, row, line_headers, "Qty req per portion", "Qty Per Portion")),
@@ -503,4 +519,5 @@ def import_recipe_excel(db: Session, file_path: str, company_id: int) -> dict[st
         "lines": imported_lines,
         "master_rows": master_count,
         "ingredient_recipe_rows": ingredient_recipe_count,
+        "uom_mismatches": uom_mismatches if line_ws else [],
     }

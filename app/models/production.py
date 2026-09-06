@@ -202,6 +202,10 @@ class KitchenSectionTransaction(Base):
     produced_portion = Column(Float, nullable=True)
     portion_weight_g = Column(Float, nullable=True)
     output_uom = Column(String(20), nullable=True)
+    # Batch 176 — 176-H: optional third leg of Waste/Returned, for a
+    # by-product that's kept and used elsewhere rather than discarded
+    # (waste) or sent back to store unused (returned). NULL unless entered.
+    byproduct_qty_standard = Column(Float, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

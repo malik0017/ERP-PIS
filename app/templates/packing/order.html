@@ -134,18 +134,17 @@
             <input class="form-control" name="rejected_portions" id="rejectedInput" type="number"
               step="0.01" value="{{ row.rejected_portions or 0 }}" {% if _p_locked %}readonly{% endif %}></div>
           {# Batch 121: physical bag/tray count — flows through to Dispatch. #}
-          <div><label>Number of Bags</label><input class="form-control" name="packed_bags" type="number"
-              min="0" step="1" value="{{ row.packed_bags or '' }}" placeholder="e.g. 12" {% if _p_locked %}readonly{% endif %}></div>
-          {# Batch 153: Region sits beside Number of Bags rather than a row below
-             it. They are one decision — "how many bags go where" — and splitting
-             them across rows is what made the single Region field feel separate
-             from the per-region allocation underneath. #}
-          <div><label>Region</label><select class="form-select" name="region" {% if _p_locked %}disabled{% endif %}>
-              <option value="">-- select region --</option>
-              {% for rg in ['Riyadh','Eastern','Jeddah','Makkah','Madinah','Qassim','Other'] %}
-              <option value="{{ rg }}" {% if row.region == rg %}selected{% endif %}>{{ rg }}</option>
-              {% endfor %}
-            </select></div>
+          {# Batch 176 — 176-E1. This used to be a free-typed number sitting
+             beside a SEPARATE "Region" dropdown below — two places to enter
+             what is really one fact ("how many bags, going where"), and they
+             could disagree (this field said "Riyadh" while the allocation
+             table said Riyadh 74 + Eastern 24 = 98). The allocation table is
+             now the only place bag counts go in; this is a read-only total
+             driven by it, so there is nothing left to disagree with. #}
+          <div><label>Number of Bags</label><input class="form-control" name="packed_bags" id="packedBagsInput" type="number"
+              min="0" step="1" value="{{ row.packed_bags or '' }}" readonly title="{{ t('Derived from the region allocation below') }}"></div>
+          <div><label>{{ t('Primary Region') }} <span class="text-body-tertiary" title="{{ t('The region with the most bags, for quick reference') }}">(auto)</span></label>
+            <input class="form-control" id="primaryRegionDisplay" type="text" value="{{ row.region or '' }}" readonly></div>
           <div><label>Packing / Dispatch Date</label><input class="form-control" name="dispatch_date" type="date"
               value="{{ row.dispatch_date or '' }}" {% if _p_locked %}readonly{% endif %}></div>
           <div><label>Packing Status</label><select class="form-select" name="packing_status" {% if _p_locked %}disabled{% endif %}>
@@ -153,23 +152,12 @@
               <option value="Packing In Progress">Packing In Progress</option>
               <option value="Packed" selected>Packed</option>
             </select></div>
-          {# Batch 146: Region set at packing flows through to Dispatch & the
-             Logistics report (region-wise bag counts). #}
-          {# ================================================================
-             Batch 148 — REGION-WISE BAG ALLOCATION, moved here from Dispatch.
-             Trayline is where the bags are physically filled, so this is where
-             the operator knows 10 are Riyadh and 8 are Dammam. Dispatch was
-             being asked to re-key a fact that had already happened upstream.
-             Same field names (region_name / region_bag_count) and same JSON
-             column as the Dispatch form, so the Logistics report and the
-             per-region delivery note read it without change. The total drives
-             Number of Bags, so the header and the region rows cannot disagree.
-             ================================================================ #}
+       
           <div style="grid-column:1/-1">
             <div class="card border">
               <div class="card-header bg-body-highlight d-flex justify-content-between align-items-center py-2">
                 <span class="fw-bold"><i class="bi bi-geo-alt me-1"></i>{{ t('Region-wise Bag Allocation') }}</span>
-                <span class="small text-muted">{{ t('Allocated') }}: <span id="rbTotal">0</span> {{ t('bags') }}</span>
+                <span class="small text-muted">{{ t('Total') }}: <span id="rbTotal">0</span> {{ t('bags') }}</span>
               </div>
               <div class="card-body py-2">
                 <div id="rbRows">
@@ -179,13 +167,13 @@
                       {% for rg in pack_regions %}<option value="{{ rg }}" {% if rb.name==rg %}selected{% endif %}>{{ rg }}</option>{% endfor %}
                     </select></div>
                     <div class="col-4 col-md-3"><input class="form-control form-control-sm rb-count" type="number" min="0" name="region_bag_count" value="{{ rb.bags }}" oninput="rbRecalc()" {% if _p_locked %}readonly{% endif %}></div>
-                    <div class="col-2">{% if not _p_locked %}<button type="button" class="btn btn-outline-danger btn-sm" onclick="this.closest('.rb-row').remove();rbRecalc();"><i class="bi bi-trash"></i></button>{% endif %}</div>
+                    <div class="col-2">{% if not _p_locked %}<button type="button" class="btn btn-outline-danger btn-sm" onclick="if(document.querySelectorAll('#rbRows .rb-row').length>1){this.closest('.rb-row').remove();rbRecalc();}"><i class="bi bi-trash"></i></button>{% endif %}</div>
                   </div>
                   {% endfor %}
                 </div>
                 {% if not _p_locked %}
                 <button type="button" class="btn btn-outline-secondary btn-sm" onclick="rbAdd()"><i class="bi bi-plus-lg me-1"></i>{{ t('Add region') }}</button>
-                <span class="small text-muted ms-2">{{ t('Leave empty to use the single Region + Number of Bags above.') }}</span>
+                <span class="small text-muted ms-2">{{ t('For a single-region order, just enter the total in this one row.') }}</span>
                 {% endif %}
               </div>
             </div>
@@ -201,8 +189,16 @@
         {% endif %}
       </form>
     </div>
-    <div class="panel">
-      <h3>Order Summary</h3>
+    <div class="panel" id="orderSummaryPanel">
+      <div class="d-flex justify-content-between align-items-center">
+        <h3 class="mb-0">Order Summary</h3>
+        <div class="d-flex gap-2">
+          <a class="btn btn-outline-secondary btn-sm fw-bold" href="/dispatch/logistics" title="Region-wise bag report across all orders">
+            <i class="bi bi-geo-alt"></i> Region-wise Report</a>
+          <button type="button" class="btn btn-outline-secondary btn-sm fw-bold" onclick="window.print()">
+            <i class="bi bi-printer"></i> Print</button>
+        </div>
+      </div>
       <div class="info mt-2">
         <div class="tile"><span>Customer</span><strong>{{ row.customer_name or '—' }}</strong></div>
         <div class="tile"><span>Brand</span><strong>{{ order.brand if order else '—' }}</strong></div>
@@ -236,7 +232,19 @@
   {# Batch 130: per-recipe packing detail — planned vs received portions, the
      lack (shortfall), and protein/carb per portion carried from Hot Kitchen. #}
   <div class="panel mt-3">
-    <h3>Recipe Pack Detail</h3>
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+      <h3 class="mb-0">Recipe Pack Detail</h3>
+      {# Batch 176 — 176-E (Img 10): "give option to extract packing report
+         ... weight wise". This table's header is two rows deep (Received/
+         Packed/Excess umbrella labels over Protein/Carb/Veg sub-columns),
+         which the shared isfc-table-tools toolbar assumes is a single flat
+         header row — bolting that component on here would misalign its
+         Columns toggle and per-column filters against the wrong data
+         column. A small export built for this table's real shape, instead
+         of forcing a generic one that would quietly export wrong. #}
+      <button type="button" class="btn btn-outline-secondary btn-sm fw-bold" onclick="exportPackDetailCSV()">
+        <i class="bi bi-filetype-csv"></i> Export CSV</button>
+    </div>
     {# Batch 153 — restructured to the Excel layout you sent:
          Required Portion | Received Weight (Protein/Carb/Veg) | Packed Weight | Excess/Shortage
        Excess/Shortage = Received − Packed, per your =H6*I15 sheet. Positive is
@@ -253,7 +261,7 @@
        value by navigating away. #}
     <form method="post" action="/packing/{{ row.id }}/pack-lines">
     <div class="table-responsive">
-      <table class="table-pro">
+      <table class="table-pro" id="packDetailTable">
         <thead>
           <tr>
             <th rowspan="2">Recipe</th>
@@ -352,16 +360,70 @@ function rbRow(name, bags){
   var d = document.createElement('div'); d.className='row g-2 mb-2 rb-row';
   d.innerHTML = '<div class="col-6 col-md-4"><select class="form-select form-select-sm" name="region_name">'+opts+'</select></div>'+
     '<div class="col-4 col-md-3"><input class="form-control form-control-sm rb-count" type="number" min="0" name="region_bag_count" value="'+(bags||'')+'" oninput="rbRecalc()"></div>'+
-    '<div class="col-2"><button type="button" class="btn btn-outline-danger btn-sm" onclick="this.closest(\'.rb-row\').remove();rbRecalc();"><i class="bi bi-trash"></i></button></div>';
+    '<div class="col-2"><button type="button" class="btn btn-outline-danger btn-sm" onclick="if(document.querySelectorAll(\'#rbRows .rb-row\').length>1){this.closest(\'.rb-row\').remove();rbRecalc();}"><i class="bi bi-trash"></i></button></div>';
   document.getElementById('rbRows').appendChild(d);
+  rbRecalc();
 }
 function rbAdd(){ rbRow(RB_REGIONS[0], ''); }
+// Batch 176 — 176-E1: this now drives BOTH the read-only bag total and the
+// read-only "Primary Region" display — the two fields that used to be
+// separately-typed inputs a user could set inconsistently with the table
+// below. "Primary" = whichever region currently holds the most bags, same
+// rule the backend already applied when saving (packing/routes.py).
 function rbRecalc(){
-  var t=0; document.querySelectorAll('#rbRows .rb-count').forEach(function(i){ var v=parseInt(i.value||'0',10); if(!isNaN(v))t+=v; });
-  var el=document.getElementById('rbTotal'); if(el) el.textContent=t;
-  if(t>0){ var nb=document.querySelector('input[name="packed_bags"]'); if(nb) nb.value=t; }
+  var t = 0, best = null, bestQty = -1;
+  document.querySelectorAll('#rbRows .rb-row').forEach(function(rowEl){
+    var v = parseInt(rowEl.querySelector('.rb-count').value || '0', 10);
+    if (isNaN(v)) v = 0;
+    t += v;
+    if (v > bestQty) { bestQty = v; best = rowEl.querySelector('select[name="region_name"]').value; }
+  });
+  var el = document.getElementById('rbTotal'); if (el) el.textContent = t;
+  var nb = document.getElementById('packedBagsInput'); if (nb) nb.value = t;
+  var pr = document.getElementById('primaryRegionDisplay'); if (pr) pr.value = best || '';
 }
 rbRecalc();
+</script>
+
+<script>
+// Batch 176 — 176-E (Img 10): purpose-built CSV for Recipe Pack Detail's
+// real 12-column shape (Recipe / From Section / Required, then 3 columns
+// each of Received / Packed / Excess). Reads .value on the Packed inputs
+// directly rather than relying on innerText, for the same reason the
+// isfc-table-tools.js fix (Batch 176 — 176-D) was needed elsewhere: a bare
+// <input> has no visible text for a generic scraper to find.
+function exportPackDetailCSV(){
+  var table = document.getElementById('packDetailTable');
+  if (!table) return;
+  var rows = [
+    ['Recipe', 'Recipe Code', 'From Section', 'Required Portion',
+     'Received Protein', 'Received Carb', 'Received Veg',
+     'Packed Protein', 'Packed Carb', 'Packed Veg',
+     'Excess/Shortage Protein', 'Excess/Shortage Carb', 'Excess/Shortage Veg']
+  ];
+  table.querySelectorAll('tbody tr').forEach(function(tr){
+    var cells = tr.children;
+    if (cells.length < 12) return; // skip the "no lines yet" placeholder row
+    var cell = function(i){ return (cells[i].innerText || '').trim(); };
+    var val = function(i){ var inp = cells[i].querySelector('input'); return inp ? inp.value : cell(i); };
+    var recipeCell = cells[0].innerText.split('\n').map(function(s){return s.trim();}).filter(Boolean);
+    rows.push([
+      recipeCell[0] || '', recipeCell[1] || '',
+      cell(1), cell(2),
+      cell(3), cell(4), cell(5),
+      val(6), val(7), val(8),
+      cell(9), cell(10), cell(11)
+    ]);
+  });
+  var csv = rows.map(function(r){
+    return r.map(function(c){ return '"' + String(c).replace(/"/g, '""') + '"'; }).join(',');
+  }).join('\r\n');
+  var blob = new Blob(['\uFEFF' + csv], {type: 'text/csv;charset=utf-8;'});
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'recipe_pack_detail_{{ row.order_no }}.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+}
 </script>
 
 {% endblock %}

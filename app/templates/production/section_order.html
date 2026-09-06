@@ -181,13 +181,22 @@
       {% endif %}
 
       <div class="tbl-wrap">
-        <table class="erp" id="linesTable">
+        {# Batch 176: reuse the same shared toolbar every other screen already
+           has (Store Issuance, Section Report, Sales Requests) instead of
+           hand-building one — per-column filters + CSV/PDF/copy/print for
+           free. data-isfc-search="false" because this page already has its
+           own quick-search box (#lineSearch) wired to filterLines(); adding
+           the built-in one too would give the store keeper two search boxes
+           doing the same job. #}
+        <table class="erp" id="linesTable" data-isfc-table data-isfc-colfilters
+               data-isfc-search="false" data-isfc-title="{{ section }} — {{ order_no }}"
+               data-isfc-subtitle="Order {{ order_no }} · {{ order.customer_name if order else '' }}">
           <thead><tr>
-            {% if not _k_locked %}<th style="width:34px"></th>{% endif %}
+            {% if not _k_locked %}<th style="width:34px" data-isfc-nofilter></th>{% endif %}
             <th style="min-width:150px">Recipe</th><th style="min-width:190px">Ingredient</th>
             <th style="min-width:100px">{{ t('Main Cat.') }}</th><th style="min-width:110px">{{ t('Sub Cat.') }}</th>
             {% if section == 'Butchery' %}<th style="min-width:150px">{{ t('Cutting Method') }}</th>{% endif %}
-            <th class="num">{{ t('Received') }}</th><th class="num">{{ t('Transferred') }}</th><th>{{ t('Status') }}</th><th style="min-width:120px">{{ t('Action') }}</th>
+            <th class="num">{{ t('Received') }}</th><th class="num">{{ t('Transferred') }}</th><th>{{ t('Status') }}</th><th style="min-width:120px" data-isfc-nofilter>{{ t('Action') }}</th>
           </tr></thead>
           <tbody>
           {% for tx in txs %}
@@ -274,6 +283,7 @@
                   <div class="fld" style="width:100px"><label>Portion Wt g</label><input form="txf{{ tx.id }}" class="pis-input num ck-weight" data-tx="{{ tx.id }}" type="number" step="0.01" min="0" name="ck_weight" value="0"></div>
                   <div class="fld" style="width:100px"><label>Output UOM</label><select form="txf{{ tx.id }}" class="pis-input ck-uom" name="ck_uom"><option selected>Gram</option><option>Portion</option><option>Box</option><option>Kg</option><option>Ml</option></select></div>
                   {% endif %}
+                  <div class="fld" style="width:92px"><label>By-product</label><input form="txf{{ tx.id }}" class="pis-input num tx-byproduct" data-tx="{{ tx.id }}" type="number" step="0.0001" min="0" name="byproduct_qty_standard" value="0" title="Optional — kept and used elsewhere (e.g. bones/trim), not discarded (Waste) or sent back (Return)"></div>
                   <div class="fld" style="width:92px"><label>Waste</label><input form="txf{{ tx.id }}" class="pis-input num tx-waste" data-tx="{{ tx.id }}" type="number" step="0.0001" min="0" name="waste_qty_standard" value="0"></div>
                   <div class="fld" style="width:92px"><label>Return</label><input form="txf{{ tx.id }}" class="pis-input num tx-return" data-tx="{{ tx.id }}" type="number" step="0.0001" min="0" name="returned_qty_standard" value="0"></div>
                   <div class="fld" style="width:110px"><label>Transfer ⟳</label><input form="txf{{ tx.id }}" class="pis-input num tx-transfer" data-tx="{{ tx.id }}" data-full="{{ tx.balance_qty_standard or tx.received_qty_standard or tx.issued_qty_standard or 0 }}" type="number" step="0.0001" min="0" name="transferred_qty_standard" value="{{ tx.balance_qty_standard or tx.received_qty_standard or tx.issued_qty_standard or 0 }}"></div>
@@ -533,10 +543,16 @@ function filterGroups(){
     waste:document.querySelector('.tx-waste[data-tx="'+tx+'"]'),
     ret:document.querySelector('.tx-return[data-tx="'+tx+'"]'),
     tra:document.querySelector('.tx-transfer[data-tx="'+tx+'"]'),
+    byp:document.querySelector('.tx-byproduct[data-tx="'+tx+'"]'),
     reason:document.querySelector('.tx-reason[data-tx="'+tx+'"]')};}
   document.addEventListener('input',function(e){
     var el=e.target,tx=el.dataset&&el.dataset.tx;if(!tx)return;
     var g=group(tx);if(!g.waste||!g.ret||!g.tra)return;
+    // Batch 176 — 176-H: By-product is a fourth optional deduction from the
+    // same pool as Waste/Return/Transfer. bp() reads 0 when the field is
+    // absent (older markup) or empty, so every formula below stays correct
+    // whether or not a By-product value was ever entered.
+    function bp(){return g.byp?n(g.byp.value):0;}
     // Batch 143: Hot Kitchen nutrition. Transfer = Carb + Protein + Vegetable;
     // Yield = Processed − Transfer. Editing any nutrition field recomputes both.
     var carb=document.querySelector('.hk-carb[data-tx="'+tx+'"]');
@@ -547,20 +563,20 @@ function filterGroups(){
       var transfer=n(carb.value)+n(prot.value)+n(veg.value);
       if(transfer>g.avail){transfer=g.avail;if(window.showToast)showToast('Carb + Protein + Vegetable exceeds processed qty','warning','Check quantities');}
       g.tra.value=+transfer.toFixed(4);
-      var y=g.avail-transfer-n(g.waste.value)-n(g.ret.value);
+      var y=g.avail-transfer-n(g.waste.value)-n(g.ret.value)-bp();
       yld.value=+(y>0?y:0).toFixed(4);
       return;
     }
     if(el.classList.contains('tx-transfer')){
-      var w=g.avail-n(g.tra.value)-n(g.ret.value);
-      if(w<0){w=0;if(window.showToast)showToast('Transfer + Return exceeds processed qty','warning','Check quantities');}
+      var w=g.avail-n(g.tra.value)-n(g.ret.value)-bp();
+      if(w<0){w=0;if(window.showToast)showToast('Transfer + Return + By-product exceeds processed qty','warning','Check quantities');}
       g.waste.value=+w.toFixed(4);
-      if(yld){yld.value=+((g.avail-n(g.tra.value)-n(g.ret.value)-n(g.waste.value))>0?(g.avail-n(g.tra.value)-n(g.ret.value)-n(g.waste.value)):0).toFixed(4);}
+      if(yld){yld.value=+((g.avail-n(g.tra.value)-n(g.ret.value)-n(g.waste.value)-bp())>0?(g.avail-n(g.tra.value)-n(g.ret.value)-n(g.waste.value)-bp()):0).toFixed(4);}
       var full=Math.abs(n(g.tra.value)-n(g.full))<0.0001;
       if(g.reason){g.reason.required=!full;g.reason.placeholder=full?'Reason (optional)':'Reason — required';}
-    }else if(el.classList.contains('tx-waste')){
-      var r=g.avail-n(g.tra.value)-n(g.waste.value);
-      if(r<0){r=0;if(window.showToast)showToast('Transfer + Waste exceeds processed qty','warning','Check quantities');}
+    }else if(el.classList.contains('tx-waste')||el.classList.contains('tx-byproduct')){
+      var r=g.avail-n(g.tra.value)-n(g.waste.value)-bp();
+      if(r<0){r=0;if(window.showToast)showToast('Transfer + Waste + By-product exceeds processed qty','warning','Check quantities');}
       g.ret.value=+r.toFixed(4);
       // Batch 143: any waste in Hot Kitchen requires a remark.
       if(yld&&g.reason){var hasWaste=n(g.waste.value)>0;g.reason.required=g.reason.required||hasWaste;g.reason.placeholder=(g.reason.required)?'Reason — required':'Reason (optional)';}

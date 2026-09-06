@@ -214,8 +214,11 @@
               <th>{{ t('Cooking Date') }}</th>
               <th>{{ t('Order') }}</th>
               <th>{{ t('Customer') }}</th>
-              <th>{{ t('Recipe') }}</th>
+              <th>{{ t('Recipe Name') }}</th>
+              <th>{{ t('Recipe Code') }}</th>
               <th>{{ t('Ingredient') }}</th>
+              <th>{{ t('Stock Code') }}</th>
+              <th>{{ t('Sub-Recipe') }}</th>
               <th class="num">{{ t('Std Portions') }}</th>
               <th class="num">{{ t('Required Portions') }}</th>
               <th class="num">{{ t('Qty') }}</th>
@@ -229,8 +232,19 @@
               <td>{{ r.work_date or '—' }}</td>
               <td>{{ r.order_no }}</td>
               <td>{{ r.customer_name or '—' }}</td>
-              <td><strong>{{ r.recipe_name }}</strong><br><span class="sub text-secondary">{{ r.recipe_no }}</span></td>
-              <td>{{ r.ingredient_name }}<br><span class="sub text-secondary">{{ r.ingredient_code }}</span></td>
+              <td>{{ r.recipe_name }}</td>
+              <td class="text-secondary">{{ r.recipe_no }}</td>
+              <td>{{ r.ingredient_name }}</td>
+              <td class="text-secondary">{{ r.ingredient_code }}</td>
+              {# Batch 176 — 176-D follow-up (Img 5): a "sub-recipe" here means
+                 this line's ingredient_code is ITSELF another recipe's code —
+                 something made in-house (e.g. a stock or base) rather than a
+                 purchased raw ingredient. bom_lines has no sub-recipe flag of
+                 its own (BOM generation already flattens recipes down to raw
+                 ingredients — see the README note on this), so this is
+                 detected by matching ingredient_code against the recipes
+                 table and showing what it actually is when it matches. #}
+              <td class="text-secondary small">{{ r.sub_recipe_name or '—' }}</td>
               <td class="num">{{ '%.0f'|format(r.std_portions|float) if r.std_portions else '—' }}</td>
               <td class="num">{{ '%.2f'|format(r.req_portions|float) }}</td>
               <td class="num fw-bold">{{ '%.3f'|format(r.qty|float) }}</td>
@@ -238,7 +252,7 @@
               <td>{{ r.portion_size or '—' }}</td>
             </tr>
             {% else %}
-            <tr><td colspan="10" class="text-secondary py-4 text-center">
+            <tr><td colspan="13" class="text-secondary py-4 text-center">
               {{ t('Nothing to produce for this section and period. Check that the BOM has been generated for those orders.') }}
             </td></tr>
             {% endfor %}
@@ -252,7 +266,8 @@
           <thead>
             <tr>
               <th>{{ t('Cooking Date') }}</th>
-              <th>{{ t('Recipe') }}</th>
+              <th>{{ t('Recipe Name') }}</th>
+              <th>{{ t('Recipe Code') }}</th>
               <th class="num">{{ t('Required Portions') }}</th>
               <th class="num">{{ t('Total Qty') }}</th>
               <th>{{ t('UOM') }}</th>
@@ -265,7 +280,8 @@
             {% for r in rows %}
             <tr>
               <td>{{ r.work_date or '—' }}</td>
-              <td><strong>{{ r.recipe_name }}</strong><br><span class="sub text-secondary">{{ r.recipe_no }}</span></td>
+              <td>{{ r.recipe_name }}</td>
+              <td class="text-secondary">{{ r.recipe_no }}</td>
               <td class="num">{{ '%.2f'|format(r.req_portions|float) }}</td>
               {# The headline number on the Butcher sheet — deliberately the
                  largest thing in the row, because it is what the section reads. #}
@@ -276,7 +292,7 @@
               <td class="sub">{{ r.orders or '—' }}</td>
             </tr>
             {% else %}
-            <tr><td colspan="8" class="text-secondary py-4 text-center">
+            <tr><td colspan="9" class="text-secondary py-4 text-center">
               {{ t('Nothing to produce for this section and period. Check that the BOM has been generated for those orders.') }}
             </td></tr>
             {% endfor %}

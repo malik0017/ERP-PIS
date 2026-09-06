@@ -613,6 +613,12 @@ def _ensure_output_capture_columns() -> None:
             ("protein_g", "DECIMAL(14,4) NULL"),
             ("vegetable_g", "DECIMAL(14,4) NULL"),
             ("yield_g", "DECIMAL(14,4) NULL"),
+            # Batch 176 — 176-H. Waste vs Returned (sent back to store) were
+            # already distinguished; a genuine by-product (bones/trim kept
+            # and used elsewhere, not discarded and not simply unused) had
+            # no field of its own. Additive and optional — defaults to NULL,
+            # so nothing that doesn't fill it in changes behaviour.
+            ("byproduct_qty_standard", "DECIMAL(18,4) NULL"),
         ],
         "bom_lines": [
             # Batch 167 — pre-trim requirement, so the yield gap is visible

@@ -26,6 +26,31 @@
 
   function text(el) { return (el.innerText || el.textContent || '').trim(); }
 
+  // Batch 176 ROOT CAUSE — "Portions"/"Protein" columns export blank.
+  //
+  // Several screens (Sales Request "Requested Items", Packing "Recipe Pack
+  // Detail", etc.) put an editable <input> directly inside an exportable
+  // cell, with no visible sibling text. text(td) reads innerText/textContent
+  // — and a plain <input> exposes NEITHER; its typed value lives only in the
+  // DOM .value property. So every CSV, PDF, copy and print built from these
+  // tables silently dropped that column, no matter what the user typed.
+  //
+  // cellValue() is the one place all four export paths read a cell from, so
+  // this fixes the whole class of bug at once instead of per-page: if the
+  // cell contains a form control, read its value; otherwise fall back to the
+  // original text-based read so every plain cell keeps working exactly as
+  // before.
+  function cellValue(td) {
+    var field = td.querySelector('input, select, textarea');
+    if (field) {
+      if (field.type === 'checkbox' || field.type === 'radio') {
+        return field.checked ? (field.value || '\u2713') : '';
+      }
+      return (field.value == null ? '' : String(field.value)).trim();
+    }
+    return text(td);
+  }
+
   function tableToRows(table, visibleOnly) {
     var rows = [];
     table.querySelectorAll('tr').forEach(function (tr) {
@@ -34,7 +59,7 @@
       var cells = [];
       tr.querySelectorAll('th,td').forEach(function (td) {
         if (visibleOnly && td.classList.contains('d-none')) return;
-        cells.push(text(td).replace(/\s+/g, ' '));
+        cells.push(cellValue(td).replace(/\s+/g, ' '));
       });
       if (cells.length) rows.push(cells);
     });

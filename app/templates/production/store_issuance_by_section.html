@@ -6,6 +6,12 @@
 .si-sec-head{background:#edf5fb;border-radius:14px;padding:14px 18px}
 .si-tag{display:inline-block;border-radius:999px;padding:4px 12px;font-weight:800;font-size:12px}
 .si-pending{background:#fdf3e3;color:#92600a}.si-done{background:#e8f8ef;color:#11783f}
+/* Batch 176: "Short Issued" was rendering in the exact same tan/orange as
+   "Pending" (both fell through to the else branch below), so a partially
+   issued line was visually indistinguishable from an untouched one. */
+.si-short{background:#fdeee3;color:#9a4a0a}
+.si-table td{vertical-align:middle}
+.si-action-col{min-width:190px}
 .si-table th{background:#f4f8fc;font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:#152b49}
 /* UI fix: filters used to be one unbroken row that ran off-screen on
    normal desktop widths. They now sit in clearly wrapped rows behind a
@@ -107,7 +113,7 @@
       <summary class="fw-bold">Consolidated picking list ({{ g.consolidated|length }} ingredients)</summary>
       <div class="table-responsive mt-2">
         <table class="table table-sm si-table">
-          <thead><tr><th>Code</th><th>Ingredient</th><th class="text-end">Total Required</th><th class="text-end">Issued</th><th>UOM</th><th>Orders</th><th>Action</th></tr></thead>
+          <thead><tr><th>Code</th><th>Ingredient</th><th class="text-end">Total Required</th><th class="text-end">Issued</th><th>UOM</th><th>Orders</th><th class="si-action-col">Action</th></tr></thead>
           <tbody>
           {% for c in g.consolidated %}
           <tr><td>{{ c.ingredient_code }}</td><td>{{ c.ingredient_name }}</td>
@@ -121,9 +127,9 @@
                  amount at BOM generation, so the quantity test reported
                  "Issued" for material nobody had touched — which is why the
                  header said "38 pending line(s)" above a list of green ticks. #}
-              <td>
+              <td class="si-action-col">
                 {% if c.pending_lines == 0 %}
-                  <span class="si-tag si-done"><i class="bi bi-lock-fill"></i> Issued</span>
+                  <span class="si-tag si-done"><i class="bi bi-check-circle-fill"></i> Issued</span>
                 {% else %}
                 <form method="post" action="/production/store-issuance/by-section/issue-ingredient"
                       class="d-flex align-items-center gap-1"
@@ -166,7 +172,22 @@
           <td><strong>{{ l.ingredient_code }}</strong><br>{{ l.ingredient_name }}</td>
           <td class="text-end">{{ '%.3f'|format(l.required_qty or 0) }} {{ l.uom }}</td>
           <td class="text-end">{{ '%.3f'|format(l.issued_qty or 0) }}</td>
-          <td>{% if l.finalized %}<span class="si-tag si-done"><i class="bi bi-lock-fill"></i> Locked / Issued</span>{% else %}<span class="si-tag si-pending">{{ l.issuance_status }}</span>{% endif %}</td>
+          {# Batch 176: the pill color now follows issuance_status, not just
+             `finalized` — "Issued" reads as done (green) the moment it is
+             actually issued, and "Short Issued" gets its own distinct color
+             instead of looking identical to "Pending". `finalized` still
+             layers the lock icon on top once the order is truly locked. #}
+          <td>
+            {% if l.finalized %}
+              <span class="si-tag si-done"><i class="bi bi-lock-fill"></i> Locked / Issued</span>
+            {% elif l.issuance_status == 'Issued' %}
+              <span class="si-tag si-done"><i class="bi bi-check-circle-fill"></i> Issued</span>
+            {% elif l.issuance_status == 'Short Issued' %}
+              <span class="si-tag si-short"><i class="bi bi-exclamation-triangle-fill"></i> Short Issued</span>
+            {% else %}
+              <span class="si-tag si-pending">{{ l.issuance_status }}</span>
+            {% endif %}
+          </td>
         </tr>
         {% endfor %}
         </tbody>

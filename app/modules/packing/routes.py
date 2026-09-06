@@ -247,6 +247,14 @@ def packing_order(request: Request, packing_id: int, db: Session = Depends(get_d
                 region_bags.append({"name": name, "bags": cnt})
         except Exception:
             region_bags = []
+    # Batch 176 — 176-E1. The allocation table is now the ONLY place a region
+    # is entered (the standalone "Region" <select> is gone from the template).
+    # An order that predates this — single Region + Number of Bags, no
+    # per-region split — needs its one existing value migrated into a single
+    # allocation row, or it would open to an empty table and look like the
+    # data disappeared.
+    if not region_bags and (getattr(row, "region", None) or getattr(row, "packed_bags", None)):
+        region_bags = [{"name": row.region or _PACK_REGIONS[0], "bags": row.packed_bags or 0}]
 
     return render(request, "packing/order.html",
                   {"row": row, "order": order, "qc_rows": qc_rows,

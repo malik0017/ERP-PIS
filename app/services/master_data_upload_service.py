@@ -352,11 +352,28 @@ def import_inventory(db: Session, ws, company_id: int) -> dict[str, Any]:
     return summary
 
 
+def _normalized_name_key(name: str) -> str:
+    """Batch 176: 'Ma'una Foundation (FRSH)' vs 'Ma'una Foundation(FRSH)' are
+    two different customer_code rows in the source workbook, so the existing
+    by-code dedupe (below) never sees them as related — each gets its own
+    customer record, and both names end up in every dropdown. This collapses
+    whitespace so near-duplicates can be *flagged* at import time, without
+    silently merging records that may genuinely be different accounts."""
+    import re as _re
+    return _re.sub(r"\s+", " ", (name or "")).strip().lower()
+
+
 def import_customers(db: Session, ws, company_id: int) -> dict[str, Any]:
     summary = _summary()
+    summary.setdefault("possible_duplicates", [])
     headers = _headers(ws)
     start = _header_row(ws, headers) + 1
     existing_by_code = _preload_by_attr(db, Customer, "customer_code", company_id)
+    # Batch 176: normalized-name -> customer_code, to flag (never auto-merge)
+    # a newly imported code whose name collides with an existing different code.
+    existing_by_name = {}
+    for _code, _item in existing_by_code.items():
+        existing_by_name.setdefault(_normalized_name_key(getattr(_item, "customer_name", "")), _code)
     seen: set[str] = set()
     for row in range(start, ws.max_row + 1):
         code = _code_key(_get(ws, row, headers, "PIS Customer Code", "Customer Code Old", "Customer Code"))
@@ -371,9 +388,19 @@ def import_customers(db: Session, ws, company_id: int) -> dict[str, Any]:
         try:
             item = existing_by_code.get(code)
             if not item:
+                name_key = _normalized_name_key(name_en)
+                clash_code = existing_by_name.get(name_key)
+                if clash_code and clash_code != code:
+                    # Not blocked — the row still imports under its own code —
+                    # but surfaced so Master Data cleanup can review and merge
+                    # deliberately, instead of the dropdown quietly growing a
+                    # second entry for the same real-world customer.
+                    summary["possible_duplicates"].append(
+                        {"new_code": code, "existing_code": clash_code, "name": name_en})
                 item = Customer(company_id=company_id, customer_code=code, customer_name=name_en)
                 db.add(item)
                 existing_by_code[code] = item
+                existing_by_name[name_key] = code
                 result = "created"
             else:
                 result = "updated"
