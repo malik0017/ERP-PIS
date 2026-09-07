@@ -85,7 +85,7 @@ BOM_APPLY_WASTAGE = False
 # Where yield is 100% (dry goods, packaged items) gross == net, so those lines
 # are untouched by any of the three settings.
 # =============================================================================
-BOM_QTY_BASIS = "net"
+BOM_QTY_BASIS = "gross_prep"
 
 
 def _num(value: Any) -> float:

@@ -176,10 +176,19 @@
                    missing capability on the detail page. Both buttons now
                    show: one back to the original sales request (same
                    design whatever its status), one forward to where it
-                   ended up in production. #}
-                <a href="/sales-requests/{{ o.order_no }}" class="btn btn-sm btn-phoenix-secondary">
-                  <i class="bi bi-eye me-1"></i>{{ t('View Request') }}</a>
-                <a href="/production/orders/{{ o.order_no }}" class="btn btn-sm btn-primary">{{ t('Open Order') }}</a>
+                   ended up in production.
+                   Batch 199 (Img 1) — "fix these buttons gaps and show in
+                   one row not two rows": the two <a> tags were plain inline
+                   elements with no width constraint, so at normal column
+                   width they wrapped onto a second line like two long
+                   words in a paragraph. Wrapping both in a nowrap flex row
+                   keeps them side by side; a small explicit gap replaces
+                   whatever inconsistent whitespace the wrap was creating. #}
+                <div class="d-flex gap-1 justify-content-end flex-nowrap">
+                  <a href="/sales-requests/{{ o.order_no }}" class="btn btn-sm btn-phoenix-secondary text-nowrap">
+                    <i class="bi bi-eye me-1"></i>{{ t('View Request') }}</a>
+                  <a href="/production/orders/{{ o.order_no }}" class="btn btn-sm btn-primary text-nowrap">{{ t('Open Order') }}</a>
+                </div>
                 {% endif %}
               </td>
             </tr>

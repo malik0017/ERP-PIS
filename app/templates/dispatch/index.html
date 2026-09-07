@@ -105,6 +105,15 @@
     color: #9a6500
   }
 
+  {# Batch 195 (194-B): new "Assigned" status needs its own color — it's
+     genuinely different from "Packed" (nobody's driving it yet) and from
+     "Out for Delivery" (already departed). Sharing .warn with Packed
+     would recreate the exact invisibility problem this batch fixes. #}
+  .pill.info {
+    background: #dbeafe;
+    color: #1d4ed8
+  }
+
   .pill.danger {
     background: #ffe0e0;
     color: #9b2424
@@ -187,7 +196,7 @@
     <div class="stat"><span>Rejected Records</span><strong>{{ summary.rejected }}</strong></div>
     <div class="stat"><span>Packed Portions</span><strong>{{ '%.0f'|format(summary.portions or 0) }}</strong></div>
   </div>
-  {% set status_options = ['Packed','Out for Delivery','Delivered'] %}
+  {% set status_options = ['Packed','Assigned','Out for Delivery','Delivered'] %}
   {% include 'partials/filter_bar.html' %}
 
   <div class="panel">
@@ -219,7 +228,7 @@
             <td>{{ r.region or '—' }}</td>
             <td>{{ r.packed_bags or '—' }}</td>
             <td>{{ r.dispatch_date or '—' }}</td>
-            <td><span class="pill {% if r.dispatch_status=='Delivered' %}ok{% elif r.dispatch_status in ['Rejected','Cancelled'] %}danger{% else %}warn{% endif %}">{{ r.dispatch_status }}</span></td>
+            <td><span class="pill {% if r.dispatch_status=='Delivered' %}ok{% elif r.dispatch_status in ['Rejected','Cancelled'] %}danger{% elif r.dispatch_status=='Assigned' %}info{% else %}warn{% endif %}">{{ r.dispatch_status }}</span></td>
             <td class="d-flex gap-1">
               <a href="/dispatch/{{ r.id }}" class="btn-pro btn-green"><i class="bi bi-pencil-square"></i> Open</a>
               <a href="/dispatch/{{ r.id }}/delivery-note" target="_blank" class="btn-pro"><i class="bi bi-truck"></i> Note</a>

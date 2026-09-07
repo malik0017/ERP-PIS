@@ -101,9 +101,9 @@
           {% endfor %}
         </tbody>
         <tfoot>
-          <tr><th colspan="2" class="text-end">Total Planned</th><th class="text-end">{{ '%.2f'|format(order.total_portions or 0) if order else '0.00' }}</th></tr>
-          <tr><th colspan="2" class="text-end">Rejected</th><th class="text-end text-danger">− {{ '%.2f'|format(d.rejected_portions or 0) }}</th></tr>
-          <tr style="border-top:2px solid #2563eb"><th colspan="2" class="text-end">Net Portions Delivered</th><th class="text-end text-success">{{ '%.2f'|format((d.packed_portions or 0) - (d.rejected_portions or 0)) }}</th></tr>
+          <tr><th colspan="2" class="text-end">Total Planned</th><th class="text-end">{{ '%.2f'|format(total_planned or 0) }}</th></tr>
+          <tr><th colspan="2" class="text-end">Rejected</th><th class="text-end text-danger">− {{ '%.2f'|format(rejected_portions or 0) }}</th></tr>
+          <tr style="border-top:2px solid #2563eb"><th colspan="2" class="text-end">Net Portions Delivered</th><th class="text-end text-success">{{ '%.2f'|format(net_delivered or 0) }}</th></tr>
         </tfoot>
       </table>
     </div>

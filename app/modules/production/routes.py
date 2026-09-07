@@ -209,7 +209,25 @@ def _parse_date(value: str | None):
 def _date_filter_params(request: Request):
     """Return reusable date/status filters for operational list screens."""
     today = date.today()
-    view = request.query_params.get("view", "all")
+    # Batch 199 (Img 3) ROOT-CAUSE FIX — the "current work" default filter
+    # (Batch 137's whole point: hide past-dated orders unless asked for)
+    # could NEVER actually fire. `.get("view", "all")` meant a bare page
+    # load — no query string at all, exactly what every user sees by
+    # default — silently set `view` to the literal string "all". Back in
+    # _filtered_orders_query(), the scope-filter guard is `... and not
+    # view:` — a non-empty "all" string makes `not view` False, so the
+    # filter body never even ran on first load. The "All" chip's link
+    # (plain `/production/store-issuance`, no query string) was therefore
+    # IDENTICAL to the bare landing URL — there was no way to reach the
+    # "today onward" behavior through this page's UI at all; every visit
+    # behaved as "All" whether that's what was clicked or not.
+    #
+    # Default is now truly empty, so a bare visit correctly leaves `view`
+    # unset and lets the scope filter run. "All" becomes its own explicit
+    # request via ?scope=all (see the chip's href, updated in the
+    # template) — the same escape-hatch pattern Sales Requests already
+    # uses ("Show all dates"), instead of overloading `view`.
+    view = request.query_params.get("view", "")
     status = request.query_params.get("status", "")
     date_from = _parse_date(request.query_params.get("date_from"))
     date_to = _parse_date(request.query_params.get("date_to"))
@@ -293,9 +311,27 @@ def _filtered_orders_query(db: Session, request: Request, date_column: str = "or
     # or later — so back-dated orders don't clutter the queue. `?scope=all` opts
     # back into full history. Named views and explicit From/To always win, so this
     # only affects the otherwise-unfiltered default landing.
+    #
+    # Batch 199 (Img 3) FIX — "apply filter to show today onward... but
+    # before today is hide" was NOT actually happening for every order.
+    # The COALESCE fallback here only covered a NULL cooking_date with a
+    # far-future placeholder — but the column the store queue actually
+    # DISPLAYS falls back to required_delivery_date when cooking_date is
+    # null (see store_issuance.html: "{{ o.cooking_date or
+    # o.required_delivery_date or '-' }}"). Any order whose cooking_date
+    # was never set (common — it's only populated once Head Chef Planning
+    # schedules it) had its filter check silently treat it as "far
+    # future" and always pass, regardless of how old its real, displayed
+    # delivery date actually was. That's exactly why the screenshot's
+    # older orders (Aug 21–31) were still showing up under a filter meant
+    # to hide anything before today. Fixed by falling back through the
+    # SAME chain the display uses, not a placeholder that ignores it.
     scope = (request.query_params.get("scope") or "").strip().lower()
     if scope != "all" and not date_from and not date_to and not view:
-        q = q.filter(func.coalesce(col, date(9999, 12, 31)) >= date.today())
+        _fallback_date = col
+        if date_column == "cooking":
+            _fallback_date = func.coalesce(CustomerOrder.cooking_date, CustomerOrder.required_delivery_date)
+        q = q.filter(func.coalesce(_fallback_date, date(9999, 12, 31)) >= date.today())
 
     if status:
         if status == "pending":
@@ -2409,6 +2445,140 @@ async def issue_consolidated_ingredient(request: Request, db: Session = Depends(
     sep = "&" if "?" in back else "?"
     return RedirectResponse(f"{back}{sep}toast=success&title={_q('Issued')}&msg={_q(msg)}",
                             status_code=HTTP_303_SEE_OTHER)
+
+
+@router.get("/reports/protein-yield-chain")
+async def protein_yield_chain_report(request: Request, db: Session = Depends(get_db)):
+    """Batch 195 (protein-yield-chain feature) — Img 1, 8.
+
+    You described something more specific than the single-section Yield
+    Report (176-H): a PROTEIN-INGREDIENT-SPECIFIC yield tracked through
+    EVERY stage it passes — "chicken received from butchery=1000, after
+    cook take=600, yield%=60%" and the multi-stage chain from Img 8
+    (store→butchery, butchery→hot-kitchen, overall store→final).
+
+    Built as a SEPARATE report rather than folding into /reports/yield,
+    on purpose: that report is deliberately scoped to one section at a
+    time (its own WHERE k.current_section = :sec) — a chain spans several
+    sections for the same ingredient, a genuinely different shape, and
+    changing the existing report's grouping risked breaking a screen
+    that's already correct for what it does.
+
+    HOW "THE PROTEIN INGREDIENT" IS IDENTIFIED — the one open design
+    question from the plan, resolved with a default rather than staying
+    blocked: ingredient_sub_category (already tracked on every
+    kitchen_section_transactions row, already used elsewhere in this
+    codebase — e.g. Section Report's Main Cat./Sub Cat. columns) is
+    checked against a small, EDITABLE list of protein-type sub-categories
+    (see _PROTEIN_SUB_CATEGORIES below). "Poultry" is the one confirmed
+    directly from your own screenshots (Img 1: "Frz Chicken Breast Tender
+    — Poultry"); Meat/Beef/Seafood/Fish are reasonable companions but
+    unverified against your actual category list — if your real
+    sub-categories differ, this is a one-line edit, not a redesign.
+
+    Each row in kitchen_section_transactions already represents exactly
+    ONE STAGE for one ingredient in one section (from_section ->
+    current_section) — so grouping by (order_no, recipe_no,
+    ingredient_code, current_section) instead of collapsing sections
+    together, the way /reports/yield does, produces the stage-by-stage
+    chain directly: Store->Butchery, Butchery->Hot Kitchen, etc., each as
+    its own row, in the order the section route actually runs.
+    """
+    require_area(request, "production_orders")
+    cid = _company_id_from_session(request)
+
+    # Batch 195: edit this list if your real ingredient sub-categories for
+    # protein items differ from what's checked here.
+    _PROTEIN_SUB_CATEGORIES = ["Poultry", "Meat", "Beef", "Seafood", "Fish"]
+
+    order_no = (request.query_params.get("order") or "").strip()
+    date_from = (request.query_params.get("date_from") or "").strip()
+    date_to = (request.query_params.get("date_to") or "").strip()
+
+    where = ["(k.company_id = :cid OR k.company_id IS NULL)"]
+    params: dict = {"cid": cid}
+    binds = []
+    for i, c in enumerate(_PROTEIN_SUB_CATEGORIES):
+        key = f"psc{i}"
+        binds.append(f":{key}")
+        params[key] = c
+    # Batch 195 FIX: kitchen_section_transactions has no category columns of
+    # its own — ingredient_main_category/ingredient_sub_category only exist
+    # on bom_lines (checked the model before writing this query, not after
+    # a failed one). bom_lines is the same table every other category-aware
+    # report in this codebase already joins for exactly this reason
+    # (Section Report, BOQ) — matched here on (order_no, recipe_no,
+    # ingredient_code), the same key BOM lines are naturally unique on.
+    where.append(f"""EXISTS (
+        SELECT 1 FROM bom_lines bl2
+        WHERE bl2.order_no = k.order_no AND bl2.recipe_no = k.recipe_no
+          AND bl2.ingredient_code = k.ingredient_code
+          AND bl2.ingredient_sub_category IN ({','.join(binds)})
+    )""")
+    if order_no:
+        where.append("k.order_no = :ord")
+        params["ord"] = order_no
+    if date_from:
+        where.append("COALESCE(co.cooking_date, co.required_delivery_date) >= :df")
+        params["df"] = date_from
+    if date_to:
+        where.append("COALESCE(co.cooking_date, co.required_delivery_date) <= :dt")
+        params["dt"] = date_to
+    where.append("COALESCE(k.received_qty_standard, k.issued_qty_standard, 0) > 0")
+    w = " AND ".join(where)
+
+    rows = db.execute(text(f"""
+        SELECT k.order_no, k.recipe_no, MAX(k.recipe_name) AS recipe_name,
+               k.ingredient_code, MAX(k.ingredient_name) AS ingredient_name,
+               MAX(k.standard_uom) AS uom,
+               k.from_section, k.current_section,
+               ROUND(SUM(COALESCE(k.received_qty_standard, k.issued_qty_standard, 0)), 3) AS input_qty,
+               ROUND(SUM(COALESCE(k.transferred_qty_standard, 0)), 3) AS output_qty
+        FROM kitchen_section_transactions k
+        LEFT JOIN customer_orders co ON co.order_no = k.order_no
+        WHERE {w}
+        GROUP BY k.order_no, k.recipe_no, k.ingredient_code, k.from_section, k.current_section
+        ORDER BY k.order_no, k.recipe_no, k.ingredient_code,
+                 FIELD(k.current_section, 'Cutting','Butchery','Hot Kitchen','Cold Kitchen','Bakery/Pastry','QC')
+        LIMIT 500
+    """), params).mappings().all()
+
+    # Batch 195: group into one CHAIN per (order, recipe, ingredient) — a
+    # list of stages in route order, plus an overall figure computed from
+    # the very first stage's input and the very last stage's output. This
+    # is exactly the shape of your Img 8 example: store->butchery=80%,
+    # butchery->hot section=75%, overall=60% — three numbers for the same
+    # chicken, not three unrelated rows.
+    chains: dict = {}
+    for r in rows:
+        key = (r["order_no"], r["recipe_no"], r["ingredient_code"])
+        c = chains.setdefault(key, {
+            "order_no": r["order_no"], "recipe_no": r["recipe_no"],
+            "recipe_name": r["recipe_name"], "ingredient_code": r["ingredient_code"],
+            "ingredient_name": r["ingredient_name"], "uom": r["uom"], "stages": [],
+        })
+        input_qty = float(r["input_qty"] or 0)
+        output_qty = float(r["output_qty"] or 0)
+        stage_pct = round(output_qty / input_qty * 100, 1) if input_qty > 0 else None
+        c["stages"].append({
+            "from_section": r["from_section"] or "Store", "to_section": r["current_section"],
+            "input_qty": input_qty, "output_qty": output_qty, "yield_pct": stage_pct,
+        })
+
+    chain_list = []
+    for c in chains.values():
+        first_input = c["stages"][0]["input_qty"] if c["stages"] else 0
+        last_output = c["stages"][-1]["output_qty"] if c["stages"] else 0
+        c["overall_pct"] = round(last_output / first_input * 100, 1) if first_input > 0 else None
+        chain_list.append(c)
+    chain_list.sort(key=lambda x: (x["order_no"], x["recipe_name"] or ""))
+
+    return render(request, "production/protein_yield_chain.html", {
+        "chains": chain_list,
+        "filters": {"order": order_no, "date_from": date_from, "date_to": date_to},
+        "protein_categories": _PROTEIN_SUB_CATEGORIES,
+        "page_title": "Protein Yield Chain",
+    })
 
 
 @router.get("/reports/yield")

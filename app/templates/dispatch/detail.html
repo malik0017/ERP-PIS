@@ -19,7 +19,7 @@
     <div class="d-flex align-items-center gap-2">
       <a href="/dispatch/{{ r.id }}/delivery-note" target="_blank" class="btn btn-light btn-sm fw-bold"><i class="bi bi-truck me-1"></i>Delivery Note</a>
       <a href="/dispatch" class="btn btn-outline-light btn-sm fw-bold">Back to Dispatch</a>
-      <span class="badge {% if r.dispatch_status=='Delivered' %}bg-success{% elif r.dispatch_status in ['Rejected','Cancelled'] %}bg-danger{% else %}bg-warning text-dark{% endif %}">{{ r.dispatch_status }}</span>
+      <span class="badge {% if r.dispatch_status=='Delivered' %}bg-success{% elif r.dispatch_status in ['Rejected','Cancelled'] %}bg-danger{% elif r.dispatch_status=='Assigned' %}bg-info text-dark{% else %}bg-warning text-dark{% endif %}">{{ r.dispatch_status }}</span>
     </div>
   </div>
 
@@ -53,6 +53,14 @@
             <select class="form-select" name="dispatch_status">
               <option {% if r.dispatch_status=='Packing Pending' %}selected{% endif %}>Packing Pending</option>
               <option {% if r.dispatch_status=='Packed' %}selected{% endif %}>Packed</option>
+              {# Batch 195 (194-B): new status, sits between Packed and Out
+                 for Delivery — set automatically once a driver+vehicle are
+                 assigned (see logistics_assign() in dispatch/routes.py),
+                 but listed here too so it's a valid manual option and
+                 doesn't look like an unrecognized value if an order is
+                 already sitting in this state when someone opens this
+                 dropdown. #}
+              <option {% if r.dispatch_status=='Assigned' %}selected{% endif %}>Assigned</option>
               <option {% if r.dispatch_status=='Out for Delivery' %}selected{% endif %}>Out for Delivery</option>
               <option {% if r.dispatch_status=='Delivered' %}selected{% endif %}>Delivered</option>
             </select></div>

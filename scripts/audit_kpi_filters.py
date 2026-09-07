@@ -84,8 +84,6 @@ from app.config import SECRET_KEY
 
 VERBOSE = "--verbose" in _sys.argv
 
-# (label, base path, filter query) — the filter must be one that genuinely
-# narrows the result set on a normal database.
 SCREENS = [
     ("Purchase Requisitions", "/purchase-requisitions", "status=Rejected"),
     ("Sales Requests",        "/sales-requests",        "status=Rejected"),
@@ -103,20 +101,11 @@ SCREENS = [
     ("Reports: Yield",        "/reports/yield-wastage", "date_from=2099-01-01&date_to=2099-12-31"),
 ]
 
-# KPI cards in this codebase render as a big number inside an element whose
-# class marks it as a stat. Matching on the visual shape rather than one
-# template pattern, because the screens use several card markups.
 NUM_PATTERNS = [
     re.compile(r'class="[^"]*(?:fs-1|fs-2|fs-3|fs-4)[^"]*fw-bold[^"]*"[^>]*>\s*([\d,]+(?:\.\d+)?)\s*<', re.I),
     re.compile(r'class="[^"]*fw-bold[^"]*(?:fs-1|fs-2|fs-3|fs-4)[^"]*"[^>]*>\s*([\d,]+(?:\.\d+)?)\s*<', re.I),
     re.compile(r'<div class="metric"[^>]*>.*?<strong>\s*([\d,]+(?:\.\d+)?)\s*</strong>', re.I | re.S),
     re.compile(r'class="[^"]*kpi[^"]*"[^>]*>\s*([\d,]+(?:\.\d+)?)\s*<', re.I),
-    # Batch 97: the screens use several different card markups. The two below
-    # cover "<div class=kpi><span>Label</span><strong>N</strong></div>" (packing,
-    # dispatch, inventory) and the hc-kpi variant using <b> (head chef,
-    # kitchen summary). Without these, eight screens reported "no KPI cards
-    # detected" and were silently skipped — a checker that quietly checks
-    # nothing is worse than no checker.
     re.compile(r'class="[^"]*(?:kpi|metric|stat)[^"]*"[^>]*>.*?<(?:strong|b)>\s*([\d,]+(?:\.\d+)?)\s*</(?:strong|b)>', re.I | re.S),
     re.compile(r'<(?:strong|b)>\s*([\d,]+(?:\.\d+)?)\s*</(?:strong|b)>\s*</(?:div|a)>', re.I),
 ]

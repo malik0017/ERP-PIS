@@ -377,7 +377,7 @@ def reports_center(request: Request, db: Session = Depends(get_db)):
         {"group": "Kitchen", "title": "Section Yield & Wastage", "url": "/reports/yield-wastage", "export": "/reports/export/yield-wastage", "metric": _one(db, "SELECT COUNT(*) FROM kitchen_section_transactions"), "icon": "bi-graph-down-arrow"},
         {"group": "Quality", "title": "QC Checklist Report", "url": "/qc", "export": "/reports/export/qc-checks", "metric": _one(db, "SELECT COUNT(*) FROM qc_checks"), "icon": "bi-patch-check"},
         {"group": "Logistics", "title": "Trayline / Packing Report", "url": "/packing", "export": "/reports/export/packing", "metric": _one(db, "SELECT COUNT(*) FROM packing_dispatch"), "icon": "bi-box-seam"},
-        {"group": "Logistics", "title": "Dispatch & Delivery Report", "url": "/dispatch", "export": "/reports/export/dispatch", "metric": _one(db, "SELECT COUNT(*) FROM packing_dispatch WHERE dispatch_status IN ('Packed','Out for Delivery','Delivered','Dispatched','Closed')"), "icon": "bi-truck"},
+        {"group": "Logistics", "title": "Dispatch & Delivery Report", "url": "/dispatch", "export": "/reports/export/dispatch", "metric": _one(db, "SELECT COUNT(*) FROM packing_dispatch WHERE dispatch_status IN ('Packed','Assigned','Out for Delivery','Delivered','Dispatched','Closed')"), "icon": "bi-truck"},
     ]
 
     kpis = {

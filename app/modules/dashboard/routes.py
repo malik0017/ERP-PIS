@@ -102,7 +102,7 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
         """),
         "dispatch_pending": _one(db, """
             SELECT COUNT(*) FROM packing_dispatch
-            WHERE COALESCE(dispatch_status,'') IN ('Packed','Out for Delivery')
+            WHERE COALESCE(dispatch_status,'') IN ('Packed','Assigned','Out for Delivery')
         """),
         "delivered_orders": _one(db, "SELECT COUNT(*) FROM packing_dispatch WHERE dispatch_status = 'Delivered'"),
     }

@@ -152,8 +152,40 @@ def delivery_note(request: Request, dispatch_id: int, db: Session = Depends(get_
         region_share = region_bags[sel_region] / total_bags
         lines = [dict(l, portions=float(l["portions"] or 0) * region_share) for l in lines]
 
+    # ------------------------------------------------------------------
+    # BATCH 194-C FIX (Img 10) — "planned portion will not be changed when
+    # we click on Riyadh and Eastern bags tab."
+    #
+    # The per-recipe LINE rows were already correctly pro-rated by region
+    # (region_share, above) — that part always worked, which is why one
+    # recipe row correctly showed 4.00 for a 2-of-5-bags region. But the
+    # footer totals (Total Planned / Rejected / Net Portions Delivered)
+    # were computed separately, straight from the whole-dispatch figures
+    # (order.total_portions, d.rejected_portions, d.packed_portions) —
+    # never touched by region_share at all. So the per-recipe rows changed
+    # correctly when you switched tabs, but the totals underneath them
+    # stayed frozen at the whole order's numbers regardless of which
+    # region was selected — exactly the mismatch in the screenshot.
+    #
+    # Fix: derive the footer totals from the SAME pro-rated source. Total
+    # Planned is now the sum of the (already pro-rated) line portions —
+    # guaranteed to agree with what's actually listed above it, rather
+    # than a second, independently-sourced number that can drift from it.
+    # Rejected/Packed are pro-rated by the identical region_share factor
+    # used for the lines, so all three follow the same one rule.
+    # ------------------------------------------------------------------
+    total_planned = sum(float(l["portions"] or 0) for l in lines) if lines else float((order or {}).get("total_portions") or 0)
+    rejected_portions = float((d or {}).get("rejected_portions") or 0)
+    packed_portions = float((d or {}).get("packed_portions") or 0)
+    if region_share is not None:
+        rejected_portions *= region_share
+        packed_portions *= region_share
+    net_delivered = packed_portions - rejected_portions
+
     return render(request, "documents/delivery_note.html", {
         "d": d, "order": order, "lines": lines,
+        "total_planned": total_planned, "rejected_portions": rejected_portions,
+        "net_delivered": net_delivered,
         "region_bags": region_bags,
         "sel_region": sel_region,
         "region_share": region_share,

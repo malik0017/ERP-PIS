@@ -1,0 +1,66 @@
+{% extends "layouts/base.html" %}
+{% block content %}
+<style>
+.pyc-hero{background:linear-gradient(135deg,#08243d,#7c2d12);border-radius:22px;color:#fff;padding:24px 28px}
+.pyc-card{background:#fff;border:1px solid #dce8f2;border-radius:18px;box-shadow:0 12px 28px rgba(15,30,50,.06);margin-bottom:16px}
+.pyc-chain{display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:14px 18px}
+.pyc-stage{background:#f4f8fc;border:1px solid #e2e8f0;border-radius:12px;padding:8px 14px;min-width:140px}
+.pyc-stage .lbl{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#64748b}
+.pyc-stage .pct{font-weight:800;font-size:16px}
+.pyc-arrow{color:#94a3b8;font-size:20px}
+.pyc-overall{background:#fff7ed;border:1px solid #fdba74;border-radius:12px;padding:8px 16px;font-weight:800;color:#9a3412}
+</style>
+<div class="container-fluid py-3">
+  <div class="pyc-hero mb-4 d-flex justify-content-between flex-wrap gap-3 align-items-center">
+    <div>
+      <h2 class="mb-1">Protein Yield Chain</h2>
+      <div class="small opacity-75">Yield tracked stage by stage for one protein ingredient — not a whole mixed batch. Matches: chicken received from Butchery=1000, after cook take=600, yield%=60%.</div>
+    </div>
+  </div>
+
+  <div class="pyc-card p-3 mb-4">
+    <form method="get" class="d-flex flex-wrap gap-3 align-items-end">
+      <div><label class="form-label fw-bold">Order No.</label>
+        <input type="text" name="order" value="{{ filters.order }}" class="form-control" placeholder="e.g. ORD-20260907-0002" style="min-width:220px"></div>
+      <div><label class="form-label fw-bold">From</label>
+        <input type="date" name="date_from" value="{{ filters.date_from }}" class="form-control"></div>
+      <div><label class="form-label fw-bold">To</label>
+        <input type="date" name="date_to" value="{{ filters.date_to }}" class="form-control"></div>
+      <div><button class="btn btn-primary fw-bold"><i class="bi bi-search"></i> Apply</button></div>
+      <div class="ms-auto small text-secondary">
+        Protein sub-categories checked: {{ protein_categories|join(', ') }}
+        <span title="Edit _PROTEIN_SUB_CATEGORIES in routes.py if your real categories differ">
+          <i class="bi bi-info-circle"></i></span>
+      </div>
+    </form>
+  </div>
+
+  {% for c in chains %}
+  <div class="pyc-card">
+    <div class="p-3 pb-0 d-flex justify-content-between flex-wrap gap-2">
+      <div>
+        <strong>{{ c.ingredient_name }}</strong> <span class="text-secondary small">{{ c.ingredient_code }}</span>
+        <div class="text-secondary small">{{ c.recipe_name }} · {{ c.order_no }}</div>
+      </div>
+      {% if c.overall_pct is not none %}
+      <div class="pyc-overall">Overall: {{ c.overall_pct }}%</div>
+      {% endif %}
+    </div>
+    <div class="pyc-chain">
+      {% for s in c.stages %}
+      <div class="pyc-stage">
+        <div class="lbl">{{ s.from_section }} → {{ s.to_section }}</div>
+        <div>{{ '%.1f'|format(s.input_qty) }} → {{ '%.1f'|format(s.output_qty) }} {{ c.uom }}</div>
+        <div class="pct">{{ (s.yield_pct ~ '%') if s.yield_pct is not none else '—' }}</div>
+      </div>
+      {% if not loop.last %}<div class="pyc-arrow"><i class="bi bi-arrow-right"></i></div>{% endif %}
+      {% endfor %}
+    </div>
+  </div>
+  {% else %}
+  <div class="pyc-card p-5 text-center text-secondary">
+    No protein-category ingredient stages found for these filters. Check the sub-categories listed above match your actual ingredient master, or widen the date range / order filter.
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

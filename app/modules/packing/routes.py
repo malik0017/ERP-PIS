@@ -88,7 +88,7 @@ def packing_dashboard(request: Request, db: Session = Depends(get_db)):
             pd.created_at
         FROM packing_dispatch pd
         LEFT JOIN customer_orders co ON co.order_no = pd.order_no
-        WHERE COALESCE(pd.dispatch_status,'Packing Pending') IN ('Packing Pending','Packing In Progress','Packed','Pending')
+        WHERE COALESCE(pd.dispatch_status,'Packing Pending') IN ('Packing Pending','Packing In Progress','Packed','Pending','Assigned')
         {extra}
         ORDER BY COALESCE(co.required_delivery_date, '9999-12-31') ASC, pd.id DESC
     """), params).mappings().all()
@@ -96,7 +96,7 @@ def packing_dashboard(request: Request, db: Session = Depends(get_db)):
         "pending": db.execute(text("SELECT COUNT(*) FROM packing_dispatch WHERE COALESCE(dispatch_status,'Packing Pending') IN ('Packing Pending','Packing In Progress','Pending')")).scalar() or 0,
         "packed": db.execute(text("SELECT COUNT(*) FROM packing_dispatch WHERE dispatch_status = 'Packed'")).scalar() or 0,
         "rejected": db.execute(text("SELECT COALESCE(SUM(rejected_portions),0) FROM packing_dispatch")).scalar() or 0,
-        "portions": db.execute(text("SELECT COALESCE(SUM(packed_portions),0) FROM packing_dispatch WHERE dispatch_status IN ('Packed','Out for Delivery','Delivered')")).scalar() or 0,
+        "portions": db.execute(text("SELECT COALESCE(SUM(packed_portions),0) FROM packing_dispatch WHERE dispatch_status IN ('Packed','Assigned','Out for Delivery','Delivered')")).scalar() or 0,
     }
     return render(request, "packing/index.html", {"rows": rows, "summary": summary, "page_title": "Trayline / Packing",
                                                    "filters": {"search": search, "from_date": from_date, "to_date": to_date, "status": status_f, "scope": scope},

@@ -295,7 +295,7 @@ def logistics_board(request: Request, db: Session = Depends(get_db)):
     status_f = (q.get("status") or "").strip()
     scope = (q.get("scope") or "current").strip().lower()
     query = db.query(PackingDispatch).filter(
-        PackingDispatch.dispatch_status.in_(["Packed", "Out for Delivery", "Delivered"]))
+        PackingDispatch.dispatch_status.in_(["Packed", "Assigned", "Out for Delivery", "Delivered"]))
     if status_f:
         query = query.filter(PackingDispatch.dispatch_status == status_f)
     if search:
@@ -312,9 +312,9 @@ def logistics_board(request: Request, db: Session = Depends(get_db)):
     rows = query.order_by(_func.coalesce(PackingDispatch.dispatch_date, _d(9999, 12, 31)).asc(),
                           PackingDispatch.id.desc()).limit(200).all()
     summary = {
-        "pending": db.query(PackingDispatch).filter(PackingDispatch.dispatch_status.in_(["Packed", "Out for Delivery"])).count(),
+        "pending": db.query(PackingDispatch).filter(PackingDispatch.dispatch_status.in_(["Packed", "Assigned", "Out for Delivery"])).count(),
         "no_driver": db.query(PackingDispatch).filter(
-            PackingDispatch.dispatch_status.in_(["Packed", "Out for Delivery"]),
+            PackingDispatch.dispatch_status.in_(["Packed", "Assigned", "Out for Delivery"]),
             (PackingDispatch.driver_name.is_(None)) | (PackingDispatch.driver_name == "")).count(),
         "delivered": db.query(PackingDispatch).filter(PackingDispatch.dispatch_status == "Delivered").count(),
     }
@@ -361,6 +361,30 @@ async def logistics_assign(request: Request, dispatch_id: int, db: Session = Dep
     form = await request.form()
     row.driver_name = (form.get("driver_name") or "").strip() or None
     row.vehicle_no = (form.get("vehicle_no") or "").strip() or None
+    # ------------------------------------------------------------------
+    # BATCH 195 (194-B) — Img 11, 12: "I have assigned 2 orders to a
+    # driver... why does it still show Pending / Packed?"
+    #
+    # dispatch_status only ever had three real values: Packed, Out for
+    # Delivery, Delivered. Assigning a driver/vehicle here wrote those two
+    # fields but never touched dispatch_status — so a fully-assigned,
+    # ready-to-depart order looked structurally identical to one nobody
+    # had touched since packing. The dashboards' own "Awaiting Driver" KPI
+    # (which DOES correctly check driver_name) implied a real state
+    # existed for "assigned, not yet departed" — it just never had a
+    # dispatch_status value of its own.
+    #
+    # New status: "Assigned". Set automatically, here, the moment both
+    # driver and vehicle become non-empty — no new manual action for
+    # anyone to remember. Only moves FORWARD from "Packed" (never
+    # downgrades "Out for Delivery" or "Delivered" back to "Assigned" if
+    # someone re-edits driver info after departure) and only applies when
+    # both fields are actually present (clearing one afterward doesn't
+    # auto-revert the status — that would be a surprising side effect of
+    # what looks like a minor edit).
+    # ------------------------------------------------------------------
+    if row.driver_name and row.vehicle_no and (row.dispatch_status or "") == "Packed":
+        row.dispatch_status = "Assigned"
     try:
         row.delivery_temperature_c = float(form.get("delivery_temperature_c") or 0)
     except (TypeError, ValueError):
@@ -400,7 +424,7 @@ def dispatch_dashboard(request: Request, db: Session = Depends(get_db)):
     to_date = (q.get("to_date") or "").strip()
     status_f = (q.get("status") or "").strip()
     scope = (q.get("scope") or "current").strip().lower()
-    query = db.query(PackingDispatch).filter(PackingDispatch.dispatch_status.in_(["Packed", "Out for Delivery", "Delivered"]))
+    query = db.query(PackingDispatch).filter(PackingDispatch.dispatch_status.in_(["Packed", "Assigned", "Out for Delivery", "Delivered"]))
     if status_f:
         query = query.filter(PackingDispatch.dispatch_status == status_f)
     if search:
@@ -417,7 +441,7 @@ def dispatch_dashboard(request: Request, db: Session = Depends(get_db)):
         query = query.filter(_func.coalesce(PackingDispatch.dispatch_date, _d(9999, 12, 31)) >= _d.today())
     rows = query.order_by(_func.coalesce(PackingDispatch.dispatch_date, _d(9999, 12, 31)).asc(), PackingDispatch.id.desc()).limit(200).all()
     summary = {
-        "pending": db.query(PackingDispatch).filter(PackingDispatch.dispatch_status.in_(["Packed", "Out for Delivery"])).count(),
+        "pending": db.query(PackingDispatch).filter(PackingDispatch.dispatch_status.in_(["Packed", "Assigned", "Out for Delivery"])).count(),
         "delivered": db.query(PackingDispatch).filter(PackingDispatch.dispatch_status == "Delivered").count(),
         "rejected": db.query(PackingDispatch).filter(PackingDispatch.rejected_portions > 0).count(),
         "portions": db.execute(text("SELECT COALESCE(SUM(packed_portions),0) FROM packing_dispatch")).scalar() or 0,

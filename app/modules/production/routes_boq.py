@@ -118,17 +118,38 @@ def order_wise(db: Session, f: dict, cid: int) -> list[dict]:
                    COALESCE(o.brand, '')         AS brand,
                    o.required_delivery_date      AS delivery_date,
                    COALESCE(b.recipe_no, '')     AS recipe_no,
+                   COALESCE(b.recipe_name, '')   AS recipe_name,
+                   COALESCE(b.ingredient_main_category, '') AS main_category,
+                   COALESCE(b.ingredient_sub_category, '')  AS sub_category,
                    b.ingredient_code,
                    COALESCE(b.ingredient_name, b.ingredient_code) AS item_name,
                    COALESCE(b.standard_uom, '')  AS uom,
                    COALESCE(b.total_required_with_waste_standard,
-                            b.required_qty_standard, 0) AS required_qty
+                            b.required_qty_standard, 0) AS required_qty,
+                   -- Batch 194-A (Img 4): "BOQ should include Recipe name,
+                   -- Sub recipe Description, also include protein items,
+                   -- vegetable, gram, etc." Recipe name and category
+                   -- (protein/vegetable/dry/etc) already exist on bom_lines
+                   -- directly, added above. Sub-recipe description does
+                   -- NOT exist as its own imported field anywhere in this
+                   -- system (checked the importer — your workbook's "Sub
+                   -- Recipe Description" column isn't captured into its own
+                   -- DB field on import). Same technique already proven in
+                   -- Section Report (Batch 181): when this line's
+                   -- ingredient_code is ITSELF another recipe's code (i.e.
+                   -- something made in-house, like a stock or base, rather
+                   -- than a purchased item), that recipe's own name serves
+                   -- as its description. Scalar subquery, costs nothing on
+                   -- the common case (a real ingredient, no match, shows "").
+                   (SELECT MAX(rc2.recipe_name) FROM recipes rc2
+                     WHERE rc2.recipe_code = b.ingredient_code
+                       AND (rc2.company_id = :cid2 OR rc2.company_id IS NULL)) AS sub_recipe_description
             FROM bom_lines b
             JOIN customer_orders o ON o.order_no = b.order_no
             WHERE {where}
             ORDER BY o.required_delivery_date, b.order_no, b.ingredient_name
             LIMIT 8000
-        """), params).mappings().all()]
+        """), {**params, "cid2": cid}).mappings().all()]
     except Exception:
         return []
 
@@ -194,7 +215,8 @@ def export_boq(request: Request, db: Session = Depends(get_db)):
     # --- Sheet 2: per-order detail ---
     ow = order_wise(db, f, cid)
     ws2 = wb.create_sheet("By Order")
-    header(ws2, ["Delivery", "Order", "Customer", "Brand", "Recipe",
+    header(ws2, ["Delivery", "Order", "Customer", "Brand", "Recipe Name", "Recipe Code",
+                 "Sub-Recipe", "Main Cat.", "Sub Cat.",
                  "Item Code", "Ingredient", "UOM", "Required"],
            "BILL OF QUANTITY — BY ORDER", stamp)
     r = 5
@@ -203,11 +225,18 @@ def export_boq(request: Request, db: Session = Depends(get_db)):
         ws2.cell(row=r, column=2, value=x["order_no"])
         ws2.cell(row=r, column=3, value=x["customer_name"])
         ws2.cell(row=r, column=4, value=x["brand"])
-        ws2.cell(row=r, column=5, value=x["recipe_no"])
-        ws2.cell(row=r, column=6, value=x["ingredient_code"])
-        ws2.cell(row=r, column=7, value=x["item_name"])
-        ws2.cell(row=r, column=8, value=x["uom"])
-        ws2.cell(row=r, column=9, value=round(float(x["required_qty"] or 0), 3))
+        # Batch 194-A (Img 4): recipe name, sub-recipe description, and
+        # category (protein/vegetable/dry/etc) columns — see order_wise()
+        # for where each is sourced from and why.
+        ws2.cell(row=r, column=5, value=x.get("recipe_name") or "")
+        ws2.cell(row=r, column=6, value=x["recipe_no"])
+        ws2.cell(row=r, column=7, value=x.get("sub_recipe_description") or "")
+        ws2.cell(row=r, column=8, value=x.get("main_category") or "")
+        ws2.cell(row=r, column=9, value=x.get("sub_category") or "")
+        ws2.cell(row=r, column=10, value=x["ingredient_code"])
+        ws2.cell(row=r, column=11, value=x["item_name"])
+        ws2.cell(row=r, column=12, value=x["uom"])
+        ws2.cell(row=r, column=13, value=round(float(x["required_qty"] or 0), 3))
         r += 1
 
     # --- Sheet 3: by customer ---

@@ -155,7 +155,17 @@
           <div><label>Number of Bags</label><input class="form-control" name="packed_bags" id="packedBagsInput" type="number"
               min="0" step="1" value="{{ row.packed_bags or '' }}" readonly title="{{ t('Derived from the region allocation below') }}"></div>
           <div><label>{{ t('Primary Region') }} <span class="text-body-tertiary" title="{{ t('The region with the most bags, for quick reference') }}">(auto)</span></label>
-            <input class="form-control" id="primaryRegionDisplay" type="text" value="{{ row.region or '' }}" readonly></div>
+            {# Batch 195 (Img 9): "inactive this field" — this was already
+               read-only (Batch 178) and has no `name`, so it was never part
+               of what the form submits — but `readonly` still renders with
+               a plain white background and black text in most browsers,
+               visually indistinguishable from an editable field. `disabled`
+               gives the standard greyed-out treatment every browser
+               renders consistently as "not interactive," which is what
+               was actually being asked for. Safe to change purely for
+               styling: since this field was never submitted either way,
+               nothing about form behavior changes. #}
+            <input class="form-control" id="primaryRegionDisplay" type="text" value="{{ row.region or '' }}" disabled></div>
           <div><label>Packing / Dispatch Date</label><input class="form-control" name="dispatch_date" type="date"
               value="{{ row.dispatch_date or '' }}" {% if _p_locked %}readonly{% endif %}></div>
           <div><label>Packing Status</label><select class="form-select" name="packing_status" {% if _p_locked %}disabled{% endif %}>

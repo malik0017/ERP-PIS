@@ -91,6 +91,27 @@
           </div>
 
           <div class="col-12 col-md-6">
+            {# Batch 193 (Img 3, 7) — "Give option to search from Order No."
+               The backend already fully supported ?order=<order_no> (see
+               section_production_report in routes.py — it was always
+               applied to the WHERE clause) — there was simply no field on
+               this form to set it. Without it, the only way to narrow to
+               one order was the client-side per-column text filter, which
+               only hides non-matching ROWS after the fact; it can't
+               re-aggregate a summary row that already combined several
+               orders' quantities together (Img 7: typing an order number
+               into that box still showed the OTHER order's quantity mixed
+               into the same total, because the SQL had already summed
+               across every order sharing that recipe/date before the page
+               ever rendered). A real filter field re-runs the query scoped
+               to just that order, so the totals are correct, not just the
+               visible rows. #}
+            <label class="form-label fs-9 fw-bold text-body-tertiary text-uppercase mb-1">{{ t('Order No.') }}</label>
+            <input type="text" class="form-control" name="order" value="{{ filters.order or '' }}"
+                   placeholder="{{ t('e.g. ORD-20260907-0002') }}">
+          </div>
+
+          <div class="col-12 col-md-6">
             <label class="form-label fs-9 fw-bold text-body-tertiary text-uppercase mb-1">
               {{ t('Recipe Category') }}
             </label>

@@ -77,7 +77,7 @@
               <td>{% if r.driver_name %}{{ r.driver_name }}{% else %}<span class="text-warning small">— set —</span>{% endif %}</td>
               <td>{{ r.vehicle_no or '—' }}</td>
               <td>{{ r.dispatch_date or '—' }}</td>
-              <td><span class="badge {% if r.dispatch_status=='Delivered' %}bg-success{% elif r.dispatch_status in ['Rejected','Cancelled'] %}bg-danger{% else %}bg-warning text-dark{% endif %}">{{ r.dispatch_status }}</span></td>
+              <td><span class="badge {% if r.dispatch_status=='Delivered' %}bg-success{% elif r.dispatch_status in ['Rejected','Cancelled'] %}bg-danger{% elif r.dispatch_status=='Assigned' %}bg-info text-dark{% else %}bg-warning text-dark{% endif %}">{{ r.dispatch_status }}</span></td>
               <td><a href="/dispatch/logistics/order/{{ r.id }}" class="btn btn-primary btn-sm fw-bold"><i class="bi bi-pencil-square me-1"></i>{{ t('Assign') }}</a></td>
             </tr>
             {% else %}
