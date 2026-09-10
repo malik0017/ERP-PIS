@@ -14,6 +14,7 @@ from app.core.templates import render
 from app.core.rbac import require_area, require_action
 from app.database.session import get_db
 from app.models.production import CustomerOrder, PackingDispatch
+from app.modules.packing.routes import PACK_REGIONS, ensure_schema as _ensure_packing_schema
 
 router = APIRouter(prefix="/dispatch", tags=["Dispatch"])
 
@@ -59,6 +60,19 @@ def _ensure_delivery_confirmation_schema(db: Session) -> None:
                 db.rollback()
 
 
+def _rejected_info(db: Session, dispatch_id: int) -> tuple:
+    """Batch 201 — (rejected_bags, rejected_bags_reason); raw SQL so the ORM
+    model does not need the new columns (see packing.routes.ensure_schema)."""
+    try:
+        _ensure_packing_schema(db)
+        r = db.execute(text("SELECT rejected_bags, rejected_bags_reason FROM packing_dispatch WHERE id = :i"),
+                       {"i": dispatch_id}).mappings().first()
+        return (r["rejected_bags"], r["rejected_bags_reason"]) if r else (None, None)
+    except Exception:
+        db.rollback()
+        return (None, None)
+
+
 def _ensure_tray_line_schema(db: Session) -> None:
     """Batch 176 — 176-E4. One row per (region, customer, delivery date) —
     matches exactly how the Logistics report already aggregates bags, so a
@@ -90,24 +104,47 @@ def _ensure_tray_line_schema(db: Session) -> None:
             pass
 
 
-def _logistics_region_rows(db: Session, from_date: str, to_date: str) -> dict:
+def _logistics_region_rows(db: Session, from_date: str, to_date: str,
+                           extra: dict | None = None, delivery_fallback: bool = False) -> dict:
     """Batch 176 — extracted from logistics_report() so the Tray Line report
     (176-E4) can build on the exact same region+customer aggregation instead
-    of a second, subtly different one. No behaviour change to the existing
-    Logistics report — this is the same body it always ran."""
+    of a second, subtly different one.
+
+    Batch 201 — `extra` filters (customer / order_no / brand / status /
+    region) and `delivery_fallback`. The Tray Line report matched ONLY
+    packing_dispatch.dispatch_date, which Trayline often leaves empty (Image 11
+    shows mm/dd/yyyy) — those orders never appeared ("No packed/dispatched bags
+    found"). With delivery_fallback the date falls back to the order's delivery
+    date. The Logistics report calls this unchanged (extra=None, no fallback).
+    """
+    extra = extra or {}
+    date_expr = ("COALESCE(pd.dispatch_date, co.required_delivery_date)"
+                 if delivery_fallback else "pd.dispatch_date")
     where = "1=1"
     params: dict = {}
     if from_date:
-        where += " AND dispatch_date >= :fd"; params["fd"] = from_date
+        where += f" AND {date_expr} >= :fd"; params["fd"] = from_date
     if to_date:
-        where += " AND dispatch_date <= :td"; params["td"] = to_date
+        where += f" AND {date_expr} <= :td"; params["td"] = to_date
+    if extra.get("customer"):
+        where += " AND pd.customer_name = :cu"; params["cu"] = extra["customer"]
+    if extra.get("order_no"):
+        where += " AND pd.order_no = :on"; params["on"] = extra["order_no"]
+    if extra.get("brand"):
+        where += " AND COALESCE(co.brand,'') = :br"; params["br"] = extra["brand"]
+    if extra.get("status"):
+        where += " AND COALESCE(pd.dispatch_status,'') = :st"; params["st"] = extra["status"]
+    if delivery_fallback:
+        # Only bags that physically exist: packed or beyond.
+        where += " AND COALESCE(pd.dispatch_status,'') IN ('Packed','Assigned','Out for Delivery','Delivered')"
     rows = db.execute(text(f"""
-        SELECT id, COALESCE(NULLIF(region,''),'Unassigned') AS region,
-               COALESCE(customer_name,'—') AS customer_name,
-               COALESCE(packed_bags,0) AS bags,
-               COALESCE(packed_portions,0) AS portions,
-               region_bags
-        FROM packing_dispatch
+        SELECT pd.id, COALESCE(NULLIF(pd.region,''),'Unassigned') AS region,
+               COALESCE(pd.customer_name,'—') AS customer_name,
+               COALESCE(pd.packed_bags,0) AS bags,
+               COALESCE(pd.packed_portions,0) AS portions,
+               pd.region_bags
+        FROM packing_dispatch pd
+        LEFT JOIN customer_orders co ON co.order_no = pd.order_no
         WHERE {where}
         ORDER BY region, customer_name
     """), params).mappings().all()
@@ -132,6 +169,8 @@ def _logistics_region_rows(db: Session, from_date: str, to_date: str) -> dict:
             expanded.append({"region": r["region"], "customer_name": r["customer_name"],
                              "orders": 1, "bags": int(r["bags"] or 0), "portions": float(r["portions"] or 0)})
 
+    if extra.get("region"):
+        expanded = [e for e in expanded if e["region"] == extra["region"]]
     _agg = {}
     for e in expanded:
         key = (e["region"], e["customer_name"])
@@ -190,8 +229,28 @@ def tray_line_report(request: Request, db: Session = Depends(get_db)):
    
     require_area(request, "dispatch")
     _ensure_tray_line_schema(db)
-    d = (request.query_params.get("date") or date.today().isoformat()).strip()
-    regions, _ = _logistics_region_rows(db, d, d)
+    q = request.query_params
+    d = (q.get("date") or date.today().isoformat()).strip()
+    # Batch 201 (Image 13): customer / order / brand / region / status filters.
+    filters = {k: (q.get(k) or "").strip() for k in ("customer", "order_no", "brand", "region", "status")}
+    regions, _ = _logistics_region_rows(db, d, d, extra=filters, delivery_fallback=True)
+
+    def _opts(sql):
+        try:
+            return [r[0] for r in db.execute(text(sql), {"d": d}).all() if r[0]]
+        except Exception:
+            db.rollback()
+            return []
+    _day = ("FROM packing_dispatch pd LEFT JOIN customer_orders co ON co.order_no = pd.order_no "
+            "WHERE COALESCE(pd.dispatch_date, co.required_delivery_date) = :d "
+            "AND COALESCE(pd.dispatch_status,'') IN ('Packed','Assigned','Out for Delivery','Delivered')")
+    options = {
+        "customers": _opts(f"SELECT DISTINCT pd.customer_name {_day} ORDER BY 1"),
+        "orders": _opts(f"SELECT DISTINCT pd.order_no {_day} ORDER BY 1"),
+        "brands": _opts(f"SELECT DISTINCT co.brand {_day} ORDER BY 1"),
+        "regions": PACK_REGIONS,
+        "statuses": ["Packed", "Assigned", "Out for Delivery", "Delivered"],
+    }
 
     confirmations = {
         (c["region"], c["customer_name"]): c
@@ -209,6 +268,10 @@ def tray_line_report(request: Request, db: Session = Depends(get_db)):
 
     return render(request, "dispatch/tray_line_report.html", {
         "regions": regions, "date": d, "page_title": "Tray Line Report",
+        "filters": filters, "options": options,
+        "totals": {"bags": sum(g["bags"] for g in regions.values()),
+                   "receivers": sum(len(g["rows"]) for g in regions.values()),
+                   "regions": len(regions)},
     })
 
 
@@ -345,7 +408,8 @@ def logistics_detail(request: Request, dispatch_id: int, db: Session = Depends(g
             region_bags = []
     return render(request, "dispatch/logistics_detail.html",
                   {"r": row, "order": order, "region_bags": region_bags,
-                   "regions": ["Riyadh", "Eastern", "Dammam", "Jeddah", "Makkah", "Madinah", "Qassim", "Other"],
+                   "regions": PACK_REGIONS,
+                   "rejected_bags": _rejected_info(db, dispatch_id)[0],
                    "page_title": f"Logistics - {row.order_no}",
                    "error": request.query_params.get("error")})
 
@@ -425,6 +489,14 @@ def dispatch_dashboard(request: Request, db: Session = Depends(get_db)):
     status_f = (q.get("status") or "").strip()
     scope = (q.get("scope") or "current").strip().lower()
     query = db.query(PackingDispatch).filter(PackingDispatch.dispatch_status.in_(["Packed", "Assigned", "Out for Delivery", "Delivered"]))
+    # Batch 204: company scope (the list showed every company's dispatches) +
+    # the global filter. list_scope() returns an AND-clause for the table alias.
+    from app.services.command_center import list_scope as _list_scope
+    _ls = _list_scope(request, db, "packing_dispatch")
+    _scope_sql = _ls["sql"].strip()[4:]  # drop the leading "AND "
+    query = query.filter(text(_scope_sql)).params(**_ls["params"])
+    if _ls["gf"]["active"]:
+        scope = "all"
     if status_f:
         query = query.filter(PackingDispatch.dispatch_status == status_f)
     if search:
@@ -440,13 +512,15 @@ def dispatch_dashboard(request: Request, db: Session = Depends(get_db)):
     if scope != "all" and not from_date and not to_date:
         query = query.filter(_func.coalesce(PackingDispatch.dispatch_date, _d(9999, 12, 31)) >= _d.today())
     rows = query.order_by(_func.coalesce(PackingDispatch.dispatch_date, _d(9999, 12, 31)).asc(), PackingDispatch.id.desc()).limit(200).all()
-    summary = {
-        "pending": db.query(PackingDispatch).filter(PackingDispatch.dispatch_status.in_(["Packed", "Assigned", "Out for Delivery"])).count(),
-        "delivered": db.query(PackingDispatch).filter(PackingDispatch.dispatch_status == "Delivered").count(),
-        "rejected": db.query(PackingDispatch).filter(PackingDispatch.rejected_portions > 0).count(),
-        "portions": db.execute(text("SELECT COALESCE(SUM(packed_portions),0) FROM packing_dispatch")).scalar() or 0,
-    }
+    _c = db.execute(text(f"""
+        SELECT SUM(dispatch_status IN ('Packed','Assigned','Out for Delivery')) AS pending,
+               SUM(dispatch_status = 'Delivered') AS delivered,
+               SUM(COALESCE(rejected_portions,0) > 0) AS rejected,
+               COALESCE(SUM(packed_portions),0) AS portions
+        FROM packing_dispatch WHERE 1=1 {_ls['sql']}"""), _ls["params"]).mappings().first() or {}
+    summary = {k: (_c.get(k) or 0) for k in ("pending", "delivered", "rejected", "portions")}
     return render(request, "dispatch/index.html", {"rows": rows, "summary": summary, "page_title": "Dispatch / Delivery",
+                                                    "gf": _ls["gf"], "gf_options": _ls["gf_options"],
                                                     "filters": {"search": search, "from_date": from_date, "to_date": to_date, "status": status_f, "scope": scope},
                                                     "error": request.query_params.get("error")})
 
@@ -498,9 +572,19 @@ def dispatch_detail(request: Request, dispatch_id: int, db: Session = Depends(ge
                 region_bags.append({"name": name, "bags": cnt})
         except Exception:
             region_bags = []
+    _rej, _rej_reason = _rejected_info(db, dispatch_id)
+    try:
+        order_lines = db.execute(text("""
+            SELECT recipe_no, MAX(recipe_name) AS recipe_name, SUM(COALESCE(required_portions,0)) AS portions
+            FROM order_lines WHERE order_no = :o GROUP BY recipe_no ORDER BY MAX(line_no)
+        """), {"o": row.order_no}).mappings().all()
+    except Exception:
+        db.rollback()
+        order_lines = []
     return render(request, "dispatch/detail.html",
                   {"r": row, "order": order, "region_bags": region_bags,
-                   "regions": ["Riyadh", "Eastern", "Dammam", "Jeddah", "Makkah", "Madinah", "Qassim", "Other"],
+                   "rejected_bags": _rej, "rejected_reason": _rej_reason, "order_lines": order_lines,
+                   "regions": PACK_REGIONS,
                    "page_title": f"Dispatch - {row.order_no}",
                    "error": request.query_params.get("error")})
 
@@ -622,9 +706,34 @@ async def update_dispatch(
         row.vehicle_no = vehicle_no
     if driver_name:
         row.driver_name = driver_name
-    row.delivery_temperature_c = delivery_temperature_c or None
+    # Batch 201 ROOT CAUSE: this line ran on every dispatch save and the
+    # dispatch form stopped posting temperature in Batch 157, so Form(0) →
+    # `0 or None` → every dispatch save ERASED the temperature Logistics had
+    # recorded. Temperature is logistics-owned; only write it if posted.
+    _form_all = await request.form()
+    if "delivery_temperature_c" in _form_all:
+        row.delivery_temperature_c = delivery_temperature_c or None
     row.dispatch_status = dispatch_status
     row.remarks = remarks or None
+    # Batch 201 (Image 12): rejected bags + reason — recorded, not hidden by
+    # lowering the bag count, so the delivery note and tray line still show
+    # what was packed and what was held back.
+    if "rejected_bags" in _form_all:
+        _ensure_packing_schema(db)
+        try:
+            _rb = (_form_all.get("rejected_bags") or "").strip()
+            _rb_val = max(int(float(_rb)), 0) if _rb else None
+        except (TypeError, ValueError):
+            _rb_val = None
+        _reason = (_form_all.get("rejected_bags_reason") or "").strip() or None
+        if _rb_val and _rb_val > int(row.packed_bags or 0):
+            return _redirect_with_error(f"/dispatch/{dispatch_id}",
+                                        "Rejected bags cannot exceed the bags packed.")
+        if _rb_val and not _reason:
+            return _redirect_with_error(f"/dispatch/{dispatch_id}",
+                                        "Enter a reason for the rejected bags.")
+        db.execute(text("UPDATE packing_dispatch SET rejected_bags = :b, rejected_bags_reason = :r WHERE id = :i"),
+                   {"b": _rb_val, "r": _reason, "i": dispatch_id})
 
     order = db.query(CustomerOrder).filter(CustomerOrder.order_no == row.order_no).first()
     if order:
@@ -632,7 +741,10 @@ async def update_dispatch(
             order.status = "Dispatched"
         elif dispatch_status == "Out for Delivery":
             order.status = "Out for Delivery"
-        elif dispatch_status == "Packed":
+        elif dispatch_status in ("Packed", "Assigned"):
+            # Batch 201: "Assigned" (Batch 195) fell into the else-branch and
+            # pushed the ORDER back to "Packing Pending" whenever Dispatch was
+            # saved after Logistics assigned a driver.
             order.status = "Packed"
         else:
             order.status = "Packing Pending"

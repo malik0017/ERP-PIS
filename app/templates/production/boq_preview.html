@@ -3,7 +3,8 @@
 {% block content %}
 {% set qs = 'date_from=' ~ (filters.date_from or '') ~ '&date_to=' ~ (filters.date_to or '')
             ~ '&customer=' ~ (filters.customer or '') ~ '&order_no=' ~ (filters.order_no or '')
-            ~ '&brand=' ~ (filters.brand or '') %}
+            ~ '&brand=' ~ (filters.brand or '') ~ '&recipe=' ~ (filters.recipe or '')
+            ~ '&section=' ~ (filters.section or '') %}
 <div class="container-fluid py-3 isfc-page">
 
   <div class="isfc-hero mb-4 p-4 rounded-4 text-white d-flex justify-content-between align-items-center flex-wrap gap-3"
@@ -17,6 +18,16 @@
       <a class="btn btn-light" href="/production/boq/export?{{ qs }}"
          title="Downloads a 3-sheet workbook: (1) Consolidated Pick List — one line per ingredient, totals across all filtered orders with wastage; (2) By-Order detail; (3) By-Customer summary. Give it to the store to pull material in one pass.">
         <i class="bi bi-file-earmark-excel me-1"></i>{{ t('Download Excel') }}</a>
+      <div class="btn-group">
+        <a class="btn btn-light" target="_blank" href="/production/boq/recipe-sheet/print?{{ qs }}&mode=order"
+           title="{{ t('Printable chef sheet — one order per page') }}"><i class="bi bi-printer me-1"></i>{{ t('Print Recipe Sheet') }}</a>
+        <button type="button" class="btn btn-light dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown" aria-label="{{ t('More print layouts') }}"></button>
+        <ul class="dropdown-menu dropdown-menu-end">
+          <li><a class="dropdown-item" target="_blank" href="/production/boq/recipe-sheet/print?{{ qs }}&mode=order">{{ t('By Order') }}</a></li>
+          <li><a class="dropdown-item" target="_blank" href="/production/boq/recipe-sheet/print?{{ qs }}&mode=section">{{ t('By Section') }}</a></li>
+          <li><a class="dropdown-item" target="_blank" href="/production/boq/recipe-sheet/print?{{ qs }}&mode=recipe">{{ t('By Recipe') }}</a></li>
+        </ul>
+      </div>
       <a class="btn btn-phoenix-secondary" href="/production/head-chef">{{ t('Back') }}</a>
     </div>
   </div>
@@ -36,7 +47,7 @@
         <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('Delivery To') }}</label>
         <input type="date" name="date_to" value="{{ filters.date_to }}" class="form-control form-control-sm">
       </div>
-      <div class="col-md-3">
+      <div class="col-md-2">
         <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('Customer') }}</label>
         <input name="customer" value="{{ filters.customer }}" list="boqCustomers" autocomplete="off"
                class="form-control form-control-sm" placeholder="{{ t('Any — type to search') }}">
@@ -60,8 +71,23 @@
           {% for b in pick.brands %}<option value="{{ b }}"></option>{% endfor %}
         </datalist>
       </div>
-      <div class="col-md-1 d-flex gap-1">
-        <button class="btn btn-primary btn-sm w-100"><i class="bi bi-search"></i></button>
+      <div class="col-md-4">
+        <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('Recipe') }}</label>
+        <select name="recipe" class="form-select form-select-sm">
+          <option value="">{{ t('All recipes') }}</option>
+          {% for r in pick.recipes %}<option value="{{ r.code }}" {% if filters.recipe == r.code %}selected{% endif %}>{{ r.name }} · {{ r.code }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('Section') }}</label>
+        <select name="section" class="form-select form-select-sm">
+          <option value="">{{ t('All sections') }}</option>
+          {% for sname in pick.sections %}<option value="{{ sname }}" {% if filters.section == sname %}selected{% endif %}>{{ t(sname) }}</option>{% endfor %}
+        </select>
+      </div>
+      <input type="hidden" name="view" value="{{ filters.view }}" id="boqViewField">
+      <div class="col-md-2 d-flex gap-1">
+        <button class="btn btn-primary btn-sm w-100" aria-label="{{ t('Apply filters') }}"><i class="bi bi-search me-1"></i>{{ t('Apply') }}</button>
       </div>
       <div class="col-12">
         <a href="/production/boq/preview" class="btn btn-link btn-sm px-0">{{ t('Clear filters') }}</a>
@@ -69,22 +95,53 @@
     </form>
   </div></div>
 
+  <style>
+    .boq-kpi{border-top:3px solid var(--kpi,#1e5bb8)}
+    .boq-order{border:1px solid var(--phoenix-border-color,#dfe5ee);border-radius:.75rem;margin-bottom:1rem;overflow:hidden;background:var(--phoenix-body-bg,#fff)}
+    .boq-order>summary{list-style:none;cursor:pointer;padding:.85rem 1rem;background:linear-gradient(135deg,#0d2a4a,#1e5bb8);color:#fff;display:flex;flex-wrap:wrap;gap:.5rem 1.25rem;align-items:center}
+    .boq-order>summary::-webkit-details-marker{display:none}
+    .boq-order>summary .ord{font-weight:700;font-size:1.05rem}
+    .boq-order>summary .meta{opacity:.85;font-size:.8rem}
+    .boq-order>summary .chip{background:rgba(255,255,255,.16);border-radius:1rem;padding:.1rem .6rem;font-size:.75rem}
+    .boq-recipe{border-bottom:1px solid var(--phoenix-border-color,#e6ebf2)}
+    .boq-recipe:last-child{border-bottom:0}
+    .boq-recipe-head{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem 1rem;padding:.7rem 1rem;background:var(--phoenix-body-highlight-bg,#f3f6fb)}
+    .boq-recipe-head .name{font-weight:700;color:var(--phoenix-emphasis-color,#132947)}
+    .boq-portions{background:#1e5bb8;color:#fff;border-radius:.4rem;padding:.15rem .55rem;font-weight:700;font-size:.8rem}
+    .boq-comp td{background:var(--phoenix-body-highlight-bg,#f8fafd);font-weight:700;color:#1e5bb8;font-size:.78rem;padding-top:.45rem!important;padding-bottom:.45rem!important}
+    .boq-table{margin:0}
+    .boq-table th{font-size:.7rem;text-transform:uppercase;color:var(--phoenix-tertiary-color,#6b7a90);white-space:nowrap}
+    .boq-table td{font-size:.82rem;vertical-align:middle}
+    .boq-qty{font-weight:700;font-variant-numeric:tabular-nums}
+    .boq-sec{font-size:.72rem;border-radius:.35rem;padding:.1rem .45rem;background:#eef3fb;color:#1e5bb8;white-space:nowrap}
+    .boq-sec[data-s="Cold Kitchen"]{background:#e6f6fb;color:#0b7285}
+    .boq-sec[data-s="Hot Kitchen"]{background:#fdeee8;color:#c2410c}
+    .boq-sec[data-s="Butchery"]{background:#fbe9ec;color:#b42343}
+    .boq-sec[data-s="Cutting"]{background:#eaf7ee;color:#1f7a3f}
+    .boq-sec[data-s="Bakery/Pastry"]{background:#f6effc;color:#7048a8}
+    .boq-sec[data-s="Trayline / Packing"]{background:#fff6df;color:#8a5a00}
+    .boq-tools{position:sticky;top:64px;z-index:5;background:var(--phoenix-body-bg,#fff)}
+  </style>
+
   <div class="row g-3 mb-4">
-    <div class="col-6 col-lg-3"><div class="card border h-100"><div class="card-body">
-      <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Ingredients') }}</div>
+    <div class="col-6 col-lg"><div class="card border h-100 boq-kpi" style="--kpi:#1e5bb8"><div class="card-body">
+      <div class="text-body-tertiary fs-9 fw-bold mb-1">{{ t('Orders Covered') }}</div>
+      <div class="fs-3 fw-bold">{{ totals.orders }}</div></div></div></div>
+    <div class="col-6 col-lg"><div class="card border h-100 boq-kpi" style="--kpi:#0b7285"><div class="card-body">
+      <div class="text-body-tertiary fs-9 fw-bold mb-1">{{ t('Recipes') }}</div>
+      <div class="fs-3 fw-bold">{{ totals.recipes }}</div></div></div></div>
+    <div class="col-6 col-lg"><div class="card border h-100 boq-kpi" style="--kpi:#7048a8"><div class="card-body">
+      <div class="text-body-tertiary fs-9 fw-bold mb-1">{{ t('Portions') }}</div>
+      <div class="fs-3 fw-bold">{{ '%g'|format(totals.portions) }}</div></div></div></div>
+    <div class="col-6 col-lg"><div class="card border h-100 boq-kpi" style="--kpi:#c2410c"><div class="card-body">
+      <div class="text-body-tertiary fs-9 fw-bold mb-1">{{ t('Ingredients') }}</div>
       <div class="fs-3 fw-bold">{{ totals.ingredients }}</div></div></div></div>
-    <div class="col-6 col-lg-3"><div class="card border h-100"><div class="card-body">
-      <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Orders Covered') }}</div>
-      <div class="fs-3 fw-bold text-info">{{ totals.orders }}</div></div></div></div>
-    <div class="col-6 col-lg-3"><div class="card border h-100"><div class="card-body">
-      <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Est. Material Value') }}</div>
+    <div class="col-6 col-lg"><div class="card border h-100 boq-kpi" style="--kpi:#1f7a3f"><div class="card-body">
+      <div class="text-body-tertiary fs-9 fw-bold mb-1">{{ t('Est. Material Value') }}</div>
       <div class="fs-3 fw-bold text-success">{{ '%.2f'|format(totals.value) }}</div></div></div></div>
-    <div class="col-6 col-lg-3"><div class="card border h-100"><div class="card-body">
-      <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Sections') }}</div>
-      <div class="fs-3 fw-bold">{{ totals.sections|length }}</div></div></div></div>
   </div>
 
-  {% if not rows %}
+  {% if not sheet and not rows %}
   <div class="alert alert-subtle-warning">
     <i class="bi bi-exclamation-triangle me-1"></i>
     <strong>{{ t('Nothing to show for this filter.') }}</strong>
@@ -92,17 +149,157 @@
   </div>
   {% else %}
 
-  <ul class="nav nav-tabs mb-3" role="tablist">
-    <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tabPick" type="button">
+  <ul class="nav nav-tabs mb-3" role="tablist" id="boqTabs">
+    <li class="nav-item"><button class="nav-link" data-view="recipe" data-bs-toggle="tab" data-bs-target="#tabRecipe" type="button">
+      <i class="bi bi-journal-richtext me-1"></i>{{ t('Recipe Sheet (by Order)') }}</button></li>
+    <li class="nav-item"><button class="nav-link" data-view="section" data-bs-toggle="tab" data-bs-target="#tabSection" type="button">
+      <i class="bi bi-grid-3x3-gap me-1"></i>{{ t('By Section') }}</button></li>
+    <li class="nav-item"><button class="nav-link" data-view="byrecipe" data-bs-toggle="tab" data-bs-target="#tabByRecipe" type="button">
+      <i class="bi bi-egg-fried me-1"></i>{{ t('By Recipe') }}</button></li>
+    <li class="nav-item"><button class="nav-link" data-view="pick" data-bs-toggle="tab" data-bs-target="#tabPick" type="button">
       <i class="bi bi-basket me-1"></i>{{ t('Consolidated Pick List') }}</button></li>
-    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabOrder" type="button">
-      {{ t('By Order') }}</button></li>
-    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabCust" type="button">
-      {{ t('By Customer') }}</button></li>
+    <li class="nav-item"><button class="nav-link" data-view="customer" data-bs-toggle="tab" data-bs-target="#tabCust" type="button">
+      <i class="bi bi-people me-1"></i>{{ t('By Customer') }}</button></li>
   </ul>
 
+  <div class="d-flex flex-wrap gap-2 align-items-center mb-3 py-2 boq-tools">
+    <input type="search" id="boqSearch" class="form-control form-control-sm" style="max-width:320px"
+           placeholder="{{ t('Find recipe or ingredient…') }}" aria-label="{{ t('Find recipe or ingredient') }}">
+    <button type="button" class="btn btn-sm btn-phoenix-secondary" data-boq-expand="1"><i class="bi bi-arrows-expand me-1"></i>{{ t('Expand all') }}</button>
+    <button type="button" class="btn btn-sm btn-phoenix-secondary" data-boq-expand="0"><i class="bi bi-arrows-collapse me-1"></i>{{ t('Collapse all') }}</button>
+    <span class="fs-9 text-body-tertiary ms-auto">{{ t('Required quantities are the same figures the store issues against.') }}</span>
+  </div>
+
   <div class="tab-content">
-    <div class="tab-pane fade show active" id="tabPick">
+
+    {# ============ RECIPE SHEET: order → recipe → component → ingredient ============ #}
+    <div class="tab-pane fade" id="tabRecipe">
+      {% for o in sheet %}
+      <details class="boq-order" {% if loop.index <= 3 %}open{% endif %}>
+        <summary>
+          <i class="bi bi-receipt"></i>
+          <span class="ord">{{ o.order_no }}</span>
+          <span>{{ o.customer_name }}</span>
+          {% if o.brand %}<span class="chip">{{ o.brand }}</span>{% endif %}
+          <span class="meta"><i class="bi bi-truck me-1"></i>{{ t('Delivery') }} {{ o.delivery_date or '—' }}</span>
+          <span class="meta"><i class="bi bi-fire me-1"></i>{{ t('Cooking') }} {{ o.cooking_date or '—' }}</span>
+          <span class="chip ms-auto">{{ o.recipe_count }} {{ t('recipes') }}</span>
+          <span class="chip">{{ '%g'|format(o.portions) }} {{ t('portions') }}</span>
+          <span class="chip">{{ o.line_count }} {{ t('lines') }}</span>
+        </summary>
+        {% for rec in o.recipes %}
+        <div class="boq-recipe" data-boq-text="{{ (rec.recipe_name ~ ' ' ~ rec.recipe_no)|lower }}{% for c in rec.components %}{% for ln in c.lines %} {{ ln.ingredient_name|lower }} {{ ln.ingredient_code|lower }}{% endfor %}{% endfor %}">
+          <div class="boq-recipe-head">
+            <span class="name">{{ rec.recipe_name }}</span>
+            <span class="text-body-tertiary fs-9">{{ rec.recipe_no }}</span>
+            {% if rec.category %}<span class="badge badge-phoenix badge-phoenix-secondary">{{ rec.category }}</span>{% endif %}
+            {% for sname in rec.sections %}<span class="boq-sec" data-s="{{ sname }}">{{ t(sname) }}</span>{% endfor %}
+            <span class="boq-portions ms-auto">{{ '%g'|format(rec.portions) }} {{ t('portions') }}</span>
+          </div>
+          <div class="table-responsive">
+            <table class="table table-sm boq-table">
+              <thead><tr>
+                <th style="width:120px">{{ t('Code') }}</th><th>{{ t('Ingredient') }}</th>
+                <th>{{ t('Section') }}</th>
+                <th class="text-end">{{ t('Per Portion') }}</th>
+                <th class="text-end">{{ t('Required Qty') }}</th><th>{{ t('UOM') }}</th>
+                <th>{{ t('Cutting / Portion') }}</th>
+              </tr></thead>
+              <tbody>
+              {% for comp in rec.components %}
+                <tr class="boq-comp"><td colspan="7"><i class="bi bi-diagram-2 me-1"></i>{{ t(comp.name) if comp.name == main_component else comp.name }}</td></tr>
+                {% for ln in comp.lines %}
+                <tr>
+                  <td class="text-body-tertiary">{{ ln.ingredient_code }}</td>
+                  <td>{{ ln.ingredient_name }}</td>
+                  <td><span class="boq-sec" data-s="{{ ln.kitchen_section }}">{{ t(ln.kitchen_section) }}</span>
+                    {% if ln.issue_section != ln.kitchen_section %}<div class="fs-10 text-body-tertiary">{{ t('issued to') }} {{ t(ln.issue_section) }}</div>{% endif %}</td>
+                  <td class="text-end text-body-tertiary">{{ '%.3f'|format(ln.per_portion) }} {{ ln.recipe_uom }}</td>
+                  <td class="text-end boq-qty">{{ '%.3f'|format(ln.required_qty) }}</td>
+                  <td>{{ ln.uom }}</td>
+                  <td class="fs-9 text-body-tertiary">{{ ln.cutting or '' }}</td>
+                </tr>
+                {% endfor %}
+              {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        {% endfor %}
+      </details>
+      {% else %}
+      <div class="text-body-tertiary p-3">{{ t('No recipe lines for this filter.') }}</div>
+      {% endfor %}
+    </div>
+
+    {# ============ BY SECTION ============ #}
+    <div class="tab-pane fade" id="tabSection">
+      {% for sgrp in section_view %}
+      <details class="boq-order" {% if loop.index <= 2 %}open{% endif %}>
+        <summary>
+          <i class="bi bi-grid-3x3-gap"></i>
+          <span class="ord">{{ t(sgrp.section) }}</span>
+          <span class="chip ms-auto">{{ sgrp.recipes|length }} {{ t('recipes') }}</span>
+          <span class="chip">{{ sgrp.order_count }} {{ t('orders') }}</span>
+          <span class="chip">{{ sgrp.lines }} {{ t('lines') }}</span>
+        </summary>
+        {% for rec in sgrp.recipes %}
+        <div class="boq-recipe" data-boq-text="{{ (rec.recipe_name ~ ' ' ~ rec.recipe_no ~ ' ' ~ rec.order_no)|lower }}{% for ln in rec.lines %} {{ ln.ingredient_name|lower }}{% endfor %}">
+          <div class="boq-recipe-head">
+            <span class="name">{{ rec.recipe_name }}</span>
+            <span class="text-body-tertiary fs-9">{{ rec.recipe_no }}</span>
+            <span class="fs-9">{{ rec.order_no }} · {{ rec.customer_name }}</span>
+            <span class="boq-portions ms-auto">{{ '%g'|format(rec.portions) }} {{ t('portions') }}</span>
+          </div>
+          <div class="table-responsive"><table class="table table-sm boq-table">
+            <thead><tr><th>{{ t('Component') }}</th><th>{{ t('Code') }}</th><th>{{ t('Ingredient') }}</th>
+              <th class="text-end">{{ t('Required Qty') }}</th><th>{{ t('UOM') }}</th><th>{{ t('Issued To') }}</th></tr></thead>
+            <tbody>{% for ln in rec.lines %}
+              <tr><td class="fs-9 text-primary">{{ t(ln.component) if ln.component == main_component else ln.component }}</td>
+                <td class="text-body-tertiary">{{ ln.ingredient_code }}</td><td>{{ ln.ingredient_name }}</td>
+                <td class="text-end boq-qty">{{ '%.3f'|format(ln.required_qty) }}</td><td>{{ ln.uom }}</td>
+                <td class="fs-9">{{ t(ln.issue_section) }}</td></tr>
+            {% endfor %}</tbody>
+          </table></div>
+        </div>
+        {% endfor %}
+      </details>
+      {% else %}
+      <div class="text-body-tertiary p-3">{{ t('No recipe lines for this filter.') }}</div>
+      {% endfor %}
+    </div>
+
+    {# ============ BY RECIPE (consolidated across orders) ============ #}
+    <div class="tab-pane fade" id="tabByRecipe">
+      {% for rec in recipe_view %}
+      <details class="boq-order" {% if loop.index <= 3 %}open{% endif %} data-boq-text="{{ (rec.recipe_name ~ ' ' ~ rec.recipe_no)|lower }}{% for ln in rec.lines %} {{ ln.ingredient_name|lower }}{% endfor %}">
+        <summary>
+          <i class="bi bi-egg-fried"></i>
+          <span class="ord">{{ rec.recipe_name }}</span>
+          <span class="meta">{{ rec.recipe_no }}{% if rec.category %} · {{ rec.category }}{% endif %}</span>
+          <span class="chip ms-auto">{{ '%g'|format(rec.portions) }} {{ t('portions') }}</span>
+          <span class="chip">{{ rec.orders|length }} {{ t('orders') }}</span>
+        </summary>
+        <div class="px-3 pt-2 fs-9 text-body-tertiary">
+          {% for x in rec.orders %}<span class="me-3"><i class="bi bi-receipt me-1"></i>{{ x.order_no }} · {{ x.customer_name }} · <strong>{{ '%g'|format(x.portions) }}</strong></span>{% endfor %}
+        </div>
+        <div class="table-responsive"><table class="table table-sm boq-table">
+          <thead><tr><th>{{ t('Component') }}</th><th>{{ t('Code') }}</th><th>{{ t('Ingredient') }}</th><th>{{ t('Section') }}</th>
+            <th class="text-end">{{ t('Total Required') }}</th><th>{{ t('UOM') }}</th></tr></thead>
+          <tbody>{% for ln in rec.lines %}
+            <tr><td class="fs-9 text-primary">{{ t(ln.component) if ln.component == main_component else ln.component }}</td>
+              <td class="text-body-tertiary">{{ ln.ingredient_code }}</td><td>{{ ln.ingredient_name }}</td>
+              <td><span class="boq-sec" data-s="{{ ln.kitchen_section }}">{{ t(ln.kitchen_section) }}</span></td>
+              <td class="text-end boq-qty">{{ '%.3f'|format(ln.required_qty) }}</td><td>{{ ln.uom }}</td></tr>
+          {% endfor %}</tbody>
+        </table></div>
+      </details>
+      {% else %}
+      <div class="text-body-tertiary p-3">{{ t('No recipe lines for this filter.') }}</div>
+      {% endfor %}
+    </div>
+
+    <div class="tab-pane fade" id="tabPick">
       <div class="card border">
         <div class="card-header bg-body-highlight fw-bold d-flex justify-content-between align-items-center">
           <span>{{ t('What to pull from the store') }}</span>
@@ -144,45 +341,6 @@
       </div>
     </div>
 
-    <div class="tab-pane fade" id="tabOrder">
-      <div class="card border"><div class="card-body p-0"><div class="table-responsive">
-        <table class="table table-sm mb-0" data-isfc-table data-isfc-colfilters>
-          <thead class="bg-body-highlight"><tr>
-            <th>{{ t('Delivery') }}</th><th>{{ t('Order') }}</th><th>{{ t('Customer') }}</th>
-            <th>{{ t('Recipe Name') }}</th><th>{{ t('Recipe Code') }}</th>
-            {# Batch 194-A (Img 4): sub-recipe description + category
-               columns, same source and reasoning as the Excel export
-               above — see order_wise() in routes_boq.py. #}
-            <th>{{ t('Sub-Recipe') }}</th><th>{{ t('Main Cat.') }}</th><th>{{ t('Sub Cat.') }}</th>
-            <th>{{ t('Item') }}</th>
-            <th class="text-end">{{ t('Required') }}</th><th>{{ t('UOM') }}</th>
-          </tr></thead>
-          <tbody>
-            {% for r in order_rows %}
-            <tr>
-              <td class="fs-9">{{ r.delivery_date or '—' }}</td>
-              <td class="fw-bold fs-9">{{ r.order_no }}</td>
-              <td class="fs-9"><strong>{{ r.customer_name }}</strong></td>
-              <td class="fs-9">{{ r.recipe_name or '—' }}</td>
-              <td class="fs-9 text-secondary">{{ r.recipe_no }}</td>
-              <td class="fs-9 text-secondary">{{ r.sub_recipe_description or '—' }}</td>
-              <td class="fs-9">{{ r.main_category or '—' }}</td>
-              <td class="fs-9">{{ r.sub_category or '—' }}</td>
-              <td class="fs-9">{{ r.item_name }}</td>
-              <td class="text-end">{{ '%.3f'|format(r.required_qty or 0) }}</td>
-              <td class="fs-9">{{ r.uom }}</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div></div>
-      {% if order_rows|length >= 500 %}
-      <div class="card-footer bg-body-highlight fs-9 text-body-tertiary">
-        {{ t('Showing the first 500 lines — the Excel download contains everything.') }}</div>
-      {% endif %}
-      </div>
-    </div>
-
     <div class="tab-pane fade" id="tabCust">
       <div class="card border"><div class="card-body p-0"><div class="table-responsive">
         <table class="table table-sm mb-0" data-isfc-table>
@@ -206,4 +364,38 @@
   </div>
   {% endif %}
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+  var view = {{ (filters.view or 'recipe')|tojson }};
+  var tabs = document.querySelectorAll('#boqTabs [data-view]');
+  var target = Array.prototype.find.call(tabs, function (b) { return b.dataset.view === view; }) || tabs[0];
+  if (target && window.bootstrap) { bootstrap.Tab.getOrCreateInstance(target).show(); }
+  else if (target) { target.classList.add('active'); var p = document.querySelector(target.dataset.bsTarget); if (p) p.classList.add('show', 'active'); }
+  var field = document.getElementById('boqViewField');
+  tabs.forEach(function (b) {
+    b.addEventListener('shown.bs.tab', function () {
+      if (field) field.value = b.dataset.view;
+      var u = new URL(window.location); u.searchParams.set('view', b.dataset.view);
+      history.replaceState(null, '', u);
+    });
+  });
+  document.querySelectorAll('[data-boq-expand]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var open = btn.dataset.boqExpand === '1';
+      document.querySelectorAll('.tab-pane.active details.boq-order').forEach(function (d) { d.open = open; });
+    });
+  });
+  var box = document.getElementById('boqSearch');
+  if (box) box.addEventListener('input', function () {
+    var q = box.value.trim().toLowerCase();
+    document.querySelectorAll('[data-boq-text]').forEach(function (el) {
+      el.style.display = !q || el.dataset.boqText.indexOf(q) !== -1 ? '' : 'none';
+      if (q && el.style.display === '') { var d = el.closest('details'); if (d) d.open = true; }
+    });
+  });
+})();
+</script>
 {% endblock %}

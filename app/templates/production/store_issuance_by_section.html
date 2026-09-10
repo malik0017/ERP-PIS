@@ -5,7 +5,7 @@
 .si-card{background:#fff;border:1px solid #dce8f2;border-radius:18px;box-shadow:0 12px 28px rgba(15,30,50,.06)}
 .si-sec-head{background:#edf5fb;border-radius:14px;padding:14px 18px}
 .si-tag{display:inline-block;border-radius:999px;padding:4px 12px;font-weight:800;font-size:12px}
-.si-pending{background:#fdf3e3;color:#92600a}.si-done{background:#e8f8ef;color:#11783f}
+.si-pending{background:#fdf3e3;color:#92600a}.si-excess{background:#fff1e0;color:#b45309}.si-done{background:#e8f8ef;color:#11783f}
 /* Batch 176: "Short Issued" was rendering in the exact same tan/orange as
    "Pending" (both fell through to the else branch below), so a partially
    issued line was visually indistinguishable from an untouched one. */
@@ -122,13 +122,20 @@
         <table class="table table-sm si-table" data-isfc-table data-isfc-colfilters
                data-isfc-title="Store Issuance — {{ g.section }} Consolidated"
                data-isfc-subtitle="{{ filters.order or 'All orders' }}">
-          <thead><tr><th>Code</th><th>Ingredient</th><th class="text-end">Total Required</th><th class="text-end">Issued</th><th>UOM</th><th>Orders</th><th class="si-action-col" data-isfc-nofilter>Action</th></tr></thead>
+          <thead><tr><th>Code</th><th>Ingredient</th><th class="text-end">Total Required</th><th class="text-end">Issued</th><th class="text-end">{{ t('Excess / Short') }}</th><th>UOM</th><th>Orders</th><th class="si-action-col" data-isfc-nofilter>Action</th></tr></thead>
           <tbody>
           {% for c in g.consolidated %}
           <tr><td>{{ c.ingredient_code }}</td><td>{{ c.ingredient_name }}</td>
               <td class="text-end fw-bold">{{ '%.3f'|format(c.required) }}</td>
               <td class="text-end">{{ '%.3f'|format(c.issued) }}
                 {%- if c.pending_lines %}<div class="mini text-warning">{{ c.pending_lines }}/{{ c.lines }} {{ t('pending') }}</div>{% endif -%}
+              </td>
+              {# Batch 200 (Image 1): signed variance over issued lines only #}
+              <td class="text-end">
+                {% if c.variance_kind == 'excess' %}<span class="si-tag si-excess"><i class="bi bi-arrow-up-circle-fill"></i> {{ t('Excess') }} +{{ '%.3f'|format(c.variance) }}</span>
+                {% elif c.variance_kind == 'short' %}<span class="si-tag si-short"><i class="bi bi-arrow-down-circle-fill"></i> {{ t('Short') }} {{ '%.3f'|format(c.variance) }}</span>
+                {% elif c.variance_kind == 'exact' %}<span class="si-tag si-done">{{ t('Exact') }}</span>
+                {% else %}<span class="mini text-body-tertiary">{{ t('Not issued yet') }}</span>{% endif %}
               </td>
               <td>{{ c.uom }}</td><td class="small">{{ c.orders|join(', ') }}</td>
               {# Batch 163: status comes from PENDING LINE COUNT, not from

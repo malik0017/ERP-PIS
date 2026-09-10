@@ -19,7 +19,7 @@
 
   var TYPE_LABELS = {
     bar: 'Bar', hbar: 'H-Bar', line: 'Line', area: 'Area',
-    pie: 'Pie', donut: 'Donut', radar: 'Radar', gauge: 'Gauge'
+    pie: 'Pie', donut: 'Donut', radar: 'Radar', gauge: 'Gauge', funnel: 'Funnel'
   };
 
   function vars() {
@@ -41,7 +41,10 @@
     };
   }
 
-  function palette(c) { return [c.primary, c.info, c.success, c.warning, c.danger, '#8c68f5', '#12b8a6', '#e84f8a']; }
+  // Batch 203 (Image 14: "use multi-color in charts, not single blue"): ten
+  // distinguishable hues, used per CATEGORY on bar/h-bar/funnel so every bar
+  // in a category chart gets its own colour (pie/donut already did this).
+  function palette(c) { return [c.primary, '#12b8a6', '#8c68f5', c.warning, '#f0743e', '#0ea5c6', c.danger, c.success, '#e84f8a', '#6b7a90']; }
 
   function buildOption(type, labels, values, c, unit, note) {
     unit = unit || '';
@@ -166,6 +169,19 @@
       }];
       return base;
     }
+    if (type === 'funnel') {
+      // Batch 203 (Image 17): pipeline funnel. Keeps the data order (a
+      // pipeline is a sequence), labels inside with value.
+      base.series = [{
+        type: 'funnel', sort: 'none', left: '6%', right: '6%', top: 8, bottom: 8,
+        minSize: '28%', maxSize: '100%', gap: 3,
+        label: { show: true, position: 'inside', color: '#fff', fontWeight: 700,
+                 formatter: function (p) { return p.name + ' · ' + p.value; } },
+        itemStyle: { borderColor: 'transparent', borderWidth: 0 },
+        data: pieData
+      }];
+      return base;
+    }
     if (type === 'radar') {
       var max = Math.max.apply(null, values.concat([1])) * 1.2;
       base.radar = {
@@ -206,7 +222,10 @@
       type: (type === 'line' || type === 'area') ? 'line' : 'bar',
       data: values, smooth: true,
       barWidth: '55%',
-      itemStyle: { color: c.primary, borderRadius: horizontal ? [0, 6, 6, 0] : [6, 6, 0, 0] },
+      itemStyle: {
+        color: (type === 'line' || type === 'area') ? c.primary
+             : function (p) { return pal[p.dataIndex % pal.length]; },
+        borderRadius: horizontal ? [0, 6, 6, 0] : [6, 6, 0, 0] },
       areaStyle: type === 'area' ? { opacity: .25 } : undefined,
       label: { show: labels.length <= 12, position: horizontal ? 'right' : 'top', color: c.text, fontWeight: 700 }
     }];

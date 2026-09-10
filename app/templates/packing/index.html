@@ -165,7 +165,9 @@
   </div>
   {% set active_step = 'Packing' %}{% include 'partials/process_status_row.html'
   %} {% set status_options = ['Packing Pending','Packing In Progress','Packed']
-  %} {% include 'partials/filter_bar.html' %} {% if error %}
+  %} {% include 'partials/filter_bar.html' %}
+  {# Batch 204: global context filter (collapsed until used) #}
+  {% set gf_action = '/packing' %}{% set gf_compact = True %}{% include 'partials/global_filters.html' %} {% if error %}
   {% if false %}
   <div class="alert alert-danger">{{ error }}</div>
   {% endif %}

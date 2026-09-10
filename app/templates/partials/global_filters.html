@@ -1,0 +1,151 @@
+{# ============================================================================
+   Batch 203 (Image 15) — GLOBAL CONTEXT FILTER, reusable.
+   Include with:  {% set gf_action = '/dashboard' %}{% include 'partials/global_gf.html' %}
+   Needs `gf` (command_center.parse_filters) and `gf_options`
+   (command_center.picker_options) — own names, so a page's existing `filters`
+   variable is never shadowed (Batch 204). Optional: `gf_compact` (collapsed
+   until used — for list screens that already have their own filters). Field names are the same everywhere, so a
+   saved view or a shared link means the same thing on every screen.
+   Saved views live in the browser (localStorage, per page) — no server table.
+   ============================================================================ #}
+{% set gf_action = gf_action or request.url.path %}
+{% set _more_active = gf.brand or gf.section or gf.status or gf.channel or gf.priority or gf.kitchen or gf.compare == 'none' %}
+<style>
+  .gf-card{border:1px solid var(--phoenix-border-color,#dfe5ee);border-radius:.8rem;background:var(--phoenix-body-bg,#fff);margin-bottom:1rem}
+  .gf-head{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;padding:.65rem 1rem;border-bottom:1px solid var(--phoenix-border-color,#e6ebf2)}
+  .gf-head strong{font-size:.9rem}
+  .gf-head .gf-range{font-size:.75rem;color:var(--phoenix-tertiary-color,#6b7a90)}
+  .gf-body{padding:.75rem 1rem}
+  .gf-body label{font-size:.72rem;font-weight:600;color:var(--phoenix-tertiary-color,#6b7a90);margin-bottom:.2rem}
+  .gf-chip{display:inline-flex;gap:.3rem;align-items:center;background:#eef3fb;color:#1e5bb8;border-radius:1rem;padding:.1rem .55rem;font-size:.72rem}
+</style>
+<form method="get" action="{{ gf_action }}" class="gf-card" id="globalFilters">
+  <input type="hidden" name="gf" value="1">
+  {% if mode %}<input type="hidden" name="mode" value="{{ mode }}">{% endif %}
+  <div class="gf-head">
+    <strong><i class="bi bi-funnel me-1"></i>{{ t('Global context') }}</strong>
+    <span class="gf-range">{% if gf.timeline == 'all' %}{{ t('All dates') }}{% else %}{{ gf.date_from }} → {{ gf.date_to }}{% endif %} · {{ t(dict(gf_options.basis)[gf.basis]) }}</span>
+    {% if gf_compact and not gf.active %}<span class="gf-range">— {{ t('narrow this list by customer, recipe, section, brand or delivery date') }}</span>{% endif %}
+    {% for k in ['customer','recipe','brand','section','order_status','channel','priority','kitchen'] %}{% if gf[k] %}<span class="gf-chip">{{ gf[k] }}</span>{% endif %}{% endfor %}
+    <div class="ms-auto d-flex gap-2 align-items-center">
+      <div class="dropdown">
+        <button class="btn btn-sm btn-phoenix-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown"><i class="bi bi-bookmark me-1"></i>{{ t('Saved views') }}</button>
+        <ul class="dropdown-menu dropdown-menu-end" id="gfViews"><li><span class="dropdown-item-text text-body-tertiary small">{{ t('No saved views yet') }}</span></li></ul>
+      </div>
+      {% if gf_compact %}
+      <button class="btn btn-sm {{ 'btn-primary' if gf.active else 'btn-phoenix-secondary' }}" type="button" data-bs-toggle="collapse" data-bs-target="#gfBody" aria-expanded="{{ 'true' if gf.active else 'false' }}">
+        <i class="bi bi-funnel me-1"></i>{{ t('Filter') }}</button>
+      {% if gf.active %}<a class="btn btn-sm btn-phoenix-secondary" href="{{ gf_action }}" title="{{ t('Reset all') }}"><i class="bi bi-x-lg"></i></a>{% endif %}
+      {% endif %}
+      <button class="btn btn-sm btn-phoenix-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#gfMore" aria-expanded="{{ 'true' if _more_active else 'false' }}">
+        <i class="bi bi-sliders me-1"></i>{{ t('More filters') }}</button>
+    </div>
+  </div>
+  <div class="gf-body {{ 'collapse' if gf_compact }} {{ 'show' if gf_compact and gf.active }}" id="gfBody">
+    <div class="row g-2 align-items-end">
+      <div class="col-6 col-md-2"><label for="gfTimeline">{{ t('Timeline') }}</label>
+        <select id="gfTimeline" name="timeline" class="form-select form-select-sm">
+          {% for v, lbl in gf_options.timelines %}<option value="{{ v }}" {% if gf.timeline == v %}selected{% endif %}>{{ t(lbl) }}</option>{% endfor %}
+        </select></div>
+      <div class="col-6 col-md-2"><label for="gfFrom">{{ t('Date from') }}</label>
+        <input id="gfFrom" type="date" name="date_from" value="{{ gf.date_from }}" class="form-control form-control-sm"></div>
+      <div class="col-6 col-md-2"><label for="gfTo">{{ t('Date to') }}</label>
+        <input id="gfTo" type="date" name="date_to" value="{{ gf.date_to }}" class="form-control form-control-sm"></div>
+      <div class="col-6 col-md-2"><label for="gfBasis">{{ t('Date basis') }}</label>
+        <select id="gfBasis" name="basis" class="form-select form-select-sm">
+          {% for v, lbl in gf_options.basis %}<option value="{{ v }}" {% if gf.basis == v %}selected{% endif %}>{{ t(lbl) }}</option>{% endfor %}
+        </select></div>
+      <div class="col-6 col-md-2"><label for="gfCustomer">{{ t('Customer') }}</label>
+        <select id="gfCustomer" name="customer" class="form-select form-select-sm"><option value="">{{ t('All customers') }}</option>
+          {% for c in gf_options.customers %}<option {% if gf.customer == c %}selected{% endif %}>{{ c }}</option>{% endfor %}</select></div>
+      <div class="col-6 col-md-2"><label for="gfRecipe">{{ t('Recipe') }}</label>
+        <select id="gfRecipe" name="recipe" class="form-select form-select-sm"><option value="">{{ t('All recipes') }}</option>
+          {% for r in gf_options.recipes %}<option value="{{ r.code }}" {% if gf.recipe == r.code %}selected{% endif %}>{{ r.name }}</option>{% endfor %}</select></div>
+    </div>
+    <div class="collapse {{ 'show' if _more_active }}" id="gfMore">
+      <div class="row g-2 align-items-end mt-1">
+        {% for name, label, opts, all in [
+            ('brand', 'Brand', gf_options.brands, 'All brands'),
+            ('section', 'Kitchen section', gf_options.sections, 'All sections'),
+            ('order_status', 'Order status', gf_options.statuses, 'All statuses'),
+            ('channel', 'Channel', gf_options.channels, 'All channels'),
+            ('priority', 'Priority', gf_options.priorities, 'All priorities'),
+            ('kitchen', 'Site / kitchen', gf_options.kitchens, 'All sites')] %}
+        <div class="col-6 col-md-2"><label for="gf_{{ name }}">{{ t(label) }}</label>
+          <select id="gf_{{ name }}" name="{{ name }}" class="form-select form-select-sm"><option value="">{{ t(all) }}</option>
+            {% for o in opts %}<option {% if gf[name] == o %}selected{% endif %}>{{ o }}</option>{% endfor %}</select></div>
+        {% endfor %}
+        <div class="col-6 col-md-2"><label for="gfCompare">{{ t('Comparison') }}</label>
+          <select id="gfCompare" name="compare" class="form-select form-select-sm">
+            <option value="prior" {% if gf.compare != 'none' %}selected{% endif %}>{{ t('Prior period') }}</option>
+            <option value="none" {% if gf.compare == 'none' %}selected{% endif %}>{{ t('No comparison') }}</option>
+          </select></div>
+      </div>
+    </div>
+    <div class="d-flex flex-wrap gap-2 align-items-center mt-2">
+      <button class="btn btn-primary btn-sm"><i class="bi bi-check2 me-1"></i>{{ t('Apply') }}</button>
+      <a class="btn btn-phoenix-secondary btn-sm" href="{{ gf_action }}{{ '?mode=' ~ mode if mode }}"><i class="bi bi-arrow-counterclockwise me-1"></i>{{ t('Reset all') }}</a>
+      <button class="btn btn-phoenix-secondary btn-sm" type="button" id="gfSave"><i class="bi bi-bookmark-plus me-1"></i>{{ t('Save current view') }}</button>
+      <div class="form-check form-switch ms-auto mb-0">
+        <input class="form-check-input" type="checkbox" id="gfAuto">
+        <label class="form-check-label small" for="gfAuto">{{ t('Auto-refresh every 2 min') }}</label>
+      </div>
+    </div>
+  </div>
+</form>
+<script>
+(function () {
+  var form = document.getElementById('globalFilters'); if (!form) return;
+  var key = 'isfc.views.' + form.getAttribute('action');
+  var tl = form.querySelector('[name=timeline]');
+  ['date_from', 'date_to'].forEach(function (n) {
+    form.querySelector('[name=' + n + ']').addEventListener('change', function () { tl.value = 'custom'; });
+  });
+  tl.addEventListener('change', function () { if (tl.value !== 'custom') { form.querySelector('[name=date_from]').value = ''; form.querySelector('[name=date_to]').value = ''; } });
+  function load() { try { return JSON.parse(localStorage.getItem(key) || '[]'); } catch (e) { return []; } }
+  function paint() {
+    var list = document.getElementById('gfViews'), views = load();
+    if (!views.length) return;
+    list.innerHTML = '';
+    views.forEach(function (v, i) {
+      var li = document.createElement('li'); li.className = 'd-flex align-items-center';
+      var a = document.createElement('a'); a.className = 'dropdown-item flex-fill'; a.href = form.getAttribute('action') + '?' + v.qs; a.textContent = v.name;
+      var x = document.createElement('button'); x.type = 'button'; x.className = 'btn btn-link btn-sm text-danger'; x.setAttribute('aria-label', 'Delete view'); x.innerHTML = '<i class="bi bi-x"></i>';
+      x.addEventListener('click', function (e) { e.stopPropagation(); var vs = load(); vs.splice(i, 1); localStorage.setItem(key, JSON.stringify(vs)); location.reload(); });
+      li.appendChild(a); li.appendChild(x); list.appendChild(li);
+    });
+  }
+  document.getElementById('gfSave').addEventListener('click', function () {
+    var name = prompt({{ t('Name this view')|tojson }}); if (!name) return;
+    var qs = new URLSearchParams(new FormData(form)); Array.from(qs.keys()).forEach(function (k) { if (!qs.get(k)) qs.delete(k); });
+    var vs = load().filter(function (v) { return v.name !== name; }); vs.push({ name: name, qs: qs.toString() });
+    localStorage.setItem(key, JSON.stringify(vs)); paint();
+  });
+  var auto = document.getElementById('gfAuto'), akey = key + '.auto';
+  auto.checked = localStorage.getItem(akey) === '1' || {{ 'true' if mode == 'wallboard' else 'false' }};
+  auto.addEventListener('change', function () { localStorage.setItem(akey, auto.checked ? '1' : '0'); });
+  setInterval(function () { if (auto.checked && !document.hidden) location.reload(); }, 120000);
+  paint();
+  // Batch 204: a page's own filter forms (search, status…) keep the global
+  // filter when submitted, and vice versa the global form keeps theirs.
+  var current = new URLSearchParams(window.location.search);
+  var GF = {{ (['gf'] + ['timeline','date_from','date_to','basis','customer','brand','recipe','section','order_status','channel','priority','kitchen','compare'])|tojson }};
+  if (current.get('gf') === '1') {
+    document.querySelectorAll('form[method=get], form:not([method])').forEach(function (other) {
+      if (other === form) return;
+      other.addEventListener('submit', function () {
+        GF.forEach(function (k) {
+          if (!current.get(k) || other.querySelector('[name="' + k + '"]')) return;
+          var h = document.createElement('input'); h.type = 'hidden'; h.name = k; h.value = current.get(k); other.appendChild(h);
+        });
+      });
+    });
+  }
+  form.addEventListener('submit', function () {
+    current.forEach(function (v, k) {
+      if (GF.indexOf(k) !== -1 || k === 'mode' || form.querySelector('[name="' + k + '"]') || !v) return;
+      var h = document.createElement('input'); h.type = 'hidden'; h.name = k; h.value = v; form.appendChild(h);
+    });
+  });
+})();
+</script>

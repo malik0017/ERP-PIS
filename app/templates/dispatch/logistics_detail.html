@@ -34,27 +34,25 @@
           <div class="col-6 col-md-4"><label class="form-label small fw-bold">{{ t('Temp °C') }}</label>
             <input class="form-control" type="number" step="0.01" name="delivery_temperature_c" value="{{ r.delivery_temperature_c or 0 }}"></div>
 
-          {# Region-wise bag allocation — logistics owns this. #}
+          {# Batch 201 (Image 12): bags are owned by Trayline/Dispatch. Logistics
+             sees the allocation read-only (to plan routes) and assigns driver,
+             vehicle and temperature only. logistics_assign() only writes bag
+             data when region rows are posted, which this form no longer does. #}
           <div class="col-12">
             <div class="card border">
               <div class="card-header bg-body-highlight d-flex justify-content-between align-items-center py-2">
-                <span class="fw-bold"><i class="bi bi-geo-alt me-1"></i>{{ t('Region-wise Bag Allocation') }}</span>
-                <span class="small text-muted">{{ t('Allocated') }}: <span id="rbTotal">0</span> {{ t('Bags') }}</span>
+                <span class="fw-bold"><i class="bi bi-geo-alt me-1"></i>{{ t('Region-wise Bags') }}</span>
+                <a class="small" href="/dispatch/{{ r.id }}">{{ t('Edit bags in Dispatch') }}</a>
               </div>
               <div class="card-body py-2">
-                <div id="rbRows">
-                  {% for rb in region_bags %}
-                  <div class="row g-2 mb-2 rb-row">
-                    <div class="col-6 col-md-4"><select class="form-select form-select-sm" name="region_name">
-                      {% for rg in regions %}<option value="{{ rg }}" {% if rb.name==rg %}selected{% endif %}>{{ rg }}</option>{% endfor %}
-                    </select></div>
-                    <div class="col-4 col-md-3"><input class="form-control form-control-sm rb-count" type="number" min="0" name="region_bag_count" value="{{ rb.bags }}" oninput="rbRecalc()"></div>
-                    <div class="col-2"><button type="button" class="btn btn-outline-danger btn-sm" onclick="this.closest('.rb-row').remove();rbRecalc();"><i class="bi bi-trash"></i></button></div>
-                  </div>
-                  {% endfor %}
-                </div>
-                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="rbAdd()"><i class="bi bi-plus-lg me-1"></i>{{ t('Add region') }}</button>
-                <span class="small text-muted ms-2">{{ t('Assign bags to one or more regions for this order.') }}</span>
+                <table class="table table-sm mb-0">
+                  <thead><tr><th>{{ t('Region') }}</th><th class="text-end">{{ t('Bags') }}</th></tr></thead>
+                  <tbody>
+                    {% for rb in region_bags %}<tr><td>{{ rb.name }}</td><td class="text-end fw-bold">{{ rb.bags }}</td></tr>
+                    {% else %}<tr><td>{{ r.region or '—' }}</td><td class="text-end fw-bold">{{ r.packed_bags or 0 }}</td></tr>{% endfor %}
+                    {% if rejected_bags %}<tr class="text-danger"><td>{{ t('Rejected Bags') }}</td><td class="text-end">−{{ rejected_bags }}</td></tr>{% endif %}
+                  </tbody>
+                </table>
               </div>
             </div>
           </div>
@@ -68,21 +66,5 @@
   </div>
 </div>
 
-<script>
-var RB_REGIONS = {{ regions|tojson }};
-function rbRow(name, bags){
-  var opts = RB_REGIONS.map(function(rg){ return '<option value="'+rg+'"'+(rg===name?' selected':'')+'>'+rg+'</option>'; }).join('');
-  var d = document.createElement('div'); d.className='row g-2 mb-2 rb-row';
-  d.innerHTML = '<div class="col-6 col-md-4"><select class="form-select form-select-sm" name="region_name">'+opts+'</select></div>'+
-    '<div class="col-4 col-md-3"><input class="form-control form-control-sm rb-count" type="number" min="0" name="region_bag_count" value="'+(bags||'')+'" oninput="rbRecalc()"></div>'+
-    '<div class="col-2"><button type="button" class="btn btn-outline-danger btn-sm" onclick="this.closest(\'.rb-row\').remove();rbRecalc();"><i class="bi bi-trash"></i></button></div>';
-  document.getElementById('rbRows').appendChild(d);
-}
-function rbAdd(){ rbRow(RB_REGIONS[0], ''); }
-function rbRecalc(){
-  var t=0; document.querySelectorAll('#rbRows .rb-count').forEach(function(i){ var v=parseInt(i.value||'0',10); if(!isNaN(v))t+=v; });
-  var el=document.getElementById('rbTotal'); if(el) el.textContent=t;
-}
-rbRecalc();
-</script>
+{# Batch 201: region editor script removed — bags are read-only here. #}
 {% endblock %}

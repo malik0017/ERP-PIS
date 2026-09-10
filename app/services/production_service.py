@@ -22,6 +22,7 @@ from app.models.recipe import Recipe, RecipeIngredient
 from app.schemas.production import CustomerOrderCreate
 from app.core.notifications import notify_role
 from app.core.production_constants import (
+    map_excel_section,
     resolve_issue_section,
     DEFAULT_ISSUE_SECTION,
 )
@@ -432,6 +433,10 @@ def generate_bom_for_order(db: Session, order_no: str, approved_by: str | None =
                 getattr(ri, "kitchen_section", None),
                 fallback=route_first,
             )
+            # Batch 200: the recipe line decides the route, not the name guess.
+            route = route_for_line(first_section,
+                                        map_excel_section(getattr(ri, "kitchen_section", None)),
+                                        route)
 
             bom = BOMLine(
                 company_id=getattr(order, "company_id", None),
@@ -872,7 +877,124 @@ def update_store_issuance_line(
     return line
 
 
+COOK_SECTIONS = ("Hot Kitchen", "Cold Kitchen", "Bakery/Pastry")
+
+
+def route_for_line(first_section: str | None, recipe_section: str | None,
+                   fallback_route: list[str]) -> list[str]:
+    """Batch 200 ROOT CAUSE (Image 2 — salad produce routed Cutting → Hot Kitchen).
+
+    The route a line follows after the store came from
+    default_route_for_ingredient(), a guess from ingredient flags and NAME
+    keywords ("lettuce" → Cutting → Hot Kitchen). The recipe workbook's own
+    Section column only decided the FIRST stop. Two visible failures:
+
+      * PRD1-* produce always goes to Cutting first (correct), but the step
+        after Cutting was the guess — so every salad vegetable went to Hot
+        Kitchen although the recipe line says "Cold Section".
+      * A non-produce line issued straight to Cold Kitchen (e.g. mayonnaise
+        for the ranch sauce) had "Cold Kitchen" inserted in front of a guessed
+        route that still contained Hot Kitchen, so its next hop was Hot Kitchen.
+
+    Rule now — the recipe line decides, the guess is only a fallback:
+      first stop Cutting + recipe names another section → Cutting → that section
+      first stop is a cooking section → that section → QC → Trayline
+      first stop Trayline → Trayline only
+      anything else (e.g. Butchery → Hot Kitchen for grilling) → unchanged
+    """
+    rs = (recipe_section or "").strip()
+    fs = (first_section or "").strip()
+    if fs == "Cutting" and rs and rs != "Cutting":
+        if rs == "Trayline / Packing":
+            return ["Store", "Cutting", "Trayline / Packing"]
+        return ["Store", "Cutting", rs, "QC", "Trayline / Packing"]
+    if fs in COOK_SECTIONS:
+        return ["Store", fs, "QC", "Trayline / Packing"]
+    if fs == "Trayline / Packing":
+        return ["Store", "Trayline / Packing"]
+    return fallback_route
+
+
+def _recipe_section_for(db: Session, recipe_no: str | None, ingredient_code: str | None,
+                        cache: dict) -> str | None:
+    key = (recipe_no or "", ingredient_code or "")
+    if key in cache:
+        return cache[key]
+    val = None
+    if recipe_no and ingredient_code:
+        rows = db.execute(text("""
+            SELECT ri.kitchen_section
+            FROM recipe_ingredients ri JOIN recipes r ON r.id = ri.recipe_id
+            WHERE r.recipe_code = :rc AND ri.inventory_code = :ic
+              AND UPPER(TRIM(COALESCE(r.status,''))) = 'ACTIVE'
+            ORDER BY r.version DESC, r.id DESC, ri.line_no
+        """), {"rc": recipe_no, "ic": ingredient_code}).all()
+        for (raw,) in rows:
+            mapped = map_excel_section(raw)
+            if mapped and mapped != "Cutting":
+                val = mapped
+                break
+    cache[key] = val
+    return val
+
+
+def realign_cutting_routes(db: Session, order_no: str | None = None, commit: bool = True) -> int:
+    """Batch 200 — repair routes created before route_for_line() existed.
+
+    Only touches work that has not moved on yet: BOM lines, unfinalized
+    issuance lines, and kitchen transactions still at their FIRST stop from the
+    store (from_section = 'Store') that are not Transferred/Completed. Anything
+    already transferred keeps its history. Idempotent; returns rows changed.
+    Runs when a section workstation opens an order and before issuance is
+    finalized, so stale routes heal without a manual script.
+    """
+    cache: dict = {}
+    changed = 0
+
+    def _fix(obj, first, recipe_no, code) -> bool:
+        current = _json_list(obj.route_template)
+        recipe_sec = _recipe_section_for(db, recipe_no, code, cache) if first == "Cutting" else None
+        wanted = route_for_line(first, recipe_sec, current)
+        if wanted != current:
+            obj.route_template = _dump_route(wanted)
+            return True
+        return False
+
+    q = db.query(BOMLine)
+    if order_no:
+        q = q.filter(BOMLine.order_no == order_no)
+    for b in q.all():
+        changed += _fix(b, b.default_issue_section, b.recipe_no, b.ingredient_code)
+
+    q = db.query(StoreIssuanceLine).filter(func.coalesce(StoreIssuanceLine.finalized, False) == False)  # noqa: E712
+    if order_no:
+        q = q.filter(StoreIssuanceLine.order_no == order_no)
+    for sl in q.all():
+        changed += _fix(sl, sl.issue_to_section, sl.recipe_no, sl.ingredient_code)
+
+    q = db.query(KitchenSectionTransaction).filter(KitchenSectionTransaction.from_section == "Store")
+    if order_no:
+        q = q.filter(KitchenSectionTransaction.order_no == order_no)
+    for tx in q.all():
+        st = str(tx.transaction_status or "").upper()
+        if st == "TRANSFERRED" or st.startswith("COMPLETED"):
+            continue
+        if _fix(tx, tx.current_section, tx.recipe_no, tx.ingredient_code):
+            route = _json_list(tx.route_template)
+            step = route.index(tx.current_section) if tx.current_section in route else 1
+            tx.route_step_no = step
+            tx.to_section = route[step + 1] if len(route) > step + 1 else None
+            changed += 1
+    if changed and commit:
+        db.commit()
+    return changed
+
+
 def finalize_store_issuance(db: Session, order_no: str, issued_by: str) -> list[KitchenSectionTransaction]:
+    try:
+        realign_cutting_routes(db, order_no, commit=False)  # Batch 200
+    except Exception:
+        db.rollback()
     lines = db.query(StoreIssuanceLine).filter(StoreIssuanceLine.order_no == order_no).all()
     if not lines:
         raise ValueError("No store issuance lines found")
@@ -1240,6 +1362,11 @@ def transfer_transaction(
             _val = getattr(tx, _attr, None)
             if _val is not None and hasattr(new_tx, _attr):
                 setattr(new_tx, _attr, _val)
+        # Batch 200 (Image 9 "Remarks" column blank): the sending section's
+        # remark now travels with the material, labelled with its origin, so
+        # QC sees what the kitchen noted without opening the kitchen screen.
+        if (remarks or "").strip() and remarks.strip() != "Bulk processed & transferred":
+            new_tx.section_remarks = f"{tx.current_section}: {remarks.strip()}"
         db.add(new_tx)
     else:
         tx.transaction_status = "Completed"
@@ -1289,6 +1416,10 @@ def ingredient_wise_consolidated(db: Session, order_no: str | None = None,
                 "total_transferred_qty_standard": 0.0,
                 "total_waste_qty_standard": 0.0,
                 "total_balance_qty_standard": 0.0,
+                # Batch 200: what a bulk Process & Transfer can still touch.
+                # Read by section_order.html since Batch 198 but never
+                # computed, so Jinja rendered it as 0 — see _add_remaining().
+                "remaining_received_qty_standard": 0.0,
                 "pending_receive": 0,
                 "received_ready": 0,
                 "locked": 0,
@@ -1311,6 +1442,7 @@ def ingredient_wise_consolidated(db: Session, order_no: str | None = None,
             g["pending_receive"] += 1
         g["details"].append(tx)
 
+    _add_remaining(grouped.values())
     return sorted(grouped.values(),
                   key=lambda x: (x["order_no"], x["ingredient_name"] or ""))
 
@@ -1376,6 +1508,7 @@ def _prorata_process_transfer(
     processed_qty: float, waste_qty: float, returned_qty: float,
     transferred_qty: float, next_section: str | None,
     waste_reason: str | None, remarks: str | None, user: str,
+    captures: dict | None = None, output_uom: str | None = None,
 ) -> tuple[int, int]:
     """Shared core: split entered totals PRO-RATA across already-filtered
     eligible (received, unlocked) lines by received qty, last line absorbing the
@@ -1401,6 +1534,15 @@ def _prorata_process_transfer(
         else:
             p = round(P - acc["p"], 4); w = round(W - acc["w"], 4)
             r = round(R - acc["r"], 4); t = round(T - acc["t"], 4)
+        # Batch 200 ROOT CAUSE (Images 9 & 10 — QC Weight/Protein/Carb/Veg
+        # blank). Nutrition captured on a bulk form was written by the routes
+        # AFTER this loop — i.e. after transfer_transaction() had already
+        # created the next section's row and copied carb_g/protein_g/... onto
+        # it (Batch 176 carry-forward). The values landed on the old locked
+        # row and QC read NULL. They are now split and written HERE, before
+        # the transfer, so the carry-forward picks them up. One place, used
+        # by By Line bulk, By Ingredient and By Recipe alike.
+        _apply_captures(tx, share, captures, output_uom)
         try:
             transfer_transaction(db, tx.id, p, w, r, t, user,
                                  waste_reason, remarks, next_section or None)
@@ -1410,19 +1552,79 @@ def _prorata_process_transfer(
     return ok, skipped
 
 
+CAPTURE_FIELDS = ("carb_g", "protein_g", "vegetable_g", "yield_g",
+                  "produced_portion", "portion_weight_g")
+# Per-portion measures are the same for every line of the batch and must NOT
+# be pro-rated; weights are batch totals and are split by received share.
+_UNSPLIT_CAPTURES = {"portion_weight_g"}
+
+
+def _apply_captures(tx, share: float, captures: dict | None, output_uom: str | None) -> None:
+    if captures:
+        for attr, total in captures.items():
+            if total and hasattr(tx, attr):
+                val = total if attr in _UNSPLIT_CAPTURES else total * share
+                setattr(tx, attr, round(val, 4))
+    if output_uom and hasattr(tx, "output_uom"):
+        tx.output_uom = output_uom
+
+
+def captures_from_form(form, prefix: str = "") -> tuple[dict, str | None]:
+    """Read the nutrition / output capture fields a kitchen form posts.
+    prefix="" for per-panel forms (hk_carb…), "bulk_" for the By Line bar."""
+    def _f(name):
+        try:
+            return float(form.get(name) or 0)
+        except (TypeError, ValueError):
+            return 0.0
+    if prefix == "bulk_":
+        caps = {"carb_g": _f("bulk_carb"), "protein_g": _f("bulk_protein"),
+                "vegetable_g": _f("bulk_veg"), "yield_g": _f("bulk_yield"),
+                "produced_portion": _f("bulk_ck_portion"), "portion_weight_g": _f("bulk_ck_weight")}
+        uom = (form.get("bulk_ck_uom") or "").strip() or None
+    else:
+        caps = {"carb_g": _f("hk_carb"), "protein_g": _f("hk_protein"),
+                "vegetable_g": _f("hk_veg"), "yield_g": _f("hk_yield"),
+                "produced_portion": _f("ck_portion"), "portion_weight_g": _f("ck_weight")}
+        uom = (form.get("ck_uom") or "").strip() or None
+    return {k: v for k, v in caps.items() if v}, uom
+
+
 def _eligible_lines(txs: list) -> list:
     """Filter kitchen txs to (tx, received_qty) pairs that are received and not
-    yet locked — the only lines a bulk process/transfer may touch."""
+    yet locked — the only lines a bulk process/transfer may touch.
+
+    Batch 200: "received" now means received_qty_standard > 0, as this
+    docstring always said. It used to fall back to issued_qty_standard, so a
+    line still sitting in Pending Receive was silently processed and
+    transferred by a bulk action without ever being received.
+    """
     out = []
     for tx in txs:
         status = str(tx.transaction_status or "").upper()
         if status == "TRANSFERRED" or status.startswith("COMPLETED"):
             continue
-        recv = _num(tx.received_qty_standard) or _num(tx.issued_qty_standard)
+        recv = _num(tx.received_qty_standard)
         if recv <= 0:
             continue
         out.append((tx, recv))
     return out
+
+
+def _add_remaining(groups) -> None:
+    """Batch 200 ROOT CAUSE (Images 3 & 4).
+
+    section_order.html (Batch 198) pre-fills Processed/Transfer from
+    `remaining_received_qty_standard` and shows "Receive this recipe's
+    ingredient lines first" when it is <= 0. Neither grouper ever produced that
+    key, and Jinja renders a missing key as undefined -> `or 0` -> 0. Result:
+    Processed always 0.0000 and the warning on every recipe, even fully
+    received ones. Computed here from _eligible_lines() — the exact set the
+    bulk endpoint will act on — so the pre-fill can never exceed what the
+    transfer accepts (the original Batch 198 intent)."""
+    for g in groups:
+        g["remaining_received_qty_standard"] = round(
+            sum(r for _, r in _eligible_lines(g["details"])), 4)
 
 
 def bulk_process_transfer_ingredient(
@@ -1430,6 +1632,7 @@ def bulk_process_transfer_ingredient(
     processed_qty: float, waste_qty: float, returned_qty: float,
     transferred_qty: float, next_section: str | None,
     waste_reason: str | None, remarks: str | None, user: str,
+    captures: dict | None = None, output_uom: str | None = None,
 ) -> tuple[int, int]:
     """Process + transfer every received line for one ingredient, distributing
     the entered totals PRO-RATA across the ingredient's lines by received qty.
@@ -1444,7 +1647,7 @@ def bulk_process_transfer_ingredient(
     return _prorata_process_transfer(
         db, _eligible_lines(txs), len(txs),
         processed_qty, waste_qty, returned_qty, transferred_qty,
-        next_section, waste_reason, remarks, user)
+        next_section, waste_reason, remarks, user, captures, output_uom)
 
 
 def bulk_process_transfer_recipe(
@@ -1452,6 +1655,7 @@ def bulk_process_transfer_recipe(
     processed_qty: float, waste_qty: float, returned_qty: float,
     transferred_qty: float, next_section: str | None,
     waste_reason: str | None, remarks: str | None, user: str,
+    captures: dict | None = None, output_uom: str | None = None,
 ) -> tuple[int, int]:
     """Batch 134 — recipe-wise twin of the above. Process + transfer every
     received line of ONE recipe in this prep section (Cutting/Butchery), with the
@@ -1466,7 +1670,7 @@ def bulk_process_transfer_recipe(
     return _prorata_process_transfer(
         db, _eligible_lines(txs), len(txs),
         processed_qty, waste_qty, returned_qty, transferred_qty,
-        next_section, waste_reason, remarks, user)
+        next_section, waste_reason, remarks, user, captures, output_uom)
 
 
 def bakery_pastry_consolidated(db: Session, order_no: str | None = None,
@@ -1503,6 +1707,7 @@ def bakery_pastry_consolidated(db: Session, order_no: str | None = None,
                 "total_transferred_qty_standard": 0.0,
                 "total_waste_qty_standard": 0.0,
                 "total_balance_qty_standard": 0.0,
+                "remaining_received_qty_standard": 0.0,  # Batch 200 — see _add_remaining()
                 # Batch 135: per-status counts so By-Recipe can offer a recipe-wise
                 # "Receive All (n)" button like By-Ingredient does.
                 "pending_receive": 0,
@@ -1527,6 +1732,7 @@ def bakery_pastry_consolidated(db: Session, order_no: str | None = None,
             g["pending_receive"] += 1
         g["details"].append(tx)
 
+    _add_remaining(grouped.values())
     return sorted(grouped.values(), key=lambda x: (x["order_no"], x["recipe_name"] or ""))
 
 

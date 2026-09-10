@@ -1,7 +1,7 @@
 {% extends "layouts/base.html" %}
 {% block content %}
 <style>
-.pyc-hero{background:linear-gradient(135deg,#08243d,#7c2d12);border-radius:22px;color:#fff;padding:24px 28px}
+.pyc-hero{background:linear-gradient(135deg,#08243d,#1e5bb8);border-radius:22px;color:#fff;padding:24px 28px}
 .pyc-card{background:#fff;border:1px solid #dce8f2;border-radius:18px;box-shadow:0 12px 28px rgba(15,30,50,.06);margin-bottom:16px}
 .pyc-chain{display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:14px 18px}
 .pyc-stage{background:#f4f8fc;border:1px solid #e2e8f0;border-radius:12px;padding:8px 14px;min-width:140px}
@@ -11,9 +11,10 @@
 .pyc-overall{background:#fff7ed;border:1px solid #fdba74;border-radius:12px;padding:8px 16px;font-weight:800;color:#9a3412}
 </style>
 <div class="container-fluid py-3">
+  {% include 'partials/kitchen_reports_tabs.html' %}
   <div class="pyc-hero mb-4 d-flex justify-content-between flex-wrap gap-3 align-items-center">
     <div>
-      <h2 class="mb-1">Protein Yield Chain</h2>
+      <h2 class="mb- text-white">Protein Yield Chain</h2>
       <div class="small opacity-75">Yield tracked stage by stage for one protein ingredient — not a whole mixed batch. Matches: chicken received from Butchery=1000, after cook take=600, yield%=60%.</div>
     </div>
   </div>

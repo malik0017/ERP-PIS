@@ -2,14 +2,13 @@
 {% block content %}
 
 <div class="container-fluid py-3">
+  {% include 'partials/kitchen_reports_tabs.html' %}
 
    <div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-3 p-4 rounded-4 text-white"
        style="background:linear-gradient(135deg,#08243d,#1e5bb8)">
     <div>
       <h1 class="mb-1 fw-bold text-white"> <i class="bi bi-clipboard-data me-2"></i>{{ section }} {{ t('Production Report') }}</h1>
-      {# Batch 174: the active filters spelled out. A sheet printed and pinned to
-         a kitchen wall with no date range on it is one nobody can trust a week
-         later. #}
+      
       <p class="mb-0 opacity-75 fs-9">
         {{ t('Cooking') }}: {{ filters.date_from or t('any date') }} → {{ filters.date_to or t('any date') }}
         {%- if filters.customer %} · {{ filters.customer }}{% endif %}
@@ -23,17 +22,6 @@
   <div class="alert alert-danger">{{ error }}</div>
   {% endif %}
 
-  {# ================================================================
-     Batch 175 — filter card rebuilt.
-
-     The native <select multiple> is why only one category ever stuck: it
-     needs Ctrl/Cmd-click, which nobody discovers and which is impossible on a
-     touch screen. Replaced with a checkbox dropdown — every option is a plain
-     click, and the trigger shows what is selected without opening it.
-
-     Layout: filters grouped into a labelled panel with the actions on their
-     own row, instead of six equal-width boxes and a stray button column.
-     ================================================================ #}
   <div class="card border mb-3 rpt-filters">
     <div class="card-header bg-body-highlight py-2 d-flex align-items-center justify-content-between">
       <span class="fw-bold fs-9 text-uppercase text-body-tertiary">
@@ -115,10 +103,6 @@
             <label class="form-label fs-9 fw-bold text-body-tertiary text-uppercase mb-1">
               {{ t('Recipe Category') }}
             </label>
-            {# A checkbox list in a dropdown. Checkboxes with the SAME name post
-               as repeated ?category= parameters, which is exactly what
-               getlist() on the route already expects — so the server side is
-               unchanged. #}
             <div class="dropdown w-100">
               <button class="form-select text-start d-flex align-items-center justify-content-between"
                       type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside">
@@ -161,25 +145,9 @@
           <div class="col-12 d-flex gap-2 pt-1 border-top mt-1">
             <button class="btn btn-primary px-4"><i class="bi bi-search me-1"></i>{{ t('Apply Filters') }}</button>
             <a class="btn btn-phoenix-secondary" href="/production/reports/section?section={{ section }}">{{ t('Reset') }}</a>
-            {# Batch 190-B (Img 15): "here show the total store issue column,
-               butchery transfer, yield, waste... I want to see in this
-               report." Deliberately NOT inlined as new columns here: this
-               report groups kitchen_section_transactions' sibling table
-               (bom_lines) at RECIPE level, and kitchen_section_transactions
-               itself is one-row-per-INGREDIENT — joining it into this
-               summary the same naive way would risk exactly the fan-out
-               multiplication bug just fixed above for Required Portions
-               (SUM through a one-to-many join multiplying a value by however
-               many ingredient lines the recipe has). The Yield Report
-               (Batch 177) already computes Waste/Transfer/Yield% correctly,
-               with the subquery structure built specifically to avoid that
-               trap — linking to it for the same section/date filters gets
-               you the numbers today without re-risking that bug rewriting
-               it inline. Worth fully merging into one screen later, once
-               there's live data to verify a combined query against. #}
-            <a class="btn btn-phoenix-secondary"
+            <!-- <a class="btn btn-phoenix-secondary"
                href="/production/reports/yield?section={{ section }}&date_from={{ filters.date_from or '' }}&date_to={{ filters.date_to or '' }}&customer={{ filters.customer or '' }}">
-              <i class="bi bi-percent me-1"></i>{{ t('Waste / Transfer / Yield for this section') }}</a>
+              <i class="bi bi-percent me-1"></i>{{ t('Waste / Transfer / Yield for this section') }}</a> -->
           </div>
         </div>
       </form>

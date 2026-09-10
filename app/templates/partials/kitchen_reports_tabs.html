@@ -1,0 +1,36 @@
+{# Batch 202 (Image 8) — "show the single kitchen report and inside show all
+   three reports". The three reports keep their own routes, filters and exports
+   (nothing about their numbers changes); this strip makes them one Kitchen
+   Reports workspace with one menu entry. Common filters (section, cooking
+   dates, customer) are carried between tabs so switching view keeps context. #}
+{% set _kq = request.query_params %}
+{% set _carry = [] %}
+{% for k in ['section', 'date_from', 'date_to', 'customer'] %}{% if _kq.get(k) %}{% set _ = _carry.append(k ~ '=' ~ (_kq.get(k)|urlencode)) %}{% endif %}{% endfor %}
+{% set _qs = ('?' ~ _carry|join('&')) if _carry else '' %}
+{% set _kp = request.url.path %}
+{% set _tabs = [
+  {'url': '/production/reports/section', 'icon': 'bi-clipboard-data', 'title': t('Section Production'), 'hint': t('What each section must produce')},
+  {'url': '/production/reports/yield', 'icon': 'bi-percent', 'title': t('Yield'), 'hint': t('Good output ÷ raw input')},
+  {'url': '/production/reports/protein-yield-chain', 'icon': 'bi-activity', 'title': t('Protein Yield Chain'), 'hint': t('One protein, stage by stage')},
+] %}
+<style>
+  .kr-strip{display:flex;flex-wrap:wrap;gap:.5rem;align-items:stretch;margin-bottom:1rem}
+  .kr-title{display:flex;flex-direction:column;justify-content:center;padding-inline-end:1rem;margin-inline-end:.25rem;border-inline-end:1px solid var(--phoenix-border-color,#dfe5ee)}
+  .kr-title strong{font-size:1.05rem;color:var(--phoenix-emphasis-color,#132947)}
+  .kr-title span{font-size:.75rem;color:var(--phoenix-tertiary-color,#6b7a90)}
+  .kr-tab{display:flex;gap:.6rem;align-items:center;padding:.55rem .9rem;border-radius:.6rem;border:1px solid var(--phoenix-border-color,#dfe5ee);background:var(--phoenix-body-bg,#fff);text-decoration:none;color:inherit;min-width:190px}
+  .kr-tab i{font-size:1.15rem;color:#1e5bb8}
+  .kr-tab small{display:block;color:var(--phoenix-tertiary-color,#6b7a90);font-size:.72rem}
+  .kr-tab.active{background:#1e5bb8;border-color:#1e5bb8;color:#fff}
+  .kr-tab.active i,.kr-tab.active small{color:#fff}
+  .kr-tab:focus-visible{outline:2px solid #1e5bb8;outline-offset:2px}
+  @media print{.kr-strip{display:none}}
+</style>
+<nav class="kr-strip" aria-label="{{ t('Kitchen Reports') }}">
+  <div class="kr-title"><strong><i class="bi bi-fire me-1"></i>{{ t('Kitchen Reports') }}</strong><span>{{ t('Three views of the same kitchen records') }}</span></div>
+  {% for tb in _tabs %}
+  <a class="kr-tab {{ 'active' if _kp == tb.url }}" href="{{ tb.url }}{{ _qs }}" {% if _kp == tb.url %}aria-current="page"{% endif %}>
+    <i class="bi {{ tb.icon }}"></i><span><strong>{{ tb.title }}</strong><small>{{ tb.hint }}</small></span>
+  </a>
+  {% endfor %}
+</nav>

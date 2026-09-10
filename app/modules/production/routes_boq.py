@@ -36,6 +36,9 @@ from sqlalchemy.orm import Session
 from app.core.rbac import require_area
 from app.core.templates import render
 from app.database.session import get_db
+from app.services.boq_service import (
+    MAIN_COMPONENT, by_recipe, by_section, order_where, picker_options, recipe_sheet,
+)
 
 router = APIRouter(prefix="/production/boq", tags=["Production"])
 
@@ -53,31 +56,29 @@ def _filters(request: Request) -> dict:
         "order_no": (q.get("order_no") or "").strip(),
         "brand": (q.get("brand") or "").strip(),
         "kitchen": (q.get("kitchen") or "").strip(),
+        # Batch 200: chef-sheet filters. `recipe` is an exact recipe code
+        # (dropdown), `section` a kitchen section — see boq_service for how
+        # each view interprets it.
+        "recipe": (q.get("recipe") or "").strip(),
+        "section": (q.get("section") or "").strip(),
+        # Which tab to open on load (recipe | section | byrecipe | pick | customer)
+        "view": (q.get("view") or "recipe").strip(),
     }
 
 
 def _where(f: dict, cid: int) -> tuple[str, dict]:
-    clauses = ["(o.company_id = :cid OR o.company_id IS NULL)"]
-    params: dict = {"cid": cid}
-    if f["date_from"]:
-        clauses.append("o.required_delivery_date >= :df"); params["df"] = f["date_from"]
-    if f["date_to"]:
-        clauses.append("o.required_delivery_date <= :dt"); params["dt"] = f["date_to"]
-    if f["customer"]:
-        clauses.append("o.customer_name LIKE :cu"); params["cu"] = f"%{f['customer']}%"
-    if f["order_no"]:
-        clauses.append("o.order_no LIKE :on"); params["on"] = f"%{f['order_no']}%"
-    if f["brand"]:
-        clauses.append("COALESCE(o.brand,'') LIKE :br"); params["br"] = f"%{f['brand']}%"
-    if f["kitchen"]:
-        clauses.append("COALESCE(o.kitchen,'') LIKE :kt"); params["kt"] = f"%{f['kitchen']}%"
-    # Cancelled and rejected orders must never reach a picking list.
-    clauses.append("COALESCE(o.status,'') NOT IN ('Cancelled','Rejected')")
-    return " AND ".join(clauses), params
+    # Batch 200: single definition lives in boq_service so the chef sheet,
+    # pick list and export filter identically (it also adds the recipe filter).
+    return order_where(f, cid)
 
 
 def consolidated(db: Session, f: dict, cid: int) -> list[dict]:
     where, params = _where(f, cid)
+    if f.get("section"):
+        # Pick list = what the store hands to a section, so it filters on the
+        # ISSUE section (fresh produce for a salad is issued to Cutting).
+        where += " AND COALESCE(NULLIF(b.default_issue_section, ''), i.default_issue_section, '') = :sec"
+        params["sec"] = f["section"]
     try:
         return [dict(r) for r in db.execute(text(f"""
             SELECT b.ingredient_code,
@@ -154,21 +155,50 @@ def order_wise(db: Session, f: dict, cid: int) -> list[dict]:
         return []
 
 
+def _stamp(f: dict) -> str:
+    crit = ", ".join(v for k, v in f.items() if v and k != "view") or "all open orders"
+    return f"Generated {date.today().isoformat()} · Filter: {crit}"
+
+
+def _customers_summary(ow: list[dict]) -> list[dict]:
+    agg: dict[str, dict] = {}
+    for x in ow:
+        e = agg.setdefault(x["customer_name"] or "—", {"orders": set(), "items": set(), "qty": 0.0})
+        e["orders"].add(x["order_no"])
+        e["items"].add(x["ingredient_code"])
+        e["qty"] += float(x["required_qty"] or 0)
+    # Batch 108: key is "item_count", NOT "items" — {{ x.items }} resolves to
+    # the dict's built-in .items method in Jinja.
+    return sorted([{"customer": k, "orders": len(v["orders"]), "item_count": len(v["items"]),
+                    "qty": round(v["qty"], 3)} for k, v in agg.items()], key=lambda r: -r["qty"])
+
+
 @router.get("/export")
 def export_boq(request: Request, db: Session = Depends(get_db)):
-    """Bill of Quantity workbook: consolidated pick list + per-order detail."""
+    """Bill of Quantity workbook.
+
+    Batch 200 sheet order: the chef's Recipe Sheet first (it is the document
+    the kitchen prints), then By Section, By Recipe, the store's consolidated
+    Pick List, the flat By Order table (kept for Excel filtering) and By Customer.
+    """
     require_area(request, "bom")
     cid = _cid(request)
     f = _filters(request)
 
     from openpyxl import Workbook
-    from openpyxl.styles import Alignment, Font, PatternFill
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 
     wb = Workbook()
     head = PatternFill("solid", fgColor="132947")
+    order_fill = PatternFill("solid", fgColor="1E5BB8")
+    recipe_fill = PatternFill("solid", fgColor="D9E6F7")
+    comp_fill = PatternFill("solid", fgColor="F2F5F9")
     sub = PatternFill("solid", fgColor="EAEFF5")
+    thin = Side(style="thin", color="D0D7E2")
+    box = Border(bottom=thin)
+    stamp = _stamp(f)
 
-    def header(ws, cols, title, subtitle):
+    def header(ws, cols, title, subtitle, widths=None):
         ws["A1"] = title
         ws["A1"].font = Font(bold=True, size=14)
         ws["A2"] = subtitle
@@ -178,84 +208,135 @@ def export_boq(request: Request, db: Session = Depends(get_db)):
             c.font = Font(bold=True, color="FFFFFF")
             c.fill = head
             c.alignment = Alignment(wrap_text=True, vertical="center")
-            ws.column_dimensions[c.column_letter].width = max(14, min(34, len(h) + 8))
+            ws.column_dimensions[c.column_letter].width = (
+                widths[i - 1] if widths else max(14, min(34, len(h) + 8)))
+        ws.freeze_panes = "A5"
 
-    crit = ", ".join(v for k, v in f.items() if v) or "all open orders"
-    stamp = f"Generated {date.today().isoformat()} · Filter: {crit}"
+    def band(ws, row, ncols, value, fill, color="000000", size=11):
+        for col in range(1, ncols + 1):
+            ws.cell(row=row, column=col).fill = fill
+        c = ws.cell(row=row, column=1, value=value)
+        c.font = Font(bold=True, color=color, size=size)
 
-    # --- Sheet 1: consolidated pick list ---
-    rows = consolidated(db, f, cid)
+    sheet = recipe_sheet(db, f, cid)
+
+    # --- Sheet 1: chef recipe sheet (order → recipe → component → ingredient)
     ws = wb.active
-    ws.title = "Pick List (Consolidated)"
-    header(ws, ["Section", "Storage", "Item Code", "Ingredient", "UOM",
-                "Total Required", "Orders", "Est. Value", "Picked ✓"],
+    ws.title = "Recipe Sheet (Chef)"
+    cols = ["Component", "Item Code", "Ingredient", "Kitchen Section", "Issued To",
+            "Per Portion", "Recipe UOM", "Required Qty", "UOM", "Cutting / Portion", "Done ✓"]
+    header(ws, cols, "BILL OF QUANTITY — RECIPE SHEET", stamp,
+           widths=[26, 14, 36, 16, 16, 12, 11, 14, 9, 28, 9])
+    r = 5
+    n = len(cols)
+    for o in sheet:
+        band(ws, r, n, f"{o['order_no']}  |  {o['customer_name']}  |  {o['brand']}  |  "
+                       f"Delivery {o['delivery_date'] or '—'}  |  Cooking {o['cooking_date'] or '—'}",
+             order_fill, "FFFFFF", 12)
+        r += 1
+        for rec in o["recipes"]:
+            band(ws, r, n, f"{rec['recipe_name']}  ({rec['recipe_no']})  —  "
+                           f"{rec['portions']:g} portions  ·  {rec['category'] or ''}", recipe_fill)
+            r += 1
+            for comp in rec["components"]:
+                band(ws, r, n, f"   {comp['name']}", comp_fill, "132947", 10)
+                r += 1
+                for ln in comp["lines"]:
+                    vals = ["", ln["ingredient_code"], ln["ingredient_name"], ln["kitchen_section"],
+                            ln["issue_section"], round(ln["per_portion"], 4), ln["recipe_uom"],
+                            round(ln["required_qty"], 3), ln["uom"], ln["cutting"], ""]
+                    for ci, v in enumerate(vals, start=1):
+                        cell = ws.cell(row=r, column=ci, value=v)
+                        cell.border = box
+                    r += 1
+            r += 1
+        r += 1
+
+    # --- Sheet 2: by kitchen section
+    ws_s = wb.create_sheet("By Section")
+    header(ws_s, ["Section", "Order", "Customer", "Recipe", "Portions", "Component",
+                  "Item Code", "Ingredient", "Required Qty", "UOM", "Issued To"],
+           "BILL OF QUANTITY — BY SECTION", stamp,
+           widths=[16, 20, 26, 30, 10, 22, 14, 34, 13, 9, 16])
+    r = 5
+    for s in by_section(sheet):
+        band(ws_s, r, 11, f"{s['section']}  —  {len(s['recipes'])} recipe(s), {s['lines']} line(s)",
+             order_fill, "FFFFFF")
+        r += 1
+        for rec in s["recipes"]:
+            for ln in rec["lines"]:
+                for ci, v in enumerate([s["section"], rec["order_no"], rec["customer_name"],
+                                        f"{rec['recipe_name']} ({rec['recipe_no']})", rec["portions"],
+                                        ln["component"], ln["ingredient_code"], ln["ingredient_name"],
+                                        round(ln["required_qty"], 3), ln["uom"], ln["issue_section"]], 1):
+                    ws_s.cell(row=r, column=ci, value=v)
+                r += 1
+
+    # --- Sheet 3: by recipe (consolidated across orders, for batch cooking)
+    ws_r = wb.create_sheet("By Recipe")
+    header(ws_r, ["Recipe", "Total Portions", "Orders", "Component", "Item Code", "Ingredient",
+                  "Kitchen Section", "Required Qty", "UOM"],
+           "BILL OF QUANTITY — BY RECIPE (all filtered orders)", stamp,
+           widths=[34, 13, 40, 22, 14, 34, 16, 13, 9])
+    r = 5
+    for rec in by_recipe(sheet):
+        band(ws_r, r, 9, f"{rec['recipe_name']} ({rec['recipe_no']})  —  {rec['portions']:g} portions",
+             recipe_fill)
+        r += 1
+        orders_txt = ", ".join(f"{x['order_no']} ({x['portions']:g})" for x in rec["orders"])
+        for ln in rec["lines"]:
+            for ci, v in enumerate([rec["recipe_name"], rec["portions"], orders_txt, ln["component"],
+                                    ln["ingredient_code"], ln["ingredient_name"], ln["kitchen_section"],
+                                    round(ln["required_qty"], 3), ln["uom"]], 1):
+                ws_r.cell(row=r, column=ci, value=v)
+            r += 1
+
+    # --- Sheet 4: consolidated pick list (store)
+    rows = consolidated(db, f, cid)
+    ws_p = wb.create_sheet("Pick List (Consolidated)")
+    header(ws_p, ["Section", "Storage", "Item Code", "Ingredient", "UOM",
+                  "Total Required", "Orders", "Est. Value", "Picked ✓"],
            "CONSOLIDATED PICK LIST", stamp)
     r = 5
     for x in rows:
         qty = float(x["required_qty"] or 0)
-        ws.cell(row=r, column=1, value=x["section"] or "—")
-        ws.cell(row=r, column=2, value=x["storage_type"] or "")
-        ws.cell(row=r, column=3, value=x["ingredient_code"])
-        ws.cell(row=r, column=4, value=x["item_name"])
-        ws.cell(row=r, column=5, value=x["uom"])
-        ws.cell(row=r, column=6, value=round(qty, 3))
-        ws.cell(row=r, column=7, value=int(x["order_count"] or 0))
-        ws.cell(row=r, column=8, value=round(qty * float(x["unit_cost"] or 0), 2))
+        for ci, v in enumerate([x["section"] or "—", x["storage_type"] or "", x["ingredient_code"],
+                                x["item_name"], x["uom"], round(qty, 3), int(x["order_count"] or 0),
+                                round(qty * float(x["unit_cost"] or 0), 2)], 1):
+            ws_p.cell(row=r, column=ci, value=v)
         r += 1
     if rows:
-        t = ws.cell(row=r, column=4, value="TOTAL")
+        t = ws_p.cell(row=r, column=4, value="TOTAL")
         t.font = Font(bold=True)
         t.fill = sub
-        tv = ws.cell(row=r, column=8,
-                     value=round(sum(float(x["required_qty"] or 0) * float(x["unit_cost"] or 0)
-                                     for x in rows), 2))
+        tv = ws_p.cell(row=r, column=8, value=round(sum(
+            float(x["required_qty"] or 0) * float(x["unit_cost"] or 0) for x in rows), 2))
         tv.font = Font(bold=True)
         tv.fill = sub
 
-    # --- Sheet 2: per-order detail ---
+    # --- Sheet 5: flat by-order detail (kept — easiest to filter in Excel)
     ow = order_wise(db, f, cid)
-    ws2 = wb.create_sheet("By Order")
+    ws2 = wb.create_sheet("By Order (flat)")
     header(ws2, ["Delivery", "Order", "Customer", "Brand", "Recipe Name", "Recipe Code",
-                 "Sub-Recipe", "Main Cat.", "Sub Cat.",
-                 "Item Code", "Ingredient", "UOM", "Required"],
+                 "Sub-Recipe", "Main Cat.", "Sub Cat.", "Item Code", "Ingredient", "UOM", "Required"],
            "BILL OF QUANTITY — BY ORDER", stamp)
     r = 5
     for x in ow:
-        ws2.cell(row=r, column=1, value=str(x["delivery_date"] or ""))
-        ws2.cell(row=r, column=2, value=x["order_no"])
-        ws2.cell(row=r, column=3, value=x["customer_name"])
-        ws2.cell(row=r, column=4, value=x["brand"])
-        # Batch 194-A (Img 4): recipe name, sub-recipe description, and
-        # category (protein/vegetable/dry/etc) columns — see order_wise()
-        # for where each is sourced from and why.
-        ws2.cell(row=r, column=5, value=x.get("recipe_name") or "")
-        ws2.cell(row=r, column=6, value=x["recipe_no"])
-        ws2.cell(row=r, column=7, value=x.get("sub_recipe_description") or "")
-        ws2.cell(row=r, column=8, value=x.get("main_category") or "")
-        ws2.cell(row=r, column=9, value=x.get("sub_category") or "")
-        ws2.cell(row=r, column=10, value=x["ingredient_code"])
-        ws2.cell(row=r, column=11, value=x["item_name"])
-        ws2.cell(row=r, column=12, value=x["uom"])
-        ws2.cell(row=r, column=13, value=round(float(x["required_qty"] or 0), 3))
+        for ci, v in enumerate([str(x["delivery_date"] or ""), x["order_no"], x["customer_name"],
+                                x["brand"], x.get("recipe_name") or "", x["recipe_no"],
+                                x.get("sub_recipe_description") or "", x.get("main_category") or "",
+                                x.get("sub_category") or "", x["ingredient_code"], x["item_name"],
+                                x["uom"], round(float(x["required_qty"] or 0), 3)], 1):
+            ws2.cell(row=r, column=ci, value=v)
         r += 1
 
-    # --- Sheet 3: by customer ---
+    # --- Sheet 6: by customer
     ws3 = wb.create_sheet("By Customer")
-    header(ws3, ["Customer", "Orders", "Ingredients", "Total Qty"],
-           "BILL OF QUANTITY — BY CUSTOMER", stamp)
-    agg: dict[str, dict] = {}
-    for x in ow:
-        e = agg.setdefault(x["customer_name"] or "—",
-                           {"orders": set(), "items": set(), "qty": 0.0})
-        e["orders"].add(x["order_no"])
-        e["items"].add(x["ingredient_code"])
-        e["qty"] += float(x["required_qty"] or 0)
+    header(ws3, ["Customer", "Orders", "Ingredients", "Total Qty"], "BILL OF QUANTITY — BY CUSTOMER", stamp)
     r = 5
-    for name, e in sorted(agg.items(), key=lambda kv: -kv[1]["qty"]):
-        ws3.cell(row=r, column=1, value=name)
-        ws3.cell(row=r, column=2, value=len(e["orders"]))
-        ws3.cell(row=r, column=3, value=len(e["items"]))
-        ws3.cell(row=r, column=4, value=round(e["qty"], 3))
+    for e in _customers_summary(ow):
+        for ci, v in enumerate([e["customer"], e["orders"], e["item_count"], e["qty"]], 1):
+            ws3.cell(row=r, column=ci, value=v)
         r += 1
 
     buf = io.BytesIO()
@@ -271,76 +352,67 @@ def export_boq(request: Request, db: Session = Depends(get_db)):
 
 @router.get("/preview")
 def preview_boq(request: Request, db: Session = Depends(get_db)):
-    """Batch 106 — see the BOQ on screen BEFORE downloading it.
+    """Batch 106 — see the BOQ on screen before downloading it.
 
-    Downloading blind meant opening Excel to find out whether the filter was
-    right, and repeating that until it was. The preview shows exactly what the
-    workbook will contain, with the download one click away once it looks
-    right.
-
-    Also supplies the picker lists. The Customer / Order / Brand boxes were
-    free text against data the user cannot see — typing "Ma'una" when the
-    record says "Ma'una Foundation (FRSH)" silently returned nothing, which
-    is indistinguishable from "no orders match".
+    Batch 200 — five views over the same filtered BOM:
+      Recipe Sheet  order → recipe → component → ingredient (the chef's sheet)
+      By Section    kitchen section → recipe → ingredient
+      By Recipe     one recipe consolidated across orders (batch cooking)
+      Pick List     one line per ingredient (the store)
+      By Customer   summary
     """
     require_area(request, "bom")
     cid = _cid(request)
     f = _filters(request)
 
+    sheet = recipe_sheet(db, f, cid)
     rows = consolidated(db, f, cid)
     ow = order_wise(db, f, cid)
 
-    by_customer: dict[str, dict] = {}
-    for x in ow:
-        e = by_customer.setdefault(x["customer_name"] or "—",
-                                   {"orders": set(), "items": set(), "qty": 0.0})
-        e["orders"].add(x["order_no"])
-        e["items"].add(x["ingredient_code"])
-        e["qty"] += float(x["required_qty"] or 0)
-    customers_summary = sorted(
-        # Batch 108: the key is "item_count", NOT "items" — in Jinja, {{ x.items }}
-        # resolves to the dict's built-in .items METHOD before it looks for a key
-        # of that name, and prints "<built-in method items of dict object ...>".
-        [{"customer": k, "orders": len(v["orders"]), "item_count": len(v["items"]),
-          "qty": round(v["qty"], 3)} for k, v in by_customer.items()],
-        key=lambda r: -r["qty"])
-
-    # Picker options — drawn from orders that could actually appear in a BOQ,
-    # not the whole master, so every option returns at least one row.
-    def _opts(sql):
-        try:
-            return [r[0] for r in db.execute(text(sql), {"cid": cid}).all() if r[0]]
-        except Exception:
-            return []
-
-    open_clause = ("(company_id = :cid OR company_id IS NULL) "
-                   "AND COALESCE(status,'') NOT IN ('Cancelled','Rejected')")
-    pick = {
-        "customers": _opts(f"SELECT DISTINCT customer_name FROM customer_orders "
-                           f"WHERE {open_clause} ORDER BY customer_name LIMIT 500"),
-        "orders": _opts(f"SELECT DISTINCT order_no FROM customer_orders "
-                        f"WHERE {open_clause} ORDER BY order_no DESC LIMIT 500"),
-        "brands": _opts(f"SELECT DISTINCT brand FROM customer_orders "
-                        f"WHERE {open_clause} AND COALESCE(brand,'') <> '' "
-                        f"ORDER BY brand LIMIT 200"),
-    }
-
     total_value = sum(float(x["required_qty"] or 0) * float(x["unit_cost"] or 0) for x in rows)
-    by_section: dict[str, int] = {}
+    by_sec_counts: dict[str, int] = {}
     for x in rows:
-        by_section[x["section"] or "—"] = by_section.get(x["section"] or "—", 0) + 1
+        by_sec_counts[x["section"] or "—"] = by_sec_counts.get(x["section"] or "—", 0) + 1
 
     return render(request, "production/boq_preview.html", {
         "rows": rows,
-        "order_rows": ow[:500],
-        "customers_summary": customers_summary,
-        "pick": pick,
+        "sheet": sheet,
+        "section_view": by_section(sheet),
+        "recipe_view": by_recipe(sheet),
+        "main_component": MAIN_COMPONENT,
+        "customers_summary": _customers_summary(ow),
+        "pick": picker_options(db, cid),
         "filters": f,
         "totals": {
             "ingredients": len(rows),
-            "orders": len({x["order_no"] for x in ow}),
+            "orders": len(sheet),
+            "recipes": sum(o["recipe_count"] for o in sheet),
+            "portions": round(sum(o["portions"] for o in sheet), 2),
             "value": round(total_value, 2),
-            "sections": by_section,
+            "sections": by_sec_counts,
         },
         "page_title": "Bill of Quantity",
+    })
+
+
+@router.get("/recipe-sheet/print")
+def print_recipe_sheet(request: Request, db: Session = Depends(get_db)):
+    """Batch 200 — printable chef sheet, one order per page, with tick boxes.
+
+    Standalone (no sidebar/topbar) so Ctrl+P / Save as PDF gives a clean sheet
+    to put on the pass. `mode=section` prints the By Section layout instead.
+    """
+    require_area(request, "bom")
+    cid = _cid(request)
+    f = _filters(request)
+    sheet = recipe_sheet(db, f, cid)
+    mode = (request.query_params.get("mode") or "order").strip()
+    return render(request, "production/boq_recipe_print.html", {
+        "sheet": sheet,
+        "section_view": by_section(sheet) if mode == "section" else [],
+        "recipe_view": by_recipe(sheet) if mode == "recipe" else [],
+        "mode": mode,
+        "filters": f,
+        "stamp": _stamp(f),
+        "page_title": "Recipe Sheet",
     })

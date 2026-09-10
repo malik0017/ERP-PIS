@@ -154,18 +154,7 @@
              driven by it, so there is nothing left to disagree with. #}
           <div><label>Number of Bags</label><input class="form-control" name="packed_bags" id="packedBagsInput" type="number"
               min="0" step="1" value="{{ row.packed_bags or '' }}" readonly title="{{ t('Derived from the region allocation below') }}"></div>
-          <div><label>{{ t('Primary Region') }} <span class="text-body-tertiary" title="{{ t('The region with the most bags, for quick reference') }}">(auto)</span></label>
-            {# Batch 195 (Img 9): "inactive this field" — this was already
-               read-only (Batch 178) and has no `name`, so it was never part
-               of what the form submits — but `readonly` still renders with
-               a plain white background and black text in most browsers,
-               visually indistinguishable from an editable field. `disabled`
-               gives the standard greyed-out treatment every browser
-               renders consistently as "not interactive," which is what
-               was actually being asked for. Safe to change purely for
-               styling: since this field was never submitted either way,
-               nothing about form behavior changes. #}
-            <input class="form-control" id="primaryRegionDisplay" type="text" value="{{ row.region or '' }}" disabled></div>
+          {# Batch 201 (Image 11): Primary Region removed — the allocation table below is the only region input. #}
           <div><label>Packing / Dispatch Date</label><input class="form-control" name="dispatch_date" type="date"
               value="{{ row.dispatch_date or '' }}" {% if _p_locked %}readonly{% endif %}></div>
           <div><label>Packing Status</label><select class="form-select" name="packing_status" {% if _p_locked %}disabled{% endif %}>
@@ -254,92 +243,81 @@
      lack (shortfall), and protein/carb per portion carried from Hot Kitchen. #}
   <div class="panel mt-3">
     <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-      <h3 class="mb-0">Recipe Pack Detail</h3>
-      {# Batch 176 — 176-E (Img 10): "give option to extract packing report
-         ... weight wise". This table's header is two rows deep (Received/
-         Packed/Excess umbrella labels over Protein/Carb/Veg sub-columns),
-         which the shared isfc-table-tools toolbar assumes is a single flat
-         header row — bolting that component on here would misalign its
-         Columns toggle and per-column filters against the wrong data
-         column. A small export built for this table's real shape, instead
-         of forcing a generic one that would quietly export wrong. #}
-      <button type="button" class="btn btn-outline-secondary btn-sm fw-bold" onclick="exportPackDetailCSV()">
-        <i class="bi bi-filetype-csv"></i> Export CSV</button>
+      <h3 class="mb-0">{{ t('Recipe Pack Detail') }}</h3>
+      <div class="d-flex gap-2">
+        <a class="btn btn-outline-primary btn-sm fw-bold" target="_blank" href="/packing/{{ row.id }}/report">
+          <i class="bi bi-file-earmark-bar-graph"></i> {{ t('Pack Report') }}</a>
+        <button type="button" class="btn btn-outline-secondary btn-sm fw-bold" onclick="exportPackDetailCSV()">
+          <i class="bi bi-filetype-csv"></i> {{ t('Export CSV') }}</button>
+      </div>
     </div>
-    {# Batch 153 — restructured to the Excel layout you sent:
-         Required Portion | Received Weight (Protein/Carb/Veg) | Packed Weight | Excess/Shortage
-       Excess/Shortage = Received − Packed, per your =H6*I15 sheet. Positive is
-       excess (more came in than went out), negative is shortage. Blank cells
-       show "—" rather than 0.00: nothing recorded is not the same as zero
-       grams, and showing 0 would make an unweighed line look reconciled. #}
+    {# Batch 201 (Image 11): the full material journey per recipe —
+       Required (BOM) → Issued (store) → Transferred (kitchen → QC) → Received at QC,
+       then weights received from the kitchen vs weights packed at Trayline.
+       Excess/Shortage = Received − Packed (positive = excess). Blank means not
+       recorded, never 0. Built by pack_reconciliation() in packing/routes.py. #}
     <div class="small text-secondary mb-2">
-      Required = ordered portions · Received = weights sent by the kitchen ·
-      Packed = weights recorded at Trayline · Excess/Shortage = Received − Packed.
+      {{ t('Required = BOM quantity · Issued = released by the store · Transferred = sent by kitchen sections to QC · Received = weights sent by the kitchen · Packed = weights recorded at Trayline · Excess/Shortage = Received − Packed.') }}
     </div>
-    {# Batch 157: the Packed columns are now editable. The whole grid submits in
-       one action — the operator weighs an order's trays in a single pass, and a
-       Save button per row would mean 19 round trips and 19 chances to lose a
-       value by navigating away. #}
     <form method="post" action="/packing/{{ row.id }}/pack-lines">
     <div class="table-responsive">
       <table class="table-pro" id="packDetailTable">
         <thead>
           <tr>
-            <th rowspan="2">Recipe</th>
-            <th rowspan="2">From Section</th>
-            <th rowspan="2" class="text-end">Required Portion</th>
-            <th colspan="3" class="text-center" style="background:#d9f0e0">Received Weight (g)</th>
-            <th colspan="3" class="text-center" style="background:#dbe9fb">Packed Weight (g)</th>
-            <th colspan="3" class="text-center" style="background:#fdf3d0">Excess / Shortage</th>
+            <th rowspan="2">{{ t('Recipe') }}</th>
+            <th rowspan="2">{{ t('From Section') }}</th>
+            <th rowspan="2" class="text-end">{{ t('Required Portion') }}</th>
+            <th colspan="4" class="text-center" style="background:#e9eef7">{{ t('Material Flow') }}</th>
+            <th colspan="3" class="text-center" style="background:#d9f0e0">{{ t('Received Weight (g)') }}</th>
+            <th colspan="4" class="text-center" style="background:#dbe9fb">{{ t('Packed at Trayline') }}</th>
+            <th colspan="3" class="text-center" style="background:#fdf3d0">{{ t('Excess / Shortage') }}</th>
           </tr>
           <tr>
-            <th class="text-end" style="background:#f2e2cf">Protein</th>
-            <th class="text-end" style="background:#f2e2cf">Carb</th>
-            <th class="text-end" style="background:#f2e2cf">Veg</th>
-            <th class="text-end" style="background:#eef4fc">Protein</th>
-            <th class="text-end" style="background:#eef4fc">Carb</th>
-            <th class="text-end" style="background:#eef4fc">Veg</th>
-            <th class="text-end">Protein</th>
-            <th class="text-end">Carb</th>
-            <th class="text-end">Veg</th>
+            <th class="text-end" style="background:#f3f6fb">{{ t('Required') }}</th>
+            <th class="text-end" style="background:#f3f6fb">{{ t('Issued') }}</th>
+            <th class="text-end" style="background:#f3f6fb">{{ t('Transferred') }}</th>
+            <th class="text-end" style="background:#f3f6fb">{{ t('Received') }}</th>
+            <th class="text-end" style="background:#eef8f1">{{ t('Protein') }}</th>
+            <th class="text-end" style="background:#eef8f1">{{ t('Carb') }}</th>
+            <th class="text-end" style="background:#eef8f1">{{ t('Veg') }}</th>
+            <th class="text-end" style="background:#eef4fc">{{ t('Portions') }}</th>
+            <th class="text-end" style="background:#eef4fc">{{ t('Protein') }}</th>
+            <th class="text-end" style="background:#eef4fc">{{ t('Carb') }}</th>
+            <th class="text-end" style="background:#eef4fc">{{ t('Veg') }}</th>
+            <th class="text-end">{{ t('Protein') }}</th>
+            <th class="text-end">{{ t('Carb') }}</th>
+            <th class="text-end">{{ t('Veg') }}</th>
           </tr>
         </thead>
         <tbody>{% for l in pack_lines %}
-          {%- set pk_p = packed_nutrition.get(l.recipe_no, {}).get('protein') -%}
-          {%- set pk_c = packed_nutrition.get(l.recipe_no, {}).get('carb') -%}
-          {%- set pk_v = packed_nutrition.get(l.recipe_no, {}).get('veg') -%}
-          <tr>
-            {# Batch 153: name above the code, as requested. #}
-            <td><strong>{{ l.recipe_name }}</strong><br><span class="text-secondary small">{{ l.recipe_no }}</span></td>
+          <tr data-recipe="{{ l.recipe_name }}" data-code="{{ l.recipe_no }}">
+            <td><strong>{{ l.recipe_name }}</strong><br><span class="text-secondary small">{{ l.recipe_no }}</span>
+              <input type="hidden" name="pl_recipe_no" value="{{ l.recipe_no }}"></td>
             <td><span class="text-secondary">{{ l.from_section or '—' }}</span></td>
-            <td class="text-end">{{ '%.2f'|format(l.planned) }}</td>
+            <td class="text-end">{{ '%g'|format(l.planned) }}</td>
+            <td class="text-end">{{ '%.2f'|format(l.required_qty) }}</td>
+            <td class="text-end">{{ '%.2f'|format(l.issued_qty) if l.issued_qty else '—' }}
+              {%- if l.issue_variance is not none and (l.issue_variance > 0.001 or l.issue_variance < -0.001) %}
+              <div class="small {{ 'text-warning' if l.issue_variance > 0 else 'text-danger' }}">{{ '%+.2f'|format(l.issue_variance) }}</div>{% endif %}</td>
+            <td class="text-end">{{ '%.2f'|format(l.transferred_qty) if l.reached_qc else '—' }}</td>
+            <td class="text-end">{{ '%.2f'|format(l.received_qty) if l.reached_qc else '—' }}</td>
             <td class="text-end">{{ '%.2f'|format(l.recv_protein) if l.recv_protein is not none else '—' }}</td>
             <td class="text-end">{{ '%.2f'|format(l.recv_carb) if l.recv_carb is not none else '—' }}</td>
             <td class="text-end">{{ '%.2f'|format(l.recv_veg) if l.recv_veg is not none else '—' }}</td>
-            {# A blank box stays blank — it is stored as NULL, not 0. Nothing
-               weighed is not the same as weighed-and-found-zero, and writing 0
-               would make an unweighed recipe show a shortage equal to
-               everything it received. #}
-            <input type="hidden" name="pl_recipe_no" value="{{ l.recipe_no }}">
+            {%- for nm, v in [('pl_portion', l.packed_portion), ('pl_protein', l.pk_protein), ('pl_carb', l.pk_carb), ('pl_veg', l.pk_veg)] %}
             <td><input class="form-control form-control-sm text-end" type="number" step="0.01" min="0"
-                       name="pl_protein" value="{{ '%.2f'|format(pk_p) if pk_p is not none else '' }}"
-                       placeholder="—" {% if _p_locked %}readonly{% endif %} style="width:92px"></td>
-            <td><input class="form-control form-control-sm text-end" type="number" step="0.01" min="0"
-                       name="pl_carb" value="{{ '%.2f'|format(pk_c) if pk_c is not none else '' }}"
-                       placeholder="—" {% if _p_locked %}readonly{% endif %} style="width:92px"></td>
-            <td><input class="form-control form-control-sm text-end" type="number" step="0.01" min="0"
-                       name="pl_veg" value="{{ '%.2f'|format(pk_v) if pk_v is not none else '' }}"
-                       placeholder="—" {% if _p_locked %}readonly{% endif %} style="width:92px"></td>
-            {%- for rv, pv in [(l.recv_protein, pk_p), (l.recv_carb, pk_c), (l.recv_veg, pk_v)] %}
+                       name="{{ nm }}" value="{{ '%.2f'|format(v) if v is not none else '' }}"
+                       placeholder="—" {% if _p_locked %}readonly{% endif %} style="width:88px"></td>
+            {%- endfor %}
+            {%- for d in [l.diff_protein, l.diff_carb, l.diff_veg] %}
             <td class="text-end">
-              {%- if rv is not none and pv is not none -%}
-                {%- set d = rv - pv -%}
-                <span class="{{ 'text-danger fw-bold' if d < 0 else ('fw-bold' if d > 0 else 'text-secondary') }}">{{ '%.2f'|format(d) }}</span>
+              {%- if d is not none -%}
+                <span class="{{ 'text-danger fw-bold' if d < -0.001 else ('text-warning fw-bold' if d > 0.001 else 'text-success') }}">{{ '%+.2f'|format(d) }}</span>
               {%- else -%}—{%- endif -%}
             </td>
             {%- endfor %}
           </tr>{% else %}<tr>
-            <td colspan="12" class="text-secondary">No recipe lines have reached QC/packing yet.</td>
+            <td colspan="17" class="text-secondary">{{ t('No recipe lines have reached QC/packing yet.') }}</td>
           </tr>{% endfor %}</tbody>
       </table>
     </div>
@@ -399,34 +377,24 @@ rbRecalc();
 // isfc-table-tools.js fix (Batch 176 — 176-D) was needed elsewhere: a bare
 // <input> has no visible text for a generic scraper to find.
 function exportPackDetailCSV(){
+  // Batch 201: 17 columns. Reads input .value for the editable Packed cells.
   var table = document.getElementById('packDetailTable');
   if (!table) return;
-  var rows = [
-    ['Recipe', 'Recipe Code', 'From Section', 'Required Portion',
-     'Received Protein', 'Received Carb', 'Received Veg',
-     'Packed Protein', 'Packed Carb', 'Packed Veg',
-     'Excess/Shortage Protein', 'Excess/Shortage Carb', 'Excess/Shortage Veg']
-  ];
-  table.querySelectorAll('tbody tr').forEach(function(tr){
-    var cells = tr.children;
-    if (cells.length < 12) return; // skip the "no lines yet" placeholder row
-    var cell = function(i){ return (cells[i].innerText || '').trim(); };
-    var val = function(i){ var inp = cells[i].querySelector('input'); return inp ? inp.value : cell(i); };
-    var recipeCell = cells[0].innerText.split('\n').map(function(s){return s.trim();}).filter(Boolean);
-    rows.push([
-      recipeCell[0] || '', recipeCell[1] || '',
-      cell(1), cell(2),
-      cell(3), cell(4), cell(5),
-      val(6), val(7), val(8),
-      cell(9), cell(10), cell(11)
-    ]);
+  var rows = [['Recipe','Recipe Code','From Section','Required Portion',
+    'Required Qty','Issued Qty','Transferred Qty','Received Qty',
+    'Received Protein','Received Carb','Received Veg',
+    'Packed Portions','Packed Protein','Packed Carb','Packed Veg',
+    'Excess/Shortage Protein','Excess/Shortage Carb','Excess/Shortage Veg']];
+  table.querySelectorAll('tbody tr[data-code]').forEach(function(tr){
+    var c = tr.children;
+    var txt = function(i){ return (c[i].innerText || '').split('\n')[0].trim(); };
+    var val = function(i){ var inp = c[i].querySelector('input:not([type=hidden])'); return inp ? inp.value : txt(i); };
+    rows.push([tr.dataset.recipe, tr.dataset.code, txt(1), txt(2), txt(3), txt(4), txt(5), txt(6),
+               txt(7), txt(8), txt(9), val(10), val(11), val(12), val(13), txt(14), txt(15), txt(16)]);
   });
-  var csv = rows.map(function(r){
-    return r.map(function(c){ return '"' + String(c).replace(/"/g, '""') + '"'; }).join(',');
-  }).join('\r\n');
-  var blob = new Blob(['\uFEFF' + csv], {type: 'text/csv;charset=utf-8;'});
-  var a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
+  var csv = rows.map(function(r){ return r.map(function(v){ return '"' + String(v).replace(/"/g,'""') + '"'; }).join(','); }).join('\r\n');
+  var blob = new Blob(['\uFEFF' + csv], {type:'text/csv;charset=utf-8;'});
+  var a = document.createElement('a'); a.href = URL.createObjectURL(blob);
   a.download = 'recipe_pack_detail_{{ row.order_no }}.csv';
   document.body.appendChild(a); a.click(); a.remove();
 }

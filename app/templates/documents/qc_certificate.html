@@ -97,6 +97,37 @@
       </div>
     </div>
 
+    {# Batch 200: kitchen capture per recipe as received at QC #}
+    <div style="padding:0 26px 8px">
+      <h6 style="margin:10px 0 6px;color:#132947">{{ t('Kitchen weights & nutrition received at QC') }}</h6>
+      <div class="qc-tbl-wrap">
+      <table class="qc-tbl">
+        <thead><tr>
+          <th>{{ t('Recipe') }}</th><th>{{ t('From Section') }}</th><th>{{ t('Received Weight') }}</th>
+          <th>{{ t('Protein (g)') }}</th><th>{{ t('Carb (g)') }}</th><th>{{ t('Veg (g)') }}</th>
+          <th>{{ t('Portion Wt (g)') }}</th><th>{{ t('Portions') }}</th><th>{{ t('Remarks') }}</th>
+        </tr></thead>
+        <tbody>
+        {% for n in nutrition %}
+          <tr>
+            <td>{{ n.recipe_name }}<div style="font-size:.7rem;color:#64748b">{{ n.recipe_no }}</div></td>
+            <td>{{ n.from_sections or '—' }}</td>
+            <td>{{ '%.2f'|format(n.received_weight or 0) }}</td>
+            <td>{{ '%.2f'|format(n.protein_g) if n.protein_g is not none else '—' }}</td>
+            <td>{{ '%.2f'|format(n.carb_g) if n.carb_g is not none else '—' }}</td>
+            <td>{{ '%.2f'|format(n.vegetable_g) if n.vegetable_g is not none else '—' }}</td>
+            <td>{{ '%.2f'|format(n.portion_weight_g) if n.portion_weight_g is not none else '—' }}</td>
+            <td>{{ '%g'|format(n.produced_portion) if n.produced_portion is not none else '—' }}</td>
+            <td style="font-size:.75rem">{{ n.remarks or '—' }}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="9" class="text-center text-body-tertiary py-3">{{ t('No kitchen lines have reached QC yet.') }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      </div>
+    </div>
+
     <div class="qc-sign">
       <div class="line">Quality Controller — signature & date</div>
       <div class="line">Head Chef / Plant Manager — signature & date</div>

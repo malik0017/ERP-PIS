@@ -34,6 +34,7 @@ from app.services.production_service import (
     bulk_process_transfer_ingredient,
     bulk_process_transfer_recipe,
     _prorata_process_transfer,
+    captures_from_form,
     _eligible_lines,
     process_bakery_pastry_recipe,
     consolidated_bom,
@@ -458,6 +459,21 @@ def _issuance_status_label(required_qty: float, issued_qty: float, all_finalized
     if diff < -0.001:
         return f"Issued — Short {abs(diff):.3f} {uom}".strip()
     return "Issued"
+
+
+def _issue_variance(c: dict) -> dict:
+    """Batch 200 (Image 1) — excess / short for a consolidated issuance row.
+
+    Only lines the store has actually issued count: the issued quantity on a
+    Pending line is just the BOM pre-fill (Batch 163), so comparing it with
+    required would always read "exact". Returns variance (signed, None when
+    nothing issued yet) and a kind of excess | short | exact | pending.
+    """
+    if not c.get("done_lines"):
+        return {"variance": None, "variance_kind": "pending"}
+    diff = float(c.get("done_issued") or 0) - float(c.get("done_required") or 0)
+    kind = "excess" if diff > 0.001 else "short" if diff < -0.001 else "exact"
+    return {"variance": round(diff, 3), "variance_kind": kind}
 
 
 def _store_order_summary(db: Session, request: Request):
@@ -1257,6 +1273,14 @@ async def section_order_page(request: Request, section_name: str, order_no: str,
     require_area(request, "kitchen")
     section = _section_from_slug(section_name)
     order = scoped_order(db, request, order_no)
+    if order is not None:
+        # Batch 200: heal pre-fix routes so "Issue To Section" shows the recipe's
+        # section (salad produce → Cold Kitchen), not the old Hot Kitchen guess.
+        try:
+            from app.services.production_service import realign_cutting_routes
+            realign_cutting_routes(db, order_no)
+        except Exception:
+            db.rollback()
     txs = (
         db.query(KitchenSectionTransaction)
         .filter(KitchenSectionTransaction.current_section == section, KitchenSectionTransaction.order_no == order_no)
@@ -1504,54 +1528,18 @@ async def bulk_transfer_section_order(request: Request, section_name: str, order
     processed_total = total_recv
     transfer_total = max(0.0, total_recv - bulk_waste - bulk_return)
 
+    # Batch 200: captures are applied inside _prorata_process_transfer, BEFORE
+    # each line transfers, so they are carried to the next section's row.
+    _caps, _cap_uom = captures_from_form(form, prefix="bulk_")
     ok, skipped = _prorata_process_transfer(
         db, eligible, len(eligible),
         processed_total, bulk_waste, bulk_return, transfer_total,
-        next_section or None, None, bulk_remark, user)
+        next_section or None, None, bulk_remark, user,
+        captures=_caps, output_uom=_cap_uom)
     failed += skipped
 
-    # ------------------------------------------------------------------
-    # Batch 158 — persist the bulk capture fields.
-    #
-    # Without this the new toolbar boxes would post and be discarded: bulk
-    # processing would silently produce rows with no nutrition while
-    # single-line processing recorded it, and nothing on screen would say so.
-    #
-    # Split PRO-RATA by each line's received share, matching how waste, return
-    # and transfer are already apportioned two lines above. The chef weighs the
-    # batch once; the batch's carb is divided across the lines that made it up,
-    # in the same proportion as everything else.
-    # ------------------------------------------------------------------
-    _caps = {
-        "carb_g": _f("bulk_carb"), "protein_g": _f("bulk_protein"),
-        "vegetable_g": _f("bulk_veg"), "yield_g": _f("bulk_yield"),
-        "produced_portion": _f("bulk_ck_portion"),
-        "portion_weight_g": _f("bulk_ck_weight"),
-    }
-    _uom = (form.get("bulk_ck_uom") or "").strip()
-    if (any(v for v in _caps.values()) or _uom) and total_recv > 0:
-        # BUG (Batch 158, fixed here — Img 18): `eligible` is a list of
-        # (tx, received_qty) tuples — see the docstring on
-        # _prorata_process_transfer and the `eligible.append((tx, recv))`
-        # line above. This loop iterated `for _tx in eligible` and then
-        # called `_tx.received_qty_standard`, i.e. called that attribute on
-        # the TUPLE itself, not the transaction inside it — hence "'tuple'
-        # object has no attribute 'received_qty_standard'". Only surfaced
-        # when nutrition-capture values were actually posted, which is why
-        # this only crashed sections with those fields exposed (Hot
-        # Kitchen's carb/protein/veg/yield toolbar) and only on submit, not
-        # on page load. Fixed by unpacking the tuple; reusing `_recv` from
-        # it (rather than re-deriving from the object) is also more
-        # correct — it's the exact received amount this line was already
-        # given credit for above, not a fresh re-read that could disagree.
-        for _tx, _recv in eligible:
-            _share = _recv / total_recv
-            for _attr, _total in _caps.items():
-                if _total and hasattr(_tx, _attr):
-                    setattr(_tx, _attr, round(_total * _share, 4))
-            if _uom and hasattr(_tx, "output_uom"):
-                _tx.output_uom = _uom
-        db.commit()
+    # Batch 158's post-transfer capture write was removed in Batch 200 — it
+    # wrote to rows that had already been transferred (see _apply_captures).
 
     # Batch 121: the old message never said WHERE the lines went, which read as
     # "wrong" when the chef had picked a specific destination. Name it clearly.
@@ -1659,6 +1647,8 @@ async def ingredient_bulk_process(request: Request, section_name: str, order_no:
         (form.get("waste_reason") or "").strip() or None,
         (form.get("section_remarks") or "").strip() or None,
         current_user_name(request),
+        # Batch 200: this route ignored Carb/Protein/Veg/Portion fields entirely.
+        *captures_from_form(form),
     )
     db.commit()
     dest = (form.get("next_section") or "").strip() or "the next section"
@@ -1715,55 +1705,16 @@ async def recipe_bulk_process_passthrough(request: Request, section_name: str, o
                          and not str(t.transaction_status or "").upper().startswith("COMPLETED"))
         P = T = recv_total
 
+    _caps, _cap_uom = captures_from_form(form)
     ok, skipped = bulk_process_transfer_recipe(
         db, order_no, section, recipe_no,
         P, _f("waste_qty_standard"), _f("returned_qty_standard"), T,
-        next_section, waste_reason, remarks, current_user_name(request))
+        next_section, waste_reason, remarks, current_user_name(request),
+        captures=_caps, output_uom=_cap_uom)
 
-    # ------------------------------------------------------------------
-    # BATCH 192 FIX — By Recipe's Carb/Protein/Vegetable/Yield and
-    # Produced-Portion/Portion-Weight/Output-UOM fields were rendered on
-    # screen and collected in the form, but this handler never read or
-    # applied ANY of them. bulk_process_transfer_recipe() only ever took
-    # process/waste/return/transfer/next_section/remark — a chef filling
-    # in Hot Kitchen's Carb/Protein/Veg boxes on the By Recipe tab (not
-    # just Cold Kitchen/Bakery-Pastry, which Batch 188 only just enabled
-    # onto this same route) had those values silently discarded, for as
-    # long as this route has existed. This is not new breakage from this
-    # session's fixes — it predates them — but Batch 188 routes two more
-    # sections through this same gap, so it needs fixing now rather than
-    # extending the loss to Cold Kitchen and Bakery/Pastry too.
-    #
-    # Mirrors the exact pattern already used (and already fixed for the
-    # tuple-unpacking bug — Batch 183) in bulk_transfer_section_order():
-    # re-fetch the same eligible lines this recipe touched, split the
-    # entered totals pro-rata by each line's received share, exactly the
-    # same math already used for process/waste/return/transfer above.
-    # ------------------------------------------------------------------
-    _caps = {
-        "carb_g": _f("hk_carb"), "protein_g": _f("hk_protein"),
-        "vegetable_g": _f("hk_veg"), "yield_g": _f("hk_yield"),
-        "produced_portion": _f("ck_portion"),
-        "portion_weight_g": _f("ck_weight"),
-    }
-    _uom = (form.get("ck_uom") or "").strip()
-    if any(v for v in _caps.values()) or _uom:
-        _txs = db.query(KitchenSectionTransaction).filter(
-            KitchenSectionTransaction.order_no == order_no,
-            KitchenSectionTransaction.current_section == section,
-            KitchenSectionTransaction.recipe_no == recipe_no,
-        ).all()
-        _eligible = _eligible_lines(_txs)
-        _total_recv = sum(r for _, r in _eligible)
-        if _total_recv > 0:
-            for _tx, _recv in _eligible:
-                _share = _recv / _total_recv
-                for _attr, _total in _caps.items():
-                    if _total and hasattr(_tx, _attr):
-                        setattr(_tx, _attr, round(_total * _share, 4))
-                if _uom and hasattr(_tx, "output_uom"):
-                    _tx.output_uom = _uom
-            db.commit()
+    # Batch 192's capture block ran AFTER the transfer, when _eligible_lines()
+    # already returned nothing (every line locked) — so it never wrote. Batch
+    # 200 moved the write inside the transfer loop (captures= above).
 
     db.commit()
     dest = next_section or "the next section"
@@ -3053,20 +3004,28 @@ async def store_issuance_by_section(request: Request, db: Session = Depends(get_
                                                "uom": r["uom"], "required": 0.0, "issued": 0.0,
                                                "orders": set(),
                                                "lines": 0, "pending_lines": 0,
-                                               "pending_required": 0.0})
+                                               "pending_required": 0.0,
+                                               # Batch 200: excess/short over the
+                                               # lines the store has ACTUALLY issued
+                                               "done_lines": 0, "done_required": 0.0,
+                                               "done_issued": 0.0})
         c["required"] += float(r["required_qty"] or 0)
         c["issued"] += float(r["issued_qty"] or 0)
         c["lines"] += 1
         if not is_issued:
             c["pending_lines"] += 1
             c["pending_required"] += float(r["required_qty"] or 0)
+        if (r["issuance_status"] or "") in ("Issued", "Short Issued") or int(r["finalized"] or 0):
+            c["done_lines"] += 1
+            c["done_required"] += float(r["required_qty"] or 0)
+            c["done_issued"] += float(r["issued_qty"] or 0)
         c["orders"].add(r["order_no"])
 
     section_groups = []
     for sec in sorted(groups):
         g = groups[sec]
         g["consolidated"] = sorted(
-            ({**c, "orders": sorted(c["orders"])} for c in g["consolidated"].values()),
+            ({**c, "orders": sorted(c["orders"]), **_issue_variance(c)} for c in g["consolidated"].values()),
             key=lambda c: c["ingredient_name"])
         section_groups.append(g)
 

@@ -1,0 +1,386 @@
+{% extends "layouts/base.html" %}
+{% block title %}{{ t('Production Command Center') }}{% endblock %}
+{% block content %}
+{# ============================================================================
+   Batch 203 — Production Command Center (Images 14–19).
+   Data: app/services/command_center.py (one global filter, company-scoped).
+   ============================================================================ #}
+{% macro fmt(v, kind, unit='') -%}
+  {%- if v is none -%}—
+  {%- elif kind == 'money' -%}
+    {%- set a = v|abs -%}
+    {{ unit }} {% if a >= 1000000 %}{{ '%.2f'|format(v / 1000000) }}M{% elif a >= 1000 %}{{ '%.1f'|format(v / 1000) }}K{% else %}{{ '%.0f'|format(v) }}{% endif %}
+  {%- elif kind == 'pct' -%}{{ '%.1f'|format(v) }}%
+  {%- else -%}{{ '{:,.0f}'.format(v) }}{%- endif -%}
+{%- endmacro %}
+<style>
+  .cc{--cc-border:var(--phoenix-border-color,#dfe5ee);--cc-muted:var(--phoenix-tertiary-color,#6b7a90)}
+  .cc-head{display:flex;flex-wrap:wrap;gap:.75rem;align-items:flex-end;margin-bottom:1rem}
+  .cc-crumb{font-size:.72rem;color:var(--cc-muted)}
+  .cc-head h1{font-size:1.65rem;font-weight:800;margin:0;letter-spacing:-.01em}
+  .cc-head p{margin:0;color:var(--cc-muted);font-size:.85rem}
+  .cc-fresh{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border:1px solid var(--cc-border);border-radius:.8rem;margin-bottom:1rem;background:var(--phoenix-body-bg,#fff)}
+  .cc-fresh div{padding:.55rem .9rem;border-inline-end:1px solid var(--cc-border);font-size:.72rem;color:var(--cc-muted)}
+  .cc-fresh div:last-child{border:0}
+  .cc-fresh strong{display:block;color:var(--phoenix-emphasis-color,#132947);font-size:.82rem}
+  .cc-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.75rem;margin-bottom:1rem}
+  .cc-kpi{position:relative;text-align:start;border:1px solid var(--cc-border);border-radius:.8rem;background:var(--phoenix-body-bg,#fff);padding:.9rem .95rem .6rem;overflow:hidden;cursor:pointer;transition:border-color .15s}
+  .cc-kpi::before{content:"";position:absolute;inset:0 0 auto 0;height:4px;background:var(--c)}
+  .cc-kpi:hover{border-color:var(--c)}
+  .cc-kpi:focus-visible{outline:2px solid var(--c);outline-offset:2px}
+  .cc-kpi .t{display:flex;align-items:center;gap:.45rem;font-size:.78rem;font-weight:600;color:var(--cc-muted)}
+  .cc-kpi .t i{display:inline-grid;place-items:center;width:1.6rem;height:1.6rem;border-radius:.45rem;background:color-mix(in srgb,var(--c) 14%,transparent);color:var(--c);font-size:.85rem}
+  .cc-kpi .v{font-size:1.7rem;font-weight:800;line-height:1.15;margin:.35rem 0 .1rem;color:var(--phoenix-emphasis-color,#132947);font-variant-numeric:tabular-nums}
+  .cc-kpi .row2{display:flex;justify-content:space-between;align-items:center;gap:.4rem;font-size:.7rem;color:var(--cc-muted)}
+  .cc-delta{border-radius:.35rem;padding:.05rem .4rem;font-weight:700;font-size:.72rem;white-space:nowrap}
+  .cc-delta.good{background:#e3f6ea;color:#15803d}.cc-delta.bad{background:#fde8e8;color:#b42318}.cc-delta.flat{background:#eef1f5;color:#6b7a90}
+  .cc-spark{height:38px;margin:.35rem -.2rem 0}
+  .cc-panel{border:1px solid var(--cc-border);border-radius:.8rem;background:var(--phoenix-body-bg,#fff);height:100%}
+  .cc-panel>.cc-ph{display:flex;align-items:center;gap:.5rem;padding:.75rem 1rem;border-bottom:1px solid var(--cc-border)}
+  .cc-panel>.cc-ph h2{font-size:.95rem;font-weight:700;margin:0}
+  .cc-panel>.cc-ph small{color:var(--cc-muted)}
+  .cc-panel>.b{padding:.75rem 1rem}
+  .cc-att{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.6rem}
+  .cc-att a{display:block;border:1px solid var(--cc-border);border-radius:.65rem;padding:.6rem .7rem;text-decoration:none;color:inherit;border-inline-start:4px solid var(--c)}
+  .cc-att a:hover{background:color-mix(in srgb,var(--c) 6%,transparent)}
+  .cc-att .n{font-size:1.35rem;font-weight:800;color:var(--c);line-height:1}
+  .cc-att .l{font-size:.74rem;color:var(--cc-muted);margin-top:.15rem;min-height:2.1em}
+  .cc-bar{height:5px;border-radius:3px;background:var(--phoenix-body-highlight-bg,#eef2f7);margin-top:.4rem;overflow:hidden}
+  .cc-bar span{display:block;height:100%;background:var(--c)}
+  .cc-stage{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.5rem}
+  .cc-stage div{border-radius:.6rem;padding:.6rem;background:color-mix(in srgb,var(--c) 10%,transparent);text-align:center}
+  .cc-stage strong{display:block;font-size:1.3rem;color:var(--c)}
+  .cc-stage span{font-size:.72rem;color:var(--cc-muted)}
+  .cc-pill{display:inline-block;border-radius:1rem;padding:.08rem .55rem;font-size:.7rem;font-weight:700;white-space:nowrap}
+  .cc-pill.ontrack{background:#e3f6ea;color:#15803d}.cc-pill.delayed{background:#fde8e8;color:#b42318}
+  .cc-pill.hold{background:#fff3dc;color:#a15c00}.cc-pill.done{background:#e8f0fe;color:#1e5bb8}
+  .cc-pill.qc-Passed{background:#e3f6ea;color:#15803d}.cc-pill.qc-Rejected{background:#fde8e8;color:#b42318}.cc-pill.qc-Hold{background:#fff3dc;color:#a15c00}.cc-pill.qc-none{background:#eef1f5;color:#6b7a90}
+  .cc-drawer .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:.5rem}
+  .cc-drawer .tiles div{border:1px solid var(--cc-border);border-radius:.55rem;padding:.45rem .55rem;font-size:.7rem;color:var(--cc-muted)}
+  .cc-drawer .tiles strong{display:block;font-size:1rem;color:var(--phoenix-emphasis-color,#132947)}
+  .cc-drawer .sec{border:1px solid var(--cc-border);border-radius:.55rem;padding:.55rem .7rem;margin-top:.6rem;font-size:.8rem}
+  .cc-drawer .sec b{display:block;font-size:.72rem;color:var(--cc-muted);margin-bottom:.15rem}
+  @media (max-width:1199px){.cc-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  @media (max-width:575px){.cc-kpis,.cc-att,.cc-stage{grid-template-columns:1fr}.cc-fresh{grid-template-columns:1fr 1fr}}
+  /* Presentation & wallboard: navigation off, content full width */
+  body.cc-present .navbar-vertical, body.cc-present .navbar-top, body.cc-present footer, body.cc-present .isfc-customize-btn{display:none!important}
+  body.cc-present .content{margin-inline-start:0!important;padding-top:1rem!important;max-width:100%!important}
+  body.cc-wall .cc-kpi .v{font-size:2.2rem}
+  body.cc-present .gf-card.cc-hide-present{display:none}
+  @media (prefers-reduced-motion:reduce){.cc-kpi{transition:none}}
+</style>
+
+<div class="cc container-fluid py-3" id="ccRoot" data-mode="{{ mode }}">
+  <div class="cc-head">
+    <div>
+      <!-- <div class="cc-crumb">{{ t('Overview') }} · {{ t('Production') }}</div> -->
+      <h1>{{ t('Production Command Center') }}</h1>
+      <!-- <p>{{ t('Orders, cost, waste, quality and delivery for the selected period — one filter drives every number.') }}</p> -->
+    </div>
+    <div class="ms-auto d-flex flex-wrap gap-2">
+      {% set _qs = request.url.query %}
+      {% if mode %}
+      <a class="btn btn-sm btn-phoenix-secondary" href="/dashboard?{{ _qs|replace('mode=' ~ mode, '')|trim('&') }}"><i class="bi bi-box-arrow-left me-1"></i>{{ t('Exit') }} {{ t(mode|capitalize) }}</a>
+      {% else %}
+      <a class="btn btn-sm btn-phoenix-secondary" href="/dashboard?{{ _qs }}{{ '&' if _qs }}mode=presentation"><i class="bi bi-easel me-1"></i>{{ t('Presentation') }}</a>
+      <a class="btn btn-sm btn-phoenix-secondary" href="/dashboard?{{ _qs }}{{ '&' if _qs }}mode=wallboard"><i class="bi bi-display me-1"></i>{{ t('Wallboard') }}</a>
+      {% endif %}
+      <button type="button" class="btn btn-sm btn-phoenix-secondary" id="ccFull" aria-label="{{ t('Full screen') }}"><i class="bi bi-arrows-fullscreen"></i></button>
+      <!-- <a class="btn btn-sm btn-primary" href="/production/orders"><i class="bi bi-list-task me-1"></i>{{ t('Production Orders') }}</a> -->
+    </div>
+  </div>
+
+  <div class="{{ 'd-none' if mode == 'wallboard' }}">
+    {% set gf_action = '/dashboard' %}{% set gf = filters %}{% set gf_options = options %}{% include 'partials/global_filters.html' %}
+  </div>
+
+  <div class="cc-fresh">
+    <div><strong>{{ generated_at }}</strong>{{ t('Data as of') }}</div>
+    <div><strong>{{ periods.current.orders }} {{ t('orders') }}</strong>{{ t('In scope') }} · {{ '%g'|format(periods.current.portions) }} {{ t('portions') }}</div>
+    <div><strong>{{ filters.prior_start }} → {{ filters.prior_end }}</strong>{{ t('Compared with') }}{% if filters.compare == 'none' %} ({{ t('off') }}){% endif %}</div>
+    <div><strong>{{ company_name }}</strong>{{ t('Security scope') }}</div>
+  </div>
+
+  {# ------------------------------ KPI cards ------------------------------ #}
+  <div class="cc-kpis">
+    {% for c in cards %}
+    <button type="button" class="cc-kpi" style="--c:{{ c.color }}" data-kpi="{{ c.key }}" aria-label="{{ t(c.title) }} — {{ t('open details') }}">
+      <div class="t"><i class="bi {{ c.icon }}"></i>{{ t(c.title) }}</div>
+      <div class="v">{{ fmt(c.value, c.fmt, c.unit) }}</div>
+      <div class="row2">
+        {% if c.delta is not none %}
+          <span class="cc-delta {{ c.tone or 'flat' }}">{{ '▲' if c.delta > 0 else ('▼' if c.delta < 0 else '■') }} {{ '%.1f'|format(c.delta|abs) }}{{ ' pp' if c.delta_unit == 'pp' else '%' }}</span>
+        {% else %}<span class="cc-delta flat">{{ t('no prior') }}</span>{% endif %}
+        <span>{% if c.target is not none %}{{ t('Target') }} {{ fmt(c.target, c.fmt, c.unit) }}{% elif c.records is not none %}{{ c.records }} {{ t('records') }}{% endif %}</span>
+      </div>
+      <div class="cc-spark" data-spark='{{ c.spark|tojson }}' data-color="{{ c.color }}"></div>
+    </button>
+    {% endfor %}
+  </div>
+
+  {# ------------------------------ Pipeline row ------------------------------ #}
+  <div class="row g-3 mb-3">
+    <div class="col-xl-5">
+      <div role="region" class="cc-panel">
+        <div class="cc-ph"><h2>{{ t('Production and delivery pipeline') }}</h2><small class="ms-auto">{{ t('Orders reaching each stage') }}</small></div>
+        <div class="b">
+          <div style="min-height:320px" data-isfc-chart="funnel" data-types="funnel,hbar,bar,donut" data-unit="orders"
+               data-note="{{ t('Orders in the filter that have reached each stage. A sharp narrowing shows where work is stuck.') }}"
+               data-labels='{{ charts.funnel|map("first")|map("string")|list|tojson }}'
+               data-values='{{ charts.funnel|map("last")|list|tojson }}'></div>
+        </div>
+      </div>
+    </div>
+    <div class="col-xl-3 col-md-6">
+      <div role="region" class="cc-panel">
+        <div class="cc-ph"><h2>{{ t('Order status') }}</h2></div>
+        <div class="b">
+          {% if charts.status %}
+          <div style="min-height:320px" data-isfc-chart="donut" data-types="donut,hbar,bar,pie" data-unit="orders"
+               data-labels='{{ charts.status|map(attribute="label")|list|tojson }}'
+               data-values='{{ charts.status|map(attribute="total")|list|tojson }}'></div>
+          {% else %}<div class="text-body-tertiary py-5 text-center">{{ t('No orders in this filter.') }}</div>{% endif %}
+        </div>
+      </div>
+    </div>
+    <div class="col-xl-4 col-md-6">
+      <div role="region" class="cc-panel">
+        <div class="cc-ph"><h2>{{ t('Needs attention') }}</h2><small class="ms-auto">{{ t('share of open orders') }}</small></div>
+        <div class="b cc-att">
+          {% for a in attention %}
+          <a href="{{ a.url }}" style="--c:{{ a.color }}">
+            <div class="d-flex justify-content-between align-items-start"><span class="n">{{ a.value }}</span><i class="bi {{ a.icon }}" style="color:{{ a.color }}"></i></div>
+            <div class="l">{{ t(a.title) }}</div>
+            <div class="cc-bar" role="presentation"><span style="width:{{ [a.share, 100]|min }}%"></span></div>
+          </a>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# ------------------------------ Flow row ------------------------------ #}
+  <div class="row g-3 mb-3">
+    <div class="col-xl-6">
+      <div role="region" class="cc-panel">
+        <div class="cc-ph"><h2>{{ t('Queue time by section') }}</h2><small class="ms-auto">{{ t('Average minutes from arrival to receipt') }}</small></div>
+        <div class="b">
+          {% set q = charts.queue|selectattr('queue_min')|list %}
+          {% if q %}
+          <div style="min-height:300px" data-isfc-chart="hbar" data-types="hbar,bar,line" data-unit="min"
+               data-note="{{ t('How long material waits in a section before it is received. Long queues are where orders lose time.') }}"
+               data-labels='{{ q|map(attribute="label")|list|tojson }}'
+               data-values='{{ q|map(attribute="queue_min")|map("float")|list|tojson }}'></div>
+          {% else %}<div class="text-body-tertiary py-5 text-center">{{ t('No section receipts recorded in this filter yet.') }}</div>{% endif %}
+          <!-- {% if charts.queue %}
+          <table class="table table-sm mb-0 mt-2 small">
+            <thead><tr><th>{{ t('Section') }}</th><th class="text-end">{{ t('Lines') }}</th><th class="text-end">{{ t('Done') }}</th>
+              <th class="text-end">{{ t('Queue min') }}</th><th class="text-end">{{ t('Cycle min') }}</th><th class="text-end">{{ t('Waste') }}</th></tr></thead>
+            <tbody>{% for s in charts.queue %}<tr>
+              <td>{{ t(s.label) }}</td><td class="text-end">{{ s.line_count }}</td>
+              <td class="text-end">{{ s.done }} <span class="text-body-tertiary">({{ ((s.done / s.line_count * 100) if s.line_count else 0)|round|int }}%)</span></td>
+              <td class="text-end">{{ s.queue_min if s.queue_min is not none else '—' }}</td>
+              <td class="text-end">{{ s.cycle_min if s.cycle_min is not none else '—' }}</td>
+              <td class="text-end">{{ s.waste }}</td></tr>{% endfor %}</tbody>
+          </table>
+          {% endif %} -->
+        </div>
+      </div>
+    </div>
+    <div class="col-xl-6">
+      <div role="region" class="cc-panel">
+        <div class="cc-ph"><h2>{{ t('Store issuance') }}</h2><small class="ms-auto">{{ t('Material released to the kitchen vs still waiting') }}</small></div>
+        <div class="b">
+          <div class="cc-stage mb-3">
+            {% for key, label, color in [('issued', 'Issued exact', '#15803d'), ('excess', 'Excess issued', '#e59f0b'), ('short_issued', 'Short issued', '#dc3545'), ('pending', 'Pending', '#1e5bb8')] %}
+            <div style="--c:{{ color }}"><strong>{{ charts.store[key] }}</strong><span>{{ t(label) }}</span></div>
+            {% endfor %}
+          </div>
+          {% set st = charts.store %}
+          {% if st.issued + st.excess + st.short_issued + st.pending %}
+          <div style="min-height:240px" data-isfc-chart="donut" data-types="donut,bar,pie" data-unit="lines"
+               data-labels='{{ [t("Issued exact"), t("Excess issued"), t("Short issued"), t("Pending")]|tojson }}'
+               data-values='{{ [st.issued, st.excess, st.short_issued, st.pending]|tojson }}'></div>
+          {% else %}<div class="text-body-tertiary py-5 text-center">{{ t('No issuance lines in this filter.') }}</div>{% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# ------------------------------ Mix row ------------------------------ #}
+  <div class="row g-3 mb-3">
+    <div class="col-xl-6">
+      <div role="region" class="cc-panel">
+        <div class="cc-ph"><h2>{{ t('Portions by recipe category') }}</h2></div>
+        <div class="b">{% if charts.recipe_mix %}
+          <div style="min-height:300px" data-isfc-chart="hbar" data-types="hbar,bar,donut,pie,radar" data-unit="portions"
+               data-labels='{{ charts.recipe_mix|map(attribute="label")|list|tojson }}'
+               data-values='{{ charts.recipe_mix|map(attribute="total")|map("float")|list|tojson }}'></div>
+        {% else %}<div class="text-body-tertiary py-5 text-center">{{ t('No order lines in this filter.') }}</div>{% endif %}</div>
+      </div>
+    </div>
+    <div class="col-xl-6">
+      <div role="region" class="cc-panel">
+        <div class="cc-ph"><h2>{{ t('Selling value by customer') }}</h2></div>
+        <div class="b">{% if charts.customer_mix %}
+          <div style="min-height:300px" data-isfc-chart="bar" data-types="bar,hbar,donut,pie" data-unit="SAR"
+               data-labels='{{ charts.customer_mix|map(attribute="label")|list|tojson }}'
+               data-values='{{ charts.customer_mix|map(attribute="total")|map("float")|list|tojson }}'></div>
+        {% else %}<div class="text-body-tertiary py-5 text-center">{{ t('No orders in this filter.') }}</div>{% endif %}</div>
+      </div>
+    </div>
+  </div>
+
+  {# ------------------------------ Batch table ------------------------------ #}
+  <div role="region" class="cc-panel mb-3">
+    <div class="cc-ph"><h2>{{ t('Production order detail') }}</h2><small>{{ t('Stage, quantities, cycle, delay and QC evidence') }}</small></div>
+    <div class="b p-0">
+      <div class="table-responsive">
+        <table class="table table-sm table-hover mb-0 small" data-isfc-table data-isfc-colfilters
+               data-isfc-title="{{ t('Production order detail') }}" data-isfc-subtitle="{{ filters.date_from }} → {{ filters.date_to }}">
+          <thead class="bg-body-highlight"><tr>
+            <th>{{ t('Order') }}</th><th>{{ t('Delivery') }}</th><th>{{ t('Customer') }}</th><th>{{ t('Recipe') }}</th>
+            <th>{{ t('Current section') }}</th><th>{{ t('Health') }}</th><th>{{ t('Status') }}</th><th>{{ t('Priority') }}</th>
+            <th class="text-end">{{ t('Portions') }}</th><th class="text-end">{{ t('Input qty') }}</th><th class="text-end">{{ t('Output qty') }}</th>
+            <th class="text-end">{{ t('Waste') }}</th><th class="text-end">{{ t('Queue min') }}</th><th class="text-end">{{ t('Cycle h') }}</th>
+            <th class="text-end">{{ t('Delay days') }}</th><th>{{ t('QC') }}</th>
+            <th class="text-end">{{ t('Food cost') }}</th><th class="text-end">{{ t('Sale') }}</th><th class="text-end">{{ t('Margin %') }}</th>
+          </tr></thead>
+          <tbody>
+          {% for b in batches %}
+            {% set hcls = {'Delayed': 'delayed', 'On hold': 'hold', 'Completed': 'done'}.get(b.health, 'ontrack') %}
+            <tr>
+              <td><a class="fw-bold" href="/production/orders/{{ b.order_no }}">{{ b.order_no }}</a></td>
+              <td class="text-nowrap">{{ b.delivery_date }}</td>
+              <td>{{ b.customer_name }}</td>
+              <td>{{ b.first_recipe or '—' }}{% if b.recipes and b.recipes > 1 %} <span class="text-body-tertiary">+{{ b.recipes - 1 }}</span>{% endif %}</td>
+              <td>{{ t(b.current_section) if b.current_section else '—' }}</td>
+              <td><span class="cc-pill {{ hcls }}">{{ t(b.health) }}</span></td>
+              <td>{{ t(b.status) }}</td>
+              <td class="{{ 'text-danger fw-bold' if b.priority in ('High', 'Urgent') }}">{{ t(b.priority) }}</td>
+              <td class="text-end">{{ '%g'|format(b.portions) }}</td>
+              <td class="text-end">{{ '%.1f'|format(b.input_qty) if b.input_qty is not none else '—' }}</td>
+              <td class="text-end">{{ '%.1f'|format(b.output_qty) if b.output_qty is not none else '—' }}</td>
+              <td class="text-end">{{ '%.1f'|format(b.waste_qty) if b.waste_qty else '—' }}</td>
+              <td class="text-end">{{ b.queue_min if b.queue_min is not none else '—' }}</td>
+              <td class="text-end">{{ b.cycle_hours if b.cycle_hours is not none else '—' }}</td>
+              <td class="text-end {{ 'text-danger fw-bold' if b.delay_days }}">{{ b.delay_days or '—' }}</td>
+              <td><span class="cc-pill qc-{{ b.qc_status or 'none' }}">{{ t(b.qc_status) if b.qc_status else t('Not checked') }}</span></td>
+              <td class="text-end">{{ '%.2f'|format(b.food_cost) }}</td>
+              <td class="text-end">{{ '%.2f'|format(b.sale) }}</td>
+              <td class="text-end {{ 'text-danger' if b.margin_pct is not none and b.margin_pct < 0 }}">{{ '%.1f'|format(b.margin_pct) if b.margin_pct is not none else '—' }}</td>
+            </tr>
+          {% else %}
+            <tr><td colspan="19" class="text-center text-body-tertiary py-4">{{ t('No orders in this filter. Widen the timeline or clear a filter.') }}</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# ------------------------------ KPI drawer ------------------------------ #}
+<div class="offcanvas offcanvas-end cc-drawer" tabindex="-1" id="ccDrawer" aria-labelledby="ccDrawerTitle" style="width:min(680px,100vw)">
+  <div class="offcanvas-header border-bottom">
+    <div><h5 class="offcanvas-title mb-0" id="ccDrawerTitle"></h5><small class="text-body-tertiary" id="ccDrawerSub"></small></div>
+    <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="{{ t('Close') }}"></button>
+  </div>
+  <div class="offcanvas-body">
+    <div class="tiles">
+      <div><strong id="ccDCur">—</strong>{{ t('Current value') }}</div>
+      <div><strong id="ccDPrior">—</strong>{{ t('Prior period') }}</div>
+      <div><strong id="ccDTarget">—</strong>{{ t('Target') }}</div>
+      <div><strong id="ccDRecords">—</strong>{{ t('Records') }}</div>
+    </div>
+    <div class="cc-spark mt-3" id="ccDSpark" style="height:110px"></div>
+    <div class="sec"><b>{{ t('Definition') }}</b><span id="ccDDef"></span></div>
+    <div class="sec"><b>{{ t('Calculation') }}</b><code id="ccDFormula" style="white-space:normal"></code></div>
+    <div class="sec"><b>{{ t('Drill dimensions') }}</b><span id="ccDDims"></span></div>
+    <h6 class="mt-3 mb-2" id="ccDRowsTitle"></h6>
+    <div class="table-responsive">
+      <table class="table table-sm small mb-0">
+        <thead><tr><th>{{ t('Record') }}</th><th>{{ t('Detail') }}</th><th>{{ t('Stage') }}</th><th>{{ t('Due') }}</th><th class="text-end" id="ccDUnit">{{ t('Value') }}</th></tr></thead>
+        <tbody id="ccDRows"><tr><td colspan="5" class="text-body-tertiary">…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+  var CARDS = {{ cards|tojson }};
+  var LABELS = {{ periods.daily_labels|tojson }};
+  var I18N = {{ {'no_rows': t('No records for this filter.'), 'loading': t('Loading…'), 'days': t('days'), 'period': filters.date_from ~ ' → ' ~ filters.date_to}|tojson }};
+  var root = document.getElementById('ccRoot');
+  var mode = root.dataset.mode;
+  if (mode) document.body.classList.add('cc-present');
+  if (mode === 'wallboard') { document.body.classList.add('cc-wall'); document.documentElement.setAttribute('data-bs-theme', 'dark'); }
+
+  function fmt(v, kind, unit) {
+    if (v === null || v === undefined) return '—';
+    if (kind === 'money') { var a = Math.abs(v); return (unit ? unit + ' ' : '') + (a >= 1e6 ? (v / 1e6).toFixed(2) + 'M' : a >= 1e3 ? (v / 1e3).toFixed(1) + 'K' : v.toFixed(0)); }
+    if (kind === 'pct') return v.toFixed(1) + '%';
+    return Math.round(v).toLocaleString();
+  }
+  function spark(el, data, color, big) {
+    if (!window.echarts || !el) return;
+    var ch = echarts.getInstanceByDom(el) || echarts.init(el);
+    ch.setOption({
+      grid: big ? { left: 36, right: 8, top: 8, bottom: 20 } : { left: 2, right: 2, top: 4, bottom: 2 },
+      xAxis: { type: 'category', data: LABELS, show: !!big, axisLabel: { fontSize: 9 } },
+      yAxis: { type: 'value', show: !!big, splitLine: { show: !!big }, axisLabel: { fontSize: 9 } },
+      tooltip: { trigger: 'axis', confine: true },
+      series: [{ type: 'line', data: data, smooth: true, connectNulls: true, symbol: 'none',
+                 lineStyle: { color: color, width: 2 }, areaStyle: { color: color, opacity: .12 } }]
+    }, true);
+  }
+  function paintSparks() { document.querySelectorAll('.cc-kpi .cc-spark').forEach(function (el) { spark(el, JSON.parse(el.dataset.spark), el.dataset.color); }); }
+  window.addEventListener('load', function () { setTimeout(paintSparks, 50); });
+  window.addEventListener('resize', function () { document.querySelectorAll('.cc-spark').forEach(function (el) { var c = window.echarts && echarts.getInstanceByDom(el); if (c) c.resize(); }); });
+
+  var drawerEl = document.getElementById('ccDrawer');
+  var drawer = window.bootstrap ? bootstrap.Offcanvas.getOrCreateInstance(drawerEl) : null;
+  function esc(s) { return String(s === null || s === undefined ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  document.querySelectorAll('.cc-kpi').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var c = CARDS.find(function (x) { return x.key === btn.dataset.kpi; }); if (!c) return;
+      document.getElementById('ccDrawerTitle').textContent = btn.querySelector('.t').textContent.trim();
+      document.getElementById('ccDrawerSub').textContent = I18N.period;
+      document.getElementById('ccDCur').textContent = fmt(c.value, c.fmt, c.unit);
+      document.getElementById('ccDPrior').textContent = fmt(c.prior, c.fmt, c.unit);
+      document.getElementById('ccDTarget').textContent = fmt(c.target, c.fmt, c.unit);
+      document.getElementById('ccDRecords').textContent = c.records === null ? '—' : c.records;
+      document.getElementById('ccDDef').textContent = c.definition;
+      document.getElementById('ccDFormula').textContent = c.formula;
+      document.getElementById('ccDDims').textContent = c.dims;
+      var body = document.getElementById('ccDRows'); body.innerHTML = '<tr><td colspan="5" class="text-body-tertiary">' + esc(I18N.loading) + '</td></tr>';
+      if (drawer) drawer.show();
+      setTimeout(function () { spark(document.getElementById('ccDSpark'), c.spark, c.color, true); }, 250);
+      var qs = new URLSearchParams(window.location.search); qs.delete('mode');
+      fetch('/dashboard/kpi/' + encodeURIComponent(c.key) + '?' + qs.toString(), { credentials: 'same-origin' })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          document.getElementById('ccDRowsTitle').textContent = d.title || '';
+          document.getElementById('ccDUnit').textContent = d.unit || '';
+          if (!d.rows || !d.rows.length) { body.innerHTML = '<tr><td colspan="5" class="text-body-tertiary">' + esc(I18N.no_rows) + '</td></tr>'; return; }
+          body.innerHTML = d.rows.map(function (r) {
+            return '<tr><td><a href="/production/orders/' + encodeURIComponent(r.ref) + '">' + esc(r.ref) + '</a></td><td>' + esc(r.customer) +
+                   '</td><td>' + esc(r.stage) + '</td><td class="text-nowrap">' + esc(r.due) + '</td><td class="text-end fw-bold">' + esc(r.metric) + '</td></tr>';
+          }).join('');
+        })
+        .catch(function () { body.innerHTML = '<tr><td colspan="5" class="text-danger">Could not load records.</td></tr>'; });
+    });
+  });
+
+  var full = document.getElementById('ccFull');
+  if (full) full.addEventListener('click', function () {
+    if (!document.fullscreenElement) { (document.documentElement.requestFullscreen || function () {}).call(document.documentElement); }
+    else if (document.exitFullscreen) { document.exitFullscreen(); }
+  });
+  if (mode === 'wallboard') { setTimeout(function () { location.reload(); }, 120000); }
+})();
+</script>
+{% endblock %}

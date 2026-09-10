@@ -128,7 +128,31 @@ class AuthMiddleware(BaseHTTPMiddleware):
 async def lifespan(app: FastAPI):
     logger.info(f"Starting {APP_NAME}...")
     logger.info(f"Company: {COMPANY_NAME}")
+    # -------------------------------------------------------------------------
+    # Batch 201 ROOT CAUSE — the startup schema guards never ran.
+    #
+    # FastAPI/Starlette IGNORE @app.on_event("startup") handlers when the app is
+    # created with lifespan=... (they are mutually exclusive; no error, no
+    # warning in our logs). Every guard inside startup_event() below —
+    # packed_bags, sales_review_status, purchase_requisitions, top-up/sampling,
+    # inventory_transactions.qc_status, supplier rating — has therefore only
+    # ever been created lazily, by whichever route happened to call it first.
+    # Proof from the server log: lifespan's "Starting ISFC PIMS..." is logged,
+    # startup_event()'s "Application startup complete" never is.
+    #
+    # The guards are idempotent and individually try/except-wrapped, so calling
+    # them from here is safe; they are looked up at run time because they are
+    # defined further down this module.
+    # -------------------------------------------------------------------------
+    try:
+        await startup_event()
+    except Exception as exc:  # never block the app from starting
+        logger.error(f"Startup guards failed: {exc}")
     yield
+    try:
+        await shutdown_event()
+    except Exception:
+        pass
     logger.info(f"Shutting down {APP_NAME}...")
 
 

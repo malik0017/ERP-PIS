@@ -180,6 +180,8 @@
   </div>
   {% set status_options = ['Passed','Hold','Rejected'] %}
   {% include 'partials/filter_bar.html' %}
+  {# Batch 204: global context filter (collapsed until used) #}
+  {% set gf_action = '/qc' %}{% set gf_compact = True %}{% include 'partials/global_filters.html' %}
 
   <div class="panel">
     <h3>QC Receiving Queue</h3>

@@ -205,7 +205,11 @@
       <div class="cardx mb-2" style="padding:0">
         <div class="d-flex justify-content-between align-items-center p-2" style="cursor:pointer" onclick="this.nextElementSibling.classList.toggle('d-none'); this.querySelector('.bi-chevron-down,.bi-chevron-up').classList.toggle('bi-chevron-down'); this.querySelector('.bi-chevron-down,.bi-chevron-up').classList.toggle('bi-chevron-up')">
           <div><i class="bi bi-chevron-down me-1"></i> <strong>{{ g.recipe_name or '—' }}</strong> <span class="text-body-tertiary small">{{ g.recipe_no }}</span></div>
-          <div class="small text-body-tertiary">{{ g.lines|length }} {{ t('ingredients') }} · {{ t('Received') }} {{ '%.2f'|format(g.received_qty) }}</div>
+          <div class="small text-body-tertiary">
+            {% if g.protein is not none or g.carb is not none or g.veg is not none %}
+            <span class="badge badge-phoenix badge-phoenix-info me-1">P {{ '%.1f'|format(g.protein or 0) }}g · C {{ '%.1f'|format(g.carb or 0) }}g · V {{ '%.1f'|format(g.veg or 0) }}g</span>
+            {% endif %}
+            {{ g.lines|length }} {{ t('ingredients') }} · {{ t('Received') }} {{ '%.2f'|format(g.received_qty) }}</div>
         </div>
         <div class="table-responsive d-none">
           <table class="table-pro">

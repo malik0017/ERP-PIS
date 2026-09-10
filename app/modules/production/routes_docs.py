@@ -68,6 +68,22 @@ def qc_certificate(request: Request, order_no: str, db: Session = Depends(get_db
         FROM qc_checks WHERE order_no = :o ORDER BY recipe_name, qc_no
     """, {"o": order_no})
 
+    # Batch 200 (Image 9: "...and also give me in the report") — the weights
+    # and nutrition each kitchen section recorded at transfer, per recipe, as
+    # they arrived at QC. Line values are pro-rata shares of the batch figure,
+    # so SUM restores the batch total; portion weight is per portion -> MAX.
+    nutrition = _rows(db, """
+        SELECT COALESCE(recipe_no,'') AS recipe_no, MAX(COALESCE(recipe_name,'')) AS recipe_name,
+               GROUP_CONCAT(DISTINCT from_section ORDER BY from_section SEPARATOR ', ') AS from_sections,
+               SUM(COALESCE(issued_qty_standard,0)) AS received_weight,
+               SUM(protein_g) AS protein_g, SUM(carb_g) AS carb_g, SUM(vegetable_g) AS vegetable_g,
+               MAX(portion_weight_g) AS portion_weight_g, SUM(produced_portion) AS produced_portion,
+               GROUP_CONCAT(DISTINCT NULLIF(section_remarks,'') SEPARATOR ' | ') AS remarks
+        FROM kitchen_section_transactions
+        WHERE order_no = :o AND current_section = 'QC'
+        GROUP BY recipe_no ORDER BY recipe_name
+    """, {"o": order_no})
+
     passed = sum(1 for c in checks if (c["qc_status"] or "").lower() == "passed")
     rejected = sum(1 for c in checks if (c["qc_status"] or "").lower() == "rejected")
     hold = sum(1 for c in checks if (c["qc_status"] or "").lower() == "hold")
@@ -75,7 +91,7 @@ def qc_certificate(request: Request, order_no: str, db: Session = Depends(get_db
     avg_score = round(sum(float(c["overall"] or 0) for c in checks) / len(checks), 1) if checks else 0
 
     return render(request, "documents/qc_certificate.html", {
-        "order": order, "order_no": order_no, "checks": checks,
+        "order": order, "order_no": order_no, "checks": checks, "nutrition": nutrition,
         "summary": {"total": len(checks), "passed": passed, "rejected": rejected,
                     "hold": hold, "verdict": verdict, "avg_score": avg_score},
         "page_title": f"QC Certificate — {order_no}",

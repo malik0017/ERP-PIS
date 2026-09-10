@@ -31,9 +31,16 @@ def _next_no(db: Session, table: str, col: str, prefix: str) -> str:
     return f"{prefix}-{today}-{int(row) + 1:04d}"
 
 
-def _qc_orders(db: Session, search: str = "", from_date: str = "", to_date: str = "", scope: str = "current"):
+def _qc_orders(db: Session, search: str = "", from_date: str = "", to_date: str = "", scope: str = "current",
+               list_scope: dict | None = None):
     extra = ""
     params = {}
+    if list_scope:
+        # Batch 204: company scope + global filter (see command_center.list_scope)
+        extra += list_scope["sql"]
+        params.update(list_scope["params"])
+        if list_scope["gf"]["active"]:
+            scope = "all"  # the global timeline decides the dates
     if search:
         extra += " AND (k.order_no LIKE :search OR COALESCE(co.customer_name,'') LIKE :search OR COALESCE(co.brand,'') LIKE :search)"
         params["search"] = f"%{search}%"
@@ -82,11 +89,13 @@ def qc_dashboard(request: Request, db: Session = Depends(get_db)):
     to_date = (q.get("to_date") or "").strip()
     status_f = (q.get("status") or "").strip()
     scope = (q.get("scope") or "current").strip().lower()
-    pending_orders = _qc_orders(db, search=search, from_date=from_date, to_date=to_date, scope=scope)
+    from app.services.command_center import list_scope as _list_scope
+    _ls = _list_scope(request, db, "k")
+    pending_orders = _qc_orders(db, search=search, from_date=from_date, to_date=to_date, scope=scope, list_scope=_ls)
     # Batch 122: QC History now shows customer / brand / category by joining
     # customer_orders, instead of the bare QCCheck rows (image 15).
-    hist_where = "1=1"
-    hist_params: dict = {}
+    hist_where = "1=1" + _ls["sql"]
+    hist_params: dict = dict(_ls["params"])
     if status_f:
         hist_where += " AND k.qc_status = :st"
         hist_params["st"] = status_f
@@ -108,10 +117,14 @@ def qc_dashboard(request: Request, db: Session = Depends(get_db)):
     summary = {
         "pending_orders": len(pending_orders),
         "pending_lines": sum(int(r.get("total_lines") or 0) for r in pending_orders),
-        "passed": db.query(QCCheck).filter(QCCheck.qc_status == "Passed").count(),
-        "hold": db.query(QCCheck).filter(QCCheck.qc_status == "Hold").count(),
-        "rejected": db.query(QCCheck).filter(QCCheck.qc_status == "Rejected").count(),
     }
+    # Batch 204: history KPIs counted every company's QC checks; now the same
+    # scope as the list below them.
+    _cnt = db.execute(text(f"""
+        SELECT SUM(k.qc_status='Passed') AS passed, SUM(k.qc_status='Hold') AS hold,
+               SUM(k.qc_status='Rejected') AS rejected
+        FROM qc_checks k WHERE 1=1 {_ls['sql']}"""), _ls["params"]).mappings().first() or {}
+    summary.update({k: int(_cnt.get(k) or 0) for k in ("passed", "hold", "rejected")})
     return render(
         request,
         "qc/index.html",
@@ -120,6 +133,7 @@ def qc_dashboard(request: Request, db: Session = Depends(get_db)):
             "rows": rows,
             "summary": summary,
             "page_title": "Quality Control",
+            "gf": _ls["gf"], "gf_options": _ls["gf_options"],
             "filters": {"search": search, "from_date": from_date, "to_date": to_date, "status": status_f, "scope": scope},
             "error": request.query_params.get("error"),
         },
@@ -169,7 +183,13 @@ def qc_order(request: Request, order_no: str, db: Session = Depends(get_db)):
             "from_section": t.from_section, "issued_qty_standard": t.issued_qty_standard,
             "received_qty_standard": t.received_qty_standard, "standard_uom": t.standard_uom,
             "transaction_status": t.transaction_status,
-            "nut_w": t.portion_weight_g, "nut_p": t.protein_g,
+            # Batch 200: Hot Kitchen records carb/protein/veg but not a
+            # portion weight, which left Weight blank. Fall back to the sum of
+            # the three components so the column reflects what was captured.
+            "nut_w": (t.portion_weight_g if t.portion_weight_g is not None else (
+                sum(v for v in (t.protein_g, t.carb_g, t.vegetable_g) if v is not None)
+                if any(v is not None for v in (t.protein_g, t.carb_g, t.vegetable_g)) else None)),
+            "nut_p": t.protein_g,
             "nut_c": t.carb_g, "nut_v": t.vegetable_g,
             # Old [NUT ...] tags may still exist on historical rows written
             # before Batch 143 — stripped from the visible remark either
@@ -186,7 +206,11 @@ def qc_order(request: Request, order_no: str, db: Session = Depends(get_db)):
         g = recipe_groups.setdefault(key, {
             "recipe_no": t.recipe_no, "recipe_name": t.recipe_name,
             "lines": [], "received_qty": 0.0, "issued_qty": 0.0,
+            "protein": None, "carb": None, "veg": None,
         })
+        for _k, _v in (("protein", t.protein_g), ("carb", t.carb_g), ("veg", t.vegetable_g)):
+            if _v is not None:
+                g[_k] = (g[_k] or 0.0) + float(_v)
         g["lines"].append(row)
         g["received_qty"] += float(t.received_qty_standard or 0)
         g["issued_qty"] += float(t.issued_qty_standard or 0)

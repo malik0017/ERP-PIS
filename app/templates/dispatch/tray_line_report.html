@@ -23,13 +23,37 @@
   </div>
 
   <div class="tl-card p-3 no-print">
-    <form method="get" class="d-flex flex-wrap gap-3 align-items-end">
-      <div><label class="form-label fw-bold">Date</label>
-        <input type="date" name="date" value="{{ date }}" class="form-control"></div>
-      <div><button class="btn btn-primary fw-bold"><i class="bi bi-search"></i> Load</button></div>
-      <div class="ms-auto d-flex gap-2">
-        <button type="button" class="btn btn-outline-secondary fw-bold" onclick="window.print()">
-          <i class="bi bi-printer"></i> Print / Save as PDF</button>
+    {# Batch 201 (Image 13): filters. Dropdowns list only values that have
+       packed bags on the chosen date, so every choice returns rows. #}
+    <form method="get" class="row g-2 align-items-end">
+      <div class="col-6 col-md-2"><label class="form-label fw-bold small">{{ t('Date') }}</label>
+        <input type="date" name="date" value="{{ date }}" class="form-control form-control-sm"></div>
+      <div class="col-6 col-md-3"><label class="form-label fw-bold small">{{ t('Customer') }}</label>
+        <select name="customer" class="form-select form-select-sm"><option value="">{{ t('All customers') }}</option>
+          {% for c in options.customers %}<option {% if filters.customer == c %}selected{% endif %}>{{ c }}</option>{% endfor %}</select></div>
+      <div class="col-6 col-md-2"><label class="form-label fw-bold small">{{ t('Order No') }}</label>
+        <select name="order_no" class="form-select form-select-sm"><option value="">{{ t('All orders') }}</option>
+          {% for o in options.orders %}<option {% if filters.order_no == o %}selected{% endif %}>{{ o }}</option>{% endfor %}</select></div>
+      <div class="col-6 col-md-1"><label class="form-label fw-bold small">{{ t('Brand') }}</label>
+        <select name="brand" class="form-select form-select-sm"><option value="">{{ t('All') }}</option>
+          {% for b in options.brands %}<option {% if filters.brand == b %}selected{% endif %}>{{ b }}</option>{% endfor %}</select></div>
+      <div class="col-6 col-md-1"><label class="form-label fw-bold small">{{ t('Region') }}</label>
+        <select name="region" class="form-select form-select-sm"><option value="">{{ t('All') }}</option>
+          {% for rg in options.regions %}<option {% if filters.region == rg %}selected{% endif %}>{{ rg }}</option>{% endfor %}</select></div>
+      <div class="col-6 col-md-1"><label class="form-label fw-bold small">{{ t('Status') }}</label>
+        <select name="status" class="form-select form-select-sm"><option value="">{{ t('All') }}</option>
+          {% for st in options.statuses %}<option value="{{ st }}" {% if filters.status == st %}selected{% endif %}>{{ t(st) }}</option>{% endfor %}</select></div>
+      <div class="col-12 col-md-2 d-flex gap-2">
+        <button class="btn btn-primary btn-sm fw-bold flex-fill"><i class="bi bi-search"></i> {{ t('Load') }}</button>
+        <a class="btn btn-outline-secondary btn-sm" href="?date={{ date }}" title="{{ t('Clear filters') }}"><i class="bi bi-x-lg"></i></a>
+      </div>
+      <div class="col-12 d-flex flex-wrap gap-3 align-items-center small text-body-tertiary">
+        <span><strong class="text-body">{{ totals.regions }}</strong> {{ t('regions') }}</span>
+        <span><strong class="text-body">{{ totals.receivers }}</strong> {{ t('receivers') }}</span>
+        <span><strong class="text-body">{{ totals.bags }}</strong> {{ t('bags') }}</span>
+        <span>{{ t('Orders without a dispatch date are listed on their delivery date.') }}</span>
+        <button type="button" class="btn btn-outline-secondary btn-sm fw-bold ms-auto" onclick="window.print()">
+          <i class="bi bi-printer"></i> {{ t('Print / Save as PDF') }}</button>
       </div>
     </form>
   </div>
@@ -81,7 +105,7 @@
         </div>
       </div>
       {% else %}
-      <div class="p-5 text-center text-secondary">No packed/dispatched bags found for {{ date }}.</div>
+      <div class="p-5 text-center text-secondary">{{ t('No packed bags match these filters for') }} {{ date }}.</div>
       {% endfor %}
 
       <div class="tl-sig d-flex justify-content-between flex-wrap gap-2">

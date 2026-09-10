@@ -15,6 +15,11 @@ from app.models.production import CustomerOrder, PackingDispatch
 
 router = APIRouter(prefix="/packing", tags=["Trayline / Packing"])
 
+# Batch 201: ONE region list for Packing, Dispatch and Logistics. Packing had no
+# "Dammam" while Dispatch did, so a bag allocated to Dammam at dispatch showed
+# as the first option (Riyadh) when the packing screen was reopened.
+PACK_REGIONS = ["Riyadh", "Eastern", "Dammam", "Jeddah", "Makkah", "Madinah", "Qassim", "Other"]
+
 
 def _parse_date(value: Optional[str]):
     try:
@@ -29,21 +34,104 @@ def _redirect_with_error(url: str, message: str) -> RedirectResponse:
 
 
 def ensure_schema(db: Session) -> None:
-    """Batch 121 — add packed_bags to packing_dispatch so the packer can
-    record how many physical bags/trays go out. Surfaced later on Dispatch.
-    Verified via information_schema first (CREATE INDEX IF NOT EXISTS is not
-    supported on MySQL/MariaDB; plain column add is fine and idempotent)."""
-    try:
-        exists = db.execute(text("""
-            SELECT COUNT(*) FROM information_schema.columns
-            WHERE table_schema = DATABASE() AND table_name = 'packing_dispatch'
-              AND column_name = 'packed_bags'
-        """)).scalar()
-        if not exists:
-            db.execute(text("ALTER TABLE packing_dispatch ADD COLUMN packed_bags INT NULL"))
-            db.commit()
-    except Exception:
-        db.rollback()
+    """Batch 121 — packed_bags. Batch 201 — rejected_bags + rejected_bags_reason,
+    so Dispatch can record bags rejected at the dock with a reason instead of
+    silently lowering the bag count. Runs at startup (main.py) via this same
+    function; information_schema check first because ADD COLUMN IF NOT EXISTS
+    is not available on this MySQL."""
+    cols = {
+        "packed_bags": "INT NULL",
+        "rejected_bags": "INT NULL",
+        "rejected_bags_reason": "VARCHAR(255) NULL",
+    }
+    for col, ddl in cols.items():
+        try:
+            exists = db.execute(text("""
+                SELECT COUNT(*) FROM information_schema.columns
+                WHERE table_schema = DATABASE() AND table_name = 'packing_dispatch'
+                  AND column_name = :c
+            """), {"c": col}).scalar()
+            if not exists:
+                db.execute(text(f"ALTER TABLE packing_dispatch ADD COLUMN {col} {ddl}"))
+                db.commit()
+        except Exception:
+            db.rollback()
+
+
+def pack_reconciliation(db: Session, order_no: str) -> list[dict]:
+    """Batch 201 — one row per recipe showing the whole material journey:
+
+        Required (BOM)  →  Issued (store)  →  Transferred (kitchen → QC)
+        →  Received at QC  →  Received P/C/V  →  Packed P/C/V  →  Excess/Shortage
+
+    Nutrition is SUMMED per recipe. Since Batch 200 a bulk capture is split
+    pro-rata across the recipe's lines, so the recipe total is the sum; the old
+    MAX() read only the largest line's share and under-reported every recipe.
+    Portion weight is per portion, so it stays MAX. Quantities are in each
+    line's standard UOM; `uom` is the dominant one for the recipe.
+    """
+    def _q(sql: str) -> dict:
+        try:
+            return {r["recipe_no"]: r for r in db.execute(text(sql), {"o": order_no}).mappings().all()}
+        except Exception:
+            db.rollback()
+            return {}
+
+    bom = _q("""
+        SELECT recipe_no, MAX(recipe_name) AS recipe_name,
+               SUM(COALESCE(total_required_with_waste_standard, required_qty_standard, 0)) AS required_qty
+        FROM bom_lines WHERE order_no = :o GROUP BY recipe_no""")
+    issued = _q("""
+        SELECT recipe_no,
+               SUM(CASE WHEN COALESCE(finalized,0)=1 OR issuance_status IN ('Issued','Short Issued')
+                        THEN COALESCE(input_material_issued, issued_qty_standard, 0) ELSE 0 END) AS issued_qty
+        FROM store_issuance_lines WHERE order_no = :o GROUP BY recipe_no""")
+    qc = _q("""
+        SELECT k.recipe_no, MAX(k.recipe_name) AS recipe_name,
+               SUM(COALESCE(k.issued_qty_standard,0))   AS transferred_qty,
+               SUM(COALESCE(k.received_qty_standard,0)) AS received_qty,
+               GROUP_CONCAT(DISTINCT k.from_section ORDER BY k.from_section SEPARATOR ', ') AS from_section,
+               MAX(k.standard_uom) AS uom,
+               SUM(k.protein_g) AS recv_protein, SUM(k.carb_g) AS recv_carb,
+               SUM(k.vegetable_g) AS recv_veg, MAX(k.portion_weight_g) AS portion_weight
+        FROM kitchen_section_transactions k
+        WHERE k.order_no = :o AND k.current_section = 'QC'
+        GROUP BY k.recipe_no""")
+    planned = _q("""
+        SELECT recipe_no, SUM(COALESCE(required_portions,0)) AS planned
+        FROM order_lines WHERE order_no = :o GROUP BY recipe_no""")
+    packed = _q("""
+        SELECT recipe_no, MAX(packed_portion) AS packed_portion,
+               MAX(packed_protein_g) AS protein, MAX(packed_carb_g) AS carb, MAX(packed_veg_g) AS veg
+        FROM packing_pack_lines WHERE order_no = :o GROUP BY recipe_no""")
+
+    def f(v):
+        return float(v) if v is not None else None
+
+    rows = []
+    for rc in sorted(set(bom) | set(qc), key=lambda k: ((qc.get(k) or bom.get(k) or {}).get("recipe_name") or "")):
+        b, i, k, p, pk = bom.get(rc, {}), issued.get(rc, {}), qc.get(rc, {}), planned.get(rc, {}), packed.get(rc, {})
+        row = {
+            "recipe_no": rc, "recipe_name": k.get("recipe_name") or b.get("recipe_name") or rc,
+            "from_section": k.get("from_section") or "", "uom": k.get("uom") or "",
+            "planned": f(p.get("planned")) or 0.0,
+            "required_qty": f(b.get("required_qty")) or 0.0,
+            "issued_qty": f(i.get("issued_qty")) or 0.0,
+            "transferred_qty": f(k.get("transferred_qty")) or 0.0,
+            "received_qty": f(k.get("received_qty")) or 0.0,
+            "recv_protein": f(k.get("recv_protein")), "recv_carb": f(k.get("recv_carb")),
+            "recv_veg": f(k.get("recv_veg")), "portion_weight": f(k.get("portion_weight")),
+            "packed_portion": f(pk.get("packed_portion")),
+            "pk_protein": f(pk.get("protein")), "pk_carb": f(pk.get("carb")), "pk_veg": f(pk.get("veg")),
+            "reached_qc": rc in qc,
+        }
+        row["issue_variance"] = row["issued_qty"] - row["required_qty"] if row["issued_qty"] else None
+        for key, rv, pv in (("diff_protein", row["recv_protein"], row["pk_protein"]),
+                            ("diff_carb", row["recv_carb"], row["pk_carb"]),
+                            ("diff_veg", row["recv_veg"], row["pk_veg"])):
+            row[key] = (rv - pv) if (rv is not None and pv is not None) else None
+        rows.append(row)
+    return rows
 
 
 @router.get("", response_class=HTMLResponse)
@@ -55,8 +143,12 @@ def packing_dashboard(request: Request, db: Session = Depends(get_db)):
     to_date = (q.get("to_date") or "").strip()
     status_f = (q.get("status") or "").strip()
     scope = (q.get("scope") or "current").strip().lower()
-    extra = ""
-    params = {}
+    from app.services.command_center import list_scope as _list_scope
+    _ls = _list_scope(request, db, "pd")
+    extra = _ls["sql"]
+    params = dict(_ls["params"])
+    if _ls["gf"]["active"]:
+        scope = "all"  # Batch 204: the global timeline decides the dates
     if search:
         extra += " AND (pd.order_no LIKE :search OR COALESCE(pd.customer_name,'') LIKE :search OR COALESCE(co.brand,'') LIKE :search)"
         params["search"] = f"%{search}%"
@@ -92,13 +184,16 @@ def packing_dashboard(request: Request, db: Session = Depends(get_db)):
         {extra}
         ORDER BY COALESCE(co.required_delivery_date, '9999-12-31') ASC, pd.id DESC
     """), params).mappings().all()
-    summary = {
-        "pending": db.execute(text("SELECT COUNT(*) FROM packing_dispatch WHERE COALESCE(dispatch_status,'Packing Pending') IN ('Packing Pending','Packing In Progress','Pending')")).scalar() or 0,
-        "packed": db.execute(text("SELECT COUNT(*) FROM packing_dispatch WHERE dispatch_status = 'Packed'")).scalar() or 0,
-        "rejected": db.execute(text("SELECT COALESCE(SUM(rejected_portions),0) FROM packing_dispatch")).scalar() or 0,
-        "portions": db.execute(text("SELECT COALESCE(SUM(packed_portions),0) FROM packing_dispatch WHERE dispatch_status IN ('Packed','Assigned','Out for Delivery','Delivered')")).scalar() or 0,
-    }
+    # Batch 204: KPI tiles were unscoped (every company). Same scope as the list.
+    _c = db.execute(text(f"""
+        SELECT SUM(COALESCE(pd.dispatch_status,'Packing Pending') IN ('Packing Pending','Packing In Progress','Pending')) AS pending,
+               SUM(pd.dispatch_status = 'Packed') AS packed,
+               COALESCE(SUM(pd.rejected_portions),0) AS rejected,
+               COALESCE(SUM(CASE WHEN pd.dispatch_status IN ('Packed','Assigned','Out for Delivery','Delivered') THEN pd.packed_portions END),0) AS portions
+        FROM packing_dispatch pd WHERE 1=1 {_ls['sql']}"""), _ls["params"]).mappings().first() or {}
+    summary = {k: (_c.get(k) or 0) for k in ("pending", "packed", "rejected", "portions")}
     return render(request, "packing/index.html", {"rows": rows, "summary": summary, "page_title": "Trayline / Packing",
+                                                   "gf": _ls["gf"], "gf_options": _ls["gf_options"],
                                                    "filters": {"search": search, "from_date": from_date, "to_date": to_date, "status": status_f, "scope": scope},
                                                    "error": request.query_params.get("error")})
 
@@ -128,101 +223,10 @@ def packing_order(request: Request, packing_id: int, db: Session = Depends(get_d
     # planned from order_lines, received = SUM across the recipe's QC lines, and
     # the section it came from. Nutrition (protein/carb) is pulled from any line
     # of the recipe that carries the Hot Kitchen [NUT ...] tag.
-    import re as _re
-    tx = db.execute(text("""
-        SELECT k.recipe_no,
-               MAX(k.recipe_name) AS recipe_name,
-               ROUND(SUM(COALESCE(k.received_qty_standard, 0)), 2) AS received,
-               MAX(COALESCE(ol.required_portions, 0)) AS planned,
-               MAX(COALESCE(k.from_section, '')) AS from_section,
-               GROUP_CONCAT(COALESCE(k.section_remarks, '') SEPARATOR ' ') AS remarks,
-               MAX(k.standard_uom) AS uom,
-               -- Batch 153: read the real columns. The [NUT ...] remark parse
-               -- below is kept as a fallback for rows written before this batch
-               -- and not yet back-filled, so nothing goes blank mid-migration.
-               MAX(k.protein_g) AS protein_col,
-               MAX(k.carb_g) AS carb_col,
-               MAX(k.vegetable_g) AS veg_col,
-               MAX(k.portion_weight_g) AS weight_col
-        FROM kitchen_section_transactions k
-        LEFT JOIN order_lines ol
-          ON ol.order_no = k.order_no AND ol.recipe_no = k.recipe_no
-        WHERE k.order_no = :order_no AND k.current_section = 'QC'
-        GROUP BY k.recipe_no
-        ORDER BY MAX(k.recipe_name)
-    """), {"order_no": row.order_no}).mappings().all()
+    # Batch 201: the per-recipe reconciliation lives in pack_reconciliation()
+    # so the screen, CSV and printable report cannot disagree.
+    pack_lines = pack_reconciliation(db, row.order_no)
 
-    pack_lines = []
-    for t in tx:
-        rm = t["remarks"] or ""
-        w = p = c = ""
-        m = _re.search(r"\[NUT\s+([^\]]*)\]", rm)
-        if m:
-            for kv in m.group(1).split():
-                if kv.startswith("w="):
-                    w = kv[2:]
-                elif kv.startswith("p="):
-                    p = kv[2:]
-                elif kv.startswith("c="):
-                    c = kv[2:]
-        planned = float(t["planned"] or 0)
-        received = float(t["received"] or 0)
-
-        # Batch 153 — column first, remark stamp second. Once the back-fill has
-        # run the stamp path stops being used, but leaving it in means an
-        # un-migrated database still shows figures instead of dashes.
-        def _pick(col_val, parsed):
-            if col_val is not None:
-                return float(col_val)
-            try:
-                return float(parsed) if str(parsed).strip() != "" else None
-            except (TypeError, ValueError):
-                return None
-
-        recv_protein = _pick(t["protein_col"], p)
-        recv_carb = _pick(t["carb_col"], c)
-        recv_veg = _pick(t["veg_col"], None)
-        weight = _pick(t["weight_col"], w)
-
-        pack_lines.append({
-            "recipe_no": t["recipe_no"], "recipe_name": t["recipe_name"],
-            "planned": planned, "received": received,
-            "lack": max(planned - received, 0),
-            # Received side — what Hot Kitchen sent through
-            "recv_protein": recv_protein, "recv_carb": recv_carb, "recv_veg": recv_veg,
-            "protein": p, "carb": c, "weight": weight,
-            "from_section": t["from_section"], "uom": t["uom"],
-        })
-
-    # Batch 153 — packed weights per recipe, from packing_pack_lines when that
-    # table exists. Trayline entry per recipe is not built yet, so today this
-    # resolves to an empty map and the Packed / Excess columns show "—".
-    # That is deliberate: showing 0.00 for a line nobody has weighed would make
-    # an unreconciled recipe look reconciled. The columns and the arithmetic are
-    # in place, so the entry form is a small follow-up rather than a rework.
-    packed_nutrition: dict = {}
-    try:
-        _has = db.execute(text("""
-            SELECT COUNT(*) FROM information_schema.tables
-            WHERE table_schema = DATABASE() AND table_name = 'packing_pack_lines'
-        """)).scalar()
-        if _has:
-            for _r in db.execute(text("""
-                SELECT recipe_no,
-                       MAX(packed_protein_g) AS protein,
-                       MAX(packed_carb_g)    AS carb,
-                       MAX(packed_veg_g)     AS veg
-                FROM packing_pack_lines WHERE order_no = :o GROUP BY recipe_no
-            """), {"o": row.order_no}).mappings().all():
-                packed_nutrition[_r["recipe_no"]] = {
-                    "protein": float(_r["protein"]) if _r["protein"] is not None else None,
-                    "carb": float(_r["carb"]) if _r["carb"] is not None else None,
-                    "veg": float(_r["veg"]) if _r["veg"] is not None else None,
-                }
-    except Exception:
-        packed_nutrition = {}
-
-    # Batch 152: weekday name for the delivery date (image 14).
     delivery_weekday = ""
     try:
         _dd = getattr(order, "required_delivery_date", None) if order else None
@@ -238,7 +242,7 @@ def packing_order(request: Request, packing_id: int, db: Session = Depends(get_d
     # Batch 148: existing region/bag split for the allocator. Passed explicitly
     # (an undefined name in Jinja is falsy, which would render an empty
     # allocator on an order that already has one and quietly wipe it on save).
-    _PACK_REGIONS = ["Riyadh", "Eastern", "Jeddah", "Makkah", "Madinah", "Qassim", "Other"]
+    _PACK_REGIONS = PACK_REGIONS
     region_bags = []
     if getattr(row, "region_bags", None):
         try:
@@ -255,6 +259,11 @@ def packing_order(request: Request, packing_id: int, db: Session = Depends(get_d
     # data disappeared.
     if not region_bags and (getattr(row, "region", None) or getattr(row, "packed_bags", None)):
         region_bags = [{"name": row.region or _PACK_REGIONS[0], "bags": row.packed_bags or 0}]
+    if not region_bags:
+        # Batch 201 (Image 11): a new order rendered NO allocation row, so the
+        # packer had to click "Add region" before entering anything. One row
+        # by default — a single-region order is just this row.
+        region_bags = [{"name": _PACK_REGIONS[0], "bags": ""}]
 
     return render(request, "packing/order.html",
                   {"row": row, "order": order, "qc_rows": qc_rows,
@@ -265,9 +274,49 @@ def packing_order(request: Request, packing_id: int, db: Session = Depends(get_d
                    # falsy, so omitting it would render a silent column of
                    # dashes that looks like "nothing packed yet" rather than a
                    # missing variable.
-                   "packed_nutrition": packed_nutrition,
+                   "packed_nutrition": {},
                    "page_title": f"Packing - {row.order_no}",
                    "error": request.query_params.get("error")})
+
+
+@router.get("/{packing_id}/report", response_class=HTMLResponse)
+def packing_report(request: Request, packing_id: int, db: Session = Depends(get_db)):
+    """Batch 201 (Image 11) — printable pack reconciliation for one order:
+    required → issued → transferred → received → packed → excess/shortage,
+    plus bag allocation and rejected bags. Standalone page for Print / PDF."""
+    require_area(request, "packing")
+    row = db.query(PackingDispatch).filter(PackingDispatch.id == packing_id).first()
+    if not row:
+        return _redirect_with_error("/packing", "Packing record not found.")
+    order = db.query(CustomerOrder).filter(CustomerOrder.order_no == row.order_no).first()
+    lines = pack_reconciliation(db, row.order_no)
+    alloc = []
+    if getattr(row, "region_bags", None):
+        try:
+            import json as _json
+            alloc = [{"name": k, "bags": v} for k, v in _json.loads(row.region_bags).items()]
+        except Exception:
+            alloc = []
+    extra = {}
+    try:
+        extra = dict(db.execute(text(
+            "SELECT rejected_bags, rejected_bags_reason FROM packing_dispatch WHERE id = :i"),
+            {"i": packing_id}).mappings().first() or {})
+    except Exception:
+        db.rollback()
+
+    def _tot(key):
+        vals = [x[key] for x in lines if x.get(key) is not None]
+        return sum(vals) if vals else None
+
+    totals = {k: _tot(k) for k in ("planned", "required_qty", "issued_qty", "transferred_qty", "received_qty",
+                                   "recv_protein", "recv_carb", "recv_veg", "packed_portion",
+                                   "pk_protein", "pk_carb", "pk_veg", "diff_protein", "diff_carb", "diff_veg")}
+    return render(request, "packing/report.html", {
+        "row": row, "order": order, "lines": lines, "totals": totals, "alloc": alloc,
+        "rejected_bags": extra.get("rejected_bags"), "rejected_reason": extra.get("rejected_bags_reason"),
+        "page_title": f"Pack Report - {row.order_no}",
+    })
 
 
 @router.post("/{packing_id}/pack-lines")

@@ -25,84 +25,107 @@
 
   {% if error %}<div class="alert alert-warning py-2">{{ error }}</div>{% endif %}
 
-  <div class="card">
-    <div class="card-body">
-      {# Batch 146b: single-order dispatch form (moved out of the index list). #}
-      <form method="post" action="/dispatch/{{ r.id }}/update">
-        <div class="row g-3">
-          <div class="col-6 col-md-3"><label class="form-label small fw-bold">Packed Portions</label>
-            <input class="form-control" type="number" step="0.01" name="packed_portions" value="{{ r.packed_portions or 0 }}"></div>
-          <div class="col-6 col-md-3"><label class="form-label small fw-bold">Rejected Portions</label>
-            <input class="form-control" type="number" step="0.01" name="rejected_portions" value="{{ r.rejected_portions or 0 }}"></div>
-          <div class="col-6 col-md-3"><label class="form-label small fw-bold">Number of Bags</label>
-            <input class="form-control" type="number" min="0" step="1" name="packed_bags" value="{{ r.packed_bags or '' }}" placeholder="e.g. 12"></div>
-          {# Batch 157: the single Region select is removed — region is handled by
-             the Region-wise Bag Allocation (below) and owned by Logistics. #}
-          <div class="col-6 col-md-3"><label class="form-label small fw-bold">Dispatch Date</label>
-            <input class="form-control" type="date" name="dispatch_date" value="{{ r.dispatch_date or '' }}"></div>
-          {# Batch 157: Vehicle / Driver are LOGISTICS attributes — shown read-only
-             here (set on the Logistics Board), so dispatch and logistics don't
-             both edit them. #}
-          <div class="col-6 col-md-3"><label class="form-label small fw-bold">Vehicle No <span class="text-muted">(logistics)</span></label>
-            <input class="form-control bg-body-secondary" value="{{ r.vehicle_no or '—' }}" readonly></div>
-          <div class="col-6 col-md-3"><label class="form-label small fw-bold">Driver Name <span class="text-muted">(logistics)</span></label>
-            <input class="form-control bg-body-secondary" value="{{ r.driver_name or '—' }}" readonly></div>
-          <div class="col-6 col-md-3"><label class="form-label small fw-bold">Temp °C</label>
-            <input class="form-control" type="number" step="0.01" name="delivery_temperature_c" value="{{ r.delivery_temperature_c or 0 }}"></div>
-          <div class="col-6 col-md-3"><label class="form-label small fw-bold">Status</label>
-            <select class="form-select" name="dispatch_status">
-              <option {% if r.dispatch_status=='Packing Pending' %}selected{% endif %}>Packing Pending</option>
-              <option {% if r.dispatch_status=='Packed' %}selected{% endif %}>Packed</option>
-              {# Batch 195 (194-B): new status, sits between Packed and Out
-                 for Delivery — set automatically once a driver+vehicle are
-                 assigned (see logistics_assign() in dispatch/routes.py),
-                 but listed here too so it's a valid manual option and
-                 doesn't look like an unrecognized value if an order is
-                 already sitting in this state when someone opens this
-                 dropdown. #}
-              <option {% if r.dispatch_status=='Assigned' %}selected{% endif %}>Assigned</option>
-              <option {% if r.dispatch_status=='Out for Delivery' %}selected{% endif %}>Out for Delivery</option>
-              <option {% if r.dispatch_status=='Delivered' %}selected{% endif %}>Delivered</option>
-            </select></div>
-          <div class="col-12 col-md-9"><label class="form-label small fw-bold">Remarks</label>
-            <input class="form-control" name="remarks" value="{{ r.remarks or '' }}"></div>
+  {# ======================================================================
+     Batch 201 (Image 12) — Dispatch owns the ORDER and its BAGS.
+     Driver / vehicle / temperature belong to Logistics and are shown here
+     read-only with a link to the Logistics assignment screen. Nothing on
+     this form posts those fields, and update_dispatch() no longer touches
+     them, so saving a dispatch can never wipe a logistics assignment.
+     ====================================================================== #}
+  {% set _net = (r.packed_bags or 0) - (rejected_bags or 0) %}
+  <div class="row g-3 mb-3">
+    <div class="col-6 col-lg-3"><div class="card h-100" style="border-top:3px solid #1e5bb8"><div class="card-body py-3">
+      <div class="small text-body-tertiary fw-bold">{{ t('Bags Packed') }}</div><div class="fs-4 fw-bold">{{ r.packed_bags or 0 }}</div></div></div></div>
+    <div class="col-6 col-lg-3"><div class="card h-100" style="border-top:3px solid #b42318"><div class="card-body py-3">
+      <div class="small text-body-tertiary fw-bold">{{ t('Rejected Bags') }}</div><div class="fs-4 fw-bold text-danger">{{ rejected_bags or 0 }}</div></div></div></div>
+    <div class="col-6 col-lg-3"><div class="card h-100" style="border-top:3px solid #15803d"><div class="card-body py-3">
+      <div class="small text-body-tertiary fw-bold">{{ t('Bags to Dispatch') }}</div><div class="fs-4 fw-bold text-success">{{ _net if _net > 0 else 0 }}</div></div></div></div>
+    <div class="col-6 col-lg-3"><div class="card h-100" style="border-top:3px solid #7048a8"><div class="card-body py-3">
+      <div class="small text-body-tertiary fw-bold">{{ t('Portions') }}</div><div class="fs-4 fw-bold">{{ '%g'|format(r.packed_portions or (order.total_planned_portions if order else 0) or 0) }}</div></div></div></div>
+  </div>
 
-          {# Batch 152a: region-wise bag allocation. Add rows of region + bag
-             count; the total is written to Number of Bags on save. #}
-          <div class="col-12">
-            <div class="card border">
+  <div class="row g-3">
+    <div class="col-lg-8">
+      <div class="card h-100">
+        <div class="card-body">
+          <h5 class="fw-bold mb-3"><i class="bi bi-bag-check me-2"></i>{{ t('Bag Management') }}</h5>
+          <form method="post" action="/dispatch/{{ r.id }}/update">
+            <input type="hidden" name="packed_portions" value="{{ r.packed_portions or 0 }}">
+            <input type="hidden" name="rejected_portions" value="{{ r.rejected_portions or 0 }}">
+            <input type="hidden" name="packed_bags" id="packedBagsHidden" value="{{ r.packed_bags or '' }}">
+            <div class="card border mb-3">
               <div class="card-header bg-body-highlight d-flex justify-content-between align-items-center py-2">
-                <span class="fw-bold"><i class="bi bi-geo-alt me-1"></i>Region-wise Bag Allocation
-                  {# Batch 148: this is now ENTERED at Trayline / Packing, where the
-                     bags are physically filled. It stays editable here as a
-                     correction path for logistics, but it is no longer the place
-                     the number originates. #}
-                  <span class="badge bg-secondary-subtle text-secondary-emphasis ms-1">from Trayline — editable</span></span>
-                <span class="small text-muted">Allocated: <span id="rbTotal">0</span> bags</span>
+                <span class="fw-bold"><i class="bi bi-geo-alt me-1"></i>{{ t('Region-wise Bags') }}
+                  <span class="badge bg-secondary-subtle text-secondary-emphasis ms-1">{{ t('from Trayline — editable') }}</span></span>
+                <span class="small text-muted">{{ t('Total') }}: <span id="rbTotal">0</span> {{ t('bags') }}</span>
               </div>
               <div class="card-body py-2">
                 <div id="rbRows">
-                  {% for rb in region_bags %}
+                  {% for rb in (region_bags or [{'name': regions[0], 'bags': ''}]) %}
                   <div class="row g-2 mb-2 rb-row">
-                    <div class="col-6 col-md-4"><select class="form-select form-select-sm" name="region_name">
+                    <div class="col-6 col-md-5"><select class="form-select form-select-sm" name="region_name">
                       {% for rg in regions %}<option value="{{ rg }}" {% if rb.name==rg %}selected{% endif %}>{{ rg }}</option>{% endfor %}
                     </select></div>
-                    <div class="col-4 col-md-3"><input class="form-control form-control-sm rb-count" type="number" min="0" name="region_bag_count" value="{{ rb.bags }}" oninput="rbRecalc()"></div>
-                    <div class="col-2"><button type="button" class="btn btn-outline-danger btn-sm" onclick="this.closest('.rb-row').remove();rbRecalc();"><i class="bi bi-trash"></i></button></div>
+                    <div class="col-4 col-md-3"><input class="form-control form-control-sm rb-count" type="number" min="0" name="region_bag_count" value="{{ rb.bags }}" oninput="rbRecalc()" aria-label="{{ t('Bags') }}"></div>
+                    <div class="col-2"><button type="button" class="btn btn-outline-danger btn-sm" aria-label="{{ t('Remove region') }}" onclick="if(document.querySelectorAll('#rbRows .rb-row').length>1){this.closest('.rb-row').remove();rbRecalc();}"><i class="bi bi-trash"></i></button></div>
                   </div>
                   {% endfor %}
                 </div>
-                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="rbAdd()"><i class="bi bi-plus-lg me-1"></i>Add region</button>
-                <span class="small text-muted ms-2">Leave empty to use the single Region + Number of Bags above.</span>
+                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="rbAdd()"><i class="bi bi-plus-lg me-1"></i>{{ t('Add region') }}</button>
               </div>
             </div>
-          </div>
 
-          <div class="col-12">
-            <button class="btn btn-success fw-bold" type="submit"><i class="bi bi-truck me-1"></i>Save Dispatch</button>
-          </div>
+            <div class="row g-3">
+              <div class="col-6 col-md-3"><label class="form-label small fw-bold" for="rejBags">{{ t('Rejected Bags') }}</label>
+                <input class="form-control" id="rejBags" type="number" min="0" step="1" name="rejected_bags" value="{{ rejected_bags or '' }}" placeholder="0"></div>
+              <div class="col-6 col-md-9"><label class="form-label small fw-bold" for="rejReason">{{ t('Rejection Reason') }}</label>
+                <input class="form-control" id="rejReason" name="rejected_bags_reason" value="{{ rejected_reason or '' }}" placeholder="{{ t('e.g. torn bag, temperature breach, wrong label') }}"></div>
+              <div class="col-6 col-md-3"><label class="form-label small fw-bold">{{ t('Dispatch Date') }}</label>
+                <input class="form-control" type="date" name="dispatch_date" value="{{ r.dispatch_date or '' }}"></div>
+              <div class="col-6 col-md-3"><label class="form-label small fw-bold">{{ t('Status') }}</label>
+                <select class="form-select" name="dispatch_status">
+                  {% for st in ['Packed', 'Assigned', 'Out for Delivery', 'Delivered'] %}
+                  <option value="{{ st }}" {% if r.dispatch_status==st %}selected{% endif %}>{{ t(st) }}</option>
+                  {% endfor %}
+                </select></div>
+              <div class="col-12 col-md-6"><label class="form-label small fw-bold">{{ t('Remarks') }}</label>
+                <input class="form-control" name="remarks" value="{{ r.remarks or '' }}"></div>
+              <div class="col-12">
+                <button class="btn btn-success fw-bold" type="submit"><i class="bi bi-truck me-1"></i>{{ t('Save Dispatch') }}</button>
+              </div>
+            </div>
+          </form>
         </div>
-      </form>
+      </div>
+    </div>
+
+    <div class="col-lg-4">
+      <div class="card mb-3">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <h6 class="fw-bold mb-0"><i class="bi bi-person-badge me-1"></i>{{ t('Logistics Assignment') }}</h6>
+            <a class="btn btn-outline-primary btn-sm" href="/dispatch/logistics/order/{{ r.id }}">{{ t('Open in Logistics') }}</a>
+          </div>
+          <dl class="row mb-0 small">
+            <dt class="col-5 text-body-tertiary">{{ t('Driver') }}</dt><dd class="col-7">{{ r.driver_name or '—' }}</dd>
+            <dt class="col-5 text-body-tertiary">{{ t('Vehicle') }}</dt><dd class="col-7">{{ r.vehicle_no or '—' }}</dd>
+            <dt class="col-5 text-body-tertiary">{{ t('Temp °C') }}</dt><dd class="col-7 mb-0">{{ r.delivery_temperature_c if r.delivery_temperature_c is not none else '—' }}</dd>
+          </dl>
+          {% if not r.driver_name %}<div class="alert alert-subtle-warning py-1 px-2 small mt-2 mb-0">{{ t('Not yet assigned by Logistics.') }}</div>{% endif %}
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-body">
+          <h6 class="fw-bold mb-2"><i class="bi bi-list-ul me-1"></i>{{ t('Order Contents') }}</h6>
+          <table class="table table-sm mb-0 small">
+            <thead><tr><th>{{ t('Recipe') }}</th><th class="text-end">{{ t('Portions') }}</th></tr></thead>
+            <tbody>
+              {% for ln in order_lines %}<tr><td>{{ ln.recipe_name }}<div class="text-body-tertiary">{{ ln.recipe_no }}</div></td><td class="text-end">{{ '%g'|format(ln.portions or 0) }}</td></tr>
+              {% else %}<tr><td colspan="2" class="text-body-tertiary">—</td></tr>{% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -111,17 +134,16 @@ var RB_REGIONS = {{ regions|tojson }};
 function rbRow(name, bags){
   var opts = RB_REGIONS.map(function(rg){ return '<option value="'+rg+'"'+(rg===name?' selected':'')+'>'+rg+'</option>'; }).join('');
   var d = document.createElement('div'); d.className='row g-2 mb-2 rb-row';
-  d.innerHTML = '<div class="col-6 col-md-4"><select class="form-select form-select-sm" name="region_name">'+opts+'</select></div>'+
+  d.innerHTML = '<div class="col-6 col-md-5"><select class="form-select form-select-sm" name="region_name">'+opts+'</select></div>'+
     '<div class="col-4 col-md-3"><input class="form-control form-control-sm rb-count" type="number" min="0" name="region_bag_count" value="'+(bags||'')+'" oninput="rbRecalc()"></div>'+
-    '<div class="col-2"><button type="button" class="btn btn-outline-danger btn-sm" onclick="this.closest(\'.rb-row\').remove();rbRecalc();"><i class="bi bi-trash"></i></button></div>';
+    '<div class="col-2"><button type="button" class="btn btn-outline-danger btn-sm" onclick="if(document.querySelectorAll(\'#rbRows .rb-row\').length>1){this.closest(\'.rb-row\').remove();rbRecalc();}"><i class="bi bi-trash"></i></button></div>';
   document.getElementById('rbRows').appendChild(d);
 }
 function rbAdd(){ rbRow(RB_REGIONS[0], ''); }
 function rbRecalc(){
   var t=0; document.querySelectorAll('#rbRows .rb-count').forEach(function(i){ var v=parseInt(i.value||'0',10); if(!isNaN(v))t+=v; });
   var el=document.getElementById('rbTotal'); if(el) el.textContent=t;
-  // keep the single Number-of-Bags field in sync when an allocation exists
-  if(t>0){ var nb=document.querySelector('input[name="packed_bags"]'); if(nb) nb.value=t; }
+  var nb=document.getElementById('packedBagsHidden'); if(nb && t>0) nb.value=t;
 }
 rbRecalc();
 </script>
