@@ -648,6 +648,11 @@ def _ensure_output_capture_columns() -> None:
             # Batch 167 — pre-trim requirement, so the yield gap is visible
             # whatever basis the BOM was generated on.
             ("gross_required_qty_standard", "DECIMAL(18,4) NULL"),
+            # Batch 206 — the NET (post-trim) requirement, stored alongside the
+            # gross one. The Bill of Quantity reports on NET (what goes into the
+            # pot); the store still issues the GROSS weight. Keeping both on the
+            # line means every report agrees without recomputing from the recipe.
+            ("net_required_qty_standard", "DECIMAL(18,4) NULL"),
         ],
         "packing_dispatch": [
             ("packed_protein_g", "DECIMAL(14,4) NULL"),

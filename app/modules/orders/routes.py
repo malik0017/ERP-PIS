@@ -8,6 +8,7 @@ from app.core.templates import render
 from app.core.rbac import require_area
 from app.database.session import get_db
 from app.models.production import CustomerOrder
+from app.core.company import require_order_scope, require_record_scope
 
 router = APIRouter(prefix="/orders", tags=["Orders"])
 
@@ -215,6 +216,8 @@ def orders_list(request: Request, db: Session = Depends(get_db)):
 
 @router.get("/{order_no}")
 def redirect_order_detail(order_no: str):
+    # Batch 207: an order number in the URL is not authorisation — 404 if it belongs to another company.
+    require_order_scope(db, request, order_no)
     return RedirectResponse(f"/production/orders/{order_no}", status_code=303)
 
 

@@ -215,7 +215,7 @@
           <table class="table-pro">
             <thead><tr>
               <th>{{ t('Item') }}</th><th>{{ t('From Section') }}</th>
-              <th>{{ t('Qty') }}</th><th>{{ t('Received') }}</th><th>{{ t('Status') }}</th>
+              <th>{{ t('Section Qty') }}</th><th>{{ t('Sent to QC') }}</th><th>{{ t('Received') }}</th><th>{{ t('Held Back') }}</th><th>{{ t('Status') }}</th>
               <th>{{ t('Weight(g)') }}</th><th>{{ t('Protein(g)') }}</th><th>{{ t('Carb(g)') }}</th><th>{{ t('Veg(g)') }}</th>
               <th>{{ t('Remarks') }}</th>
             </tr></thead>
@@ -223,8 +223,11 @@
               <tr>
                 <td>{{ t.ingredient_code }}<br>{{ t.ingredient_name }}</td>
                 <td>{{ t.from_section or '—' }}</td>
+                {% set _held = (t.section_qty - (t.issued_qty_standard or 0)) if t.section_qty is not none else none %}
+                <td class="text-body-tertiary">{{ '%.2f'|format(t.section_qty) if t.section_qty is not none else '—' }}</td>
                 <td>{{ '%.2f'|format(t.issued_qty_standard or 0) }} {{ t.standard_uom }}</td>
                 <td>{{ '%.2f'|format(t.received_qty_standard or 0) }} {{ t.standard_uom }}</td>
+                <td class="{{ 'text-warning fw-bold' if _held is not none and _held > 0.005 }}">{{ ('%+.2f'|format(-_held)) if _held is not none and (_held > 0.005 or _held < -0.005) else ('0.00' if _held is not none else '—') }}</td>
                 <td>{{ t.transaction_status }}</td>
                 <td>{{ '%.2f'|format(t.nut_w) if t.nut_w is not none else '—' }}</td>
                 <td>{{ '%.2f'|format(t.nut_p) if t.nut_p is not none else '—' }}</td>
@@ -251,8 +254,10 @@
             <th>Recipe</th>
             <th>Item</th>
             <th>From Section</th>
-            <th>Qty</th>
-            <th>Received</th>
+            <th>{{ t('Section Qty') }}</th>
+            <th>{{ t('Sent to QC') }}</th>
+            <th>{{ t('Received') }}</th>
+            <th>{{ t('Held Back') }}</th>
             <th>Status</th>
             <th>Weight(g)</th>
             <th>Protein(g)</th>
@@ -266,8 +271,11 @@
             <td>{{ t.recipe_no }}<br><strong>{{ t.recipe_name }}</strong></td>
             <td>{{ t.ingredient_code }}<br>{{ t.ingredient_name }}</td>
             <td>{{ t.from_section or '—' }}</td>
+            {% set _held = (t.section_qty - (t.issued_qty_standard or 0)) if t.section_qty is not none else none %}
+            <td class="text-body-tertiary">{{ '%.2f'|format(t.section_qty) if t.section_qty is not none else '—' }}</td>
             <td>{{ '%.2f'|format(t.issued_qty_standard or 0) }} {{ t.standard_uom }}</td>
             <td>{{ '%.2f'|format(t.received_qty_standard or 0) }} {{ t.standard_uom }}</td>
+            <td class="{{ 'text-warning fw-bold' if _held is not none and _held > 0.005 }}">{{ ('%+.2f'|format(-_held)) if _held is not none and (_held > 0.005 or _held < -0.005) else ('0.00' if _held is not none else '—') }}</td>
             <td>{{ t.transaction_status }}</td>
             <td>{{ '%.2f'|format(t.nut_w) if t.nut_w is not none else '—' }}</td>
             <td>{{ '%.2f'|format(t.nut_p) if t.nut_p is not none else '—' }}</td>

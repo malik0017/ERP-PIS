@@ -32,6 +32,7 @@ router = APIRouter(prefix="/production/kitchen", tags=["Kitchen"])
 
 # reuse the slug helpers from the main production routes
 from app.modules.production.routes import _section_from_slug, _section_slug, current_user_name
+from app.core.company import require_order_scope, require_record_scope
 
 
 def _order_head(db, order_no):
@@ -49,6 +50,8 @@ def _order_head(db, order_no):
 
 @router.get("/{section_name}/{order_no}")
 async def kitchen_order(request: Request, section_name: str, order_no: str, db: Session = Depends(get_db)):
+    # Batch 207: an order number in the URL is not authorisation — 404 if it belongs to another company.
+    require_order_scope(db, request, order_no)
     require_area(request, "kitchen")
     section = _section_from_slug(section_name)
     states = kp.recipe_states(db, order_no, section)
@@ -73,6 +76,8 @@ async def kitchen_order(request: Request, section_name: str, order_no: str, db: 
 
 @router.post("/{section_name}/{order_no}/receive-all")
 async def kitchen_receive_all(request: Request, section_name: str, order_no: str, db: Session = Depends(get_db)):
+    # Batch 207: an order number in the URL is not authorisation — 404 if it belongs to another company.
+    require_order_scope(db, request, order_no)
     require_action(request, "kitchen", "edit")
     section = _section_from_slug(section_name)
     user = current_user_name(request)
@@ -101,6 +106,8 @@ async def kitchen_produce(request: Request, section_name: str, order_no: str,
                           waste_portions: float = Form(0),
                           remarks: str = Form(""),
                           db: Session = Depends(get_db)):
+    # Batch 207: an order number in the URL is not authorisation — 404 if it belongs to another company.
+    require_order_scope(db, request, order_no)
     require_action(request, "kitchen", "edit")
     section = _section_from_slug(section_name)
     # UI fix: portions are physical, countable units — never fractional.
@@ -129,6 +136,8 @@ async def kitchen_transfer(request: Request, section_name: str, order_no: str,
                            recipe_no: str = Form(""),
                            to_section: str = Form(""),
                            db: Session = Depends(get_db)):
+    # Batch 207: an order number in the URL is not authorisation — 404 if it belongs to another company.
+    require_order_scope(db, request, order_no)
     require_action(request, "kitchen", "edit")
     section = _section_from_slug(section_name)
     try:

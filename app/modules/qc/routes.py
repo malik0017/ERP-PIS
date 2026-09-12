@@ -172,6 +172,30 @@ def qc_order(request: Request, order_no: str, db: Session = Depends(get_db)):
     # parsing needed at all. Reading them straight off the transaction
     # (the row QC already has) is both simpler and actually correct.
     # ------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # Batch 205 (Image 7) — "QTY" and "RECEIVED" showed the same number.
+    # Both read the QC row: issued_qty_standard is what the section SENT and
+    # received_qty_standard is what QC accepted, so once QC receives in full
+    # the two columns are identical by definition and the screen says nothing.
+    # What QC actually needs is the section's own input: Hot Kitchen held
+    # 2200 g of beef and sent 2100 g — a 100 g gap that was invisible here.
+    # That figure lives on the PREVIOUS row of the chain (same order + recipe
+    # + ingredient, current_section = this row's from_section). Pulled once
+    # for the whole order and matched per line.
+    # ------------------------------------------------------------------
+    prev_qty: dict[tuple, float] = {}
+    try:
+        for r in db.execute(text("""
+            SELECT current_section, recipe_no, ingredient_code,
+                   SUM(COALESCE(received_qty_standard, 0)) AS qty
+            FROM kitchen_section_transactions
+            WHERE order_no = :o AND current_section <> 'QC'
+            GROUP BY current_section, recipe_no, ingredient_code
+        """), {"o": order_no}).mappings().all():
+            prev_qty[(r["current_section"], r["recipe_no"], r["ingredient_code"])] = float(r["qty"] or 0)
+    except Exception:
+        db.rollback()
+
     import re as _re
     tx_rows = []
     recipe_groups: dict[str, dict] = {}
@@ -182,6 +206,8 @@ def qc_order(request: Request, order_no: str, db: Session = Depends(get_db)):
             "ingredient_code": t.ingredient_code, "ingredient_name": t.ingredient_name,
             "from_section": t.from_section, "issued_qty_standard": t.issued_qty_standard,
             "received_qty_standard": t.received_qty_standard, "standard_uom": t.standard_uom,
+            # Batch 205: what the sending section had, and the gap it kept back
+            "section_qty": prev_qty.get((t.from_section, t.recipe_no, t.ingredient_code)),
             "transaction_status": t.transaction_status,
             # Batch 200: Hot Kitchen records carb/protein/veg but not a
             # portion weight, which left Weight blank. Fall back to the sum of

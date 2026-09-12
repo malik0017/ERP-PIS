@@ -215,7 +215,12 @@
             <th style="min-width:100px">{{ t('Main Cat.') }}</th><th style="min-width:110px">{{ t('Sub Cat.') }}</th>
             <th style="min-width:130px">{{ t('Issue To Section') }}</th>
             {% if section == 'Butchery' %}<th style="min-width:150px">{{ t('Cutting Method') }}</th>{% endif %}
-            <th class="num">{{ t('Received') }}</th><th class="num">{{ t('Transferred') }}</th><th>{{ t('Status') }}</th><th style="min-width:120px" data-isfc-nofilter>{{ t('Action') }}</th>
+            {# Batch 206 (Image 2): waste had no column of its own — it was a
+               sub-line inside the Transferred cell, so the printed/PDF report
+               read "506.67 Waste 90.00" in one box and could not be totalled
+               or sorted. Its own column now, on screen and in every export. #}
+            <th class="num">{{ t('Received') }}</th><th class="num">{{ t('Transferred') }}</th>
+            <th class="num">{{ t('Waste') }}</th><th class="num">{{ t('Yield %') }}</th><th>{{ t('Status') }}</th><th style="min-width:120px" data-isfc-nofilter>{{ t('Action') }}</th>
           </tr></thead>
           <tbody>
           {% for tx in txs %}
@@ -236,11 +241,11 @@
               <td><span class="sub">{{ tx.to_section or '—' }}</span></td>
               {% if section == 'Butchery' %}<td><span class="sub">{{ cutting_map.get(tx.ingredient_code, '—') }}</span></td>{% endif %}
               <td class="num">{{ '%.2f'|format(tx.received_qty_standard or tx.issued_qty_standard or 0) }} <span class="sub">{{ tx.standard_uom }}</span></td>
-              <td class="num">{{ '%.2f'|format(tx.transferred_qty_standard or 0) }}
-                {%- if (tx.waste_qty_standard or 0) > 0 %}
-                <div class="sub">{{ t('Waste') }} {{ '%.2f'|format(tx.waste_qty_standard) }}</div>
-                {%- endif %}
-              </td>
+              {% set _recv = tx.received_qty_standard or 0 %}
+              {% set _tr = tx.transferred_qty_standard or 0 %}
+              <td class="num">{{ '%.2f'|format(_tr) }}</td>
+              <td class="num {{ 'text-danger fw-bold' if (tx.waste_qty_standard or 0) > 0 }}">{{ '%.2f'|format(tx.waste_qty_standard or 0) }}</td>
+              <td class="num">{{ '%.1f'|format(_tr / _recv * 100) ~ '%' if _recv > 0 else '—' }}</td>
               <td><span class="st {{ stcls }}">{{ st or 'Pending Receive' }}</span></td>
               <td>
                 {% if locked %}

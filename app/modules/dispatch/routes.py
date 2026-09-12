@@ -15,6 +15,7 @@ from app.core.rbac import require_area, require_action
 from app.database.session import get_db
 from app.models.production import CustomerOrder, PackingDispatch
 from app.modules.packing.routes import PACK_REGIONS, ensure_schema as _ensure_packing_schema
+from app.core.company import require_order_scope, require_record_scope
 
 router = APIRouter(prefix="/dispatch", tags=["Dispatch"])
 
@@ -393,6 +394,8 @@ def logistics_detail(request: Request, dispatch_id: int, db: Session = Depends(g
     driver / vehicle / region-wise bags for one order. Dispatch keeps portions /
     bags / status; driver+vehicle are read-only there. This fixes the board's
     Assign action pointing at the dispatch page (image 10)."""
+    # Batch 207: an order number in the URL is not authorisation — 404 if it belongs to another company.
+    require_record_scope(db, request, "packing_dispatch", dispatch_id)
     require_area(request, "logistics")
     row = db.query(PackingDispatch).filter(PackingDispatch.id == dispatch_id).first()
     if not row:
@@ -418,6 +421,8 @@ def logistics_detail(request: Request, dispatch_id: int, db: Session = Depends(g
 async def logistics_assign(request: Request, dispatch_id: int, db: Session = Depends(get_db)):
     """Batch 157 — save the logistics assignment (driver / vehicle / region-wise
     bags). Only the logistics-owned fields are written here."""
+    # Batch 207: an order number in the URL is not authorisation — 404 if it belongs to another company.
+    require_record_scope(db, request, "packing_dispatch", dispatch_id)
     require_area(request, "logistics")
     row = db.query(PackingDispatch).filter(PackingDispatch.id == dispatch_id).first()
     if not row:
@@ -538,6 +543,8 @@ def generate_delivery_otp(request: Request, dispatch_id: int, db: Session = Depe
     "text the customer" step would populate automatically — no workflow
     change needed on this end, just wiring in the sender.
     """
+    # Batch 207: an order number in the URL is not authorisation — 404 if it belongs to another company.
+    require_record_scope(db, request, "packing_dispatch", dispatch_id)
     require_action(request, "dispatch", "edit")
     _ensure_delivery_confirmation_schema(db)
     row = db.query(PackingDispatch).filter(PackingDispatch.id == dispatch_id).first()
@@ -557,6 +564,8 @@ def dispatch_detail(request: Request, dispatch_id: int, db: Session = Depends(ge
     """Batch 146b — single-order dispatch detail. The dashboard is now a compact
     index (cards + filters + table); opening an order brings you here to edit the
     driver / vehicle / region / status for just that order (image 12)."""
+    # Batch 207: an order number in the URL is not authorisation — 404 if it belongs to another company.
+    require_record_scope(db, request, "packing_dispatch", dispatch_id)
     require_area(request, "dispatch")
     _ensure_delivery_confirmation_schema(db)
     row = db.query(PackingDispatch).filter(PackingDispatch.id == dispatch_id).first()
@@ -607,6 +616,8 @@ async def update_dispatch(
     pod_photo: Optional[UploadFile] = File(None),
     db: Session = Depends(get_db),
 ):
+    # Batch 207: an order number in the URL is not authorisation — 404 if it belongs to another company.
+    require_record_scope(db, request, "packing_dispatch", dispatch_id)
     require_action(request, "dispatch", "edit")
     _ensure_delivery_confirmation_schema(db)
     row = db.query(PackingDispatch).filter(PackingDispatch.id == dispatch_id).first()

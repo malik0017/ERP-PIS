@@ -15,7 +15,7 @@
   <div class="yr-hero mb-4 d-flex justify-content-between flex-wrap gap-3 align-items-center">
     <div>
       <h2 class="mb-1 text-white">Yield Report — {{ section }}</h2>
-      <div class="small opacity-75">Good Output ÷ Raw Material Input × 100. Built from Process &amp; Transfer records already captured for this section.</div>
+      <div class="small opacity-75">{{ t('Yield % = Qty Transferred ÷ Qty Received × 100. Built from Process &amp; Transfer records already captured for this section.') }}</div>
     </div>
   </div>
 
@@ -31,9 +31,17 @@
         <input type="date" name="date_from" value="{{ filters.date_from }}" class="form-control"></div>
       <div><label class="form-label fw-bold">To</label>
         <input type="date" name="date_to" value="{{ filters.date_to }}" class="form-control"></div>
-      <div><label class="form-label fw-bold">Customer</label>
-        <input type="text" name="customer" value="{{ filters.customer }}" class="form-control" placeholder="Name" style="min-width:180px"></div>
-      <div><button class="btn btn-primary fw-bold"><i class="bi bi-search"></i> Apply</button></div>
+      <div><label class="form-label fw-bold">{{ t('Customer') }}</label>
+        <input type="text" name="customer" value="{{ filters.customer }}" class="form-control" placeholder="{{ t('Name') }}" style="min-width:180px"></div>
+      {# Batch 206 (Image 4): order-number search. #}
+      <div><label class="form-label fw-bold">{{ t('Order No') }}</label>
+        <input type="text" name="order" value="{{ filters.order }}" list="yrOrders" autocomplete="off"
+               class="form-control" placeholder="{{ t('All orders') }}" style="min-width:210px">
+        <datalist id="yrOrders">{% for o in order_options %}<option value="{{ o }}"></option>{% endfor %}</datalist></div>
+      <div class="d-flex gap-2">
+        <button class="btn btn-primary fw-bold"><i class="bi bi-search"></i> {{ t('Apply') }}</button>
+        <a class="btn btn-phoenix-secondary" href="/production/reports/yield?section={{ filters.section }}">{{ t('Reset') }}</a>
+      </div>
     </form>
   </div>
 
@@ -41,11 +49,14 @@
     <div class="table-responsive">
       <table class="table table-sm yr-table" data-isfc-table data-isfc-colfilters
              data-isfc-title="Yield Report — {{ section }}"
-             data-isfc-subtitle="{{ filters.date_from or 'any date' }} → {{ filters.date_to or 'any date' }}{% if filters.customer %} · {{ filters.customer }}{% endif %}">
+             data-isfc-subtitle="{{ filters.date_from or 'any date' }} → {{ filters.date_to or 'any date' }}{% if filters.customer %} · {{ filters.customer }}{% endif %}{% if filters.order %} · {{ filters.order }}{% endif %}">
         <thead>
           <tr>
             <th>Recipe</th><th>Ingredient</th>
-            <th class="text-end">Input</th><th class="text-end">Good Output</th>
+            {# Batch 206 (Images 4–6): renamed to the words the kitchen uses.
+               Same figures: input = received from the previous stage,
+               good output = transferred on. #}
+            <th class="text-end">{{ t('Qty Received') }}</th><th class="text-end">{{ t('Qty Transferred') }}</th>
             <th class="text-end">Waste</th><th class="text-end">Returned</th>
             <th class="text-end">By-product</th>
             <th>UOM</th>

@@ -15,6 +15,7 @@ from app.core.notifications import notify_role
 from app.database.session import get_db
 from app.models.production import CustomerOrder, OrderLine
 from app.services.production_service import preview_bom_shortages
+from app.core.company import require_order_scope, require_record_scope
 
 router = APIRouter(prefix="/sales-requests", tags=["Sales Requests"])
 
@@ -213,6 +214,8 @@ def func_coalesce_status():
 # ---------------------------------------------------------------------------
 @router.get("/{order_no}")
 def sales_request_detail(request: Request, order_no: str, db: Session = Depends(get_db)):
+    # Batch 207: an order number in the URL is not authorisation — 404 if it belongs to another company.
+    require_order_scope(db, request, order_no)
     require_area(request, "sales_review")
     from app.modules.production.routes import _ensure_sales_review_schema
     _ensure_sales_review_schema(db)
@@ -308,6 +311,8 @@ def _full_coverage(db: Session, order_no: str, cid: int) -> list[dict]:
 async def update_portions(request: Request, order_no: str, db: Session = Depends(get_db)):
     """Batch 139 — let the reviewer correct requested portions before approving.
     Only editable while the request is still Pending (not yet sent to planning)."""
+    # Batch 207: an order number in the URL is not authorisation — 404 if it belongs to another company.
+    require_order_scope(db, request, order_no)
     require_action(request, "sales_review", "edit")
     cid = _cid(request)
     order = db.query(CustomerOrder).filter(
@@ -355,6 +360,8 @@ async def approve(request: Request, order_no: str, db: Session = Depends(get_db)
     """Approve the request. THIS is the only thing that makes the order
     visible to Head Chef Planning — before it, the order exists but is
     invisible downstream."""
+    # Batch 207: an order number in the URL is not authorisation — 404 if it belongs to another company.
+    require_order_scope(db, request, order_no)
     require_action(request, "sales_review", "edit")
     from app.modules.production.routes import _ensure_sales_review_schema
     _ensure_sales_review_schema(db)
@@ -384,6 +391,8 @@ async def approve(request: Request, order_no: str, db: Session = Depends(get_db)
 
 @router.post("/{order_no}/reject")
 async def reject(request: Request, order_no: str, db: Session = Depends(get_db)):
+    # Batch 207: an order number in the URL is not authorisation — 404 if it belongs to another company.
+    require_order_scope(db, request, order_no)
     require_action(request, "sales_review", "edit")
     from app.modules.production.routes import _ensure_sales_review_schema
     _ensure_sales_review_schema(db)
@@ -442,6 +451,8 @@ async def raise_pr(request: Request, order_no: str, db: Session = Depends(get_db
     raises a request that Procurement has to approve and price before any
     PO exists.
     """
+    # Batch 207: an order number in the URL is not authorisation — 404 if it belongs to another company.
+    require_order_scope(db, request, order_no)
     require_action(request, "sales_review", "edit")
     from app.modules.purchase_req.routes import create_requisition, ensure_schema as pr_ensure
     pr_ensure(db)

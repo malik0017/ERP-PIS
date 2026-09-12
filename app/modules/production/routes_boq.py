@@ -125,8 +125,12 @@ def order_wise(db: Session, f: dict, cid: int) -> list[dict]:
                    b.ingredient_code,
                    COALESCE(b.ingredient_name, b.ingredient_code) AS item_name,
                    COALESCE(b.standard_uom, '')  AS uom,
-                   COALESCE(b.total_required_with_waste_standard,
+                   -- Batch 206: the BOQ reports NET; the store issues GROSS.
+                   COALESCE(b.net_required_qty_standard,
+                            b.total_required_with_waste_standard,
                             b.required_qty_standard, 0) AS required_qty,
+                   COALESCE(b.total_required_with_waste_standard,
+                            b.required_qty_standard, 0) AS issue_qty,
                    -- Batch 194-A (Img 4): "BOQ should include Recipe name,
                    -- Sub recipe Description, also include protein items,
                    -- vegetable, gram, etc." Recipe name and category
@@ -224,9 +228,10 @@ def export_boq(request: Request, db: Session = Depends(get_db)):
     ws = wb.active
     ws.title = "Recipe Sheet (Chef)"
     cols = ["Component", "Item Code", "Ingredient", "Kitchen Section", "Issued To",
-            "Per Portion", "Recipe UOM", "Required Qty", "UOM", "Cutting / Portion", "Done ✓"]
+            "Per Portion", "Recipe UOM", "Net Qty", "Issue Qty", "Trim Loss", "UOM",
+            "Cutting / Portion", "Done ✓"]
     header(ws, cols, "BILL OF QUANTITY — RECIPE SHEET", stamp,
-           widths=[26, 14, 36, 16, 16, 12, 11, 14, 9, 28, 9])
+           widths=[26, 14, 36, 16, 16, 12, 11, 13, 13, 11, 9, 28, 9])
     r = 5
     n = len(cols)
     for o in sheet:
@@ -243,8 +248,9 @@ def export_boq(request: Request, db: Session = Depends(get_db)):
                 r += 1
                 for ln in comp["lines"]:
                     vals = ["", ln["ingredient_code"], ln["ingredient_name"], ln["kitchen_section"],
-                            ln["issue_section"], round(ln["per_portion"], 4), ln["recipe_uom"],
-                            round(ln["required_qty"], 3), ln["uom"], ln["cutting"], ""]
+                            ln["issue_section"], round(ln.get("net_per_portion") or ln["per_portion"], 4),
+                            ln["recipe_uom"], round(ln["required_qty"], 3), round(ln["issue_qty"], 3),
+                            round(ln["yield_loss"], 3), ln["uom"], ln["cutting"], ""]
                     for ci, v in enumerate(vals, start=1):
                         cell = ws.cell(row=r, column=ci, value=v)
                         cell.border = box
@@ -255,12 +261,12 @@ def export_boq(request: Request, db: Session = Depends(get_db)):
     # --- Sheet 2: by kitchen section
     ws_s = wb.create_sheet("By Section")
     header(ws_s, ["Section", "Order", "Customer", "Recipe", "Portions", "Component",
-                  "Item Code", "Ingredient", "Required Qty", "UOM", "Issued To"],
+                  "Item Code", "Ingredient", "Net Qty", "Issue Qty", "UOM", "Issued To"],
            "BILL OF QUANTITY — BY SECTION", stamp,
-           widths=[16, 20, 26, 30, 10, 22, 14, 34, 13, 9, 16])
+           widths=[16, 20, 26, 30, 10, 22, 14, 34, 13, 13, 9, 16])
     r = 5
     for s in by_section(sheet):
-        band(ws_s, r, 11, f"{s['section']}  —  {len(s['recipes'])} recipe(s), {s['lines']} line(s)",
+        band(ws_s, r, 12, f"{s['section']}  —  {len(s['recipes'])} recipe(s), {s['lines']} line(s)",
              order_fill, "FFFFFF")
         r += 1
         for rec in s["recipes"]:
@@ -268,26 +274,27 @@ def export_boq(request: Request, db: Session = Depends(get_db)):
                 for ci, v in enumerate([s["section"], rec["order_no"], rec["customer_name"],
                                         f"{rec['recipe_name']} ({rec['recipe_no']})", rec["portions"],
                                         ln["component"], ln["ingredient_code"], ln["ingredient_name"],
-                                        round(ln["required_qty"], 3), ln["uom"], ln["issue_section"]], 1):
+                                        round(ln["required_qty"], 3), round(ln["issue_qty"], 3),
+                                        ln["uom"], ln["issue_section"]], 1):
                     ws_s.cell(row=r, column=ci, value=v)
                 r += 1
 
     # --- Sheet 3: by recipe (consolidated across orders, for batch cooking)
     ws_r = wb.create_sheet("By Recipe")
     header(ws_r, ["Recipe", "Total Portions", "Orders", "Component", "Item Code", "Ingredient",
-                  "Kitchen Section", "Required Qty", "UOM"],
+                  "Kitchen Section", "Net Qty", "Issue Qty", "UOM"],
            "BILL OF QUANTITY — BY RECIPE (all filtered orders)", stamp,
-           widths=[34, 13, 40, 22, 14, 34, 16, 13, 9])
+           widths=[34, 13, 40, 22, 14, 34, 16, 13, 13, 9])
     r = 5
     for rec in by_recipe(sheet):
-        band(ws_r, r, 9, f"{rec['recipe_name']} ({rec['recipe_no']})  —  {rec['portions']:g} portions",
+        band(ws_r, r, 10, f"{rec['recipe_name']} ({rec['recipe_no']})  —  {rec['portions']:g} portions",
              recipe_fill)
         r += 1
         orders_txt = ", ".join(f"{x['order_no']} ({x['portions']:g})" for x in rec["orders"])
         for ln in rec["lines"]:
             for ci, v in enumerate([rec["recipe_name"], rec["portions"], orders_txt, ln["component"],
                                     ln["ingredient_code"], ln["ingredient_name"], ln["kitchen_section"],
-                                    round(ln["required_qty"], 3), ln["uom"]], 1):
+                                    round(ln["required_qty"], 3), round(ln["issue_qty"], 3), ln["uom"]], 1):
                 ws_r.cell(row=r, column=ci, value=v)
             r += 1
 
@@ -318,7 +325,8 @@ def export_boq(request: Request, db: Session = Depends(get_db)):
     ow = order_wise(db, f, cid)
     ws2 = wb.create_sheet("By Order (flat)")
     header(ws2, ["Delivery", "Order", "Customer", "Brand", "Recipe Name", "Recipe Code",
-                 "Sub-Recipe", "Main Cat.", "Sub Cat.", "Item Code", "Ingredient", "UOM", "Required"],
+                 "Sub-Recipe", "Main Cat.", "Sub Cat.", "Item Code", "Ingredient", "UOM",
+                 "Net Qty", "Issue Qty"],
            "BILL OF QUANTITY — BY ORDER", stamp)
     r = 5
     for x in ow:
@@ -326,7 +334,8 @@ def export_boq(request: Request, db: Session = Depends(get_db)):
                                 x["brand"], x.get("recipe_name") or "", x["recipe_no"],
                                 x.get("sub_recipe_description") or "", x.get("main_category") or "",
                                 x.get("sub_category") or "", x["ingredient_code"], x["item_name"],
-                                x["uom"], round(float(x["required_qty"] or 0), 3)], 1):
+                                x["uom"], round(float(x["required_qty"] or 0), 3),
+                                round(float(x.get("issue_qty") or 0), 3)], 1):
             ws2.cell(row=r, column=ci, value=v)
         r += 1
 

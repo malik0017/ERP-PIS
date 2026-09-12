@@ -22,6 +22,7 @@ from app.core.rbac import require_area
 
 from app.core.templates import render
 from app.database.session import get_db
+from app.core.company import require_order_scope, require_record_scope
 
 router = APIRouter(prefix="/print", tags=["Print Forms"])
 
@@ -51,6 +52,8 @@ def _rows(db: Session, sql: str, params: dict) -> list:
 
 @router.get("/{order_no}")
 async def print_hub(request: Request, order_no: str, db: Session = Depends(get_db)):
+    # Batch 207: an order number in the URL is not authorisation — 404 if it belongs to another company.
+    require_order_scope(db, request, order_no)
     require_area(request, "production_orders")
     order = _order(db, order_no)
     return render(request, "print/hub.html", {"order": order, "forms": FORMS, "order_no": order_no,
@@ -59,6 +62,8 @@ async def print_hub(request: Request, order_no: str, db: Session = Depends(get_d
 
 @router.get("/{order_no}/order-sheet")
 async def order_sheet(request: Request, order_no: str, db: Session = Depends(get_db)):
+    # Batch 207: an order number in the URL is not authorisation — 404 if it belongs to another company.
+    require_order_scope(db, request, order_no)
     require_area(request, "production_orders")
     order = _order(db, order_no)
     lines = _rows(db, """
@@ -72,6 +77,8 @@ async def order_sheet(request: Request, order_no: str, db: Session = Depends(get
 
 @router.get("/{order_no}/bom-sheet")
 async def bom_sheet(request: Request, order_no: str, db: Session = Depends(get_db)):
+    # Batch 207: an order number in the URL is not authorisation — 404 if it belongs to another company.
+    require_order_scope(db, request, order_no)
     require_area(request, "production_orders")
     order = _order(db, order_no)
     lines = _rows(db, """
@@ -91,6 +98,8 @@ async def bom_sheet(request: Request, order_no: str, db: Session = Depends(get_d
 
 @router.get("/{order_no}/store-issue")
 async def store_issue_slip(request: Request, order_no: str, db: Session = Depends(get_db)):
+    # Batch 207: an order number in the URL is not authorisation — 404 if it belongs to another company.
+    require_order_scope(db, request, order_no)
     require_area(request, "production_orders")
     order = _order(db, order_no)
     lines = _rows(db, """
@@ -107,6 +116,8 @@ async def store_issue_slip(request: Request, order_no: str, db: Session = Depend
 
 @router.get("/{order_no}/qc-certificate")
 async def qc_certificate(request: Request, order_no: str, db: Session = Depends(get_db)):
+    # Batch 207: an order number in the URL is not authorisation — 404 if it belongs to another company.
+    require_order_scope(db, request, order_no)
     require_area(request, "production_orders")
     order = _order(db, order_no)
     checks = _rows(db, """
@@ -120,6 +131,8 @@ async def qc_certificate(request: Request, order_no: str, db: Session = Depends(
 
 @router.get("/{order_no}/packing-slip")
 async def packing_slip(request: Request, order_no: str, db: Session = Depends(get_db)):
+    # Batch 207: an order number in the URL is not authorisation — 404 if it belongs to another company.
+    require_order_scope(db, request, order_no)
     require_area(request, "production_orders")
     order = _order(db, order_no)
     pack = db.execute(text("SELECT * FROM packing_dispatch WHERE order_no = :o ORDER BY id DESC LIMIT 1"),
@@ -133,6 +146,8 @@ async def packing_slip(request: Request, order_no: str, db: Session = Depends(ge
 
 @router.get("/{order_no}/delivery-note")
 async def delivery_note(request: Request, order_no: str, db: Session = Depends(get_db)):
+    # Batch 207: an order number in the URL is not authorisation — 404 if it belongs to another company.
+    require_order_scope(db, request, order_no)
     require_area(request, "production_orders")
     order = _order(db, order_no)
     pack = db.execute(text("SELECT * FROM packing_dispatch WHERE order_no = :o ORDER BY id DESC LIMIT 1"),

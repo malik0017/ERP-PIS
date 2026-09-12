@@ -31,19 +31,28 @@ from sqlalchemy.orm import Session
 from app.core.templates import render
 from app.core.rbac import require_area
 from app.database.session import get_db
+from app.core.sql_scope import scoped
 
 router = APIRouter(tags=["Reports"])
 
 
 # ---------------------------------------------------------------------------
-def _rows(db, sql, params=None):
+
+def _scope_cid(request) -> int:
+    return int(request.session.get("company_id") or 1)
+
+def _rows(db, sql, params=None, cid: int | None = None):
+    if cid is not None:
+        sql, params = scoped(sql, params, cid)
     try:
         return [dict(r) for r in db.execute(text(sql), params or {}).mappings().all()]
     except Exception:
         return []
 
 
-def _count(db, sql, params=None):
+def _count(db, sql, params=None, cid: int | None = None):
+    if cid is not None:
+        sql, params = scoped(sql, params, cid)
     try:
         return int(db.execute(text(sql), params or {}).scalar() or 0)
     except Exception:
@@ -102,9 +111,9 @@ def relationship_tree(request: Request, db: Session = Depends(get_db)):
     require_area(request, "reports")
     roots = [
         {"type": "root_sales", "label": "Sales & Orders", "icon": "shopping-cart",
-         "badge": _count(db, "SELECT COUNT(*) FROM customer_orders")},
+         "badge": _count(db, "SELECT COUNT(*) FROM customer_orders", cid=_scope_cid(request))},
         {"type": "root_production", "label": "Production", "icon": "activity",
-         "badge": _count(db, "SELECT COUNT(DISTINCT order_no) FROM bom_lines")},
+         "badge": _count(db, "SELECT COUNT(DISTINCT order_no) FROM bom_lines", cid=_scope_cid(request))},
         {"type": "root_inventory", "label": "Inventory", "icon": "box",
          "badge": _count(db, "SELECT COUNT(*) FROM ingredients")},
         {"type": "root_procurement", "label": "Procurement", "icon": "shopping-bag",
@@ -133,7 +142,7 @@ def tree_node(request: Request,
             SELECT order_no, customer_name, COALESCE(status,'') AS status,
                    order_date, required_delivery_date,
                    COALESCE(total_estimated_selling_value,0) AS val
-            FROM customer_orders ORDER BY id DESC LIMIT 40"""):
+            FROM customer_orders ORDER BY id DESC LIMIT 40""", cid=_scope_cid(request)):
             out.append(_doc("order", r["order_no"], "Sales Order", r["order_no"],
                             r["order_date"], r["val"], r["status"],
                             url=f"/production/orders/{r['order_no']}"))
@@ -142,7 +151,7 @@ def tree_node(request: Request,
             SELECT b.order_no, MAX(o.customer_name) AS customer,
                    COUNT(*) AS lines, MAX(o.order_date) AS order_date
             FROM bom_lines b LEFT JOIN customer_orders o ON o.order_no = b.order_no
-            GROUP BY b.order_no ORDER BY b.order_no DESC LIMIT 40"""):
+            GROUP BY b.order_no ORDER BY b.order_no DESC LIMIT 40""", cid=_scope_cid(request)):
             out.append(_doc("order_bom", r["order_no"], "Production BOM", r["order_no"],
                             r["order_date"], None, f"{r['lines']} lines",
                             url=f"/production/orders/{r['order_no']}",
@@ -203,14 +212,14 @@ def tree_node(request: Request,
         for r in _rows(db, """
             SELECT COALESCE(recipe_name, recipe_code,'') AS recipe,
                    COALESCE(portions, quantity, 0) AS qty
-            FROM order_lines WHERE order_no=:o ORDER BY id LIMIT 200""", {"o": k}):
+            FROM order_lines WHERE order_no=:o ORDER BY id LIMIT 200""", {"o": k}, cid=_scope_cid(request)):
             out.append(_line(r["recipe"], f"{r['qty']} portions"))
     elif t_ == "order_bom":
         for r in _rows(db, """
             SELECT COALESCE(inventory_code,'') AS code,
                    COALESCE(item_name, ingredient_name,'') AS item,
                    COALESCE(required_qty, quantity, 0) AS qty, COALESCE(uom,'') AS uom
-            FROM bom_lines WHERE order_no=:o ORDER BY id LIMIT 300""", {"o": k}):
+            FROM bom_lines WHERE order_no=:o ORDER BY id LIMIT 300""", {"o": k}, cid=_scope_cid(request)):
             out.append(_line(f"{r['item']} ({r['code']})" if r["code"] else r["item"],
                              f"{r['qty']} {r['uom']}".strip(),
                              leaf=not r["code"], node_type="inv_item", key=r["code"]))
@@ -218,7 +227,7 @@ def tree_node(request: Request,
         for r in _rows(db, """
             SELECT COALESCE(inventory_code,'') AS code, COALESCE(item_name,'') AS item,
                    COALESCE(issued_qty, quantity, 0) AS qty
-            FROM store_issuance_lines WHERE order_no=:o ORDER BY id LIMIT 300""", {"o": k}):
+            FROM store_issuance_lines WHERE order_no=:o ORDER BY id LIMIT 300""", {"o": k}, cid=_scope_cid(request)):
             out.append(_line(f"{r['item']} ({r['code']})" if r["code"] else r["item"],
                              r["qty"], leaf=not r["code"], node_type="inv_item", key=r["code"]))
     elif t_ in ("order_kitchen", "order_qc", "order_pack", "order_ar"):
@@ -309,7 +318,7 @@ def tree_node(request: Request,
                    COALESCE(co.total_estimated_selling_value,0) AS val
             FROM customer_orders co
             JOIN customers c ON (co.customer_name = c.customer_name OR co.customer_no = c.customer_code)
-            WHERE c.customer_code=:c ORDER BY co.id DESC LIMIT 40""", {"c": k})
+            WHERE c.customer_code=:c ORDER BY co.id DESC LIMIT 40""", {"c": k}, cid=_scope_cid(request))
         for r in rs:
             out.append(_doc("order", r["order_no"], "Sales Order", r["order_no"],
                             r["order_date"], r["val"], r["status"],

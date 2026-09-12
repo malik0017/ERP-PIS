@@ -6,9 +6,19 @@ from sqlalchemy.orm import Session
 
 from app.core.templates import render
 from app.core.rbac import require_area, can_access
+from app.core.sql_scope import scoped
 from app.database import get_db
 
 router = APIRouter(tags=["Module Dashboards"])
+
+# Batch 208: every KPI and chart query in this module comes from the config
+# table above, so scoping them one by one would leave the NEXT KPI someone adds
+# unscoped. scope_sql() adds the company condition to the outer query
+# mechanically; anything it cannot parse safely is left alone and reported by
+# scripts/test_company_scope.py rather than silently rewritten.
+def _scoped(sql: str, cid: int, params: dict | None = None):
+    return scoped(sql, params, cid)
+
 
 def _n(db: Session, sql: str, params: dict | None = None) -> float:
     try:
@@ -253,10 +263,17 @@ MODULE_DASHBOARDS: dict[str, dict] = {
         ],
         "charts": [
             {"title": "Document Volume",
+             # Batch 208: scope_sql() refuses UNION queries by design (it rewrites
+             # the outer query only, and a UNION has several). Written out with
+             # the condition on each branch instead of leaving it unscoped.
              "sql": "SELECT 'Orders' AS label, COUNT(*) AS value FROM customer_orders "
+                    "WHERE (company_id = :scope_cid OR company_id IS NULL) "
                     "UNION ALL SELECT 'BOM Lines', COUNT(*) FROM bom_lines "
+                    "WHERE (company_id = :scope_cid OR company_id IS NULL) "
                     "UNION ALL SELECT 'QC Checks', COUNT(*) FROM qc_checks "
-                    "UNION ALL SELECT 'Dispatches', COUNT(*) FROM packing_dispatch", "default": "bar"},
+                    "WHERE (company_id = :scope_cid OR company_id IS NULL) "
+                    "UNION ALL SELECT 'Dispatches', COUNT(*) FROM packing_dispatch "
+                    "WHERE (company_id = :scope_cid OR company_id IS NULL)", "default": "bar"},
             {"title": "Orders by Status",
              "sql": "SELECT COALESCE(NULLIF(status,''),'Submitted') AS label, COUNT(*) AS value "
                     "FROM customer_orders GROUP BY 1 ORDER BY value DESC", "default": "donut"},
@@ -421,9 +438,12 @@ async def module_dashboard(request: Request, key: str, db: Session = Depends(get
         return f" AND {col} >= DATE_SUB(CURDATE(), INTERVAL {days} DAY)" if days else ""
 
    
+    cid = int(request.session.get("company_id") or 1)
+
     def _n_probe(sql_text: str):
         try:
-            v = db.execute(text(sql_text)).scalar()
+            q, p = _scoped(sql_text, cid)
+            v = db.execute(text(q), p).scalar()
             return (float(v or 0), True)
         except Exception:
             return (0.0, False)
@@ -452,7 +472,8 @@ async def module_dashboard(request: Request, key: str, db: Session = Depends(get
         if "{range}" in sql:
             col = cc.get("range_col", "created_at")
             sql = sql.replace("{range}", _range_cond(col))
-        rows = _rows(db, sql)
+        _q, _p = _scoped(sql, cid)
+        rows = _rows(db, _q, _p)
         labels = [str(r.get("label", "")) for r in rows]
         values = [float(r.get("value") or 0) for r in rows]
         # trend charts come back DESC for LIMIT; flip to chronological

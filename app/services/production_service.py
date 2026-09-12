@@ -462,6 +462,12 @@ def generate_bom_for_order(db: Session, order_no: str, approved_by: str | None =
                 # created yet the line still saves.
                 **({"gross_required_qty_standard": gross_required_std}
                    if hasattr(BOMLine, "gross_required_qty_standard") else {}),
+                # Batch 206: the NET requirement, always recorded. The Bill of
+                # Quantity reports on this (the weight that goes into the pot);
+                # store issuance keeps using the basis-selected figure above.
+                **({"net_required_qty_standard": convert_to_standard(
+                        net_pp * order_portions, recipe_uom, standard_uom, conv) if net_pp > 0 else required_std}
+                   if hasattr(BOMLine, "net_required_qty_standard") else {}),
                 wastage_pct=waste_pct,
                 expected_waste_qty_standard=expected_waste,
                 total_required_with_waste_standard=required_with_waste,

@@ -1,50 +1,16 @@
-{# Batch 201 — Pack reconciliation report (Image 11 note: "in the report show
-   complete detail: required, issued from store, transferred from section,
-   received, packed and excess/shortage"). Standalone A4 landscape page. #}
-<!DOCTYPE html>
-<html lang="{{ lang or 'en' }}" dir="{{ 'rtl' if is_rtl else 'ltr' }}">
-<head>
-<meta charset="utf-8">
-<title>{{ t('Pack Report') }} · {{ row.order_no }}</title>
-<style>
-  *{box-sizing:border-box;margin:0;padding:0}
-  body{font:10.5px/1.45 "Segoe UI",Tahoma,Arial,sans-serif;color:#16233a;background:#eef2f7}
-  .bar{position:sticky;top:0;background:#132947;color:#fff;padding:8px 14px;display:flex;gap:10px;align-items:center}
-  .bar button{margin-inline-start:auto;background:#fff;color:#132947;border:0;border-radius:6px;padding:6px 14px;font-weight:700;cursor:pointer}
-  .page{width:297mm;margin:10px auto;background:#fff;padding:10mm;box-shadow:0 6px 24px rgba(0,0,0,.1)}
-  .head{display:flex;justify-content:space-between;border-bottom:3px solid #132947;padding-bottom:8px;margin-bottom:10px}
-  .head h1{font-size:18px;color:#132947}
-  .sub{color:#5a6a82}
-  .facts{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-bottom:10px}
-  .facts div{border:1px solid #d6deea;border-radius:6px;padding:5px 7px}
-  .facts b{display:block;font-size:9px;color:#6b7a90;font-weight:600}
-  table{width:100%;border-collapse:collapse}
-  th{font-size:9px;color:#34445c;border:1px solid #c9d4e3;padding:4px 5px;background:#f1f5fa}
-  th.g1{background:#e9eef7}th.g2{background:#dff1e5}th.g3{background:#dde9fb}th.g4{background:#fdf1cf}
-  td{padding:3px 5px;border:1px solid #e3e9f1;text-align:end;font-variant-numeric:tabular-nums}
-  td.l{text-align:start}
-  tr.tot td{font-weight:700;background:#f4f7fb}
-  .neg{color:#b42318;font-weight:700}.pos{color:#b45309;font-weight:700}.ok{color:#15803d}
-  .two{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:12px}
-  .box{border:1px solid #d6deea;border-radius:6px;padding:8px}
-  .box h3{font-size:11px;margin-bottom:6px;color:#132947}
-  .sig{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:22px}
-  .sig div{border-top:1px solid #8795aa;padding-top:4px;color:#5a6a82}
-  @media print{body{background:#fff}.bar{display:none}.page{box-shadow:none;margin:0;width:auto;padding:0}@page{size:A4 landscape;margin:8mm}}
-</style>
-</head>
-<body>
+{# Batch 209 (Image 10): rebuilt on the shared report base so the Pack Report
+   matches the Recipe Sheet — same bar, sheet, header, tables and print rules.
+   Columns and figures are unchanged from Batch 205. #}
+{% extends "print/report_base.html" %}
+{% set rp_title = t('Trayline Pack Reconciliation') %}
+{% set rp_subtitle = row.order_no ~ ' · ' ~ (row.customer_name or '') %}
+{% set rp_stamp = t('Dispatch No') ~ ' ' ~ row.dispatch_no ~ ' · ' ~ t('Status') ~ ': ' ~ row.dispatch_status %}
+{% set rp_wide = true %}
+{% block rp_body %}
 {% macro n(v, fmt='%.2f') %}{{ fmt|format(v) if v is not none else '—' }}{% endmacro %}
-{% macro d(v) %}{% if v is none %}—{% else %}<span class="{{ 'neg' if v < -0.001 else ('pos' if v > 0.001 else 'ok') }}">{{ '%+.2f'|format(v) }}</span>{% endif %}{% endmacro %}
-<div class="bar"><strong>{{ t('Pack Report') }}</strong><span style="opacity:.75">{{ row.order_no }}</span>
-  <button onclick="window.print()">{{ t('Print / Save as PDF') }}</button></div>
-<div class="page">
-  <div class="head">
-    <div><h1>{{ t('Trayline Pack Reconciliation') }}</h1>
-      <div class="sub">{{ row.order_no }} · {{ row.customer_name or '' }} · {{ t('Dispatch No') }} {{ row.dispatch_no }}</div></div>
-    <div class="sub" style="text-align:end">{% if company_logo %}<img src="{{ company_logo }}" alt="" style="height:36px"><br>{% endif %}{{ t('Status') }}: {{ row.dispatch_status }}</div>
-  </div>
-  <div class="facts">
+{% macro d(v) %}{% if v is none %}—{% else %}<span class="{{ 'rp-neg' if v < -0.001 else ('rp-pos' if v > 0.001 else 'rp-ok') }}">{{ '%+.2f'|format(v) }}</span>{% endif %}{% endmacro %}
+
+  <div class="rp-facts rp-6">
     <div><b>{{ t('Brand') }}</b>{{ order.brand if order else '—' }}</div>
     <div><b>{{ t('Delivery') }}</b>{{ order.required_delivery_date if order else '—' }}</div>
     <div><b>{{ t('Planned Portions') }}</b>{{ '%g'|format(order.total_planned_portions or 0) if order else '—' }}</div>
@@ -57,61 +23,58 @@
     <thead>
       <tr>
         <th rowspan="2">{{ t('Recipe') }}</th><th rowspan="2">{{ t('From Section') }}</th><th rowspan="2">{{ t('Portions') }}</th>
-        <th colspan="5" class="g1">{{ t('Material Flow') }}</th>
-        <th colspan="3" class="g2">{{ t('Received from Kitchen (g)') }}</th>
-        <th colspan="4" class="g3">{{ t('Packed at Trayline') }}</th>
-        <th colspan="3" class="g4">{{ t('Excess / Shortage (g)') }}</th>
+        <th colspan="3" class="rp-g1">{{ t('Material Flow') }}</th>
+        <th colspan="3" class="rp-g2">{{ t('Received from Kitchen (g)') }}</th>
+        <th colspan="3" class="rp-g3">{{ t('Packed at Trayline') }}</th>
+        <th colspan="3" class="rp-g4">{{ t('Excess / Shortage (g)') }}</th>
       </tr>
       <tr>
-        <th class="g1">{{ t('Required') }}</th><th class="g1">{{ t('Issued') }}</th><th class="g1">{{ t('Issue Var.') }}</th>
-        <th class="g1">{{ t('Transferred') }}</th><th class="g1">{{ t('Received') }}</th>
-        <th class="g2">{{ t('Protein') }}</th><th class="g2">{{ t('Carb') }}</th><th class="g2">{{ t('Veg') }}</th>
-        <th class="g3">{{ t('Portions') }}</th><th class="g3">{{ t('Protein') }}</th><th class="g3">{{ t('Carb') }}</th><th class="g3">{{ t('Veg') }}</th>
-        <th class="g4">{{ t('Protein') }}</th><th class="g4">{{ t('Carb') }}</th><th class="g4">{{ t('Veg') }}</th>
+        {# Batch 205 (Image 9): Transferred / Received dropped — they repeat the
+           kitchen weights already shown in the next group. #}
+        <th class="rp-g1">{{ t('Required') }}</th><th class="rp-g1">{{ t('Issued') }}</th><th class="rp-g1">{{ t('Issue Var.') }}</th>
+        <th class="rp-g2">{{ t('Protein') }}</th><th class="rp-g2">{{ t('Carb') }}</th><th class="rp-g2">{{ t('Veg') }}</th>
+        <th class="rp-g3">{{ t('Protein') }}</th><th class="rp-g3">{{ t('Carb') }}</th><th class="rp-g3">{{ t('Veg') }}</th>
+        <th class="rp-g4">{{ t('Protein') }}</th><th class="rp-g4">{{ t('Carb') }}</th><th class="rp-g4">{{ t('Veg') }}</th>
       </tr>
     </thead>
     <tbody>
     {% for l in lines %}
       <tr>
-        <td class="l"><strong>{{ l.recipe_name }}</strong><br><span class="sub">{{ l.recipe_no }}</span></td>
-        <td class="l">{{ l.from_section or '—' }}</td>
+        <td class="rp-l"><strong>{{ l.recipe_name }}</strong><br><span class="rp-sub">{{ l.recipe_no }}</span></td>
+        <td class="rp-l">{{ l.from_section or '—' }}</td>
         <td>{{ '%g'|format(l.planned) }}</td>
         <td>{{ n(l.required_qty) }}</td><td>{{ n(l.issued_qty) if l.issued_qty else '—' }}</td><td>{{ d(l.issue_variance) }}</td>
-        <td>{{ n(l.transferred_qty) if l.reached_qc else '—' }}</td><td>{{ n(l.received_qty) if l.reached_qc else '—' }}</td>
         <td>{{ n(l.recv_protein) }}</td><td>{{ n(l.recv_carb) }}</td><td>{{ n(l.recv_veg) }}</td>
-        <td>{{ n(l.packed_portion, '%g') }}</td><td>{{ n(l.pk_protein) }}</td><td>{{ n(l.pk_carb) }}</td><td>{{ n(l.pk_veg) }}</td>
+        <td>{{ n(l.pk_protein) }}</td><td>{{ n(l.pk_carb) }}</td><td>{{ n(l.pk_veg) }}</td>
         <td>{{ d(l.diff_protein) }}</td><td>{{ d(l.diff_carb) }}</td><td>{{ d(l.diff_veg) }}</td>
       </tr>
     {% else %}
-      <tr><td colspan="18" class="l sub">{{ t('No recipe lines have reached QC/packing yet.') }}</td></tr>
+      <tr><td colspan="14" class="l sub">{{ t('No recipe lines have reached QC/packing yet.') }}</td></tr>
     {% endfor %}
     {% if lines %}
-      <tr class="tot">
-        <td class="l" colspan="2">{{ t('Total') }}</td><td>{{ n(totals.planned, '%g') }}</td>
+      <tr class="rp-total">
+        <td class="rp-l" colspan="2">{{ t('Total') }}</td><td>{{ n(totals.planned, '%g') }}</td>
         <td>{{ n(totals.required_qty) }}</td><td>{{ n(totals.issued_qty) }}</td><td></td>
-        <td>{{ n(totals.transferred_qty) }}</td><td>{{ n(totals.received_qty) }}</td>
         <td>{{ n(totals.recv_protein) }}</td><td>{{ n(totals.recv_carb) }}</td><td>{{ n(totals.recv_veg) }}</td>
-        <td>{{ n(totals.packed_portion, '%g') }}</td><td>{{ n(totals.pk_protein) }}</td><td>{{ n(totals.pk_carb) }}</td><td>{{ n(totals.pk_veg) }}</td>
+        <td>{{ n(totals.pk_protein) }}</td><td>{{ n(totals.pk_carb) }}</td><td>{{ n(totals.pk_veg) }}</td>
         <td>{{ d(totals.diff_protein) }}</td><td>{{ d(totals.diff_carb) }}</td><td>{{ d(totals.diff_veg) }}</td>
       </tr>
     {% endif %}
     </tbody>
   </table>
-  <div class="sub" style="margin-top:4px">{{ t('Quantities are in each ingredient’s standard unit. Excess/Shortage = received from kitchen − packed. Blank = not recorded.') }}</div>
+  <div class="rp-sub" style="margin-top:4px">{{ t('Quantities are in each ingredient’s standard unit. Excess/Shortage = received from kitchen − packed. Blank = not recorded.') }}</div>
 
-  <div class="two">
-    <div class="box"><h3>{{ t('Region-wise Bag Allocation') }}</h3>
+  <div class="rp-two">
+    <div class="rp-box"><h3>{{ t('Region-wise Bag Allocation') }}</h3>
       <table><tbody>
-        {% for a in alloc %}<tr><td class="l">{{ a.name }}</td><td>{{ a.bags }}</td></tr>{% else %}<tr><td class="l sub">{{ t('Not allocated') }}</td><td></td></tr>{% endfor %}
-        <tr class="tot"><td class="l">{{ t('Total Bags') }}</td><td>{{ row.packed_bags or 0 }}</td></tr>
+        {% for a in alloc %}<tr><td class="rp-l">{{ a.name }}</td><td>{{ a.bags }}</td></tr>{% else %}<tr><td class="l sub">{{ t('Not allocated') }}</td><td></td></tr>{% endfor %}
+        <tr class="rp-total"><td class="rp-l">{{ t('Total Bags') }}</td><td>{{ row.packed_bags or 0 }}</td></tr>
       </tbody></table>
     </div>
-    <div class="box"><h3>{{ t('Rejected Bags') }}</h3>
+    <div class="rp-box"><h3>{{ t('Rejected Bags') }}</h3>
       <p>{{ rejected_bags or 0 }} {{ t('bags') }}{% if rejected_reason %} — {{ rejected_reason }}{% endif %}</p>
       <h3 style="margin-top:8px">{{ t('Packing Remarks') }}</h3><p>{{ row.remarks or '—' }}</p>
     </div>
   </div>
-  <div class="sig"><div>{{ t('Trayline Supervisor') }}</div><div>{{ t('QC Inspector') }}</div><div>{{ t('Dispatch') }}</div></div>
-</div>
-</body>
-</html>
+  <div class="rp-sig"><div>{{ t('Trayline Supervisor') }}</div><div>{{ t('QC Inspector') }}</div><div>{{ t('Dispatch') }}</div></div>
+{% endblock %}

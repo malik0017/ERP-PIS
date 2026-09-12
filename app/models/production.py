@@ -87,6 +87,8 @@ class BOMLine(Base):
     # created before this batch simply have no gross figure, which is different
     # from having zero, and the screen shows nothing rather than a false 0.
     gross_required_qty_standard = Column(Float, nullable=True)
+    # Batch 206: NET (post-trim) requirement — the BOQ figure. See main.py guard.
+    net_required_qty_standard = Column(Float, nullable=True)
     route_template = Column(Text, nullable=True)
     bom_status = Column(String(50), default="Generated", index=True)
     approved_by_head_chef = Column(Boolean, default=False)

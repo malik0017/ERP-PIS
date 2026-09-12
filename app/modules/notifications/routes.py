@@ -35,6 +35,7 @@ from starlette.status import HTTP_303_SEE_OTHER
 from app.core.templates import render
 from app.core.rbac import can_access
 from app.core.notifications import ensure_notifications_schema
+from app.core.company import company_clause
 from app.database.session import get_db
 
 router = APIRouter(prefix="/notifications", tags=["Notifications"])
@@ -80,22 +81,34 @@ def _real_notifications(db: Session, request: Request, limit: int = 30) -> list[
     return [dict(r) for r in rows]
 
 
-def _collect(db: Session) -> dict:
+def _collect(db: Session, cid: int = 1) -> dict:
+    """Batch 207 — every query below is now company-scoped.
+
+    Batch 98 closed the leak on the notifications TABLE itself, but the six
+    work-queue queries underneath it were never scoped: the bell counted (and
+    the page listed, with customer names and order numbers) every company's
+    orders waiting for Head Chef, Store, QC and Dispatch. The bell is the most
+    frequently read surface in the system, so this was the widest leak found in
+    the 12 Sep audit.
+    """
+    _co = company_clause("", param="scope_cid")      # customer_orders
+    _k = company_clause("", param="scope_cid")       # kitchen_section_transactions
+    _p = {"scope_cid": cid}
     head_chef = _safe_rows(db, """
         SELECT order_no, customer_name, COALESCE(brand,'') AS brand,
                COALESCE(required_delivery_date,'') AS delivery_date, status
         FROM customer_orders
-        WHERE status = 'Submitted'
+        WHERE status = 'Submitted' """ + _co + """
         ORDER BY id DESC LIMIT 50
-    """)
+    """, _p)
 
     store = _safe_rows(db, """
         SELECT order_no, customer_name, COALESCE(brand,'') AS brand,
                COALESCE(required_delivery_date,'') AS delivery_date, status
         FROM customer_orders
-        WHERE status IN ('BOM Generated', 'Store Pending')
+        WHERE status IN ('BOM Generated', 'Store Pending') """ + _co + """
         ORDER BY id DESC LIMIT 50
-    """)
+    """, _p)
 
     qc = _safe_rows(db, """
         SELECT co.order_no, co.customer_name, COALESCE(co.brand,'') AS brand,
@@ -106,23 +119,23 @@ def _collect(db: Session) -> dict:
               SELECT 1 FROM qc_checks q
               WHERE q.order_no = co.order_no
                 AND UPPER(COALESCE(q.status, q.qc_status, '')) = 'PASSED'
-          )
+          ) """ + company_clause("co", param="scope_cid") + """
         ORDER BY co.id DESC LIMIT 50
-    """) or _safe_rows(db, """
+    """, _p) or _safe_rows(db, """
         SELECT order_no, customer_name, COALESCE(brand,'') AS brand,
                COALESCE(required_delivery_date,'') AS delivery_date, status
         FROM customer_orders
-        WHERE status = 'In Production'
+        WHERE status = 'In Production' """ + _co + """
         ORDER BY id DESC LIMIT 50
-    """)
+    """, _p)
 
     dispatch = _safe_rows(db, """
         SELECT order_no, customer_name, COALESCE(brand,'') AS brand,
                COALESCE(required_delivery_date,'') AS delivery_date, status
         FROM customer_orders
-        WHERE status IN ('Packed', 'Packing Pending', 'Out for Delivery')
+        WHERE status IN ('Packed', 'Packing Pending', 'Out for Delivery') """ + _co + """
         ORDER BY id DESC LIMIT 50
-    """)
+    """, _p)
 
     # Batch 20: section-wise kitchen workload — pending receive lines per section.
     kitchen_sections = _safe_rows(db, """
@@ -132,10 +145,10 @@ def _collect(db: Session) -> dict:
         FROM kitchen_section_transactions
         WHERE COALESCE(received_qty_standard, 0) <= 0
           AND UPPER(COALESCE(transaction_status,'')) NOT LIKE 'COMPLETED%'
-          AND UPPER(COALESCE(transaction_status,'')) != 'TRANSFERRED'
+          AND UPPER(COALESCE(transaction_status,'')) != 'TRANSFERRED' """ + _k + """
         GROUP BY current_section
         ORDER BY pending_lines DESC
-    """)
+    """, _p)
 
     return {
         "head_chef": head_chef,
@@ -152,7 +165,7 @@ async def notifications_summary(request: Request, db: Session = Depends(get_db))
     if not request.session.get("user_id") and not request.session.get("username"):
         return JSONResponse({"total": 0, "items": []})
 
-    data = _collect(db)
+    data = _collect(db, int(request.session.get("company_id") or 1))
     counts = {
         "head_chef_pending": len(data["head_chef"]),
         "store_pending": len(data["store"]),
@@ -239,7 +252,7 @@ async def mark_all_notifications_read(request: Request, db: Session = Depends(ge
 
 @router.get("")
 async def notifications_page(request: Request, db: Session = Depends(get_db)):
-    data = _collect(db)
+    data = _collect(db, int(request.session.get("company_id") or 1))
     groups = [
         {"key": "head_chef", "title": "Head Chef Approval Pending", "icon": "uil-user-check",
          "hint": "Orders submitted by customers, waiting for cooking & material schedule approval.",

@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.templates import render
 from app.core.rbac import normalized_role, ADMIN_ROLES
 from app.database.session import get_db
+from app.core.company import require_order_scope, require_record_scope
 
 router = APIRouter(prefix="/my", tags=["Customer Portal"])
 
@@ -214,6 +215,8 @@ def _safe_rows(db: Session, sql: str, params: dict | None = None) -> list:
 async def customer_order_detail(request: Request, order_no: str, db: Session = Depends(get_db)):
     """Customer view of ONE order: header, recipe lines, status timeline, delivery doc.
     Strictly scoped: the order must belong to the resolved customer."""
+    # Batch 207: an order number in the URL is not authorisation — 404 if it belongs to another company.
+    require_order_scope(db, request, order_no)
     if order_no.lower() == "new": 
         return await customer_order_new(request, db)
     customer = _resolve_customer(request, db)
@@ -496,6 +499,8 @@ async def customer_update_delivery(
     required_delivery_time: str = Form(""),
     db: Session = Depends(get_db),
 ):
+    # Batch 207: an order number in the URL is not authorisation — 404 if it belongs to another company.
+    require_order_scope(db, request, order_no)
     customer = _resolve_customer(request, db)
     if not customer:
         return RedirectResponse("/my", status_code=303)
@@ -519,6 +524,8 @@ async def customer_update_delivery(
 
 @router.post("/orders/{order_no}/cancel")
 async def customer_cancel_order(request: Request, order_no: str, db: Session = Depends(get_db)):
+    # Batch 207: an order number in the URL is not authorisation — 404 if it belongs to another company.
+    require_order_scope(db, request, order_no)
     customer = _resolve_customer(request, db)
     if not customer:
         return RedirectResponse("/my", status_code=303)

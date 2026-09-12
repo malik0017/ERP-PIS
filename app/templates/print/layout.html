@@ -8,192 +8,21 @@
   <head>
     <meta charset="utf-8" />
     <title>{{ t(doc_title) }} · {{ order_no }}</title>
-    <style>
-      * {
-        box-sizing: border-box;
-        margin: 0;
-        padding: 0;
-      }
-      body {
-        font: 12px/1.5 "Segoe UI", "Tahoma", Arial, sans-serif;
-        color: #16233a;
-        background: #f2f5f9;
-      }
-      .sheet {
-        width: 210mm;
-        min-height: 285mm;
-        margin: 10px auto;
-        background: #fff;
-        padding: 16mm 14mm;
-        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
-        position: relative;
-      }
-      .doc-head {
-        display: flex;
-        justify-content: space-between;
-        align-items: flex-start;
-        gap: 14px;
-        border-bottom: 3px solid #132947;
-        padding-bottom: 10px;
-        margin-bottom: 14px;
-      }
-      .doc-head .brand-row { display: flex; align-items: center; gap: 12px; }
-      .doc-head .brand-row img { height: 44px; width: auto; border-radius: 6px; }
-      .doc-head h1 {
-        font-size: 22px;
-        color: #132947;
-      }
-      .doc-head .co {
-        text-align: {{ 'left' if is_rtl else 'right' }};
-        font-size: 11px;
-        color: #5a6a82;
-      }
-      .doc-head .co b {
-        font-size: 14px;
-        color: #132947;
-        display: block;
-      }
-      .doc-ref {
-        font-size: 9.5px;
-        color: #98a6ba;
-        margin-top: 2px;
-        letter-spacing: 0.3px;
-      }
-      .meta {
-        display: grid;
-        grid-template-columns: repeat(4, 1fr);
-        gap: 8px;
-        margin-bottom: 14px;
-      }
-      .meta div {
-        border: 1px solid #dfe7f0;
-        border-radius: 8px;
-        padding: 7px 9px;
-      }
-      .meta b {
-        display: block;
-        font-size: 9px;
-        text-transform: uppercase;
-        color: #7a8aa0;
-        letter-spacing: 0.4px;
-      }
-      table {
-        width: 100%;
-        border-collapse: collapse;
-        margin: 10px 0 16px;
-      }
-      /* Repeat the header row on every printed page for multi-page BOM /
-         store-issue sheets, and avoid splitting a row across a page break. */
-      thead { display: table-header-group; }
-      tr { page-break-inside: avoid; }
-      th {
-        background: #132947;
-        color: #fff;
-        text-align: {{ 'right' if is_rtl else 'left' }};
-        padding: 7px 8px;
-        font-size: 10px;
-        text-transform: uppercase;
-        letter-spacing: 0.4px;
-      }
-      td {
-        padding: 6px 8px;
-        border-bottom: 1px solid #e7edf5;
-        text-align: {{ 'right' if is_rtl else 'left' }};
-      }
-      tbody tr:nth-child(even) td {
-        background: #f7fafd;
-      }
-      .totals td {
-        font-weight: 800;
-        background: #eef4fb !important;
-      }
-      .sig {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 22px;
-        margin-top: 34px;
-        page-break-inside: avoid;
-      }
-      .sig div {
-        border-top: 1.5px solid #16233a;
-        padding-top: 6px;
-        font-size: 11px;
-        text-align: center;
-        color: #5a6a82;
-      }
-      .stamp {
-        margin-top: 18px;
-        padding-top: 10px;
-        border-top: 1px dashed #dfe7f0;
-        font-size: 9.5px;
-        color: #98a6ba;
-        text-align: center;
-        page-break-inside: avoid;
-      }
-      .badge {
-        display: inline-block;
-        border-radius: 999px;
-        padding: 3px 9px;
-        font-weight: 800;
-        font-size: 10px;
-        background: #e8f0fb;
-        color: #1d4f91;
-      }
-      .badge.ok {
-        background: #ddf7e5;
-        color: #0a7a33;
-      }
-      .badge.bad {
-        background: #fde3e3;
-        color: #a51f1f;
-      }
-      .printbar {
-        position: fixed;
-        top: 12px;
-        {{ 'left' if is_rtl else 'right' }}: 14px;
-        display: flex;
-        gap: 8px;
-      }
-      .printbar a,
-      .printbar button {
-        border: 0;
-        border-radius: 10px;
-        padding: 10px 16px;
-        font-weight: 800;
-        cursor: pointer;
-        text-decoration: none;
-        font-size: 13px;
-      }
-      .printbar button {
-        background: #315efb;
-        color: #fff;
-      }
-      .printbar a {
-        background: #e6ecf5;
-        color: #16233a;
-      }
-      @media print {
-        @page { size: A4; margin: 12mm; }
-        body {
-          background: #fff;
-        }
-        .sheet {
-          margin: 0;
-          box-shadow: none;
-          width: auto;
-          min-height: auto;
-          padding: 0;
-        }
-        .printbar {
-          display: none;
-        }
-      }
-    </style>
+    {# Batch 209: the per-file <style> block is gone. All six /print/ forms now
+       load the shared design system (app/static/css/isfc-report.css), the same
+       one the BOQ Recipe Sheet and Pack Report use, so a document printed from
+       any screen looks the same. The class names these forms already use —
+       .meta, .badge, .sig, .totals — are defined there, so no child template
+       needed changing. #}
+    <link rel="stylesheet" href="{{ url_for('static', path='css/isfc-report.css') }}">
   </head>
   <body>
-    <div class="printbar">
-      <a href="/print/{{ order_no }}">{{ t('All Forms') }}</a>
-      <button onclick="window.print()">🖨 {{ t('Print') }}</button>
+    <div class="rp-bar">
+      <strong>{{ t(doc_title) }}</strong><span class="rp-sub">{{ order_no }}</span>
+      <div class="rp-actions">
+        <a class="rp-ghost" href="/print/{{ order_no }}">{{ t('All Forms') }}</a>
+        <button type="button" onclick="window.print()">{{ t('Print / Save as PDF') }}</button>
+      </div>
     </div>
     <div class="sheet">
       <div class="doc-head">
@@ -205,9 +34,10 @@
             <div class="doc-ref">{{ t('Document Ref') }}: {{ doc_title|upper|replace(' ', '-') }}-{{ order_no }}</div>
           </div>
         </div>
-        <div class="co">
-          <b>International Specialized Food Company</b>Production &amp;
-          Inventory Management System<br />{{ order.order_date or '' }}
+        <div class="co rp-right">
+          <b>International Specialized Food Company</b>
+          <div>Production &amp; Inventory Management System</div>
+          <div>{{ order.order_date or '' }}</div>
         </div>
       </div>
       {% block sheet %}{% endblock %}

@@ -191,6 +191,14 @@
               <th>{{ t('UOM') }}</th>
               <th class="num">{{ t('Recipes') }}</th>
               <th class="num">{{ t('Orders') }}</th>
+              {# Batch 206 (Image 3): the actuals beside the requirement —
+                 what the store sent, what went on, what was lost, where it
+                 went, and the yield those imply. #}
+              <th class="num">{{ t('Qty Received') }}</th>
+              <th class="num">{{ t('Qty Transferred') }}</th>
+              <th class="num">{{ t('Qty Waste') }}</th>
+              <th class="num">{{ t('Yield %') }}</th>
+              <th>{{ t('Issued To Section') }}</th>
               <th>{{ t('From') }}</th>
             </tr>
           </thead>
@@ -203,10 +211,15 @@
               <td>{{ r.uom }}</td>
               <td class="num">{{ r.recipe_count }}</td>
               <td class="num">{{ r.order_count }}</td>
+              <td class="num">{{ '%.3f'|format(r.received_qty|float) if r.received_qty else '—' }}</td>
+              <td class="num">{{ '%.3f'|format(r.transferred_qty|float) if r.transferred_qty else '—' }}</td>
+              <td class="num {{ 'text-danger fw-bold' if r.waste_qty and r.waste_qty|float > 0 }}">{{ '%.3f'|format(r.waste_qty|float) if r.waste_qty else '—' }}</td>
+              <td class="num fw-bold">{{ ('%.1f'|format(r.yield_pct) ~ '%') if r.yield_pct is not none else '—' }}</td>
+              <td class="fs-9">{{ r.issued_to_section or '—' }}</td>
               <td>{{ r.work_date or '—' }}</td>
             </tr>
             {% else %}
-            <tr><td colspan="7" class="text-secondary py-4 text-center">
+            <tr><td colspan="12" class="text-secondary py-4 text-center">
               {{ t('Nothing to produce for this section and period. Check that the BOM has been generated for those orders.') }}
             </td></tr>
             {% endfor %}
@@ -229,8 +242,17 @@
               <th>{{ t('Sub-Recipe') }}</th>
               <th class="num">{{ t('Std Portions') }}</th>
               <th class="num">{{ t('Required Portions') }}</th>
+              <th class="num">{{ t('Net Qty') }}</th>
               <th class="num">{{ t('Qty') }}</th>
               <th>{{ t('UOM') }}</th>
+              {# Batch 206 (Image 3): the actuals beside the requirement —
+                 what the store sent, what went on, what was lost, where it
+                 went, and the yield those imply. #}
+              <th class="num">{{ t('Qty Received') }}</th>
+              <th class="num">{{ t('Qty Transferred') }}</th>
+              <th class="num">{{ t('Qty Waste') }}</th>
+              <th class="num">{{ t('Yield %') }}</th>
+              <th>{{ t('Issued To Section') }}</th>
               <th>{{ t('Portion Size / Method') }}</th>
             </tr>
           </thead>
@@ -255,12 +277,18 @@
               <td class="text-secondary small">{{ r.sub_recipe_name or '—' }}</td>
               <td class="num">{{ '%.0f'|format(r.std_portions|float) if r.std_portions else '—' }}</td>
               <td class="num">{{ '%.2f'|format(r.req_portions|float) }}</td>
-              <td class="num fw-bold">{{ '%.3f'|format(r.qty|float) }}</td>
+              <td class="num fw-bold">{{ '%.3f'|format(r.net_qty|float) if r.net_qty else '—' }}</td>
+              <td class="num">{{ '%.3f'|format(r.qty|float) }}</td>
               <td>{{ r.uom }}</td>
+              <td class="num">{{ '%.3f'|format(r.received_qty|float) if r.received_qty else '—' }}</td>
+              <td class="num">{{ '%.3f'|format(r.transferred_qty|float) if r.transferred_qty else '—' }}</td>
+              <td class="num {{ 'text-danger fw-bold' if r.waste_qty and r.waste_qty|float > 0 }}">{{ '%.3f'|format(r.waste_qty|float) if r.waste_qty else '—' }}</td>
+              <td class="num fw-bold">{{ ('%.1f'|format(r.yield_pct) ~ '%') if r.yield_pct is not none else '—' }}</td>
+              <td class="fs-9">{{ r.issued_to_section or '—' }}</td>
               <td>{{ r.portion_size or '—' }}</td>
             </tr>
             {% else %}
-            <tr><td colspan="13" class="text-secondary py-4 text-center">
+            <tr><td colspan="19" class="text-secondary py-4 text-center">
               {{ t('Nothing to produce for this section and period. Check that the BOM has been generated for those orders.') }}
             </td></tr>
             {% endfor %}
@@ -279,6 +307,14 @@
               <th class="num">{{ t('Required Portions') }}</th>
               <th class="num">{{ t('Total Qty') }}</th>
               <th>{{ t('UOM') }}</th>
+              {# Batch 206 (Image 3): the actuals beside the requirement —
+                 what the store sent, what went on, what was lost, where it
+                 went, and the yield those imply. #}
+              <th class="num">{{ t('Qty Received') }}</th>
+              <th class="num">{{ t('Qty Transferred') }}</th>
+              <th class="num">{{ t('Qty Waste') }}</th>
+              <th class="num">{{ t('Yield %') }}</th>
+              <th>{{ t('Issued To Section') }}</th>
               <th>{{ t('Portion Size / Method') }}</th>
               <th>{{ t('Customers') }}</th>
               <th>{{ t('Orders') }}</th>
@@ -295,12 +331,17 @@
                  largest thing in the row, because it is what the section reads. #}
               <td class="num fw-bold fs-9">{{ '%.0f'|format(r.qty|float) }}</td>
               <td>{{ r.uom }}</td>
+              <td class="num">{{ '%.3f'|format(r.received_qty|float) if r.received_qty else '—' }}</td>
+              <td class="num">{{ '%.3f'|format(r.transferred_qty|float) if r.transferred_qty else '—' }}</td>
+              <td class="num {{ 'text-danger fw-bold' if r.waste_qty and r.waste_qty|float > 0 }}">{{ '%.3f'|format(r.waste_qty|float) if r.waste_qty else '—' }}</td>
+              <td class="num fw-bold">{{ ('%.1f'|format(r.yield_pct) ~ '%') if r.yield_pct is not none else '—' }}</td>
+              <td class="fs-9">{{ r.issued_to_section or '—' }}</td>
               <td>{{ r.portion_size or '—' }}</td>
               <td class="sub">{{ r.customers or '—' }}</td>
               <td class="sub">{{ r.orders or '—' }}</td>
             </tr>
             {% else %}
-            <tr><td colspan="9" class="text-secondary py-4 text-center">
+            <tr><td colspan="14" class="text-secondary py-4 text-center">
               {{ t('Nothing to produce for this section and period. Check that the BOM has been generated for those orders.') }}
             </td></tr>
             {% endfor %}

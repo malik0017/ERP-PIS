@@ -20,11 +20,19 @@ from sqlalchemy.orm import Session
 from app.core.templates import render
 from app.core.rbac import require_area
 from app.database.session import get_db
+from app.core.sql_scope import scoped
 
 router = APIRouter(tags=["Reports"])
 
 
-def _count(db: Session, sql: str, params: dict | None = None) -> int:
+def _scope_cid(request) -> int:
+    return int(request.session.get("company_id") or 1)
+
+
+def _count(db: Session, sql: str, params: dict | None = None, cid: int | None = None) -> int:
+    # Batch 208: pass cid= for any query over an order table.
+    if cid is not None:
+        sql, params = scoped(sql, params, cid)
     try:
         return int(db.execute(text(sql), params or {}).scalar() or 0)
     except Exception:
@@ -67,9 +75,9 @@ def erp_workflow(request: Request, db: Session = Depends(get_db)):
         "pos": _count(db, "SELECT COUNT(*) FROM purchase_orders"),
         "grns": _count(db, "SELECT COUNT(*) FROM grn_receipts"),
         "ap": _count(db, "SELECT COUNT(*) FROM ap_invoices"),
-        "issues": _count(db, "SELECT COUNT(DISTINCT order_no) FROM store_issuance_lines WHERE finalized=1"),
-        "orders": _count(db, "SELECT COUNT(*) FROM customer_orders"),
-        "dispatch": _count(db, "SELECT COUNT(*) FROM packing_dispatch"),
+        "issues": _count(db, "SELECT COUNT(DISTINCT order_no) FROM store_issuance_lines WHERE finalized=1", cid=_scope_cid(request)),
+        "orders": _count(db, "SELECT COUNT(*) FROM customer_orders", cid=_scope_cid(request)),
+        "dispatch": _count(db, "SELECT COUNT(*) FROM packing_dispatch", cid=_scope_cid(request)),
         "ar": _count(db, "SELECT COUNT(*) FROM ar_invoices"),
         "journals": _count(db, "SELECT COUNT(*) FROM gl_journals"),
     }

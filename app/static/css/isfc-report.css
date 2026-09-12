@@ -1,0 +1,186 @@
+/* =============================================================================
+   isfc-report.css — Batch 209
+   ONE design system for every printable document in ISFC PIMS.
+
+   WHY THIS FILE EXISTS
+   Each printable report had its own <style> block. The BOQ Recipe Sheet, the
+   Pack Report, the six /print/ forms, the Tray Line sheet and the QC
+   Certificate had five different navy blues, four table header styles and
+   three different print bars — so the same order printed in two places looked
+   like it came from two systems. The Recipe Sheet layout was the one to keep
+   (your Image 10), so its rules are the ones written here, once.
+
+   HOW TO USE IT
+     Standalone reports:  {% extends "print/report_base.html" %}
+     The /print/ forms:   unchanged — print/layout.html now loads this file, so
+                          all six inherit the styling without being touched.
+
+   RTL: the layout uses logical properties (inline-start/end, text-align:start)
+   so Arabic mirrors without a second stylesheet.
+   ============================================================================= */
+
+:root {
+  --rp-ink: #16233a;
+  --rp-navy: #132947;
+  --rp-blue: #1e5bb8;
+  --rp-muted: #5a6a82;
+  --rp-faint: #98a6ba;
+  --rp-line: #dfe7f0;
+  --rp-line-soft: #eef2f7;
+  --rp-band: #dce7f6;
+  --rp-sub: #f2f5f9;
+  --rp-good: #15803d;
+  --rp-warn: #b45309;
+  --rp-bad: #b42318;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font: 11px/1.45 "Segoe UI", Tahoma, Arial, sans-serif;
+  color: var(--rp-ink);
+  background: var(--rp-sub);
+}
+
+/* --- top bar: identical on every report, hidden on paper ------------------ */
+.rp-bar {
+  position: sticky; top: 0; z-index: 10;
+  background: var(--rp-navy); color: #fff;
+  padding: 8px 14px;
+  display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+}
+.rp-bar strong { font-size: 13px; }
+.rp-bar .rp-sub { opacity: .75; font-size: 11px; }
+.rp-bar .rp-actions { margin-inline-start: auto; display: flex; gap: 8px; }
+.rp-bar a, .rp-bar button {
+  border: 0; border-radius: 6px; padding: 6px 14px;
+  font-weight: 700; font-size: 12px; cursor: pointer; text-decoration: none;
+  background: #fff; color: var(--rp-navy);
+}
+.rp-bar a.rp-ghost { background: rgba(255, 255, 255, .16); color: #fff; }
+.rp-bar a:focus-visible, .rp-bar button:focus-visible {
+  outline: 2px solid #fff; outline-offset: 2px;
+}
+
+/* --- the sheet ----------------------------------------------------------- */
+.rp-sheet, .sheet {
+  width: 210mm; margin: 10px auto; background: #fff;
+  padding: 12mm 11mm; box-shadow: 0 6px 24px rgba(0, 0, 0, .1);
+}
+.rp-sheet.rp-wide { width: 297mm; }              /* landscape reports */
+
+.rp-head, .doc-head {
+  display: flex; justify-content: space-between; align-items: flex-start;
+  gap: 12px; border-bottom: 3px solid var(--rp-navy);
+  padding-bottom: 8px; margin-bottom: 10px;
+}
+.rp-head h1, .doc-head h1 { font-size: 19px; color: var(--rp-navy); }
+.rp-head .rp-sub, .doc-head .co { color: var(--rp-muted); font-size: 10px; }
+.rp-head img, .doc-head img { height: 40px; width: auto; border-radius: 6px; }
+.rp-right { text-align: end; }
+.rp-ref, .doc-ref { font-size: 9px; color: var(--rp-faint); letter-spacing: .3px; }
+
+/* --- fact strip ---------------------------------------------------------- */
+.rp-facts, .meta {
+  display: grid; grid-template-columns: repeat(4, 1fr);
+  gap: 6px; margin-bottom: 10px;
+}
+.rp-facts.rp-6, .meta.rp-6 { grid-template-columns: repeat(6, 1fr); }
+.rp-facts > div, .meta > div {
+  border: 1px solid var(--rp-line); border-radius: 6px; padding: 5px 7px;
+}
+.rp-facts b, .meta b {
+  display: block; font-size: 9px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: .3px; color: #6b7a90;
+}
+
+/* --- grouping band (recipe / section headers) ---------------------------- */
+.rp-group { border: 1px solid #c9d4e3; border-radius: 6px; margin-bottom: 9px; page-break-inside: avoid; }
+.rp-group > h2 {
+  font-size: 12.5px; background: var(--rp-band); padding: 6px 8px;
+  display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px;
+}
+.rp-group > h2 small { color: var(--rp-muted); font-weight: 500; }
+.rp-pill {
+  background: var(--rp-blue); color: #fff; border-radius: 4px;
+  padding: 0 7px; white-space: nowrap;
+}
+
+/* --- tables -------------------------------------------------------------- */
+table { width: 100%; border-collapse: collapse; }
+thead { display: table-header-group; }         /* repeat header on every printed page */
+tr { page-break-inside: avoid; }
+th {
+  font-size: 9px; text-align: start; color: #34445c;
+  border-bottom: 1px solid #c9d4e3; padding: 5px 6px;
+  background: #f1f5fa; text-transform: uppercase; letter-spacing: .3px;
+}
+td { padding: 4px 6px; border-bottom: 1px solid var(--rp-line-soft); vertical-align: top; }
+.rp-num, td.num, th.num { text-align: end; font-variant-numeric: tabular-nums; }
+.rp-q { font-weight: 700; }
+tr.rp-comp td, tr.comp td {
+  background: var(--rp-sub); color: var(--rp-blue);
+  font-weight: 700; font-size: 10px;
+}
+tr.rp-total td, .totals td { font-weight: 800; background: #eef4fb !important; }
+tbody tr:nth-child(even) td.rp-zebra { background: #f7fafd; }
+
+/* group-header colouring for multi-level headers (pack report style) */
+th.rp-g1 { background: #e9eef7; } th.rp-g2 { background: #dff1e5; }
+th.rp-g3 { background: #dde9fb; } th.rp-g4 { background: #fdf1cf; }
+
+/* --- small parts --------------------------------------------------------- */
+.rp-tick, .tick {
+  width: 16px; height: 12px; border: 1px solid #8795aa;
+  border-radius: 2px; display: inline-block;
+}
+.rp-badge, .badge {
+  display: inline-block; border-radius: 999px; padding: 2px 9px;
+  font-weight: 700; font-size: 10px; background: #e8f0fb; color: #1d4f91;
+}
+.rp-badge.ok, .badge.ok { background: #ddf7e5; color: #0a7a33; }
+.rp-badge.bad, .badge.bad { background: #fde3e3; color: #a51f1f; }
+.rp-pos { color: var(--rp-warn); font-weight: 700; }
+.rp-neg { color: var(--rp-bad); font-weight: 700; }
+.rp-ok { color: var(--rp-good); }
+.rp-muted { color: var(--rp-muted); }
+.rp-note { font-size: 9.5px; color: var(--rp-muted); margin-top: 4px; }
+
+.rp-sig, .sig {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: 18px; margin-top: 22px; page-break-inside: avoid;
+}
+.rp-sig div, .sig div {
+  border-top: 1px solid #8795aa; padding-top: 4px;
+  font-size: 10px; color: var(--rp-muted);
+}
+.rp-stamp, .stamp {
+  margin-top: 16px; padding-top: 8px; border-top: 1px dashed var(--rp-line);
+  font-size: 9px; color: var(--rp-faint); text-align: center;
+  page-break-inside: avoid;
+}
+.rp-empty { padding: 40px; text-align: center; color: #6b7a90; }
+.rp-break { page-break-after: always; }
+
+/* --- print --------------------------------------------------------------- */
+@media print {
+  body { background: #fff; }
+  .rp-bar, .printbar, .rp-noprint { display: none !important; }
+  .rp-sheet, .sheet {
+    margin: 0; box-shadow: none; width: auto; min-height: auto; padding: 0;
+  }
+  @page { size: A4; margin: 10mm; }
+}
+@media print {
+  .rp-sheet.rp-wide { width: auto; }
+}
+
+/* --- two-column footer blocks (Pack Report) ------------------------------ */
+.rp-two { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 12px; }
+.rp-box { border: 1px solid var(--rp-line); border-radius: 6px; padding: 8px; }
+.rp-box h3 { font-size: 11px; margin-bottom: 6px; color: var(--rp-navy); }
+.rp-l { text-align: start; }
+
+/* Item codes and short numeric cells should not wrap mid-value. */
+.rp-group table td:first-child, .rp-group table th:first-child { white-space: nowrap; }
+.rp-num { white-space: nowrap; }

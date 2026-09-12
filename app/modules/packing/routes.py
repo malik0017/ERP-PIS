@@ -12,6 +12,7 @@ from app.core.templates import render
 from app.core.rbac import require_area, require_action
 from app.database.session import get_db
 from app.models.production import CustomerOrder, PackingDispatch
+from app.core.company import require_order_scope, require_record_scope
 
 router = APIRouter(prefix="/packing", tags=["Trayline / Packing"])
 
@@ -200,6 +201,8 @@ def packing_dashboard(request: Request, db: Session = Depends(get_db)):
 
 @router.get("/{packing_id}", response_class=HTMLResponse)
 def packing_order(request: Request, packing_id: int, db: Session = Depends(get_db)):
+    # Batch 207: an order number in the URL is not authorisation — 404 if it belongs to another company.
+    require_record_scope(db, request, "packing_dispatch", packing_id)
     require_area(request, "packing")
     row = db.query(PackingDispatch).filter(PackingDispatch.id == packing_id).first()
     if not row:
@@ -284,6 +287,8 @@ def packing_report(request: Request, packing_id: int, db: Session = Depends(get_
     """Batch 201 (Image 11) — printable pack reconciliation for one order:
     required → issued → transferred → received → packed → excess/shortage,
     plus bag allocation and rejected bags. Standalone page for Print / PDF."""
+    # Batch 207: an order number in the URL is not authorisation — 404 if it belongs to another company.
+    require_record_scope(db, request, "packing_dispatch", packing_id)
     require_area(request, "packing")
     row = db.query(PackingDispatch).filter(PackingDispatch.id == packing_id).first()
     if not row:
@@ -336,6 +341,8 @@ async def save_pack_lines(request: Request, packing_id: int, db: Session = Depen
     ("—" versus 0.00). Writing 0 for blanks would make an unweighed recipe look
     reconciled with a shortage equal to everything received.
     """
+    # Batch 207: an order number in the URL is not authorisation — 404 if it belongs to another company.
+    require_record_scope(db, request, "packing_dispatch", packing_id)
     require_action(request, "packing", "edit")
     row = db.execute(text("SELECT order_no FROM packing_dispatch WHERE id = :i"),
                      {"i": packing_id}).mappings().first()
@@ -369,6 +376,16 @@ async def save_pack_lines(request: Request, packing_id: int, db: Session = Depen
         vals = {"o": order_no, "r": rc,
                 "p": _opt(prot, i), "c": _opt(carb, i),
                 "v": _opt(veg, i), "pp": _opt(portion, i)}
+        # Batch 205: the packed-portions box was removed from the screen, so it
+        # is no longer posted. Without this the ON DUPLICATE UPDATE would write
+        # NULL over a value captured before this batch.
+        if vals["pp"] is None:
+            try:
+                vals["pp"] = db.execute(text(
+                    "SELECT packed_portion FROM packing_pack_lines WHERE order_no = :o AND recipe_no = :r"),
+                    {"o": order_no, "r": rc}).scalar()
+            except Exception:
+                db.rollback()
         if all(vals[k] is None for k in ("p", "c", "v", "pp")):
             continue
         db.execute(text("""
@@ -407,6 +424,8 @@ async def update_packing(
     region: str = Form(""),
     db: Session = Depends(get_db),
 ):
+    # Batch 207: an order number in the URL is not authorisation — 404 if it belongs to another company.
+    require_record_scope(db, request, "packing_dispatch", packing_id)
     require_action(request, "packing", "edit")
     row = db.query(PackingDispatch).filter(PackingDispatch.id == packing_id).first()
     if not row:

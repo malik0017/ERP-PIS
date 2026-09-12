@@ -11,7 +11,9 @@ from sqlalchemy.orm import Session
 
 from app.core.templates import render
 from app.core.rbac import require_area
+from app.core.sql_scope import scoped, audit_unscoped
 from app.database.session import get_db
+from app.core.company import require_order_scope, require_record_scope
 
 router = APIRouter(tags=["Reports"])
 
@@ -128,14 +130,25 @@ def _xlsx_response(rows: list[dict], filename: str):
     return StreamingResponse(bio, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition": f"attachment; filename={filename}"})
 
 
-def _rows(db: Session, sql: str, params: dict | None = None):
+def _scope_cid(request: Request) -> int:
+    return int(request.session.get("company_id") or 1)
+
+
+def _rows(db: Session, sql: str, params: dict | None = None, cid: int | None = None):
+    """Batch 208: pass cid= to have the company condition added to the outer
+    query (see app/core/sql_scope). Calls that already scope by hand, or that
+    read non-order tables, are unaffected."""
+    if cid is not None:
+        sql, params = scoped(sql, params, cid)
     try:
         return [dict(r) for r in db.execute(text(sql), params or {}).mappings().all()]
     except Exception:
         return []
 
 
-def _one(db: Session, sql: str, params: dict | None = None):
+def _one(db: Session, sql: str, params: dict | None = None, cid: int | None = None):
+    if cid is not None:
+        sql, params = scoped(sql, params, cid)
     try:
         return db.execute(text(sql), params or {}).scalar() or 0
     except Exception:
@@ -225,7 +238,7 @@ def relationship_map(
         FROM customer_orders
         ORDER BY id DESC
         LIMIT 25
-    """)
+    """, cid=_scope_cid(request))
     if not order_no and recent_orders:
         order_no = recent_orders[0]["order_no"]
 
@@ -262,25 +275,25 @@ def relationship_map(
             JOIN recipes r ON r.id = ri.recipe_id
             WHERE r.company_id=:company_id AND UPPER(TRIM(COALESCE(r.status,'')))='ACTIVE'
         """, {"company_id": company_id}),
-        "orders": _one(db, "SELECT COUNT(*) FROM customer_orders"),
+        "orders": _one(db, "SELECT COUNT(*) FROM customer_orders", cid=_scope_cid(request)),
         "head_chef": _one(db, "SELECT COUNT(*) FROM head_chef_plans"),
-        "bom_lines": _one(db, "SELECT COUNT(*) FROM bom_lines"),
-        "store_lines": _one(db, "SELECT COUNT(*) FROM store_issuance_lines"),
-        "section_txns": _one(db, "SELECT COUNT(*) FROM kitchen_section_transactions"),
-        "qc": _one(db, "SELECT COUNT(*) FROM qc_checks"),
-        "packing": _one(db, "SELECT COUNT(*) FROM packing_dispatch"),
-        "dispatch": _one(db, "SELECT COUNT(*) FROM packing_dispatch WHERE dispatch_status IN ('Out for Delivery','Delivered','Dispatched','Closed')"),
+        "bom_lines": _one(db, "SELECT COUNT(*) FROM bom_lines", cid=_scope_cid(request)),
+        "store_lines": _one(db, "SELECT COUNT(*) FROM store_issuance_lines", cid=_scope_cid(request)),
+        "section_txns": _one(db, "SELECT COUNT(*) FROM kitchen_section_transactions", cid=_scope_cid(request)),
+        "qc": _one(db, "SELECT COUNT(*) FROM qc_checks", cid=_scope_cid(request)),
+        "packing": _one(db, "SELECT COUNT(*) FROM packing_dispatch", cid=_scope_cid(request)),
+        "dispatch": _one(db, "SELECT COUNT(*) FROM packing_dispatch WHERE dispatch_status IN ('Out for Delivery','Delivered','Dispatched','Closed')", cid=_scope_cid(request)),
     }
 
     order_params = {"order_no": order_no or ""}
     doc_counts = {
-        "order_lines": _one(db, "SELECT COUNT(*) FROM order_lines WHERE order_no=:order_no", order_params),
+        "order_lines": _one(db, "SELECT COUNT(*) FROM order_lines WHERE order_no=:order_no", order_params, cid=_scope_cid(request)),
         "head_chef": _one(db, "SELECT COUNT(*) FROM head_chef_plans WHERE order_no=:order_no", order_params),
-        "bom_lines": _one(db, "SELECT COUNT(*) FROM bom_lines WHERE order_no=:order_no", order_params),
-        "store_lines": _one(db, "SELECT COUNT(*) FROM store_issuance_lines WHERE order_no=:order_no", order_params),
-        "section_txns": _one(db, "SELECT COUNT(*) FROM kitchen_section_transactions WHERE order_no=:order_no", order_params),
-        "qc_checks": _one(db, "SELECT COUNT(*) FROM qc_checks WHERE order_no=:order_no", order_params),
-        "packing_docs": _one(db, "SELECT COUNT(*) FROM packing_dispatch WHERE order_no=:order_no", order_params),
+        "bom_lines": _one(db, "SELECT COUNT(*) FROM bom_lines WHERE order_no=:order_no", order_params, cid=_scope_cid(request)),
+        "store_lines": _one(db, "SELECT COUNT(*) FROM store_issuance_lines WHERE order_no=:order_no", order_params, cid=_scope_cid(request)),
+        "section_txns": _one(db, "SELECT COUNT(*) FROM kitchen_section_transactions WHERE order_no=:order_no", order_params, cid=_scope_cid(request)),
+        "qc_checks": _one(db, "SELECT COUNT(*) FROM qc_checks WHERE order_no=:order_no", order_params, cid=_scope_cid(request)),
+        "packing_docs": _one(db, "SELECT COUNT(*) FROM packing_dispatch WHERE order_no=:order_no", order_params, cid=_scope_cid(request)),
     }
 
     flow_status = selected_order.get("status") if selected_order else ""
@@ -299,7 +312,7 @@ def relationship_map(
         {
             "key": "bom", "label": "BOM", "doc_type": "Production BOM",
             "doc_no": "Generated material demand", "url": f"/production/orders/{order_no}" if order_no else "/production/orders",
-            "metric": doc_counts["bom_lines"], "metric_label": "BOM lines", "amount": _money(_one(db, "SELECT SUM(COALESCE(estimated_cost,0)) FROM bom_lines WHERE order_no=:order_no", order_params)), "state": _stage_class("BOM", flow_status, doc_counts["bom_lines"] > 0), "icon": "bi-diagram-3",
+            "metric": doc_counts["bom_lines"], "metric_label": "BOM lines", "amount": _money(_one(db, "SELECT SUM(COALESCE(estimated_cost,0)) FROM bom_lines WHERE order_no=:order_no", order_params, cid=_scope_cid(request))), "state": _stage_class("BOM", flow_status, doc_counts["bom_lines"] > 0), "icon": "bi-diagram-3",
         },
         {
             "key": "store", "label": "Store", "doc_type": "Issue for Production",
@@ -324,7 +337,7 @@ def relationship_map(
         {
             "key": "dispatch", "label": "Dispatch", "doc_type": "Delivery Note",
             "doc_no": "Driver / vehicle / closure", "url": "/dispatch",
-            "metric": _one(db, "SELECT COUNT(*) FROM packing_dispatch WHERE order_no=:order_no AND dispatch_status IN ('Out for Delivery','Delivered','Dispatched','Closed')", order_params),
+            "metric": _one(db, "SELECT COUNT(*) FROM packing_dispatch WHERE order_no=:order_no AND dispatch_status IN ('Out for Delivery','Delivered','Dispatched','Closed')", order_params, cid=_scope_cid(request)),
             "metric_label": "delivery docs", "amount": "", "state": _stage_class("Dispatch", flow_status, False), "icon": "bi-truck",
         },
     ]
@@ -343,7 +356,7 @@ def relationship_map(
         FROM customer_orders
         GROUP BY COALESCE(NULLIF(status,''),'Submitted')
         ORDER BY total DESC, status ASC
-    """)
+    """, cid=_scope_cid(request))
 
     report_links = [
         {"title": "Order Register", "url": "/reports/export/order-register", "desc": "All orders with customer, brand, delivery, food cost, sale and margin."},
@@ -371,24 +384,24 @@ def reports_center(request: Request, db: Session = Depends(get_db)):
     cards = [
         {"group": "Master Data", "title": "Recipe Master & Version Report", "url": "/recipes?status=ALL", "export": "/reports/export/recipe-master", "metric": _one(db, "SELECT COUNT(*) FROM recipes"), "icon": "bi-journal-text"},
         {"group": "Master Data", "title": "Recipe Ingredients / BOM Master", "url": "/recipes/ingredients?status=ACTIVE", "export": "/reports/export/recipe-bom", "metric": _one(db, "SELECT COUNT(*) FROM recipe_ingredients"), "icon": "bi-diagram-3"},
-        {"group": "Order Flow", "title": "Customer Order Register",  "url": "/production/orders", "export": "/reports/export/order-register", "metric": _one(db, "SELECT COUNT(*) FROM customer_orders"), "icon": "bi-cart-check"},
-        {"group": "Production", "title": "BOM by Customer / Brand / Category / Section", "url": "/production/orders", "export": "/reports/export/bom-lines", "metric": _one(db, "SELECT COUNT(*) FROM bom_lines"), "icon": "bi-boxes"},
-        {"group": "Store", "title": "Store Issuance Variance", "url": "/production/store-issuance", "export": "/reports/export/store-issuance", "metric": _one(db, "SELECT COUNT(*) FROM store_issuance_lines"), "icon": "bi-box-arrow-up"},
-        {"group": "Kitchen", "title": "Section Yield & Wastage", "url": "/reports/yield-wastage", "export": "/reports/export/yield-wastage", "metric": _one(db, "SELECT COUNT(*) FROM kitchen_section_transactions"), "icon": "bi-graph-down-arrow"},
-        {"group": "Quality", "title": "QC Checklist Report", "url": "/qc", "export": "/reports/export/qc-checks", "metric": _one(db, "SELECT COUNT(*) FROM qc_checks"), "icon": "bi-patch-check"},
-        {"group": "Logistics", "title": "Trayline / Packing Report", "url": "/packing", "export": "/reports/export/packing", "metric": _one(db, "SELECT COUNT(*) FROM packing_dispatch"), "icon": "bi-box-seam"},
-        {"group": "Logistics", "title": "Dispatch & Delivery Report", "url": "/dispatch", "export": "/reports/export/dispatch", "metric": _one(db, "SELECT COUNT(*) FROM packing_dispatch WHERE dispatch_status IN ('Packed','Assigned','Out for Delivery','Delivered','Dispatched','Closed')"), "icon": "bi-truck"},
+        {"group": "Order Flow", "title": "Customer Order Register",  "url": "/production/orders", "export": "/reports/export/order-register", "metric": _one(db, "SELECT COUNT(*) FROM customer_orders", cid=_scope_cid(request)), "icon": "bi-cart-check"},
+        {"group": "Production", "title": "BOM by Customer / Brand / Category / Section", "url": "/production/orders", "export": "/reports/export/bom-lines", "metric": _one(db, "SELECT COUNT(*) FROM bom_lines", cid=_scope_cid(request)), "icon": "bi-boxes"},
+        {"group": "Store", "title": "Store Issuance Variance", "url": "/production/store-issuance", "export": "/reports/export/store-issuance", "metric": _one(db, "SELECT COUNT(*) FROM store_issuance_lines", cid=_scope_cid(request)), "icon": "bi-box-arrow-up"},
+        {"group": "Kitchen", "title": "Section Yield & Wastage", "url": "/reports/yield-wastage", "export": "/reports/export/yield-wastage", "metric": _one(db, "SELECT COUNT(*) FROM kitchen_section_transactions", cid=_scope_cid(request)), "icon": "bi-graph-down-arrow"},
+        {"group": "Quality", "title": "QC Checklist Report", "url": "/qc", "export": "/reports/export/qc-checks", "metric": _one(db, "SELECT COUNT(*) FROM qc_checks", cid=_scope_cid(request)), "icon": "bi-patch-check"},
+        {"group": "Logistics", "title": "Trayline / Packing Report", "url": "/packing", "export": "/reports/export/packing", "metric": _one(db, "SELECT COUNT(*) FROM packing_dispatch", cid=_scope_cid(request)), "icon": "bi-box-seam"},
+        {"group": "Logistics", "title": "Dispatch & Delivery Report", "url": "/dispatch", "export": "/reports/export/dispatch", "metric": _one(db, "SELECT COUNT(*) FROM packing_dispatch WHERE dispatch_status IN ('Packed','Assigned','Out for Delivery','Delivered','Dispatched','Closed')", cid=_scope_cid(request)), "icon": "bi-truck"},
     ]
 
     kpis = {
         "reports": len(cards),
         "active_recipes": _one(db, "SELECT COUNT(*) FROM recipes WHERE UPPER(TRIM(COALESCE(status,'')))='ACTIVE' AND COALESCE(is_active,1)=1"),
-        "orders": _one(db, "SELECT COUNT(*) FROM customer_orders"),
-        "bom_lines": _one(db, "SELECT COUNT(*) FROM bom_lines"),
-        "store_lines": _one(db, "SELECT COUNT(*) FROM store_issuance_lines"),
-        "section_txns": _one(db, "SELECT COUNT(*) FROM kitchen_section_transactions"),
-        "qc_checks": _one(db, "SELECT COUNT(*) FROM qc_checks"),
-        "packing_docs": _one(db, "SELECT COUNT(*) FROM packing_dispatch"),
+        "orders": _one(db, "SELECT COUNT(*) FROM customer_orders", cid=_scope_cid(request)),
+        "bom_lines": _one(db, "SELECT COUNT(*) FROM bom_lines", cid=_scope_cid(request)),
+        "store_lines": _one(db, "SELECT COUNT(*) FROM store_issuance_lines", cid=_scope_cid(request)),
+        "section_txns": _one(db, "SELECT COUNT(*) FROM kitchen_section_transactions", cid=_scope_cid(request)),
+        "qc_checks": _one(db, "SELECT COUNT(*) FROM qc_checks", cid=_scope_cid(request)),
+        "packing_docs": _one(db, "SELECT COUNT(*) FROM packing_dispatch", cid=_scope_cid(request)),
     }
 
     yield_rows = _rows(db, """
@@ -402,7 +415,7 @@ def reports_center(request: Request, db: Session = Depends(get_db)):
         GROUP BY COALESCE(current_section,'Unassigned')
         ORDER BY waste_pct DESC, total_lines DESC
         LIMIT 12
-    """)
+    """, cid=_scope_cid(request))
 
     bom_section = _rows(db, """
         SELECT x.label, COUNT(*) AS lines, ROUND(SUM(x.cost),2) AS cost
@@ -418,7 +431,7 @@ def reports_center(request: Request, db: Session = Depends(get_db)):
         GROUP BY x.label
         ORDER BY cost DESC, lines DESC
         LIMIT 8
-    """)
+    """, cid=_scope_cid(request))
 
     bom_category = _rows(db, """
         SELECT x.label, COUNT(*) AS lines, ROUND(SUM(x.cost),2) AS cost
@@ -434,14 +447,14 @@ def reports_center(request: Request, db: Session = Depends(get_db)):
         GROUP BY x.label
         ORDER BY cost DESC, lines DESC
         LIMIT 8
-    """)
+    """, cid=_scope_cid(request))
 
     order_status = _rows(db, """
         SELECT COALESCE(NULLIF(status,''),'Submitted') AS label, COUNT(*) AS total
         FROM customer_orders
         GROUP BY COALESCE(NULLIF(status,''),'Submitted')
         ORDER BY total DESC, label ASC
-    """)
+    """, cid=_scope_cid(request))
 
     # Batch 68: live financial-report KPIs so the Reports Center links into the
     # completed Finance engine (statements from Batch 67).
@@ -504,7 +517,7 @@ def yield_wastage(request: Request, db: Session = Depends(get_db)):
         WHERE {W}
         ORDER BY updated_at DESC, order_no DESC
         LIMIT 1000
-    """, params)
+    """, params, cid=_scope_cid(request))
 
     # Batch 21: downloadable SECTION SUMMARY (respects active filters).
     if (q.get("export") or "") == "summary":
@@ -522,7 +535,7 @@ def yield_wastage(request: Request, db: Session = Depends(get_db)):
             WHERE {W}
             GROUP BY COALESCE(current_section,'Unassigned')
             ORDER BY waste_pct DESC
-        """, params)
+        """, params, cid=_scope_cid(request))
         for r in srows:
             w.writerow([r["section_name"], r["input_qty"], r["output_qty"], r["waste_qty"], r["waste_pct"]])
         from fastapi.responses import Response as _Resp
@@ -555,10 +568,10 @@ def yield_wastage(request: Request, db: Session = Depends(get_db)):
         WHERE {W}
         GROUP BY COALESCE(current_section,'Unassigned')
         ORDER BY waste_pct DESC
-    """, params)
+    """, params, cid=_scope_cid(request))
 
-    sections = [r["s"] for r in _rows(db, "SELECT DISTINCT COALESCE(current_section,'') AS s FROM kitchen_section_transactions ORDER BY 1") if r["s"]]
-    statuses = [r["s"] for r in _rows(db, "SELECT DISTINCT COALESCE(transaction_status,'') AS s FROM kitchen_section_transactions ORDER BY 1") if r["s"]]
+    sections = [r["s"] for r in _rows(db, "SELECT DISTINCT COALESCE(current_section,'') AS s FROM kitchen_section_transactions ORDER BY 1", cid=_scope_cid(request)) if r["s"]]
+    statuses = [r["s"] for r in _rows(db, "SELECT DISTINCT COALESCE(transaction_status,'') AS s FROM kitchen_section_transactions ORDER BY 1", cid=_scope_cid(request)) if r["s"]]
 
     return render(request, "reports/yield_wastage.html", {
         "rows": rows, "summary": summary, "filters": f,
@@ -596,6 +609,8 @@ def export_report(request: Request, report_key: str, format: str = Query(default
 
 @router.get("/reports/printable/{form_type}/{order_no}", response_class=HTMLResponse)
 def printable_form(form_type: str, order_no: str, request: Request, db: Session = Depends(get_db)):
+    # Batch 207: an order number in the URL is not authorisation — 404 if it belongs to another company.
+    require_order_scope(db, request, order_no)
     require_area(request, "reports")
     """Six professional printable documents, one route.
 
@@ -633,7 +648,7 @@ def printable_form(form_type: str, order_no: str, request: Request, db: Session 
                    COALESCE(food_cost,0) AS food_cost, COALESCE(selling_value,0) AS selling_value,
                    COALESCE(margin,0) AS margin
             FROM order_lines WHERE order_no=:o ORDER BY line_no
-        """, {"o": order_no})
+        """, {"o": order_no}, cid=_scope_cid(request))
 
     elif form_type == "bom-sheet":
         lines = _rows(db, """
@@ -643,7 +658,7 @@ def printable_form(form_type: str, order_no: str, request: Request, db: Session 
                    COALESCE(default_issue_section,'') AS section
             FROM bom_lines WHERE order_no=:o
             ORDER BY default_issue_section, ingredient_main_category, ingredient_name
-        """, {"o": order_no})
+        """, {"o": order_no}, cid=_scope_cid(request))
 
     elif form_type == "store-issue-slip":
         lines = _rows(db, """
@@ -656,7 +671,7 @@ def printable_form(form_type: str, order_no: str, request: Request, db: Session 
                    CASE WHEN COALESCE(finalized,0)=1 THEN 'Issued' ELSE 'Pending' END AS line_status
             FROM store_issuance_lines WHERE order_no=:o
             ORDER BY issue_to_section, ingredient_name
-        """, {"o": order_no})
+        """, {"o": order_no}, cid=_scope_cid(request))
 
     elif form_type == "qc-certificate":
         lines = _rows(db, """
@@ -665,7 +680,7 @@ def printable_form(form_type: str, order_no: str, request: Request, db: Session 
                    COALESCE(corrective_action,'') AS corrective_action,
                    COALESCE(checked_by,'') AS checked_by, checked_at
             FROM qc_checks WHERE order_no=:o ORDER BY id DESC
-        """, {"o": order_no})
+        """, {"o": order_no}, cid=_scope_cid(request))
 
     elif form_type in ("packing-slip", "delivery-note"):
         extra["pd"] = _first(db, """
@@ -680,7 +695,7 @@ def printable_form(form_type: str, order_no: str, request: Request, db: Session 
         lines = _rows(db, """
             SELECT recipe_no, recipe_name, portions
             FROM order_lines WHERE order_no=:o ORDER BY line_no
-        """, {"o": order_no})
+        """, {"o": order_no}, cid=_scope_cid(request))
 
     return render(request, "reports/printable_form.html", {
         "title": title, "order": order, "lines": lines, "extra": extra,

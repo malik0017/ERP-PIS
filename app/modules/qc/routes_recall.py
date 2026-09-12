@@ -51,6 +51,7 @@ from sqlalchemy.orm import Session
 from app.core.rbac import require_area
 from app.core.templates import render
 from app.database.session import get_db
+from app.core.sql_scope import scoped
 
 router = APIRouter(prefix="/qc/recall", tags=["QC"])
 
@@ -59,7 +60,11 @@ def _cid(request: Request) -> int:
     return int(request.session.get("company_id") or 1)
 
 
-def _rows(db: Session, sql: str, params: dict) -> list[dict]:
+
+def _scope_cid(request) -> int:
+    return int(request.session.get("company_id") or 1)
+
+def _rows(db: Session, sql: str, params: dict, cid: int | None = None) -> list[dict]:
     try:
         return [dict(r) for r in db.execute(text(sql), params).mappings().all()]
     except Exception:
@@ -185,7 +190,7 @@ def trace_forward(db: Session, cid: int, lot_no: str, inventory_code: str,
           AND (:first IS NULL OR d.dispatch_date >= DATE(:first))
         ORDER BY d.dispatch_date DESC
         LIMIT 300
-    """, {"code": inventory_code, "first": first_seen})
+    """, {"code": inventory_code, "first": first_seen}, cid=cid)
 
     return {"orders": orders, "dispatched": dispatched}
 

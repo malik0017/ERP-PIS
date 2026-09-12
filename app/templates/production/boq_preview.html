@@ -167,7 +167,7 @@
            placeholder="{{ t('Find recipe or ingredient…') }}" aria-label="{{ t('Find recipe or ingredient') }}">
     <button type="button" class="btn btn-sm btn-phoenix-secondary" data-boq-expand="1"><i class="bi bi-arrows-expand me-1"></i>{{ t('Expand all') }}</button>
     <button type="button" class="btn btn-sm btn-phoenix-secondary" data-boq-expand="0"><i class="bi bi-arrows-collapse me-1"></i>{{ t('Collapse all') }}</button>
-    <span class="fs-9 text-body-tertiary ms-auto">{{ t('Required quantities are the same figures the store issues against.') }}</span>
+    <span class="fs-9 text-body-tertiary ms-auto">{{ t('Net Qty = the recipe weight that goes into the pot. Issue Qty = the pre-trim weight the store hands over; the difference is the expected trim loss.') }}</span>
   </div>
 
   <div class="tab-content">
@@ -202,20 +202,23 @@
                 <th style="width:120px">{{ t('Code') }}</th><th>{{ t('Ingredient') }}</th>
                 <th>{{ t('Section') }}</th>
                 <th class="text-end">{{ t('Per Portion') }}</th>
-                <th class="text-end">{{ t('Required Qty') }}</th><th>{{ t('UOM') }}</th>
+                <th class="text-end">{{ t('Net Qty') }}</th>
+                <th class="text-end">{{ t('Issue Qty') }}</th><th>{{ t('UOM') }}</th>
                 <th>{{ t('Cutting / Portion') }}</th>
               </tr></thead>
               <tbody>
               {% for comp in rec.components %}
-                <tr class="boq-comp"><td colspan="7"><i class="bi bi-diagram-2 me-1"></i>{{ t(comp.name) if comp.name == main_component else comp.name }}</td></tr>
+                <tr class="boq-comp"><td colspan="8"><i class="bi bi-diagram-2 me-1"></i>{{ t(comp.name) if comp.name == main_component else comp.name }}</td></tr>
                 {% for ln in comp.lines %}
                 <tr>
                   <td class="text-body-tertiary">{{ ln.ingredient_code }}</td>
                   <td>{{ ln.ingredient_name }}</td>
                   <td><span class="boq-sec" data-s="{{ ln.kitchen_section }}">{{ t(ln.kitchen_section) }}</span>
                     {% if ln.issue_section != ln.kitchen_section %}<div class="fs-10 text-body-tertiary">{{ t('issued to') }} {{ t(ln.issue_section) }}</div>{% endif %}</td>
-                  <td class="text-end text-body-tertiary">{{ '%.3f'|format(ln.per_portion) }} {{ ln.recipe_uom }}</td>
+                  <td class="text-end text-body-tertiary">{{ '%.3f'|format(ln.net_per_portion or ln.per_portion) }} {{ ln.recipe_uom }}</td>
                   <td class="text-end boq-qty">{{ '%.3f'|format(ln.required_qty) }}</td>
+                  <td class="text-end">{{ '%.3f'|format(ln.issue_qty) }}
+                    {%- if ln.yield_loss > 0.001 %}<div class="fs-10 text-warning">+{{ '%.3f'|format(ln.yield_loss) }} {{ t('trim') }}</div>{% endif %}</td>
                   <td>{{ ln.uom }}</td>
                   <td class="fs-9 text-body-tertiary">{{ ln.cutting or '' }}</td>
                 </tr>
@@ -253,11 +256,12 @@
           </div>
           <div class="table-responsive"><table class="table table-sm boq-table">
             <thead><tr><th>{{ t('Component') }}</th><th>{{ t('Code') }}</th><th>{{ t('Ingredient') }}</th>
-              <th class="text-end">{{ t('Required Qty') }}</th><th>{{ t('UOM') }}</th><th>{{ t('Issued To') }}</th></tr></thead>
+              <th class="text-end">{{ t('Net Qty') }}</th><th class="text-end">{{ t('Issue Qty') }}</th><th>{{ t('UOM') }}</th><th>{{ t('Issued To') }}</th></tr></thead>
             <tbody>{% for ln in rec.lines %}
               <tr><td class="fs-9 text-primary">{{ t(ln.component) if ln.component == main_component else ln.component }}</td>
                 <td class="text-body-tertiary">{{ ln.ingredient_code }}</td><td>{{ ln.ingredient_name }}</td>
-                <td class="text-end boq-qty">{{ '%.3f'|format(ln.required_qty) }}</td><td>{{ ln.uom }}</td>
+                <td class="text-end boq-qty">{{ '%.3f'|format(ln.required_qty) }}</td>
+                <td class="text-end">{{ '%.3f'|format(ln.issue_qty) }}</td><td>{{ ln.uom }}</td>
                 <td class="fs-9">{{ t(ln.issue_section) }}</td></tr>
             {% endfor %}</tbody>
           </table></div>
@@ -285,12 +289,13 @@
         </div>
         <div class="table-responsive"><table class="table table-sm boq-table">
           <thead><tr><th>{{ t('Component') }}</th><th>{{ t('Code') }}</th><th>{{ t('Ingredient') }}</th><th>{{ t('Section') }}</th>
-            <th class="text-end">{{ t('Total Required') }}</th><th>{{ t('UOM') }}</th></tr></thead>
+            <th class="text-end">{{ t('Total Net Qty') }}</th><th class="text-end">{{ t('Total Issue Qty') }}</th><th>{{ t('UOM') }}</th></tr></thead>
           <tbody>{% for ln in rec.lines %}
             <tr><td class="fs-9 text-primary">{{ t(ln.component) if ln.component == main_component else ln.component }}</td>
               <td class="text-body-tertiary">{{ ln.ingredient_code }}</td><td>{{ ln.ingredient_name }}</td>
               <td><span class="boq-sec" data-s="{{ ln.kitchen_section }}">{{ t(ln.kitchen_section) }}</span></td>
-              <td class="text-end boq-qty">{{ '%.3f'|format(ln.required_qty) }}</td><td>{{ ln.uom }}</td></tr>
+              <td class="text-end boq-qty">{{ '%.3f'|format(ln.required_qty) }}</td>
+              <td class="text-end">{{ '%.3f'|format(ln.issue_qty) }}</td><td>{{ ln.uom }}</td></tr>
           {% endfor %}</tbody>
         </table></div>
       </details>

@@ -51,6 +51,7 @@ from app.services.production_service import (
 # than re-listed, so a new section appears in the filter automatically instead
 # of needing a second list kept in sync (the two-section-maps lesson).
 from app.core.production_constants import KITCHEN_SECTIONS  # noqa: E402
+from app.core.company import require_order_scope, require_record_scope
 
 router = APIRouter(prefix="/production", tags=["Production"])
 
@@ -847,6 +848,8 @@ async def approve_plan(
 
 @router.post("/orders/{order_no}/release-store")
 async def release_to_store(request: Request, order_no: str, db: Session = Depends(get_db)):
+    # Batch 207: an order number in the URL is not authorisation — 404 if it belongs to another company.
+    require_order_scope(db, request, order_no)
     require_action(request, "store_issuance", "add")
     try:
         approve_head_chef_plan(db, order_no, approved_by=current_user_name(request))
@@ -1090,6 +1093,8 @@ async def reissue_store_line(request: Request, line_id: int, db: Session = Depen
 
 @router.post("/orders/{order_no}/finalize-store")
 async def finalize_store(request: Request, order_no: str, db: Session = Depends(get_db)):
+    # Batch 207: an order number in the URL is not authorisation — 404 if it belongs to another company.
+    require_order_scope(db, request, order_no)
     require_action(request, "store_issuance", "edit")
     try:
         finalize_store_issuance(db, order_no, issued_by=current_user_name(request))
@@ -1403,6 +1408,8 @@ async def section_order_page(request: Request, section_name: str, order_no: str,
 
 @router.post("/section/{section_name}/orders/{order_no}/receive-all")
 async def receive_section_order_all(request: Request, section_name: str, order_no: str, db: Session = Depends(get_db)):
+    # Batch 207: an order number in the URL is not authorisation — 404 if it belongs to another company.
+    require_order_scope(db, request, order_no)
     require_action(request, "kitchen", "edit")
     section = _section_from_slug(section_name)
     # Batch 121: STEP-LOCK — kitchen is view-only once the order is past it.
@@ -1464,6 +1471,8 @@ async def bulk_transfer_section_order(request: Request, section_name: str, order
     Each selected line passes through at full received quantity with zero
     waste/return (the common case); anyone who needs to record waste or a
     partial transfer still uses the per-line 'Process & Transfer' panel."""
+    # Batch 207: an order number in the URL is not authorisation — 404 if it belongs to another company.
+    require_order_scope(db, request, order_no)
     require_action(request, "kitchen", "edit")
     section = _section_from_slug(section_name)
     form = await request.form()
@@ -1560,6 +1569,8 @@ async def bulk_transfer_section_order(request: Request, section_name: str, order
 @router.post("/section/{section_name}/orders/{order_no}/ingredient/receive")
 async def ingredient_bulk_receive(request: Request, section_name: str, order_no: str, db: Session = Depends(get_db)):
     """Batch 133 — receive every pending line for ONE ingredient at once."""
+    # Batch 207: an order number in the URL is not authorisation — 404 if it belongs to another company.
+    require_order_scope(db, request, order_no)
     require_action(request, "kitchen", "edit")
     section = _section_from_slug(section_name)
     form = await request.form()
@@ -1588,6 +1599,8 @@ async def ingredient_bulk_receive(request: Request, section_name: str, order_no:
 async def recipe_bulk_receive(request: Request, section_name: str, order_no: str, db: Session = Depends(get_db)):
     """Batch 135 — receive every pending line for ONE recipe at once (By-Recipe
     parity with By-Ingredient's Receive All)."""
+    # Batch 207: an order number in the URL is not authorisation — 404 if it belongs to another company.
+    require_order_scope(db, request, order_no)
     require_action(request, "kitchen", "edit")
     section = _section_from_slug(section_name)
     form = await request.form()
@@ -1618,6 +1631,8 @@ async def ingredient_bulk_process(request: Request, section_name: str, order_no:
     splitting the entered totals pro-rata across its recipe lines. Mirrors the
     single-line panel (process / waste / return / transfer / next section /
     remark) with the same auto-calculation, applied in bulk."""
+    # Batch 207: an order number in the URL is not authorisation — 404 if it belongs to another company.
+    require_order_scope(db, request, order_no)
     require_action(request, "kitchen", "edit")
     section = _section_from_slug(section_name)
     form = await request.form()
@@ -1666,6 +1681,8 @@ async def recipe_bulk_process_passthrough(request: Request, section_name: str, o
     wise panels: process / waste / return / transfer / next-section / remark, with
     the entered totals split pro-rata across the recipe's received ingredient
     lines. Cook sections (Bakery/Cold/Hot) still use /bakery-pastry/process."""
+    # Batch 207: an order number in the URL is not authorisation — 404 if it belongs to another company.
+    require_order_scope(db, request, order_no)
     require_action(request, "kitchen", "edit")
     section = _section_from_slug(section_name)
     form = await request.form()
@@ -2532,6 +2549,20 @@ async def protein_yield_chain_report(request: Request, db: Session = Depends(get
     })
 
 
+def _yield_order_options(db: Session, cid: int, section: str) -> list:
+    """Batch 206: only orders that actually have rows in this section, so the
+    dropdown can never offer a choice that returns an empty report."""
+    try:
+        return [r[0] for r in db.execute(text("""
+            SELECT DISTINCT order_no FROM kitchen_section_transactions
+            WHERE (company_id = :cid OR company_id IS NULL) AND current_section = :sec
+            ORDER BY order_no DESC LIMIT 300
+        """), {"cid": cid, "sec": section}).all() if r[0]]
+    except Exception:
+        db.rollback()
+        return []
+
+
 @router.get("/reports/yield")
 async def yield_report(request: Request, db: Session = Depends(get_db)):
     """Batch 176 — 176-H. HOT KITCHEN YIELD TRACKING.
@@ -2560,9 +2591,16 @@ async def yield_report(request: Request, db: Session = Depends(get_db)):
     date_from = (request.query_params.get("date_from") or "").strip()
     date_to = (request.query_params.get("date_to") or "").strip()
     customer = (request.query_params.get("customer") or "").strip()
+    # Batch 206 (Image 4): search by order number, the way every other kitchen
+    # screen already does. Without it the only way to look at one order's yield
+    # was to guess a date range that isolated it.
+    order_no = (request.query_params.get("order") or "").strip()
 
     where = ["(k.company_id = :cid OR k.company_id IS NULL)", "k.current_section = :sec"]
     params: dict = {"cid": cid, "sec": section}
+    if order_no:
+        where.append("k.order_no LIKE :ord")
+        params["ord"] = f"%{order_no}%"
     if date_from:
         where.append("COALESCE(co.cooking_date, co.required_delivery_date) >= :df")
         params["df"] = date_from
@@ -2619,7 +2657,12 @@ async def yield_report(request: Request, db: Session = Depends(get_db)):
 
     return render(request, "production/yield_report.html", {
         "lines": lines, "section": section,
-        "filters": {"section": section, "date_from": date_from, "date_to": date_to, "customer": customer},
+        "filters": {"section": section, "date_from": date_from, "date_to": date_to,
+                    "customer": customer, "order": order_no},
+        "order_options": _yield_order_options(db, cid, section),
+        "totals": {"input": sum(x["input_qty"] for x in lines),
+                   "output": sum(x["good_output"] for x in lines),
+                   "waste": sum(x["waste_qty"] for x in lines)},
         "page_title": f"Yield Report — {section}",
     })
 
@@ -2770,6 +2813,41 @@ async def section_production_report(request: Request, db: Session = Depends(get_
                         JOIN recipes r3 ON r3.id = ri2.recipe_id
                        WHERE r3.recipe_code = bl.recipe_no
                          AND ri2.inventory_code = bl.ingredient_code)"""
+    # ------------------------------------------------------------------
+    # Batch 206 (Image 3) — the actuals, next to the requirement.
+    #
+    # The report was built purely from bom_lines: what the section is SUPPOSED
+    # to make. The section also needs what actually happened — received from
+    # store, transferred on, wasted, where it went next, and the yield those
+    # imply. That lives in kitchen_section_transactions, one row per
+    # INGREDIENT, while summary mode groups per RECIPE — joining the two
+    # directly would fan out and multiply the required quantity, the exact bug
+    # fixed in Batch 190. Correlated SCALAR subqueries instead: one value per
+    # output row by construction, no join, no fan-out.
+    # ------------------------------------------------------------------
+    def _act(col: str, per_ingredient: bool) -> str:
+        key = "AND k.ingredient_code = bl.ingredient_code" if per_ingredient else ""
+        return f"""(SELECT ROUND(SUM(COALESCE(k.{col}, 0)), 3)
+                      FROM kitchen_section_transactions k
+                     WHERE k.order_no = bl.order_no
+                       AND k.recipe_no = bl.recipe_no
+                       AND k.current_section = :sec {key})"""
+
+    def _next_section(per_ingredient: bool) -> str:
+        key = "AND k.ingredient_code = bl.ingredient_code" if per_ingredient else ""
+        return f"""(SELECT GROUP_CONCAT(DISTINCT k.to_section ORDER BY k.to_section SEPARATOR ', ')
+                      FROM kitchen_section_transactions k
+                     WHERE k.order_no = bl.order_no
+                       AND k.recipe_no = bl.recipe_no
+                       AND k.current_section = :sec
+                       AND COALESCE(k.to_section,'') <> '' {key})"""
+
+    def _actual_cols(per_ingredient: bool) -> str:
+        return (f"{_act('received_qty_standard', per_ingredient)} AS received_qty,\n"
+                f"{_act('transferred_qty_standard', per_ingredient)} AS transferred_qty,\n"
+                f"{_act('waste_qty_standard', per_ingredient)} AS waste_qty,\n"
+                f"{_next_section(per_ingredient)} AS issued_to_section,")
+
     _STD_SQ = """(SELECT MAX(r2.standard_portions) FROM recipes r2
                    WHERE r2.recipe_code = bl.recipe_no
                      AND (r2.company_id = :cid OR r2.company_id IS NULL))"""
@@ -2783,7 +2861,10 @@ async def section_production_report(request: Request, db: Session = Depends(get_
                        {_STD_SQ} AS std_portions,
                        COALESCE(ol.required_portions, 0) AS req_portions,
                        COALESCE(bl.total_required_with_waste_standard, 0) AS qty,
+                       COALESCE(bl.net_required_qty_standard,
+                                bl.total_required_with_waste_standard, 0) AS net_qty,
                        COALESCE(bl.standard_uom,'') AS uom,
+                       {_actual_cols(True)}
                        {_PORTION_SQ} AS portion_size,
                        -- Batch 176 — 176-D follow-up (Img 5): this ingredient
                        -- line is itself a produced sub-recipe (not a
@@ -2809,6 +2890,12 @@ async def section_production_report(request: Request, db: Session = Depends(get_
                        COUNT(DISTINCT bl.recipe_no) AS recipe_count,
                        COUNT(DISTINCT bl.order_no) AS order_count,
                        SUM(COALESCE(bl.total_required_with_waste_standard, 0)) AS qty,
+                       SUM(COALESCE(bl.net_required_qty_standard,
+                                    bl.total_required_with_waste_standard, 0)) AS net_qty,
+                       SUM({_act('received_qty_standard', True)}) AS received_qty,
+                       SUM({_act('transferred_qty_standard', True)}) AS transferred_qty,
+                       SUM({_act('waste_qty_standard', True)}) AS waste_qty,
+                       MAX({_next_section(True)}) AS issued_to_section,
                        MAX(COALESCE(bl.standard_uom,'')) AS uom
                 FROM bom_lines bl
                 JOIN customer_orders co ON co.order_no = bl.order_no
@@ -2859,6 +2946,12 @@ async def section_production_report(request: Request, db: Session = Depends(get_
                        -- against your real data first.
                        SUM(DISTINCT COALESCE(ol.required_portions, 0)) AS req_portions,
                        SUM(COALESCE(bl.total_required_with_waste_standard, 0)) AS qty,
+                       SUM(COALESCE(bl.net_required_qty_standard,
+                                    bl.total_required_with_waste_standard, 0)) AS net_qty,
+                       SUM({_act('received_qty_standard', True)}) AS received_qty,
+                       SUM({_act('transferred_qty_standard', True)}) AS transferred_qty,
+                       SUM({_act('waste_qty_standard', True)}) AS waste_qty,
+                       MAX({_next_section(True)}) AS issued_to_section,
                        MAX(COALESCE(bl.standard_uom,'')) AS uom,
                        MAX({_PORTION_SQ}) AS portion_size
                 FROM bom_lines bl
@@ -2888,9 +2981,26 @@ async def section_production_report(request: Request, db: Session = Depends(get_
             "error": f"Report query failed: {exc.__class__.__name__}",
             "page_title": "Section Production Report"})
 
+    out_rows = []
+    for r in rows:
+        d = dict(r)
+        rec = float(d.get("received_qty") or 0)
+        tr = float(d.get("transferred_qty") or 0)
+        # Batch 206: Yield % = transferred ÷ received × 100, exactly as asked.
+        # None (not 0) when nothing has been received — an untouched line is
+        # not a 0 % yield, and showing it as one would drag every average down.
+        d["yield_pct"] = round(tr / rec * 100, 1) if rec > 0 else None
+        out_rows.append(d)
+    rows = out_rows
     total_qty = sum(float(r["qty"] or 0) for r in rows)
     return render(request, "production/section_report.html", {
-        "rows": [dict(r) for r in rows], "mode": mode, "section": section,
+        "rows": rows, "mode": mode, "section": section,
+        "totals": {
+            "received": sum(float(r.get("received_qty") or 0) for r in rows),
+            "transferred": sum(float(r.get("transferred_qty") or 0) for r in rows),
+            "waste": sum(float(r.get("waste_qty") or 0) for r in rows),
+            "net": sum(float(r.get("net_qty") or 0) for r in rows),
+        },
         "sections": KITCHEN_SECTIONS, "total_qty": total_qty,
         "truncated": truncated, "row_cap": ROW_CAP,
         "customer_options": customer_options, "category_options": category_options,
@@ -3043,7 +3153,9 @@ async def store_issuance_by_section(request: Request, db: Session = Depends(get_
 
 # JSON APIs for future React/mobile screens
 @router.get("/api/orders/{order_no}/bom/consolidated")
-async def api_consolidated_bom(order_no: str, db: Session = Depends(get_db)):
+async def api_consolidated_bom(request: Request, order_no: str, db: Session = Depends(get_db)):
+    # Batch 207: an order number in the URL is not authorisation — 404 if it belongs to another company.
+    require_order_scope(db, request, order_no)
     return consolidated_bom(db, order_no=order_no)
 
 
@@ -3114,6 +3226,8 @@ async def kitchen_summary(request: Request, db: Session = Depends(get_db)):
 @router.get("/orders/{order_no}/store-issuance/history")
 async def store_issuance_history(request: Request, order_no: str, db: Session = Depends(get_db)):
     """Re-issue / edit audit history for one order's store issuance."""
+    # Batch 207: an order number in the URL is not authorisation — 404 if it belongs to another company.
+    require_order_scope(db, request, order_no)
     require_area(request, "store_issuance")
     try:
         rows = db.execute(text("""

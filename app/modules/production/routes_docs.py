@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 from app.core.templates import render
 from app.core.rbac import require_area
 from app.database.session import get_db
+from app.core.company import require_order_scope, require_record_scope
 
 router = APIRouter(tags=["Documents"])
 
@@ -46,6 +47,8 @@ def _one(db, sql, params=None):
 # ---------------------------------------------------------------------------
 @router.get("/qc/orders/{order_no}/certificate")
 def qc_certificate(request: Request, order_no: str, db: Session = Depends(get_db)):
+    # Batch 207: an order number in the URL is not authorisation — 404 if it belongs to another company.
+    require_order_scope(db, request, order_no)
     require_area(request, "qc")
     order = _one(db, """
         SELECT order_no, customer_name, COALESCE(brand,'') AS brand,
@@ -103,6 +106,8 @@ def qc_certificate(request: Request, order_no: str, db: Session = Depends(get_db
 # ---------------------------------------------------------------------------
 @router.get("/dispatch/{dispatch_id}/delivery-note")
 def delivery_note(request: Request, dispatch_id: int, db: Session = Depends(get_db)):
+    # Batch 207: an order number in the URL is not authorisation — 404 if it belongs to another company.
+    require_record_scope(db, request, "packing_dispatch", dispatch_id)
     require_area(request, "dispatch")
     d = _one(db, """
         SELECT dispatch_no, order_no, COALESCE(customer_name,'') AS customer_name,

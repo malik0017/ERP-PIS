@@ -120,6 +120,7 @@ def recipe_sheet(db: Session, f: dict, cid: int) -> list[dict]:
                    COALESCE(b.required_qty_recipe_uom, 0) AS required_recipe_uom,
                    COALESCE(b.standard_uom, '') AS uom,
                    COALESCE(b.total_required_with_waste_standard, b.required_qty_standard, 0) AS required_qty,
+                   b.net_required_qty_standard AS net_qty_col,
                    COALESCE(b.default_issue_section, '') AS issue_section,
                    COALESCE(b.estimated_cost, 0) AS est_cost,
                    o.customer_name, COALESCE(o.brand,'') AS brand,
@@ -186,6 +187,25 @@ def recipe_sheet(db: Session, f: dict, cid: int) -> list[dict]:
 
         portions = _f(b["portions"])
         per_portion = (_f(b["required_recipe_uom"]) / portions) if portions else 0.0
+        # --- Batch 205 (Image 1): NET vs GROSS -------------------------------
+        # BOM_QTY_BASIS is "gross_prep", so bom_lines.required_qty holds the
+        # PRE-TRIM (gross) weight on any line with a yield loss — right for the
+        # store, wrong on the chef's sheet: the pot takes the NET weight from
+        # the recipe. Net is recomputed from the paired recipe line
+        # (qty_per_portion = the workbook's "NET Qty req per Batch" ÷ portions)
+        # and converted with the same factor the BOM used, so no schema change
+        # and historical orders are corrected too.
+        gross_qty = _f(b["required_qty"])
+        conv = (gross_qty / _f(b["required_recipe_uom"])) if _f(b["required_recipe_uom"]) else 1.0
+        # Batch 206: prefer the stored net requirement; fall back to
+        # recomputing from the recipe for BOMs generated before it existed.
+        net_pp = _f((ri or {}).get("qty_per_portion"))
+        if b.get("net_qty_col") is not None:
+            net_qty = _f(b["net_qty_col"])
+        else:
+            net_qty = net_pp * portions * conv if net_pp > 0 else gross_qty
+        if net_qty > gross_qty:
+            net_qty = gross_qty  # never show a net above the issued weight
         comp = rec["components"].setdefault(component, {
             "name": component, "sort": (ri or {}).get("line_no") or 10 ** 6, "lines": []})
         comp["lines"].append({
@@ -197,8 +217,11 @@ def recipe_sheet(db: Session, f: dict, cid: int) -> list[dict]:
             "issue_section": b["issue_section"] or "—",
             "cutting": (ri or {}).get("cutting_portion_size") or "",
             "per_portion": per_portion,
+            "net_per_portion": net_pp,
             "recipe_uom": b["recipe_uom"],
-            "required_qty": _f(b["required_qty"]),
+            "required_qty": net_qty,              # Batch 205: NET is the chef figure
+            "issue_qty": gross_qty,               # what the store hands over
+            "yield_loss": round(gross_qty - net_qty, 3),
             "uom": b["uom"],
         })
         rec["sections"].add(kitchen)
@@ -281,8 +304,11 @@ def by_recipe(sheet: list[dict]) -> list[dict]:
                 for ln in comp["lines"]:
                     k = (comp["name"], ln["ingredient_code"], ln["uom"])
                     agg = r["lines"].setdefault(k, {**ln, "component": comp["name"],
-                                                    "required_qty": 0.0})
+                                                    "required_qty": 0.0, "issue_qty": 0.0,
+                                                    "yield_loss": 0.0})
                     agg["required_qty"] += ln["required_qty"]
+                    agg["issue_qty"] += ln["issue_qty"]
+                    agg["yield_loss"] += ln["yield_loss"]
     out = []
     for r in sorted(recipes.values(), key=lambda x: x["recipe_name"] or ""):
         lines = sorted(r["lines"].values(),
