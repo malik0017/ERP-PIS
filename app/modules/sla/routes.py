@@ -17,9 +17,17 @@ from starlette.status import HTTP_303_SEE_OTHER
 from app.core.rbac import require_area, require_action
 from app.core.templates import render
 from app.database.session import get_db
+import logging
+from urllib.parse import quote_plus
+
+from app.services.ops_templates import SLA_TEMPLATES, TARGET_TEMPLATES
+
+from app.core.db_read import log_failure as db_read_log
 from app.services.sla_service import (
     DASHBOARD_STATUS, METRIC_CODES, compute_status, evaluate_targets,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/system", tags=["SLA & Targets"])
 
@@ -41,6 +49,12 @@ def _rows(db: Session, sql: str, params: dict | None = None) -> list:
     try:
         return [dict(r) for r in db.execute(text(sql), params or {}).mappings().all()], None
     except Exception as exc:
+        # Batch 221: this helper already returns the error to the caller (the
+        # right pattern — see the docstring). It now logs as well, so a failure
+        # is visible even where a caller discards the second value, which is
+        # exactly how the Recent Orders bug survived (Batch 212).
+        db_read_log(exc, sql, "sla/routes.py._rows")
+        db.rollback()
         return [], f"{exc.__class__.__name__}: {exc}"
 
 
@@ -87,6 +101,8 @@ async def sla_rules_page(request: Request, db: Session = Depends(get_db)):
         ORDER BY customer_name LIMIT 200
     """)
     return render(request, "sla/rules.html", {
+        # Batch 214: the starter set, shown while nothing is configured.
+        "sla_templates": SLA_TEMPLATES,
         "rules": rules, "error": err, "live": live,
         "customers": [c["customer_name"] for c in customers],
         "page_title": "SLA Management"})
@@ -157,6 +173,41 @@ async def sla_rule_save(request: Request, db: Session = Depends(get_db)):
 # ---------------------------------------------------------------------------
 # Performance targets
 # ---------------------------------------------------------------------------
+@router.post("/sla/install-templates")
+async def sla_install_templates(request: Request, db: Session = Depends(get_db)):
+    """Batch 214 — install the four starter SLA rules.
+
+    Same permission as creating a rule by hand. Idempotent: an existing rule of
+    the same name is left exactly as it is, so pressing this twice — or after
+    editing one — changes nothing.
+    """
+    require_action(request, "settings", "edit")
+    from app.services.ops_templates import install_sla_templates
+
+    r = install_sla_templates(db, _cid(request))
+    if r["created"]:
+        msg = f"Added {len(r['created'])} SLA rule(s): " + ", ".join(r["created"])
+        return RedirectResponse(f"/system/sla?msg={quote_plus(msg)}", status_code=HTTP_303_SEE_OTHER)
+    return RedirectResponse(
+        "/system/sla?msg=" + quote_plus("All starter rules already exist — nothing changed."),
+        status_code=HTTP_303_SEE_OTHER)
+
+
+@router.post("/targets/install-templates")
+async def targets_install_templates(request: Request, db: Session = Depends(get_db)):
+    """Batch 214 — install the six starter performance targets."""
+    require_action(request, "settings", "edit")
+    from app.services.ops_templates import install_target_templates
+
+    r = install_target_templates(db, _cid(request))
+    if r["created"]:
+        msg = f"Added {len(r['created'])} target(s): " + ", ".join(r["created"])
+        return RedirectResponse(f"/system/targets?msg={quote_plus(msg)}", status_code=HTTP_303_SEE_OTHER)
+    return RedirectResponse(
+        "/system/targets?msg=" + quote_plus("All starter targets already exist — nothing changed."),
+        status_code=HTTP_303_SEE_OTHER)
+
+
 @router.get("/targets")
 async def targets_page(request: Request, db: Session = Depends(get_db)):
     require_area(request, "settings")
@@ -181,6 +232,7 @@ async def targets_page(request: Request, db: Session = Depends(get_db)):
         ORDER BY customer_name LIMIT 200
     """)
     return render(request, "sla/targets.html", {
+        "target_templates": TARGET_TEMPLATES,
         "results": results, "summary": summary, "metrics": METRIC_CODES,
         "customers": [c["customer_name"] for c in customers],
         "filters": {"date_from": date_from, "date_to": date_to},
@@ -253,6 +305,15 @@ async def target_save(request: Request, db: Session = Depends(get_db)):
 ops_router = APIRouter(tags=["Operations Overview"])
 
 
+def _section_board(db: Session, cid: int) -> list:
+    try:
+        from app.services.section_board import build as _build
+        return _build(db, cid)
+    except Exception:
+        db.rollback()
+        return []
+
+
 # ---------------------------------------------------------------------------
 # Batch 172 — ROLE-BASED VIEWS
 #
@@ -276,18 +337,20 @@ ops_router = APIRouter(tags=["Operations Overview"])
 OPS_VIEWS = {
     "operations": {
         "label": "Operations",
-        "panels": ["kpis", "attention", "today", "pipeline", "health",
+        # Batch 217: the section live board is the panel a production floor
+        # actually watches, so it sits directly under the KPI strip.
+        "panels": ["kpis", "board", "attention", "today", "pipeline", "health",
                    "targets", "recent"],
     },
     "head_chef": {
         "label": "Head Chef",
         # Production load and quality; no margin, no dispatch documents.
-        "panels": ["kpis", "attention", "today", "pipeline", "recent"],
+        "panels": ["kpis", "board", "attention", "today", "pipeline", "recent"],
         "kpis": ["open_orders", "in_production", "qc_pending", "store_pending"],
     },
     "production": {
         "label": "Production Manager",
-        "panels": ["kpis", "attention", "pipeline", "health", "today", "targets"],
+        "panels": ["kpis", "board", "attention", "pipeline", "health", "today", "targets"],
         "kpis": ["open_orders", "in_production", "qc_pending",
                  "pending_dispatch", "store_pending"],
     },
@@ -299,7 +362,7 @@ OPS_VIEWS = {
     },
     "quality": {
         "label": "Quality",
-        "panels": ["kpis", "attention", "today", "recent"],
+        "panels": ["kpis", "board", "attention", "today", "recent"],
         "kpis": ["qc_pending", "in_production", "open_orders"],
     },
     "executive": {
@@ -348,9 +411,14 @@ async def operations_overview(request: Request, db: Session = Depends(get_db)):
     health = _health(db, company_id=cid)
 
     def _one(sql: str, params: dict | None = None):
+        # Batch 220: log the failure. A silent except here is how the Recent
+        # Orders bug (Batch 212) hid — a panel that reads 0 looks identical to
+        # a panel whose query was rejected.
         try:
             return db.execute(text(sql), params or {}).scalar()
-        except Exception:
+        except Exception as exc:
+            logger.warning("operations panel query failed: %s", str(exc).splitlines()[0][:200])
+            db.rollback()
             return None
 
     cp = {"cid": cid}
@@ -384,17 +452,19 @@ async def operations_overview(request: Request, db: Session = Depends(get_db)):
     # ---- Level 2: what needs action ----------------------------------------
     # Every item carries a link. An alert you cannot act on from where you read
     # it is just a number with a colour.
+    # Batch 212: each item carries an icon so the tiles read as a dashboard
+    # rather than a list of sentences.
     attention = [
-        {"tone": "danger", "count": kpis["qc_pending"], "label": "Orders waiting for QC",
+        {"tone": "danger", "icon": "bi-patch-question", "count": kpis["qc_pending"], "label": "Orders waiting for QC",
          "detail": "QC checks have not been completed.", "url": "/qc"},
-        {"tone": "warning", "count": kpis["store_pending"], "label": "Store lines not finalized",
+        {"tone": "warning", "icon": "bi-box-seam", "count": kpis["store_pending"], "label": "Store lines not finalized",
          "detail": "Material demand is waiting for store confirmation.",
          "url": "/production/store-issuance"},
-        {"tone": "warning", "count": health.get("overdue", 0) + health.get("breached", 0),
+        {"tone": "warning", "icon": "bi-alarm", "count": health.get("overdue", 0) + health.get("breached", 0),
          "label": "Orders past their SLA deadline",
          "detail": "Delivery commitment has been missed or is at grace.",
          "url": "/sales-requests?scope=all"},
-        {"tone": "info", "count": kpis["pending_dispatch"], "label": "Orders pending dispatch",
+        {"tone": "info", "icon": "bi-truck", "count": kpis["pending_dispatch"], "label": "Orders pending dispatch",
          "detail": "Dispatch documents are not completed.", "url": "/dispatch"},
     ]
     attention = [a for a in attention if (a["count"] or 0) > 0]
@@ -423,14 +493,22 @@ async def operations_overview(request: Request, db: Session = Depends(get_db)):
         "received": _one(f"SELECT COUNT(*) FROM customer_orders co WHERE {scope} "
                          "AND DATE(co.order_date) = CURDATE()", cp),
         "in_production": kpis["in_production"],
-        "qc_done": _one("SELECT COUNT(*) FROM qc_checks WHERE DATE(created_at) = CURDATE()"),
-        "packed": _one("SELECT COUNT(*) FROM packing_dispatch "
-                       "WHERE COALESCE(packing_status,'') = 'Packed' "
-                       "AND DATE(updated_at) = CURDATE()"),
-        "dispatched": _one("SELECT COUNT(*) FROM packing_dispatch "
-                           "WHERE COALESCE(dispatch_status,'') IN "
+        # Batch 220: these three counted EVERY company's QC checks, packing and
+        # dispatch rows — the only unscoped queries left on this screen, and
+        # the reason "Today's Production" could show activity to a company that
+        # had none (flagged in Batch 212).
+        "qc_done": _one("SELECT COUNT(*) FROM qc_checks q "
+                        "WHERE DATE(q.created_at) = CURDATE() "
+                        "AND (q.company_id = :cid OR q.company_id IS NULL)", cp),
+        "packed": _one("SELECT COUNT(*) FROM packing_dispatch pd "
+                       "WHERE COALESCE(pd.packing_status,'') = 'Packed' "
+                       "AND DATE(pd.updated_at) = CURDATE() "
+                       "AND (pd.company_id = :cid OR pd.company_id IS NULL)", cp),
+        "dispatched": _one("SELECT COUNT(*) FROM packing_dispatch pd "
+                           "WHERE COALESCE(pd.dispatch_status,'') IN "
                            "('Out for Delivery','Delivered','Dispatched') "
-                           "AND DATE(updated_at) = CURDATE()"),
+                           "AND DATE(pd.updated_at) = CURDATE() "
+                           "AND (pd.company_id = :cid OR pd.company_id IS NULL)", cp),
     }
     _rec = today.get("received") or 0
     _disp = today.get("dispatched") or 0
@@ -439,11 +517,30 @@ async def operations_overview(request: Request, db: Session = Depends(get_db)):
 
     targets = evaluate_targets(db, None, None, company_id=cid)
 
-    recent, _ = _rows(db, f"""
-        SELECT co.order_no, co.customer_name, co.status,
-               co.required_delivery_date, co.total_portions
+    # ------------------------------------------------------------------
+    # Batch 212 (Image 3) — "Recent Orders shows nothing though we have a lot
+    # of orders". ROOT CAUSE: this SELECT asked for `co.total_portions`. The
+    # column is `total_planned_portions`; `total_portions` has never existed.
+    # MySQL rejected the whole statement, _rows() swallowed it, and the panel
+    # rendered its empty state — which looks exactly like "no orders yet".
+    #
+    # The second half of the bug is why nobody caught it: _rows() returns an
+    # error alongside the rows precisely so a failure can be told apart from an
+    # empty table (see its docstring), and this call discarded it with `_`.
+    # The error is now kept and shown, so a broken panel says it is broken.
+    #
+    # ORDER BY also moved to COALESCE(order_date, created_at): orders imported
+    # without an order_date sorted last regardless of age.
+    # ------------------------------------------------------------------
+    recent, recent_err = _rows(db, f"""
+        SELECT co.order_no, co.customer_name, COALESCE(co.status,'') AS status,
+               co.required_delivery_date,
+               COALESCE(co.total_planned_portions, 0) AS total_portions,
+               COALESCE(co.brand,'') AS brand,
+               COALESCE(co.total_estimated_selling_value, 0) AS order_value
         FROM customer_orders co WHERE {scope}
-        ORDER BY co.order_date DESC LIMIT 10
+        ORDER BY COALESCE(co.order_date, DATE(co.created_at)) DESC, co.id DESC
+        LIMIT 10
     """, cp)
 
     return render(request, "sla/operations.html", {
@@ -451,5 +548,8 @@ async def operations_overview(request: Request, db: Session = Depends(get_db)):
         "views": OPS_VIEWS, "view_label": view["label"], "role": role,
         "kpis": kpis, "attention": attention, "pipeline": pipeline,
         "pipeline_max": pipeline_max, "today": today, "health": health,
-        "targets": targets, "recent": recent,
+        "targets": targets, "recent": recent, "recent_err": recent_err,
+        # Batch 217 — built only when the view asks for it; on the Executive
+        # view it is neither shown nor queried.
+        "board": (_section_board(db, cid) if "board" in panels else []),
         "page_title": "Operations Overview"})

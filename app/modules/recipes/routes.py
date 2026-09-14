@@ -981,17 +981,39 @@ def download_recipe_pdf(
     doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=14 * mm, rightMargin=14 * mm,
                             topMargin=14 * mm, bottomMargin=14 * mm)
     styles = getSampleStyleSheet()
+    # Batch 223: recipe names and ingredients are frequently Arabic in this
+    # business, and the default styles are Helvetica — no Arabic glyphs, so they
+    # printed as boxes. Font chosen from the UI language and the content; every
+    # string drawn is shaped and bidi-reordered (app/core/pdf_arabic.py).
+    from reportlab.lib.enums import TA_LEFT, TA_RIGHT
+    from reportlab.lib.styles import ParagraphStyle
+
+    from app.core.pdf_arabic import font_names, is_rtl, shape as _ar
+    _lang = request.session.get("lang") or "en"
+    _sample = " ".join(str(x or "") for x in
+                       [recipe.recipe_name, recipe.customer_name] +
+                       [l.item_name for l in (recipe.lines or [])[:40]])
+    _REG, _BOLD = font_names(_lang, _sample)
+    _align = TA_RIGHT if is_rtl(_lang) else TA_LEFT
+    _title = ParagraphStyle("t", parent=styles["Title"], fontName=_BOLD, alignment=_align)
+    _norm = ParagraphStyle("n", parent=styles["Normal"], fontName=_REG, alignment=_align)
+    _cell = ParagraphStyle("c", parent=styles["Normal"], fontName=_REG, fontSize=7.5,
+                           leading=9.5, alignment=_align)
     story = [
-        Paragraph(f"Recipe {recipe.recipe_code} — {recipe.recipe_name}", styles["Title"]),
-        Paragraph(f"Customer: {recipe.customer_name or '-'} · Category: {recipe.category or '-'} · "
-                  f"Version {recipe.version or 1} · {recipe.status or ''}", styles["Normal"]),
-        Paragraph(f"Food Cost: {recipe.food_cost or 0} · Total Cost: {recipe.total_cost or 0} · "
-                  f"Sale Price: {recipe.sale_price or 0}", styles["Normal"]),
+        Paragraph(_ar(f"Recipe {recipe.recipe_code} — {recipe.recipe_name}"), _title),
+        Paragraph(_ar(f"Customer: {recipe.customer_name or '-'} · Category: {recipe.category or '-'} · "
+                      f"Version {recipe.version or 1} · {recipe.status or ''}"), _norm),
+        Paragraph(_ar(f"Food Cost: {recipe.food_cost or 0} · Total Cost: {recipe.total_cost or 0} · "
+                      f"Sale Price: {recipe.sale_price or 0}"), _norm),
         Spacer(1, 8),
     ]
-    data = [["#", "Item Code", "Item Name", "UOM", "Qty/Batch", "Qty/Portion", "Cost/UOM", "Line Cost"]]
+    data = [[Paragraph(_ar(h), _cell) for h in
+             ["#", "Item Code", "Item Name", "UOM", "Qty/Batch", "Qty/Portion", "Cost/UOM", "Line Cost"]]]
     for i, l in enumerate(recipe.lines or [], start=1):
-        data.append([i, l.inventory_code or "", (l.item_name or "")[:40], l.uom or "",
+        # Item names wrap as Paragraphs so Arabic can be shaped; the numeric
+        # columns stay plain strings — nothing to shape and cheaper to draw.
+        data.append([i, l.inventory_code or "",
+                     Paragraph(_ar((l.item_name or "")[:60]), _cell), l.uom or "",
                      f"{float(l.qty_batch or 0):g}", f"{float(l.qty_per_portion or 0):g}",
                      f"{float(l.cost_uom or 0):.4f}", f"{float(l.line_cost or 0):.4f}"])
     tbl = Table(data, repeatRows=1, colWidths=[9*mm, 24*mm, 62*mm, 12*mm, 20*mm, 22*mm, 20*mm, 20*mm])
@@ -999,6 +1021,9 @@ def download_recipe_pdf(
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#102542")),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("FONTSIZE", (0, 0), (-1, -1), 7.5),
+        # Batch 223: the plain (non-Paragraph) cells need the font naming too,
+        # or they silently fall back to Helvetica mid-table.
+        ("FONTNAME", (0, 0), (-1, -1), _REG),
         ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#c9d7e4")),
         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f4f8fc")]),
         ("ALIGN", (4, 1), (-1, -1), "RIGHT"),

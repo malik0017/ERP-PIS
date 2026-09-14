@@ -2195,21 +2195,50 @@ async def store_issuance_by_section_export(request: Request, db: Session = Depen
             # Batch 138: a small wrapping cell style so long Orders/Customers lists
             # wrap inside the column instead of overflowing the page (Image 11).
             from reportlab.lib.styles import ParagraphStyle
-            cell = ParagraphStyle("cell", parent=styles["Normal"], fontSize=6.5, leading=8)
-            cellB = ParagraphStyle("cellB", parent=cell, fontName="Helvetica-Bold")
+            # ------------------------------------------------------------------
+            # Batch 223 — Arabic. This document was hard-coded to Helvetica,
+            # which has no Arabic glyphs, so an Arabic recipe or customer name
+            # printed as black boxes. The font is now chosen from the UI
+            # language AND the content: an Arabic customer on an English
+            # document still needs the glyphs. Every value drawn goes through
+            # shape() for letter-joining and bidi reordering — see
+            # app/core/pdf_arabic.py for why all three parts are needed.
+            # ------------------------------------------------------------------
+            from app.core.pdf_arabic import font_names, is_rtl, shape as _ar
+            _lang = getattr(request.state, "lang", None) or request.session.get("lang") or "en"
+            _sample = " ".join(str(r.get("ingredient_name") or "") + str(r.get("customers") or "")
+                               for r in rows[:40])
+            _REG, _BOLD = font_names(_lang, _sample)
+            _RTL = is_rtl(_lang)
+            from reportlab.lib.enums import TA_LEFT, TA_RIGHT
+            cell = ParagraphStyle("cell", parent=styles["Normal"], fontSize=6.5, leading=8,
+                                  fontName=_REG, alignment=TA_RIGHT if _RTL else TA_LEFT,
+                                  wordWrap="RTL" if _RTL else None)
+            cellB = ParagraphStyle("cellB", parent=cell, fontName=_BOLD)
             # Batch 150: header text was black Paragraphs on the dark slate
             # header band, so column names were near-invisible. TableStyle
             # TEXTCOLOR does not reach text inside a Paragraph — the Paragraph
             # carries its own colour — which is why setting the band colour
             # alone never fixed it. White, matching the Brand-wise BOM PDF.
             from reportlab.lib import colors as _rlc
-            cellH = ParagraphStyle("cellH", parent=cell, fontName="Helvetica-Bold",
+            cellH = ParagraphStyle("cellH", parent=cell, fontName=_BOLD,
                                    textColor=_rlc.white)
 
             def P(v, bold=False):
-                return Paragraph(str(v if v is not None else "").replace("&", "&amp;"),
+                # Batch 223: shape() before escaping — it only touches strings
+                # that contain Arabic, so Latin values are unchanged.
+                return Paragraph(_ar(v if v is not None else "").replace("&", "&amp;"),
                                  cellB if bold else cell)
 
+            # ------------------------------------------------------------------
+            # Batch 211 (Image 9) — this picking list now follows the Bill of
+            # Quantity house style: a navy title band, the order's details as
+            # fact boxes, an EXCESS / SHORT column of its own, and the status
+            # cell tinted by meaning. Previously the variance was buried inside
+            # the status text ("Issued — Short 119.993 Gram"), which cannot be
+            # sorted, totalled or spotted at a glance on a printed sheet.
+            # ------------------------------------------------------------------
+            NAVY = _rlc.HexColor("#132947")
             title = "Store Issuance — " + ("Consolidated Picking List" if consolidated else "Order Line Detail")
             scope_bits = [f"Section: {section_filter or 'All sections'}", f"Show: {show}"]
             if order_filter:
@@ -2219,53 +2248,141 @@ async def store_issuance_by_section_export(request: Request, db: Session = Depen
             if date_from or date_to:
                 scope_bits.append(f"Delivery: {date_from or '…'} → {date_to or '…'}")
             scope_bits.append(f"Generated: {date.today().isoformat()}")
-            scope_bits.append("ISFC ERP")
-            elems = [
-                Paragraph(title, styles["Title"]),
-                Paragraph(" · ".join(scope_bits), styles["Normal"]),
-                Spacer(1, 5 * mm),
-            ]
+            scope_bits.append("ISFC PIMS")
+
+            titleS = ParagraphStyle("t", parent=styles["Title"], fontSize=15, leading=18,
+                                    fontName=_BOLD, alignment=TA_RIGHT if _RTL else TA_LEFT,
+                                    textColor=_rlc.white, spaceAfter=0)
+            subS = ParagraphStyle("s", parent=styles["Normal"], fontSize=7.5, fontName=_REG,
+                                  alignment=TA_RIGHT if _RTL else TA_LEFT,
+                                  textColor=_rlc.HexColor("#cfe0f5"))
+            band = Table([[Paragraph(_ar(title), titleS)], [Paragraph(_ar(" · ".join(scope_bits)), subS)]],
+                         colWidths=[doc.width])
+            band.setStyle(TableStyle([
+                ("BACKGROUND", (0, 0), (-1, -1), NAVY),
+                ("LEFTPADDING", (0, 0), (-1, -1), 10), ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+                ("TOPPADDING", (0, 0), (0, 0), 8), ("BOTTOMPADDING", (0, -1), (-1, -1), 8),
+            ]))
+
+            # Fact boxes — the order the sheet is for, without reading the table.
+            # Consolidated rows carry comma-joined "orders"/"customers" strings;
+            # detail rows carry a single order_no/customer_name. Read both.
+            def _distinct(single_key, joined_key):
+                out = set()
+                for r in rows:
+                    v = r.get(single_key) or r.get(joined_key) or ""
+                    for part in str(v).split(","):
+                        part = part.strip()
+                        if part:
+                            out.add(part)
+                return sorted(out)
+
+            _orders = _distinct("order_no", "orders")
+            _custs = _distinct("customer_name", "customers")
+            factS = ParagraphStyle("f", parent=styles["Normal"], fontSize=6.5, fontName=_REG,
+                                   alignment=TA_RIGHT if _RTL else TA_LEFT,
+                                   textColor=_rlc.HexColor("#6b7a90"))
+            valS = ParagraphStyle("v", parent=styles["Normal"], fontSize=9, fontName=_BOLD,
+                                  alignment=TA_RIGHT if _RTL else TA_LEFT,
+                                  textColor=_rlc.HexColor("#132947"))
+
+            def fact(label, value):
+                return Table([[Paragraph(_ar(str(label).upper()), factS)],
+                              [Paragraph(_ar(value), valS)]])
+
+            facts = Table([[
+                fact("Order", order_filter or (_orders[0] if len(_orders) == 1 else f"{len(_orders)} orders")),
+                fact("Customer", _custs[0] if len(_custs) == 1 else (customer_filter or f"{len(_custs)} customers")),
+                fact("Section", section_filter or "All sections"),
+                fact("Lines", len(rows)),
+            ]], colWidths=[doc.width / 4.0] * 4)
+            facts.setStyle(TableStyle([
+                ("BOX", (0, 0), (-1, -1), 0.5, _rlc.HexColor("#d6deea")),
+                ("INNERGRID", (0, 0), (-1, -1), 0.5, _rlc.HexColor("#d6deea")),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 6), ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ]))
+            elems = [band, Spacer(1, 4 * mm), facts, Spacer(1, 4 * mm)]
+
+            def _variance(r):
+                """Signed issued-minus-required, and how to describe it. Only
+                meaningful once the line has actually been issued."""
+                st = str(r.get("issuance_status") or "")
+                if "Issued" not in st:
+                    return (None, "—")
+                diff = float(r.get("issued_qty") or 0) - float(r.get("required_qty") or 0)
+                if diff > 0.001:
+                    return (diff, f"Excess +{diff:.3f}")
+                if diff < -0.001:
+                    return (diff, f"Short {diff:.3f}")
+                return (0.0, "Exact")
+
             if consolidated:
                 head = ["Section", "Code", "Ingredient", "Recipes", "Total Required",
-                        "Total Issued", "UOM", "Orders", "Customers", "Status"]
-                col_widths = [20*mm, 18*mm, 34*mm, 38*mm, 18*mm, 18*mm, 12*mm, 40*mm, 32*mm, 25*mm]
+                        "Total Issued", "Excess / Short", "UOM", "Orders", "Customers", "Status"]
+                col_widths = [19*mm, 17*mm, 32*mm, 34*mm, 17*mm, 17*mm, 22*mm, 11*mm, 34*mm, 28*mm, 22*mm]
             else:
                 head = ["Section", "Order", "Customer", "Recipe Name", "Recipe Code",
-                        "Ingredient", "Stock Code", "Required", "Issued", "UOM", "Status"]
-                col_widths = [20*mm, 26*mm, 28*mm, 34*mm, 20*mm, 30*mm, 18*mm, 16*mm, 16*mm, 12*mm, 20*mm]
-            data = [[Paragraph(str(h), cellH) for h in head]]
+                        "Ingredient", "Stock Code", "Required", "Issued", "Excess / Short",
+                        "UOM", "Status"]
+                col_widths = [18*mm, 24*mm, 26*mm, 30*mm, 18*mm, 28*mm, 17*mm, 15*mm, 15*mm, 21*mm, 11*mm, 18*mm]
+            data = [[Paragraph(_ar(h), cellH) for h in head]]
+            tints = []   # (row_index, background, text colour)
             for r in rows:
+                diff, vtext = _variance(r)
+                # Status text keeps only the status; the number lives in its own
+                # column now, so both can be sorted and totalled.
+                st = str(r.get("issuance_status") or "")
+                st = st.split("—")[0].strip() or st
                 if consolidated:
                     data.append([
                         P(r["section"]), P(r["ingredient_code"]), P(r["ingredient_name"] or ""),
                         P(r.get("recipes") or ""),
-                        P(f'{r["required_qty"]:.3f}'), P(f'{r["issued_qty"]:.3f}'), P(r["uom"]),
-                        P(r["orders"]), P(r["customers"]), P(r["issuance_status"]),
+                        P(f'{r["required_qty"]:.3f}'), P(f'{r["issued_qty"]:.3f}'), P(vtext),
+                        P(r["uom"]), P(r["orders"]), P(r["customers"]), P(st),
                     ])
                 else:
                     data.append([
                         P(r["section"]), P(r["order_no"]), P(r["customer_name"] or ""),
-                        # Batch 187: was one combined "code — name" cell — same
-                        # class of bug as 176-D (Img 4/5), fixed the same way:
-                        # split into two real columns instead of concatenating.
                         P(r["recipe_name"] or ""), P(r["recipe_no"] or ""),
                         P(r["ingredient_name"] or ""), P(r["ingredient_code"] or ""),
                         P(f'{float(r["required_qty"] or 0):.2f}'),
-                        P(f'{float(r["issued_qty"] or 0):.2f}'),
-                        P(r["uom"]), P(r["issuance_status"]),
+                        P(f'{float(r["issued_qty"] or 0):.2f}'), P(vtext),
+                        P(r["uom"]), P(st),
                     ])
+                idx = len(data) - 1
+                vcol = 6 if consolidated else 9
+                scol = len(head) - 1
+                if diff is None:
+                    tints.append((idx, vcol, "#fff8e0", "#92600a"))
+                elif diff > 0.001:
+                    tints.append((idx, vcol, "#fff1e0", "#b45309"))
+                elif diff < -0.001:
+                    tints.append((idx, vcol, "#fde8e8", "#a42323"))
+                else:
+                    tints.append((idx, vcol, "#e2f6e9", "#0a7a33"))
+                tints.append((idx, scol,
+                              "#e2f6e9" if "Issued" in st else "#fff8e0",
+                              "#0a7a33" if "Issued" in st else "#92600a"))
+
             tbl = Table(data, colWidths=col_widths, repeatRows=1)
-            tbl.setStyle(TableStyle([
-                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1e3a5f")),
+            _style = [
+                ("BACKGROUND", (0, 0), (-1, 0), NAVY),
                 ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-                ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#d8e2ef")),
-                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f5f8fc")]),
+                ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#dfe7f0")),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f7fafd")]),
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
                 ("LEFTPADDING", (0, 0), (-1, -1), 4),
                 ("RIGHTPADDING", (0, 0), (-1, -1), 4),
                 ("TOPPADDING", (0, 0), (-1, -1), 3),
                 ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-            ]))
+            ]
+            # Batch 211: per-cell tints for the variance and status columns.
+            for _ri, _ci, _bg, _fg in tints:
+                _style.append(("BACKGROUND", (_ci, _ri), (_ci, _ri), colors.HexColor(_bg)))
+                _style.append(("TEXTCOLOR", (_ci, _ri), (_ci, _ri), colors.HexColor(_fg)))
+            tbl.setStyle(TableStyle(_style))
             elems.append(tbl)
             doc.build(elems)
             buf.seek(0)

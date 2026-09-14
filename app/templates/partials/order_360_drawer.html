@@ -1,0 +1,270 @@
+{# ============================================================================
+   partials/order_360_drawer.html — Batch 216
+
+   The slide-over order detail (your Images 9–14, 16, 17). Include it once on
+   any page that lists orders:
+
+       {% include 'partials/order_360_drawer.html' %}
+
+   Then mark anything clickable with  data-order-360="ORD-…"  and the drawer
+   opens over the page. No redirect — the board you were watching stays where
+   it was, which is the whole point on a wall screen.
+
+   It is a partial, not a page, so the Command Center, the Operations board and
+   anything added later share ONE implementation and one payload
+   (/dashboard/order/{order_no}/360).
+   ============================================================================ #}
+<style>
+  .o360{width:min(980px,100vw)}
+  .o360 .offcanvas-header{border-bottom:1px solid var(--phoenix-border-color,#dfe5ee);padding-bottom:.5rem}
+  .o360-ref{font-size:1.05rem;font-weight:800;color:var(--phoenix-emphasis-color,#132947)}
+  .o360-sub{font-size:.78rem;color:var(--phoenix-tertiary-color,#6b7a90)}
+  .o360 .nav-tabs{border-bottom:1px solid var(--phoenix-border-color,#dfe5ee)}
+  .o360 .nav-link{font-size:.82rem;font-weight:600;padding:.45rem .85rem}
+  .o360-hero{border:1px solid var(--phoenix-border-color,#dfe5ee);border-radius:.8rem;
+             padding:.85rem 1rem;margin-bottom:.85rem;background:var(--phoenix-body-highlight-bg,#f7fafd)}
+  .o360-hero h3{font-size:1.25rem;font-weight:800;margin:0}
+  .o360-meta{display:flex;flex-wrap:wrap;gap:.15rem .9rem;font-size:.76rem;
+             color:var(--phoenix-tertiary-color,#6b7a90);margin:.15rem 0 .7rem}
+  .o360-tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.5rem}
+  .o360-tiles div{background:var(--phoenix-body-bg,#fff);border:1px solid var(--phoenix-border-color,#dfe5ee);
+                  border-radius:.55rem;padding:.45rem .6rem}
+  .o360-tiles b{display:block;font-size:.66rem;text-transform:uppercase;letter-spacing:.3px;
+                color:var(--phoenix-tertiary-color,#6b7a90);font-weight:600}
+  .o360-tiles span{font-size:1.05rem;font-weight:800;color:var(--phoenix-emphasis-color,#132947)}
+  .o360-chain{display:flex;gap:.4rem;overflow-x:auto;padding:.2rem 0 .6rem}
+  .o360-step{position:relative;min-width:128px;border:1px solid var(--phoenix-border-color,#dfe5ee);
+             border-radius:.6rem;padding:.55rem .6rem;background:var(--phoenix-body-bg,#fff);text-align:center}
+  .o360-step i{font-size:1.1rem;color:#1e5bb8}
+  .o360-step .lbl{font-size:.74rem;font-weight:700;margin-top:.2rem}
+  .o360-step .ref{font-size:.66rem;color:var(--phoenix-tertiary-color,#6b7a90)}
+  .o360-step .dot{position:absolute;inset-block-start:.45rem;inset-inline-end:.45rem;
+                  width:.5rem;height:.5rem;border-radius:50%;background:#c7d2e0}
+  .o360-step.ok .dot{background:#15803d}
+  .o360-step.half .dot{background:#e59f0b}
+  .o360-step.bad .dot{background:#dc3545}
+  .o360-step.pending{opacity:.62}
+  .o360-arrow{align-self:center;color:#c7d2e0}
+  .o360 table{font-size:.8rem}
+  .o360 th{font-size:.68rem;text-transform:uppercase;letter-spacing:.3px;
+           color:var(--phoenix-tertiary-color,#6b7a90);white-space:nowrap}
+  .o360-time{list-style:none;padding:0;margin:0}
+  .o360-time li{position:relative;padding-inline-start:1.2rem;padding-bottom:.9rem;
+                border-inline-start:2px solid var(--phoenix-border-color,#dfe5ee);margin-inline-start:.35rem}
+  .o360-time li:last-child{border-color:transparent;padding-bottom:0}
+  .o360-time li::before{content:"";position:absolute;inset-inline-start:-.36rem;top:.2rem;
+                        width:.6rem;height:.6rem;border-radius:50%;background:#12b8a6}
+  .o360-time b{display:block;font-size:.83rem}
+  .o360-time span{font-size:.74rem;color:var(--phoenix-tertiary-color,#6b7a90)}
+  .o360-kv{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.5rem;margin-bottom:.8rem}
+  .o360-kv div{border:1px solid var(--phoenix-border-color,#dfe5ee);border-radius:.55rem;padding:.5rem .6rem}
+  .o360-kv .v{font-size:1.15rem;font-weight:800}
+  .o360-empty{padding:2rem;text-align:center;color:var(--phoenix-tertiary-color,#6b7a90)}
+  [data-order-360]{cursor:pointer}
+  @media (max-width:767px){.o360-tiles,.o360-kv{grid-template-columns:repeat(2,minmax(0,1fr))}}
+</style>
+
+<div class="offcanvas offcanvas-end o360 w-50" tabindex="-1" id="order360" aria-labelledby="o360Ref">
+  <div class="offcanvas-header">
+    <div>
+      <div class="o360-ref" id="o360Ref">—</div>
+      <div class="o360-sub" id="o360Sub"></div>
+    </div>
+    <div class="ms-auto d-flex gap-2 align-items-start">
+      <a class="btn btn-sm btn-phoenix-secondary" id="o360Open" href="#">{{ t('Open full order') }}</a>
+      <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="{{ t('Close') }}"></button>
+    </div>
+  </div>
+  <div class="offcanvas-body pt-2">
+    <ul class="nav nav-tabs mb-3" role="tablist">
+      {% for key, label in [('summary','Summary'), ('execution','Execution'), ('materials','Materials'),
+                            ('quality','Quality'), ('financial','Financial'), ('audit','Audit')] %}
+      <li class="nav-item"><button class="nav-link {{ 'active' if loop.first }}" data-bs-toggle="tab"
+            data-bs-target="#o360-{{ key }}" type="button">{{ t(label) }}</button></li>
+      {% endfor %}
+    </ul>
+    <div id="o360Loading" class="o360-empty"><div class="spinner-border spinner-border-sm me-2"></div>{{ t('Loading…') }}</div>
+    <div class="tab-content d-none" id="o360Content">
+      {% for key in ['summary','execution','materials','quality','financial','audit'] %}
+      <div class="tab-pane fade {{ 'show active' if loop.first }}" id="o360-{{ key }}"></div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var el = document.getElementById('order360');
+  if (!el) return;
+  var I18N = {{ {
+      'no_rows': t('Nothing recorded yet.'),
+      'failed': t('Could not load this order.'),
+      'section': t('Section'), 'lines': t('Lines'), 'received': t('Received'),
+      'transferred': t('Transferred'), 'waste': t('Waste'), 'yield': t('Yield %'),
+      'queue': t('Queue min'), 'first': t('Started'), 'last': t('Finished'), 'people': t('Recorded by'),
+      'item': t('Ingredient'), 'net': t('Net required'), 'gross': t('Issue required'),
+      'issued': t('Issued'), 'variance': t('Variance'), 'uom': t('UOM'), 'cost': t('Est. cost'),
+      'qc_no': t('QC No'), 'recipe': t('Recipe'), 'status': t('Status'), 'score': t('Score'),
+      'temp': t('Temp °C'), 'by': t('Checked by'), 'when': t('When'), 'issue': t('Issue found'),
+      'action': t('Corrective action'), 'measure': t('Financial measure'), 'value': t('Value'),
+      'basis': t('Basis'), 'protein': t('Protein'), 'carb': t('Carb'), 'veg': t('Veg'),
+      'portion_wt': t('Portion wt'), 'pass_rate': t('Pass rate'), 'checks': t('Checks decided'),
+      'avg_score': t('Average score'), 'nutrition': t('Nutrition received at QC'),
+      'totals': t('Order totals'), 'record': t('Record'), 'who': t('Who')
+  }|tojson }};
+  // Batch 216: this partial is included inside the page body, but Phoenix
+  // loads bootstrap.js at the END of <body>. Resolving the Offcanvas instance
+  // at parse time therefore captured `undefined` and the drawer never opened —
+  // the fetch ran, the HTML was built, nothing was shown. Resolved lazily, on
+  // first use, so load order cannot matter.
+  function panel() {
+    if (!window.bootstrap || !bootstrap.Offcanvas) return null;
+    return bootstrap.Offcanvas.getOrCreateInstance(el);
+  }
+
+  function esc(v) {
+    return String(v === null || v === undefined ? '' : v)
+      .replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; });
+  }
+  function num(v, dp) { return (v === null || v === undefined) ? '—' : Number(v).toLocaleString(undefined, { minimumFractionDigits: dp || 0, maximumFractionDigits: dp || 0 }); }
+  function table(cols, rows, cells) {
+    if (!rows || !rows.length) return '<div class="o360-empty">' + esc(I18N.no_rows) + '</div>';
+    return '<div class="table-responsive"><table class="table table-sm mb-0"><thead><tr>' +
+      cols.map(function (c) { return '<th>' + esc(c) + '</th>'; }).join('') + '</tr></thead><tbody>' +
+      rows.map(function (r) { return '<tr>' + cells(r).map(function (c) { return '<td>' + c + '</td>'; }).join('') + '</tr>'; }).join('') +
+      '</tbody></table></div>';
+  }
+
+  function render(d) {
+    document.getElementById('o360Ref').textContent = d.order_no;
+    document.getElementById('o360Sub').textContent =
+      [d.header.customer, d.header.brand, d.header.status].filter(Boolean).join(' · ');
+    document.getElementById('o360Open').href = '/production/orders/' + encodeURIComponent(d.order_no);
+
+    var hero =
+      '<div class="o360-hero"><div class="d-flex justify-content-between align-items-start flex-wrap gap-2">' +
+      '<div><h3>' + esc(d.header.recipes.length ? d.header.recipes[0].recipe_name : d.order_no) +
+      (d.header.recipe_count > 1 ? ' <small class="text-body-tertiary">+' + (d.header.recipe_count - 1) + '</small>' : '') +
+      '</h3><div class="o360-meta">' +
+      [d.header.customer, d.header.kitchen, d.header.delivery, d.header.priority]
+        .filter(Boolean).map(esc).join('<span>·</span>') +
+      '</div></div><span class="badge badge-phoenix badge-phoenix-primary">' + esc(d.header.status) + '</span></div>' +
+      '<div class="o360-tiles">' + d.tiles.map(function (t) {
+        return '<div><b>' + esc(t.label) + '</b><span>' + esc(t.value) + '</span></div>';
+      }).join('') + '</div></div>';
+
+    var chain = '<div class="o360-chain">' + d.pipeline.map(function (s, i) {
+      return (i ? '<i class="bi bi-chevron-right o360-arrow"></i>' : '') +
+        '<div class="o360-step ' + esc(s.state) + '"><span class="dot"></span>' +
+        '<i class="bi bi-' + ({ order: 'receipt', bom: 'diagram-3', issue: 'box-seam',
+                                kitchen: 'fire', qc: 'patch-check', dispatch: 'truck' }[s.key] || 'circle') + '"></i>' +
+        '<div class="lbl">' + esc(s.label) + '</div><div class="ref">' + esc(s.ref) + '</div></div>';
+    }).join('') + '</div>';
+
+    var mt = d.material_totals;
+    var totals = '<div class="o360-kv">' +
+      [[I18N.net, num(mt.net_required, 1)], [I18N.gross, num(mt.gross_required, 1)],
+       [I18N.issued, num(mt.issued, 1)], [I18N.waste, num(mt.waste, 1)]]
+      .map(function (k) { return '<div><b class="o360-sub">' + esc(k[0]) + '</b><div class="v">' + k[1] + '</div></div>'; })
+      .join('') + '</div>';
+
+    document.getElementById('o360-summary').innerHTML = hero + chain +
+      '<h6 class="fw-bold mb-2">' + esc(I18N.totals) + '</h6>' + totals +
+      table([I18N.recipe, t_portions()], d.header.recipes, function (r) {
+        return [esc(r.recipe_name) + ' <span class="text-body-tertiary">' + esc(r.recipe_no) + '</span>',
+                '<span class="text-end d-block">' + num(r.portions) + '</span>'];
+      });
+
+    document.getElementById('o360-execution').innerHTML = hero +
+      (d.execution.length
+        ? '<ul class="o360-time">' + d.execution.map(function (s) {
+            return '<li><b>' + esc(s.section) + '</b><span>' +
+              num(s.received, 1) + ' ' + esc(I18N.received) + ' · ' +
+              num(s.transferred, 1) + ' ' + esc(I18N.transferred) +
+              (s.waste ? ' · ' + num(s.waste, 1) + ' ' + esc(I18N.waste) : '') +
+              (s.yield_pct !== null ? ' · ' + s.yield_pct + '% ' + esc(I18N.yield) : '') +
+              (s.queue_min !== null && s.queue_min !== undefined ? ' · ' + s.queue_min + 'm ' + esc(I18N.queue) : '') +
+              '</span><span>' + esc(s.first_at || '') + (s.last_at ? ' → ' + esc(s.last_at) : '') +
+              (s.people ? ' · ' + esc(s.people) : '') + '</span></li>';
+          }).join('') + '</ul>'
+        : '<div class="o360-empty">' + esc(I18N.no_rows) + '</div>');
+
+    document.getElementById('o360-materials').innerHTML = totals +
+      table([I18N.item, I18N.net, I18N.gross, I18N.issued, I18N.variance, I18N.waste, I18N.uom],
+        d.materials, function (m) {
+          var v = m.variance;
+          var vc = v === null ? '—' : '<span class="' + (v < -0.001 ? 'text-danger' : (v > 0.001 ? 'text-warning' : 'text-success')) +
+                   ' fw-bold">' + (v > 0 ? '+' : '') + num(v, 2) + '</span>';
+          return [esc(m.ingredient_name) + '<div class="text-body-tertiary">' + esc(m.ingredient_code) + '</div>',
+                  num(m.net_required, 2), num(m.gross_required, 2), num(m.issued, 2), vc, num(m.waste, 2), esc(m.uom)];
+        });
+
+    var q = d.quality;
+    document.getElementById('o360-quality').innerHTML =
+      '<div class="o360-kv">' +
+      [[I18N.pass_rate, q.pass_rate === null ? '—' : q.pass_rate + '%'],
+       [I18N.checks, num(q.decided)], [I18N.avg_score, q.avg_score === null ? '—' : q.avg_score],
+       [I18N.waste, num(mt.waste, 1)]]
+      .map(function (k) { return '<div><b class="o360-sub">' + esc(k[0]) + '</b><div class="v">' + esc(k[1]) + '</div></div>'; })
+      .join('') + '</div>' +
+      table([I18N.qc_no, I18N.recipe, I18N.status, I18N.score, I18N.temp, I18N.by, I18N.when, I18N.issue],
+        q.checks, function (c) {
+          var tone = c.qc_status === 'Passed' ? 'success' : (c.qc_status === 'Rejected' ? 'danger' : 'warning');
+          return [esc(c.qc_no), esc(c.recipe_name),
+                  '<span class="badge badge-phoenix badge-phoenix-' + tone + '">' + esc(c.qc_status) + '</span>',
+                  c.overall_score === null ? '—' : esc(c.overall_score),
+                  c.temperature_c === null ? '—' : esc(c.temperature_c),
+                  esc(c.checked_by), esc(c.checked_at),
+                  esc(c.issue_found || '') + (c.corrective_action ? '<div class="text-body-tertiary">' + esc(c.corrective_action) + '</div>' : '')];
+        }) +
+      (q.nutrition && q.nutrition.length
+        ? '<h6 class="fw-bold mt-3 mb-2">' + esc(I18N.nutrition) + '</h6>' +
+          table([I18N.recipe, I18N.protein, I18N.carb, I18N.veg, I18N.portion_wt], q.nutrition, function (n) {
+            return [esc(n.recipe_name), num(n.protein, 1), num(n.carb, 1), num(n.veg, 1), num(n.portion_weight, 1)];
+          })
+        : '');
+
+    document.getElementById('o360-financial').innerHTML =
+      table([I18N.measure, I18N.value, I18N.basis], d.financial, function (f) {
+        return ['<b>' + esc(f.label) + '</b>',
+                f.value === null ? '—' : 'SAR ' + num(f.value, 2),
+                '<span class="text-body-tertiary">' + esc(f.basis) + '</span>'];
+      });
+
+    document.getElementById('o360-audit').innerHTML =
+      (d.audit_note ? '<div class="o360-empty">' + esc(d.audit_note) + '</div>' : '') +
+      table([I18N.when, I18N.who, I18N.record, I18N.status], d.audit, function (a) {
+        return [esc(a.created_at), esc(a.who), esc(a.table_name) + ' ' + esc(a.record_id), esc(a.action)];
+      });
+
+    document.getElementById('o360Loading').classList.add('d-none');
+    document.getElementById('o360Content').classList.remove('d-none');
+  }
+  function t_portions() { return {{ t('Portions')|tojson }}; }
+
+  function open360(orderNo) {
+    document.getElementById('o360Ref').textContent = orderNo;
+    document.getElementById('o360Sub').textContent = '';
+    document.getElementById('o360Loading').classList.remove('d-none');
+    document.getElementById('o360Content').classList.add('d-none');
+    var oc = panel();
+    if (oc) { oc.show(); } else { el.classList.add('show'); el.style.visibility = 'visible'; }
+    fetch('/dashboard/order/' + encodeURIComponent(orderNo) + '/360', { credentials: 'same-origin' })
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(render)
+      .catch(function () {
+        document.getElementById('o360Loading').innerHTML =
+          '<i class="bi bi-exclamation-triangle text-danger me-1"></i>' + esc(I18N.failed);
+      });
+  }
+  window.openOrder360 = open360;
+
+  // Delegated, so rows added later (paging, filtering, auto-refresh) work too.
+  document.addEventListener('click', function (e) {
+    var t = e.target.closest('[data-order-360]');
+    if (!t) return;
+    e.preventDefault();
+    open360(t.getAttribute('data-order-360'));
+  });
+})();
+</script>

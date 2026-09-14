@@ -27,6 +27,7 @@ from app.modules.production.routes_topup import router as topup_router
 from app.modules.qc.routes_sampling import router as qc_sampling_router  
 from app.modules.dispatch.routes import router as dispatch_router
 from app.modules.packing.routes import router as packing_router
+from app.modules.exports.routes_pdf import router as exports_pdf_router   # Batch 222
 from app.modules.settings.routes import router as settings_router
 from app.modules.settings.routes_modules import router as settings_modules_router  
 from app.modules.reports.routes import router as reports_router
@@ -294,6 +295,7 @@ app.include_router(qc_router)
 app.include_router(qc_sampling_router)    
 app.include_router(topup_router)          
 app.include_router(packing_router)
+app.include_router(exports_pdf_router)   # Batch 222: Arabic-capable table PDF
 app.include_router(dispatch_router)
 app.include_router(prod_docs_router)
 app.include_router(settings_router)
@@ -339,11 +341,21 @@ app.include_router(sla_ops_router)
 async def module_launcher(request: Request):
    
     ctx = {"stats": {}, "charts": {}}
+    hero = None
+    cid = int(request.session.get("company_id") or 1)
     try:
         from app.database.session import SessionLocal
         _db = SessionLocal()
         try:
-            ctx = build_launcher_context(_db)
+            ctx = build_launcher_context(_db, cid)   # Batch 220: company-scoped
+            # Batch 213 (Image 1): the headline business card. Built separately
+            # and guarded separately — if it fails the launcher still opens with
+            # its module tiles rather than showing an error page.
+            from app.modules.module_dash.routes_launcher import command_centre_card
+            try:
+                hero = command_centre_card(_db, cid)
+            except Exception as exc:
+                logger.warning("Launcher hero card unavailable: %s", exc)
         finally:
             _db.close()
     except Exception:
@@ -352,6 +364,7 @@ async def module_launcher(request: Request):
         "page_title": "ERP Modules",
         "stats": ctx.get("stats", {}),
         "cards": ctx.get("cards", {}),
+        "hero": hero,
         "session_username": request.session.get("username"),
     })
 

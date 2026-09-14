@@ -177,6 +177,22 @@ def _from_json(value):
 
 templates.env.filters["from_json"] = _from_json
 
+# ---------------------------------------------------------------------------
+# Batch 215 — `|tojson` must never crash the page.
+#
+# /system/sla returned 500 "Object of type datetime is not JSON serializable"
+# as soon as the first rule existed: the Edit button serialises the whole row
+# with `{{ r|tojson }}`, and the row carries created_at / updated_at. The page
+# had always been empty in testing, so the crash only appeared once Batch 214
+# made it easy to create rules — the bug predates that batch by a long way.
+#
+# Fixed once, for every template: Jinja's tojson now falls back to str() for
+# anything json cannot encode (datetime, date, Decimal). Any other screen that
+# hands a database row to tojson — and several do — is covered by the same
+# change instead of failing the first time its table has data in it.
+# ---------------------------------------------------------------------------
+templates.env.policies["json.dumps_kwargs"] = {"sort_keys": True, "default": str}
+
 
 def render(request: Request, template_name: str, context: dict | None = None, status_code: int = 200):
     data = dict(context or {})

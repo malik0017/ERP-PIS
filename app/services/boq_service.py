@@ -33,6 +33,7 @@ from sqlalchemy import bindparam, text
 from sqlalchemy.orm import Session
 
 from app.core.production_constants import map_excel_section
+from app.core.db_read import log_failure as db_read_log
 
 MAIN_COMPONENT = "Main recipe"
 
@@ -349,5 +350,8 @@ def picker_options(db: Session, cid: int) -> dict:
 def _rows(db: Session, sql: str, cid: int) -> list:
     try:
         return db.execute(text(sql), {"cid": cid}).all()
-    except Exception:
+    except Exception as _exc:
+        # Batch 221: logged, not swallowed — a silent except here makes
+        # a broken query look like an empty table (app/core/db_read.py).
+        db_read_log(_exc, sql, 'boq_service.py._rows')
         return []

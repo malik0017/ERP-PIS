@@ -1,14 +1,10 @@
 
-{# Batch 166: "Sales Cockpit" added as the first child of Sales — the only major
-   module that had no cockpit. Placed first to match Planning and Inventory,
-   where the cockpit leads and the working screens follow.
-   NOTE: comments cannot go INSIDE the list below — Jinja parses it as a single
-   expression, so a {# #} in there is a syntax error, not a comment. #}
+
 {% set NAV_MODULES = [
   {"key": "main", "title": "Main", "icon": "uil-apps", "children": [
     {"title": "Module Launcher", "url": "/modules", "area": "dashboard", "feather": "grid"},
-    {"title": "Operations Overview", "url": "/dashboard/operations", "area": "dashboard", "feather": "activity", "match": "/dashboard/operations"},
     {"title": "Command Center", "url": "/dashboard", "area": "dashboard", "feather": "monitor"},
+    {"title": "Operations Overview", "url": "/dashboard/operations", "area": "dashboard", "feather": "activity", "match": "/dashboard/operations"},
   ]},
   {"key": "sales", "title": "Sales", "icon": "uil-shopping-cart-alt", "children": [
     {"title": "Sales Cockpit", "url": "/module/sales/dashboard", "area": "sales_review", "feather": "activity", "match": "/module/sales"},
@@ -29,24 +25,24 @@
   {"key": "inventory", "title": "Inventory", "icon": "uil-box", "children": [
     {"title": "Inventory Cockpit", "url": "/module/inventory/dashboard", "area": "inventory_valuation", "feather": "bar-chart-2"},
     {"title": "Stock", "url": "/inventory", "area": "inventory_valuation", "feather": "box", "match": "/inventory"},
-    {"title": "Ledger Verification", "url": "/inventory/verification", "area": "inventory_valuation", "feather": "check-circle"},
-    {"title": "Reorder Suggestions", "url": "/inventory/reorder", "area": "inventory_valuation", "feather": "refresh-cw", "match": "/inventory/reorder"},
+    {"title": "Ledger Verification", "url": "/inventory/verification", "area": "inventory_valuation", "feather": "check-circle", "hidden": true},
+    {"title": "Reorder Suggestions", "url": "/inventory/reorder", "area": "inventory_valuation", "feather": "refresh-cw", "match": "/inventory/reorder", "hidden": true},
     {"title": "Store Issuance", "url": "/production/store-issuance", "area": "store_issuance", "feather": "package", "match": "/production/store-issuance", "match2": "store-issuance"},
     {"title": "Issuance by Section", "url": "/production/store-issuance/by-section", "area": "store_issuance", "feather": "layers"},
     {"title": "Top-Up Requests", "url": "/production/topups", "area": "store_issuance", "feather": "plus-square", "match": "/production/topups"},
   ]},
   {"key": "kitchen", "title": "Kitchen", "icon": "uil-fire", "children": [
-    {"title": "Kitchen Reports", "url": "/production/reports/section", "area": "production_orders", "feather": "clipboard", "match": "/production/reports/"},
     {"title": "All Section Summary", "url": "/production/kitchen-summary", "area": "kitchen_summary", "feather": "layers"},
     {"title": "Cutting", "url": "/production/section/Cutting", "area": "section_cutting", "feather": "scissors"},
     {"title": "Butchery", "url": "/production/section/Butchery", "area": "section_butchery", "feather": "crosshair"},
     {"title": "Hot Kitchen", "url": "/production/section/Hot-Kitchen", "area": "section_hot_kitchen", "feather": "sun"},
     {"title": "Cold Kitchen", "url": "/production/section/Cold-Kitchen", "area": "section_cold_kitchen", "feather": "cloud-snow"},
     {"title": "Bakery/Pastry", "url": "/production/section/Bakery-Pastry", "area": "section_bakery_pastry", "feather": "gift"},
+    {"title": "Kitchen Reports", "url": "/production/reports/section", "area": "production_orders", "feather": "clipboard", "match": "/production/reports/"},
   ]},
   {"key": "quality", "title": "Quality", "icon": "uil-shield-check", "children": [
     {"title": "Incoming QC Inspection", "url": "/qc/inspection", "area": "qc", "feather": "clipboard", "match": "/qc/inspection"},
-    {"title": "In-Kitchen QC (Pre-Packing)", "url": "/qc", "area": "qc", "feather": "check-circle", "match": "/qc/orders"},
+    {"title": "In-Kitchen QC", "url": "/qc", "area": "qc", "feather": "check-circle", "match": "/qc/orders"},
     {"title": "Customer Complaints", "url": "/qc/complaints", "area": "qc", "feather": "message-square", "match": "/qc/complaints"},
     {"title": "QC Sampling Plan", "url": "/qc/sampling", "area": "qc", "feather": "shuffle", "match": "/qc/sampling"},
     {"title": "Batch Recall Trace", "url": "/qc/recall", "area": "qc", "feather": "search", "match": "/qc/recall"},

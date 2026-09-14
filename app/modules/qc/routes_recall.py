@@ -52,6 +52,7 @@ from app.core.rbac import require_area
 from app.core.templates import render
 from app.database.session import get_db
 from app.core.sql_scope import scoped
+from app.core.db_read import log_failure as db_read_log
 
 router = APIRouter(prefix="/qc/recall", tags=["QC"])
 
@@ -67,7 +68,10 @@ def _scope_cid(request) -> int:
 def _rows(db: Session, sql: str, params: dict, cid: int | None = None) -> list[dict]:
     try:
         return [dict(r) for r in db.execute(text(sql), params).mappings().all()]
-    except Exception:
+    except Exception as _exc:
+        # Batch 221: logged, not swallowed — a silent except here makes
+        # a broken query look like an empty table (app/core/db_read.py).
+        db_read_log(_exc, sql, 'routes_recall.py._rows')
         return []
 
 

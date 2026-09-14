@@ -306,7 +306,16 @@
          broken rather than simply be absent. #}
       <table class="table table-sm table-bordered align-middle si-table"
              data-isfc-table data-isfc-colfilters
-             data-isfc-title="Store Issuance Lines — {{ order.order_no if order else '' }}"
+             data-isfc-title="{{ t('Store Issuance Lines') }} — {{ order.order_no if order else '' }}"
+             data-isfc-subtitle="{{ order.customer_name if order else '' }}{% if order and order.brand %} · {{ order.brand }}{% endif %}"
+             {# Batch 211 (Image 6): the order's details travel with the export, so a
+                printed picking sheet says who it is for without anyone writing it on. #}
+             data-isfc-meta='[["{{ t('Order') }}","{{ order.order_no if order else '—' }}"],
+                              ["{{ t('Customer') }}","{{ (order.customer_name if order else '—')|replace("'", " ") }}"],
+                              ["{{ t('Brand') }}","{{ (order.brand if order and order.brand else '—') }}"],
+                              ["{{ t('Delivery') }}","{{ order.required_delivery_date if order else '—' }}"],
+                              ["{{ t('Cooking') }}","{{ order.cooking_date if order and order.cooking_date else '—' }}"],
+                              ["{{ t('Portions') }}","{{ '%g'|format(order.total_planned_portions or 0) if order else '—' }}"]]'
              data-isfc-search-placeholder="Filter ingredient, recipe, category...">
         <thead>
           <tr>

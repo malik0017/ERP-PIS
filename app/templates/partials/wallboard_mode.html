@@ -1,0 +1,115 @@
+{# ============================================================================
+   partials/wallboard_mode.html — Batch 218
+
+   Unattended-screen behaviour, shared by every board that runs on a wall.
+   Include it once per page and pass the route it belongs to:
+
+       {% set wb_route = '/dashboard/operations' %}
+       {% include 'partials/wallboard_mode.html' %}
+
+   It provides, for ?mode=presentation and ?mode=wallboard:
+     * Presentation / Wallboard / Exit buttons and a full-screen toggle
+     * navigation, footer and chrome hidden; content full width
+     * auto-scroll: down, pause, back up, pause, repeat
+     * auto-refresh aligned to the top of the scroll cycle, so the page never
+       jumps mid-read
+     * a live clock, because a screen on a wall has to prove it is not frozen
+     * any real interaction (wheel, touch, key, click) suspends scrolling for a
+       minute, so someone walking up to the screen is not fought by it
+
+   Batch 215 built this for the Command Center only. Operations Overview needed
+   the same thing, and copying ~60 lines of JS into a second template is how
+   two boards start behaving differently six months later. Extracted here
+   instead; the Command Center now includes this file too, so there is one
+   implementation and one place to change it.
+
+   COLOUR IS NOT SET HERE. The board follows data-bs-theme like the rest of the
+   system (Batch 215) — these modes change size and chrome only.
+   ============================================================================ #}
+{% set wb_route = wb_route or request.url.path %}
+{% set wb_mode = (request.query_params.get('mode') or '') %}
+{% set wb_mode = wb_mode if wb_mode in ('presentation', 'wallboard') else '' %}
+{% set wb_qs = request.url.query|replace('mode=presentation', '')|replace('mode=wallboard', '')|trim('&') %}
+
+<style>
+  body.wb-on .navbar-vertical, body.wb-on .navbar-top, body.wb-on footer,
+  body.wb-on .isfc-customize-btn { display: none !important; }
+  body.wb-on .content { margin-inline-start: 0 !important; padding-top: .75rem !important; max-width: 100% !important; }
+  body.wb-wall { --wb-scale: 1.12; }
+  body.wb-wall .card-header h5, body.wb-wall h1 { font-size: calc(1rem * var(--wb-scale)); }
+  .wb-bar { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+  .wb-clock { font-variant-numeric: tabular-nums; font-weight: 700; letter-spacing: .5px; }
+  #wbScroll { opacity: .55; }
+  #wbScroll.on { opacity: 1; border-color: #1e5bb8; color: #1e5bb8; }
+  @media print { .wb-bar { display: none; } }
+</style>
+
+<div class="wb-bar" id="wbControls">
+  {% if wb_mode %}
+  <span class="badge badge-phoenix badge-phoenix-primary">{{ t(wb_mode|capitalize) }}</span>
+  <span class="wb-clock" id="wbClock"></span>
+  <button type="button" class="btn btn-sm btn-phoenix-secondary on" id="wbScroll">
+    <i class="bi bi-arrow-down-up me-1"></i><span>{{ t('Auto-scroll on') }}</span></button>
+  <a class="btn btn-sm btn-phoenix-secondary" href="{{ wb_route }}{{ '?' ~ wb_qs if wb_qs }}">
+    <i class="bi bi-box-arrow-left me-1"></i>{{ t('Exit') }}</a>
+  {% else %}
+  <a class="btn btn-sm btn-phoenix-secondary" href="{{ wb_route }}?{{ wb_qs ~ '&' if wb_qs }}mode=presentation">
+    <i class="bi bi-easel me-1"></i>{{ t('Presentation') }}</a>
+  <a class="btn btn-sm btn-phoenix-secondary" href="{{ wb_route }}?{{ wb_qs ~ '&' if wb_qs }}mode=wallboard">
+    <i class="bi bi-display me-1"></i>{{ t('Wallboard') }}</a>
+  {% endif %}
+  <button type="button" class="btn btn-sm btn-phoenix-secondary" id="wbFull"
+          aria-label="{{ t('Full screen') }}"><i class="bi bi-arrows-fullscreen"></i></button>
+</div>
+
+<script>
+(function () {
+  var mode = {{ wb_mode|tojson }};
+  var REFRESH_MS = 120000;
+
+  var full = document.getElementById('wbFull');
+  if (full) full.addEventListener('click', function () {
+    if (!document.fullscreenElement) {
+      (document.documentElement.requestFullscreen || function () {}).call(document.documentElement);
+    } else if (document.exitFullscreen) { document.exitFullscreen(); }
+  });
+  if (!mode) return;
+
+  document.body.classList.add('wb-on');
+  if (mode === 'wallboard') document.body.classList.add('wb-wall');
+
+  // A wall screen has to prove it is live. A stale board with plausible
+  // numbers is worse than a blank one, so the clock ticks even between refreshes.
+  var clock = document.getElementById('wbClock');
+  function tick() {
+    if (clock) clock.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  }
+  tick(); setInterval(tick, 1000);
+
+  var auto = { on: true, dir: 1, idleUntil: 0, refreshAt: Date.now() + REFRESH_MS }, holdUntil = 0;
+  function pause(ms) { auto.idleUntil = Date.now() + (ms || 60000); }
+  ['wheel', 'touchstart', 'keydown', 'mousedown'].forEach(function (ev) {
+    window.addEventListener(ev, function () { pause(); }, { passive: true });
+  });
+
+  var btn = document.getElementById('wbScroll');
+  if (btn) btn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    auto.on = !auto.on; auto.idleUntil = 0;
+    btn.classList.toggle('on', auto.on);
+    btn.querySelector('span').textContent = auto.on ? {{ t('Auto-scroll on')|tojson }} : {{ t('Auto-scroll off')|tojson }};
+  });
+
+  setInterval(function () {
+    var now = Date.now();
+    if (!auto.on || now < auto.idleUntil || document.hidden || now < holdUntil) return;
+    // Refresh only at the top, so a reload never interrupts a read mid-page.
+    if (now > auto.refreshAt && window.scrollY < 40) { location.reload(); return; }
+    var max = document.body.scrollHeight - window.innerHeight;
+    if (max <= 0) return;
+    if (auto.dir > 0 && window.scrollY >= max - 2) { auto.dir = -1; holdUntil = now + 6000; return; }
+    if (auto.dir < 0 && window.scrollY <= 2) { auto.dir = 1; holdUntil = now + 6000; return; }
+    window.scrollBy(0, auto.dir * 2);
+  }, 40);
+})();
+</script>

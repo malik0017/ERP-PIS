@@ -6,7 +6,33 @@ from fastapi import Request
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+# Batch 215 — five areas existed in the code but belonged to no module, so the
+# Sellable Modules screen could neither show nor sell them (Image 18):
+#   dashboard  -> now its own "Command Center" module. It used to sit inside
+#                 Production Intelligence, which meant the 24/7 board could not
+#                 be licensed separately from the production screens. Existing
+#                 installs are unaffected: it defaults to ON.
+#   logistics  -> folded into the new Logistics & Delivery module
+#   requisitions / purchase_requisition -> Procurement, where they belong
+#   master_approvals -> Master Data
+#   settings   -> Users & Access (admin-only, and that module is always on)
 MODULE_CATALOG: list[dict] = [
+    {
+        "key": "command_center",
+        "label": "Command Center",
+        "icon": "monitor",
+        "color": "primary",
+        "default": True,
+        "areas": {"dashboard"},
+    },
+    {
+        "key": "logistics",
+        "label": "Logistics & Delivery",
+        "icon": "truck",
+        "color": "info",
+        "default": True,
+        "areas": {"logistics"},
+    },
     {
         "key": "production",
         "label": "Production Intelligence",
@@ -14,7 +40,7 @@ MODULE_CATALOG: list[dict] = [
         "color": "primary",
         "default": True,
         "areas": {
-            "dashboard", "orders", "order_portal", "production_orders",
+            "orders", "order_portal", "production_orders",
             "head_chef", "bom", "store", "store_issuance", "kitchen",
             "kitchen_summary", "qc", "packing", "dispatch",
             "section_cutting", "section_butchery", "section_hot_kitchen",
@@ -35,7 +61,7 @@ MODULE_CATALOG: list[dict] = [
         "icon": "bag",
         "color": "warning",
         "default": True,
-        "areas": {"procurement"},
+        "areas": {"procurement", "requisitions", "purchase_requisition"},
     },
     {
         "key": "recipes",
@@ -52,7 +78,7 @@ MODULE_CATALOG: list[dict] = [
         "icon": "database",
         "color": "danger",
         "default": True,
-        "areas": {"masters", "master_data", "master_upload"},
+        "areas": {"masters", "master_data", "master_upload", "master_approvals"},
     },
     {
         "key": "reports",
@@ -109,7 +135,7 @@ MODULE_CATALOG: list[dict] = [
         "icon": "shield-lock",
         "color": "dark",
         "default": True,     
-        "areas": {"users", "audit"},
+        "areas": {"users", "audit", "settings"},
     },
     {
        

@@ -3,18 +3,6 @@
 {% block content %}
 <div class="container-fluid py-3">
 
-  {# Batch 99 — this hero rendered as a WHITE box with invisible text.
-     It used `class="card"` plus an inline gradient background. The Phoenix
-     stylesheet sets the card background with !important, and !important beats
-     an inline style — so the gradient was discarded, the card stayed white,
-     and `text-white` made the heading and subtitle invisible against it. Only
-     the light-coloured badge survived, which is exactly what the screenshot
-     showed: an empty white bar with one floating pill.
-
-     Now uses the same plain `isfc-hero` div as every other screen in the
-     project (Sales Requests, Purchase Requisitions, QC Sampling, Top-Ups) —
-     no `card` class, so nothing overrides the gradient, and the look matches
-     the rest of the system instead of being a one-off. #}
   <div class="isfc-hero mb-4 p-4 rounded-4 text-white d-flex justify-content-between align-items-center flex-wrap gap-3"
        style="background:linear-gradient(135deg,#08243d,#1e5bb8)">
     <div>

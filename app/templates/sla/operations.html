@@ -1,12 +1,82 @@
 {% extends "layouts/base.html" %}
 {% block content %}
-{# Batch 171 — the four levels from your brief:
-   1 what is happening   KPIs
-   2 what needs action   Needs Attention + Today
-   3 where is the work   Pipeline + Delivery Health
-   4 detail              Targets + Recent Orders
-   Colour carries meaning only: green healthy, amber at risk, red critical,
-   blue neutral/informational. #}
+<style>
+  /* Batch 212 — Needs Attention tiles (Image 3). */
+  .ops-att{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.6rem}
+  .ops-att-tile{display:block;border:1px solid var(--phoenix-border-color,#dfe5ee);border-radius:.65rem;
+                padding:.65rem .75rem;text-decoration:none;color:inherit;border-inline-start:4px solid var(--c,#1e5bb8)}
+  .ops-att-tile:hover{background:color-mix(in srgb,var(--c,#1e5bb8) 6%,transparent)}
+  .ops-att-tile .n{font-size:1.5rem;font-weight:800;color:var(--c,#1e5bb8);line-height:1}
+  .ops-att-tile i{color:var(--c,#1e5bb8)}
+  .ops-att-tile .l{font-weight:600;font-size:.82rem;margin-top:.1rem}
+  .ops-bar{height:5px;border-radius:3px;background:var(--phoenix-body-highlight-bg,#eef2f7);margin:.35rem 0;overflow:hidden}
+  .ops-bar span{display:block;height:100%;background:var(--c,#1e5bb8)}
+  .ops-danger{--c:#dc3545}.ops-warning{--c:#e59f0b}.ops-info{--c:#0ea5c6}.ops-success{--c:#15803d}
+  .ops-sla-empty table{margin-bottom:.5rem}
+  /* Batch 218: wallboard sizing — colour still comes from the theme. */
+  body.wb-wall .ops-kpi .val{font-size:2.3rem}
+  body.wb-wall .ops-card .cust{font-size:.92rem}
+  body.wb-wall .ops-col>header{font-size:1rem}
+  body.wb-on .exec-hero{padding:1rem 1.25rem!important}
+  .ops-tbar{height:5px;border-radius:3px;background:var(--phoenix-body-highlight-bg,#eef2f7);margin-top:.25rem;overflow:hidden;max-width:260px}
+  .ops-tbar span{display:block;height:100%}
+  /* ---- Batch 217: KPI cards ---- */
+  .ops-kpi{display:block;height:100%;text-decoration:none;color:inherit;padding:.85rem .95rem;
+           background:var(--phoenix-body-bg,#fff);border:1px solid var(--phoenix-border-color,#dfe5ee);
+           border-radius:.8rem;border-top:3px solid var(--k,#1e5bb8);transition:transform .12s,box-shadow .12s}
+  .ops-kpi:hover{transform:translateY(-2px);box-shadow:0 10px 24px rgba(15,30,50,.10);color:inherit}
+  .ops-kpi:focus-visible{outline:2px solid var(--k,#1e5bb8);outline-offset:2px}
+  .ops-kpi .lbl{font-size:.7rem;text-transform:uppercase;letter-spacing:.3px;font-weight:700;
+                color:var(--phoenix-tertiary-color,#6b7a90)}
+  .ops-kpi i{color:var(--k,#1e5bb8);font-size:1.05rem}
+  .ops-kpi .val{font-size:1.9rem;font-weight:800;line-height:1.15;color:var(--k,#132947);
+                font-variant-numeric:tabular-nums;margin:.15rem 0 .05rem}
+  .ops-kpi .hint{font-size:.72rem;color:var(--phoenix-tertiary-color,#6b7a90)}
+  .ops-kpi.t-primary{--k:#1e5bb8}.ops-kpi.t-danger{--k:#dc3545}
+  .ops-kpi.t-warning{--k:#e59f0b}.ops-kpi.t-success{--k:#15803d}
+  [data-bs-theme="dark"] .ops-kpi{background:#131d30;border-color:#25324a}
+  /* ---- Batch 217: section live board ---- */
+  .ops-legend{display:inline-flex;align-items:center;gap:.3rem;color:var(--phoenix-tertiary-color,#6b7a90)}
+  .ops-legend .dot{width:.5rem;height:.5rem;border-radius:50%;display:inline-block}
+  .ops-legend .dot.crit{background:#dc3545}.ops-legend .dot.high{background:#e59f0b}.ops-legend .dot.norm{background:#15803d}
+  .ops-board{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:.7rem;align-items:start}
+  .ops-col{background:var(--phoenix-body-highlight-bg,#f6f9fd);border:1px solid var(--phoenix-border-color,#dfe5ee);
+           border-radius:.75rem;padding:.6rem;border-top:3px solid var(--c,#1e5bb8)}
+  .ops-col>header{display:flex;align-items:center;gap:.4rem;font-weight:700;font-size:.88rem}
+  .ops-col>header .dot{width:.55rem;height:.55rem;border-radius:50%;background:var(--c,#1e5bb8);display:inline-block}
+  .ops-col>header .cnt{margin-inline-start:auto;background:var(--c,#1e5bb8);color:#fff;border-radius:1rem;
+                       padding:0 .5rem;font-size:.75rem}
+  .ops-col .sub{font-size:.7rem;color:var(--phoenix-tertiary-color,#6b7a90);margin:.15rem 0 .5rem}
+  .ops-card{background:var(--phoenix-body-bg,#fff);border:1px solid var(--phoenix-border-color,#e3e9f2);
+            border-radius:.6rem;padding:.5rem .6rem;margin-bottom:.45rem;cursor:pointer;
+            border-inline-start:3px solid #15803d;transition:transform .12s,box-shadow .12s}
+  .ops-card:hover{transform:translateY(-1px);box-shadow:0 6px 16px rgba(15,30,50,.10)}
+  .ops-card:focus-visible{outline:2px solid var(--c,#1e5bb8);outline-offset:2px}
+  .ops-card.u-critical{border-inline-start-color:#dc3545}
+  .ops-card.u-high{border-inline-start-color:#e59f0b}
+  .ops-card .top{display:flex;justify-content:space-between;gap:.4rem;align-items:center}
+  .ops-card .ord{font-weight:700;font-size:.78rem;color:#1e5bb8}
+  .ops-card .urg{font-size:.66rem;font-weight:700;text-transform:uppercase;letter-spacing:.3px;
+                 color:var(--phoenix-tertiary-color,#6b7a90)}
+  .ops-card.u-critical .urg{color:#dc3545}.ops-card.u-high .urg{color:#b45309}
+  .ops-card .cust{font-size:.8rem;font-weight:600;margin-top:.1rem}
+  .ops-card .meta{font-size:.68rem;color:var(--phoenix-tertiary-color,#6b7a90)}
+  .ops-card .bar{height:5px;border-radius:3px;background:var(--phoenix-body-highlight-bg,#eef2f7);margin-top:.35rem;overflow:hidden}
+  .ops-card .bar span{display:block;height:100%;background:var(--c,#1e5bb8)}
+  .ops-col .more{font-size:.7rem;color:var(--phoenix-tertiary-color,#6b7a90);text-align:center}
+  [data-bs-theme="dark"] .ops-col{background:#0e1726;border-color:#25324a}
+  [data-bs-theme="dark"] .ops-card{background:#131d30;border-color:#25324a}
+  @media (max-width:575px){.ops-att{grid-template-columns:1fr}}
+  .form-style{
+        padding-top: 5px;
+        padding-bottom: 5px;
+        padding-left: 1rem;
+        font-size: 0.8rem;
+        min-height: 0px;
+  }
+</style>
+
+
 <div class="container-fluid py-3">
 
   <!-- <div class="req-hero d-flex align-items-center justify-content-between flex-wrap gap-3 mb-3">
@@ -31,13 +101,15 @@
       <p class="mb-0 opacity-75">{{ t('What is happening, what is late, and what needs action.') }}</p>
     </div>
    <div class="d-flex align-items-center gap-2 flex-wrap">
-      <select class="form-select form-select-sm" style="width:auto"
+      <select class=" form-style" style="width:auto"
               onchange="location.href='/dashboard/operations?view='+this.value">
         {% for k, v in views.items() %}
         <option value="{{ k }}" {% if view_key == k %}selected{% endif %}>{{ t(v.label) }} {{ t('view') }}</option>
         {% endfor %}
       </select>
-      <a class="btn btn-light fw-bold" href="/dashboard"><i class="bi bi-grid me-1"></i>{{ t('Command Center') }}</a>
+
+      {% set wb_route = '/dashboard/operations' %}{% include 'partials/wallboard_mode.html' %}
+      <a class="btn btn-sm btn-light fw-bold" href="/dashboard"><i class="bi bi-grid me-1"></i>{{ t('Command Center') }}</a>
     </div>
   </div>
 
@@ -50,34 +122,84 @@
       ('Pending Dispatch', kpis.pending_dispatch, 'not yet on a van', '/dispatch', 'warning', 'pending_dispatch'),
       ('Store Lines Pending', kpis.store_pending, 'material not issued', '/production/store-issuance', 'warning', 'store_pending')
     ] %}
-    {# Batch 172: `key` added so a view can select which cards it wants. When a
-       view lists none, all are shown — the default arrangement is unchanged. #}
+
     {% for label, value, hint, url, tone, key in cards_keyed %}
     {% if not kpi_keys or key in kpi_keys %}
     <div class="col-6 col-lg">
-      <a href="{{ url }}" class="text-decoration-none">
-        <div class="card border h-100">
-          <div class="card-body">
-            <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t(label) }}</div>
-            <div class="fs-3 fw-bold {% if (value or 0) > 0 and tone in ('danger','warning') %}text-{{ tone }}{% endif %}">{{ value or 0 }}</div>
-            <div class="fs-9 text-body-tertiary">{{ t(hint) }}</div>
-            <div class="fs-10 text-primary mt-2">{{ t('View') }} <i class="bi bi-arrow-right"></i></div>
-          </div>
+      <a href="{{ url }}" class="ops-kpi t-{{ tone }}">
+        <div class="d-flex justify-content-between align-items-start">
+          <span class="lbl">{{ t(label) }}</span>
+          <i class="bi {{ {'Open Orders':'bi-inboxes','In Production':'bi-fire','QC Pending':'bi-patch-question','Pending Dispatch':'bi-truck','Store Lines Pending':'bi-box-seam'}.get(label,'bi-circle') }}"></i>
         </div>
+        <div class="val">{{ value or 0 }}</div>
+        <div class="hint">{{ t(hint) }}</div>
       </a>
     </div>
     {% endif %}
     {% endfor %}
     {% if not kpi_keys or 'margin' in kpi_keys %}
     <div class="col-6 col-lg">
-      <div class="card border h-100"><div class="card-body">
-        <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Gross Margin') }}</div>
-        <div class="fs-3 fw-bold text-success">{{ '{:,.0f}'.format(kpis.margin or 0) }}</div>
-        <div class="fs-9 text-body-tertiary">SAR · {{ t('on the open order book') }}</div>
-      </div></div>
+      <div class="ops-kpi t-success" role="group">
+        <div class="d-flex justify-content-between align-items-start">
+          <span class="lbl">{{ t('Gross Margin') }}</span><i class="bi bi-graph-up-arrow"></i>
+        </div>
+        <div class="val">{{ '{:,.0f}'.format(kpis.margin or 0) }}</div>
+        <div class="hint">SAR · {{ t('on the open order book') }}</div>
+      </div>
     </div>
     {% endif %}
   </div>
+
+  {% if 'board' in panels %}
+  <div class="card mb-3 ops-board-card">
+    <div class="card-header d-flex flex-wrap gap-2 align-items-center py-2">
+      <h5 class="mb-0 fw-bold"><i class="bi bi-columns-gap me-2"></i>{{ t('Kitchen Section Live Board') }}</h5>
+      <span class="fs-9 text-body-tertiary">{{ t('Open work by section — click a card for the full order') }}</span>
+      <div class="ms-auto d-flex gap-2 fs-10">
+        <span class="ops-legend"><i class="dot crit"></i>{{ t('Overdue') }}</span>
+        <span class="ops-legend"><i class="dot high"></i>{{ t('Due within the hour') }}</span>
+        <span class="ops-legend"><i class="dot norm"></i>{{ t('On time') }}</span>
+      </div>
+    </div>
+    <div class="card-body pt-2">
+      {% if board %}
+      <div class="ops-board">
+        {% for col in board %}
+        <section class="ops-col" style="--c:{{ col.color }}">
+          <header>
+            <span class="nm"><i class="dot"></i>{{ t(col.section) }}</span>
+            <span class="cnt">{{ col.total }}</span>
+          </header>
+          <div class="sub">
+            {{ '{:,}'.format(col.portions) }} {{ t('portions') }}
+            {%- if col.critical %} · <b class="text-danger">{{ col.critical }} {{ t('overdue') }}</b>{% endif %}
+            {%- if col.high %} · <b class="text-warning">{{ col.high }} {{ t('due soon') }}</b>{% endif %}
+          </div>
+          {% for c in col.cards %}
+          <article class="ops-card u-{{ c.urgency }}" data-order-360="{{ c.order_no }}"
+                   tabindex="0" role="button" aria-label="{{ c.order_no }} — {{ c.customer }}">
+            <div class="top">
+              <span class="ord">{{ c.order_no }}</span>
+              <span class="urg">{{ t('Critical') if c.urgency == 'critical' else (t('High') if c.urgency == 'high' else t(c.priority)) }}</span>
+            </div>
+            <div class="cust">{{ c.customer }}</div>
+            <div class="meta">{{ '{:,}'.format(c.portions) }} {{ t('portions') }} · {{ c.done }}/{{ c.lines }} {{ t('lines') }} · {{ c.due_text }}</div>
+            <div class="bar" role="presentation"><span style="width:{{ c.progress }}%"></span></div>
+          </article>
+          {% endfor %}
+          {% if col.more %}<div class="more">+{{ col.more }} {{ t('more') }}</div>{% endif %}
+        </section>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="text-center text-body-tertiary py-4">
+        <i class="bi bi-check-circle fs-4 d-block mb-2 text-success"></i>
+        {{ t('No open work in any kitchen section right now.') }}
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
 
   {# ---- Level 2 ---------------------------------------------------------- #}
   {# Batch 172: each panel is gated on the view. Column widths adapt so a view
@@ -90,26 +212,32 @@
         <div class="card-header bg-body-highlight fw-bold">
           <i class="bi bi-exclamation-triangle me-1"></i>{{ t('Needs Attention') }}
         </div>
-        <div class="card-body p-0">
-          {% for a in attention %}
-          <a href="{{ a.url }}" class="d-flex align-items-center justify-content-between p-3 border-bottom text-decoration-none">
-            <div class="d-flex align-items-center gap-3">
-              <span class="badge bg-{{ a.tone }}" style="width:10px;height:10px;border-radius:50%;padding:0"></span>
-              <div>
-                <div class="fw-bold text-body-emphasis">{{ a.count }} {{ t(a.label) }}</div>
-                <div class="fs-9 text-body-tertiary">{{ t(a.detail) }}</div>
+        <div class="card-body">
+          {% set att_total = attention | sum(attribute='count') %}
+          <div class="ops-att">
+            {% for a in attention %}
+            <a href="{{ a.url }}" class="ops-att-tile ops-{{ a.tone }}">
+              <div class="d-flex justify-content-between align-items-start">
+                <span class="n">{{ a.count }}</span>
+                <i class="bi {{ a.icon or 'bi-exclamation-circle' }}"></i>
               </div>
+              <div class="l">{{ t(a.label) }}</div>
+              <div class="ops-bar"><span style="width:{{ ((a.count / att_total * 100)|round) if att_total else 0 }}%"></span></div>
+              <div class="fs-10 text-body-tertiary">{{ t(a.detail) }}</div>
+            </a>
+            {% else %}
+            <div class="p-4 text-center text-body-tertiary" style="grid-column:1/-1">
+              <i class="bi bi-check-circle fs-4 d-block mb-2 text-success"></i>
+              {{ t('Nothing needs attention right now.') }}
             </div>
-            <span class="text-primary fs-9">{{ t('Open') }} <i class="bi bi-arrow-right"></i></span>
-          </a>
-          {% else %}
-          {# An empty state that says "nothing is wrong", not a blank panel —
-             a blank panel reads as broken. #}
-          <div class="p-4 text-center text-body-tertiary">
-            <i class="bi bi-check-circle fs-4 d-block mb-2 text-success"></i>
-            {{ t('Nothing needs attention right now.') }}
+            {% endfor %}
           </div>
-          {% endfor %}
+          {% if attention %}
+          <div class="mt-3" style="min-height:220px" data-isfc-chart="hbar" data-types="hbar,bar,donut,pie"
+               data-unit="{{ t('orders') }}"
+               data-labels='{{ attention | map(attribute="label") | list | tojson }}'
+               data-values='{{ attention | map(attribute="count") | list | tojson }}'></div>
+          {% endif %}
         </div>
       </div>
     </div>
@@ -138,8 +266,6 @@
                  style="width:{{ [today.completion, 100]|min }}%"></div>
           </div>
           {% else %}
-          {# No orders received today means no denominator. 0% would read as
-             total failure rather than "nothing scheduled". #}
           <div class="fs-9 text-body-tertiary">{{ t('No orders received today — completion is not applicable.') }}</div>
           {% endif %}
         </div>
@@ -158,17 +284,25 @@
         <div class="card-header bg-body-highlight fw-bold">{{ t('Production Pipeline') }}
           <span class="fs-10 fw-normal text-body-tertiary ms-2">{{ t('click a stage to open its queue') }}</span></div>
         <div class="card-body">
-          {% for p in pipeline %}
-          <a href="{{ p.url }}" class="d-block text-decoration-none mb-2">
-            <div class="d-flex justify-content-between fs-9 mb-1">
-              <span class="fw-bold text-body-emphasis">{{ t(p.label) }}</span>
-              <span class="fw-bold">{{ p.count }}</span>
-            </div>
-            <div class="progress" style="height:14px">
-              <div class="progress-bar" style="width:{{ (p.count / pipeline_max * 100)|round }}%"></div>
-            </div>
-          </a>
-          {% endfor %}
+          <div style="min-height:260px" data-isfc-chart="funnel" data-types="funnel,hbar,bar,donut"
+               data-unit="{{ t('orders') }}"
+               data-labels='{{ pipeline | map(attribute="label") | list | tojson }}'
+               data-values='{{ pipeline | map(attribute="count") | list | tojson }}'></div>
+          <table class="table table-sm mb-0 mt-2 small">
+            <thead><tr><th>{{ t('Stage') }}</th><th class="text-end">{{ t('Orders') }}</th>
+              <th class="text-end">{{ t('Share') }}</th><th></th></tr></thead>
+            <tbody>
+            {% set pipe_total = pipeline | sum(attribute='count') %}
+            {% for p in pipeline %}
+              <tr>
+                <td>{{ t(p.label) }}</td>
+                <td class="text-end fw-bold">{{ p.count }}</td>
+                <td class="text-end text-body-tertiary">{{ ((p.count / pipe_total * 100)|round) if pipe_total else 0 }}%</td>
+                <td class="text-end"><a class="fs-10" href="{{ p.url }}">{{ t('Open') }} <i class="bi bi-arrow-right"></i></a></td>
+              </tr>
+            {% endfor %}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>
@@ -191,15 +325,28 @@
           </div>
           {% endif %}
           {% endfor %}
+          <div style="min-height:200px" data-isfc-chart="donut" data-types="donut,bar,hbar,pie"
+               data-unit="{{ t('orders') }}"
+               data-labels='{{ [t("On Time"), t("At Risk"), t("Overdue"), t("Breached"), t("Completed")] | tojson }}'
+               data-values='{{ [health.on_track or 0, health.at_risk or 0, health.overdue or 0, health.breached or 0, health.completed or 0] | tojson }}'></div>
           {% else %}
-          <div class="text-body-tertiary fs-9">
-            {{ t('No SLA instances yet. Configure at least one rule in System → SLA Management, then reload.') }}
+          
+          <div class="ops-sla-empty">
+            <p class="fs-9 mb-2">{{ t('No SLA is being measured yet. These four are what a contract-catering operation normally commits to:') }}</p>
+            <table class="table table-sm mb-2 small">
+              <thead><tr><th>{{ t('SLA') }}</th><th class="text-end">{{ t('Usual target') }}</th></tr></thead>
+              <tbody>
+                <tr><td>{{ t('On-time delivery (OTIF)') }}</td><td class="text-end fw-bold">96–98%</td></tr>
+                <tr><td>{{ t('Order confirmation time') }}</td><td class="text-end fw-bold">{{ t('within 4 working hours') }}</td></tr>
+                <tr><td>{{ t('QC pass rate before dispatch') }}</td><td class="text-end fw-bold">≥ 98%</td></tr>
+                <tr><td>{{ t('Complaint response / closure') }}</td><td class="text-end fw-bold">4h / 48h</td></tr>
+              </tbody>
+            </table>
+            <a class="btn btn-primary btn-sm" href="/system/sla"><i class="bi bi-lightning-charge me-1"></i>{{ t('Install these SLA rules') }}</a>
           </div>
           {% endif %}
 
           {% if health.unmeasured %}
-          {# Reported, never hidden. A green board that is green because orders
-             have no SLA at all is worse than an amber one. #}
           <div class="alert alert-warning py-2 px-3 fs-10 mt-2 mb-0">
             {{ health.unmeasured }} {{ t('open order(s) have no SLA rule and are not counted above.') }}
             <a href="/system/sla">{{ t('Configure rules') }} →</a>
@@ -216,7 +363,7 @@
   {% if 'targets' in panels or 'recent' in panels %}
   <div class="row g-3">
     {% if 'targets' in panels %}
-    <div class="{{ 'col-lg-5' if 'recent' in panels else 'col-12' }}">
+    <div class="{{ 'col-lg-12' if 'recent' in panels else 'col-12' }}">
       <div class="card border h-100">
         <div class="card-header bg-body-highlight fw-bold d-flex justify-content-between">
           <span>{{ t('Target vs Actual') }}</span>
@@ -228,16 +375,40 @@
               <th class="text-end">{{ t('Actual') }}</th><th class="text-end">%</th></tr></thead>
             <tbody>
               {% for r in targets[:8] %}
+              {% set _tone = 'success' if r.state=='exceeded' else ('warning' if r.state=='close' else ('danger' if r.state=='below' else 'secondary')) %}
               <tr>
-                <td>{{ r.metric_label }}</td>
+                <td>
+                  <div class="fw-semibold">{{ r.metric_label }}</div>
+                  <div class="ops-tbar"><span class="bg-{{ _tone }}"
+                       style="width:{{ [r.achievement or 0, 100]|min }}%"></span></div>
+                </td>
                 <td class="text-end">{{ '%.0f'|format(r.target_value|float) }}</td>
-                <td class="text-end">{% if r.actual is not none %}{{ '%.0f'|format(r.actual) }}{% else %}—{% endif %}</td>
-                <td class="text-end fw-bold text-{{ 'success' if r.state=='exceeded' else ('warning' if r.state=='close' else ('danger' if r.state=='below' else 'body-tertiary')) }}">
-                  {% if r.achievement is not none %}{{ r.achievement }}%{% else %}—{% endif %}</td>
+                <td class="text-end fw-semibold">{% if r.actual is not none %}{{ '%.0f'|format(r.actual) }}{% else %}—{% endif %}</td>
+                <td class="text-end">
+                  {% if r.achievement is not none %}
+                  <span class="badge badge-phoenix badge-phoenix-{{ _tone }}">{{ r.achievement }}%</span>
+                  {% else %}<span class="text-body-tertiary">—</span>{% endif %}</td>
               </tr>
               {% else %}
               <tr><td colspan="4" class="text-body-tertiary text-center py-3 fs-9">
-                {{ t('No targets configured.') }} <a href="/system/targets">{{ t('Add one') }} →</a></td></tr>
+                {# Batch 212 (Image 3): "how do we add a metric, and which ones do
+                   food companies use?" — the eight this system already computes,
+                   with the targets a production kitchen normally sets. #}
+                <div class="text-start">
+                  <p class="fs-9 mb-2">{{ t('No targets set. These are the measures this system already calculates:') }}</p>
+                  <table class="table table-sm mb-2 small">
+                    <thead><tr><th>{{ t('Metric') }}</th><th class="text-end">{{ t('Usual target') }}</th></tr></thead>
+                    <tbody>
+                      <tr><td>{{ t('Gross margin %') }}</td><td class="text-end fw-bold">30–35%</td></tr>
+                      <tr><td>{{ t('Food cost % of sales') }}</td><td class="text-end fw-bold">30–35%</td></tr>
+                      <tr><td>{{ t('Waste % of input') }}</td><td class="text-end fw-bold">≤ 3–5%</td></tr>
+                      <tr><td>{{ t('Yield % per section') }}</td><td class="text-end fw-bold">85–95%</td></tr>
+                      <tr><td>{{ t('On-time delivery %') }}</td><td class="text-end fw-bold">≥ 96%</td></tr>
+                      <tr><td>{{ t('QC pass rate %') }}</td><td class="text-end fw-bold">≥ 98%</td></tr>
+                    </tbody>
+                  </table>
+                  <a class="btn btn-primary btn-sm" href="/system/targets"><i class="bi bi-lightning-charge me-1"></i>{{ t('Install these targets') }}</a>
+                </div></td></tr>
               {% endfor %}
             </tbody>
           </table>
@@ -247,7 +418,7 @@
 
     {% endif %}
     {% if 'recent' in panels %}
-    <div class="{{ 'col-lg-7' if 'targets' in panels else 'col-12' }}">
+    <div class="{{ 'col-lg-12' if 'targets' in panels else 'col-12' }}">
       <div class="card border h-100">
         <div class="card-header bg-body-highlight fw-bold d-flex justify-content-between">
           <span>{{ t('Recent Orders') }}</span>
@@ -255,20 +426,42 @@
         </div>
         <div class="card-body p-0">
           <table class="table table-sm mb-0">
-            <thead><tr><th>{{ t('Order') }}</th><th>{{ t('Customer') }}</th>
+            <thead><tr><th>{{ t('Order') }}</th><th>{{ t('Customer') }}</th><th>{{ t('Brand') }}</th>
               <th>{{ t('Status') }}</th><th>{{ t('Delivery') }}</th>
-              <th class="text-end">{{ t('Portions') }}</th></tr></thead>
+              <th class="text-end">{{ t('Portions') }}</th>
+              <th class="text-end">{{ t('Value') }}</th></tr></thead>
             <tbody>
               {% for o in recent %}
               <tr>
-                <td><a href="/production/orders/{{ o.order_no }}">{{ o.order_no }}</a></td>
+                {# Batch 216: opens the 360 drawer over this page. #}
+                <td><a href="/production/orders/{{ o.order_no }}" data-order-360="{{ o.order_no }}">{{ o.order_no }}</a></td>
                 <td class="fs-9">{{ o.customer_name or '—' }}</td>
-                <td><span class="badge badge-phoenix badge-phoenix-secondary fs-10">{{ o.status }}</span></td>
+                <td class="fs-9">{{ o.brand or '—' }}</td>
+                {# Batch 212: status carries its own colour instead of one grey chip. #}
+                {# Batch 217 (Image 6): a colour per STAGE, not one blue chip for
+                   everything. The point of a status column on a wall screen is
+                   that you can read the mix of stages without reading words. #}
+                {% set _tone = {
+                    'Submitted': 'secondary', 'Store Pending': 'warning', 'BOM Generated': 'info',
+                    'In Production': 'primary', 'Packing Pending': 'warning', 'Packed': 'info',
+                    'Out for Delivery': 'primary', 'Dispatched': 'primary',
+                    'Delivered': 'success', 'Closed': 'success',
+                    'Cancelled': 'danger', 'Rejected': 'danger', 'Hold': 'warning'
+                  }.get(o.status, 'secondary') %}
+                <td><span class="badge badge-phoenix badge-phoenix-{{ _tone }} fs-10">{{ t(o.status) or '—' }}</span></td>
                 <td class="fs-9">{{ o.required_delivery_date or '—' }}</td>
                 <td class="text-end">{{ '%.1f'|format(o.total_portions|float) if o.total_portions else '—' }}</td>
+                <td class="text-end fs-9">{{ '%.2f'|format(o.order_value|float) if o.order_value else '—' }}</td>
               </tr>
               {% else %}
-              <tr><td colspan="5" class="text-body-tertiary text-center py-3 fs-9">{{ t('No orders yet.') }}</td></tr>
+              {# Batch 212: "no rows" and "the query failed" are different things.
+                 Until now both rendered as "No orders yet." — which is how a
+                 broken column name (co.total_portions) hid for several batches. #}
+              <tr><td colspan="7" class="text-center py-3 fs-9 {{ 'text-danger' if recent_err else 'text-body-tertiary' }}">
+                {% if recent_err %}<i class="bi bi-exclamation-triangle me-1"></i>{{ t('This panel could not load its data.') }}
+                  <span class="d-block fs-10">{{ recent_err }}</span>
+                {% else %}{{ t('No orders yet.') }}{% endif %}
+              </td></tr>
               {% endfor %}
             </tbody>
           </table>
@@ -279,4 +472,5 @@
   </div>
   {% endif %}
 </div>
+{% include 'partials/order_360_drawer.html' %}
 {% endblock %}

@@ -51,7 +51,7 @@
          href="?order_no={{ filters.order_no }}&section={{ filters.section }}&status={{ filters.status }}&from_date={{ filters.from_date }}&to_date={{ filters.to_date }}&export=summary">
         <i class="bi bi-download me-1"></i>{{ t('Download Summary CSV') }}</a>
     </div>
-    <div class="card-body p-0"><div class="table-responsive">
+    <div class="card-body p-4"><div class="table-responsive">
       <table class="table table-sm fs-9 mb-0">
         <thead><tr class="text-uppercase text-body-tertiary fs-10">
           <th class="ps-4">{{ t('Section') }}</th><th class="text-end">{{ t('Input') }}</th>
@@ -81,7 +81,7 @@
       <h5 class="mb-0 text-body-emphasis">{{ t('Transactions') }}</h5>
       <span class="badge badge-phoenix badge-phoenix-primary">{{ rows|length }}</span>
     </div>
-    <div class="card-body p-0"><div class="table-responsive">
+    <div class="card-body p-4"><div class="table-responsive">
       {# Batch 169: the shared toolbar — CSV, PDF, copy, print and column
          show/hide — attached to the table it exports, so the download matches
          what is on screen including any column you have hidden. #}

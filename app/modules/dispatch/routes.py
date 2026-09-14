@@ -51,6 +51,18 @@ def _ensure_delivery_confirmation_schema(db: Session) -> None:
         "delivery_otp_generated_at": "DATETIME NULL",
         "delivery_confirmed_by": "VARCHAR(20) NULL",
         "pod_photo_path": "VARCHAR(300) NULL",
+        # Batch 224 — the two fields OTIF needs and the system never had.
+        # delivered_at: when the customer RECEIVED it. Until now the only
+        #   timestamp was dispatch_date, so an order that left on the right day
+        #   but arrived at 15:00 for a noon service scored as on time.
+        # delivered_portions: what actually arrived. Without it the "in full"
+        #   half of OTIF cannot be computed — a short delivery counted as
+        #   perfect. Both are nullable: history has neither, and a NULL keeps
+        #   those orders OUT of the OTIF calculation rather than scoring them
+        #   as failures.
+        "delivered_at": "DATETIME NULL",
+        "delivered_portions": "DECIMAL(14,2) NULL",
+        "delivery_shortfall_reason": "VARCHAR(255) NULL",
     }
     for col, ddl in cols.items():
         if not _column_exists(db, "packing_dispatch", col):
@@ -705,6 +717,35 @@ async def update_dispatch(
     if dispatch_status == "Delivered":
         db.execute(text("UPDATE packing_dispatch SET delivery_confirmed_by='Manual' WHERE id=:i"),
                    {"i": dispatch_id})
+        # ------------------------------------------------------------------
+        # Batch 224 — capture OTIF evidence at the moment of delivery.
+        #
+        # delivered_at defaults to NOW() when the form does not supply a time:
+        # marking an order Delivered IS the receipt event, and a blank
+        # timestamp would silently drop the order out of OTIF. A back-dated
+        # delivery can still be typed in.
+        #
+        # delivered_portions is left NULL when nothing is entered, NOT set to
+        # the packed figure. Assuming "in full" because nobody typed a number
+        # is how an on-time-only metric gets mistaken for OTIF, which is the
+        # exact gap this batch closes.
+        # ------------------------------------------------------------------
+        _f_all = await request.form()
+        _dlv_at = (_f_all.get("delivered_at") or "").strip()
+        _dlv_qty = (_f_all.get("delivered_portions") or "").strip()
+        _short = (_f_all.get("delivery_shortfall_reason") or "").strip() or None
+        try:
+            _qty = float(_dlv_qty) if _dlv_qty else None
+        except (TypeError, ValueError):
+            _qty = None
+        db.execute(text("""
+            UPDATE packing_dispatch
+               SET delivered_at = COALESCE(:at, delivered_at, NOW()),
+                   delivered_portions = COALESCE(:qty, delivered_portions),
+                   delivery_shortfall_reason = COALESCE(:why, delivery_shortfall_reason)
+             WHERE id = :i"""),
+            {"at": _dlv_at.replace("T", " ") if _dlv_at else None,
+             "qty": _qty, "why": _short, "i": dispatch_id})
         db.commit()
 
     row.packed_portions = packed_portions

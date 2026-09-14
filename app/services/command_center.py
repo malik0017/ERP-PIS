@@ -1,27 +1,5 @@
 # app/services/command_center.py
-# =============================================================================
-# Batch 203 — PRODUCTION COMMAND CENTER (Images 14–19)
-# -----------------------------------------------------------------------------
-# One place that turns the GLOBAL FILTER (timeline, date basis, customer, brand,
-# recipe, section, status, channel, priority, kitchen, comparison) into:
-#   * KPI cards   — value, prior-period value, delta, target, daily sparkline
-#   * KPI drawer  — definition, formula, drill records (side panel on click)
-#   * Charts      — pipeline funnel, status, queue time by section, store
-#                   issuance, recipe/customer mix
-#   * Batch table — one row per order with stage, input/output/waste, cycle,
-#                   delay and QC status
-#
-# Rules this module follows (so every number can be defended):
-#   1. Every query is scoped to the session company AND to the same filtered
-#      order set (`_scope`). The old dashboard counted customer_orders across
-#      ALL companies — a multi-company leak — and mixed filtered and unfiltered
-#      counts on the same screen.
-#   2. The comparison period is the same length immediately before the window.
-#   3. A KPI with no data returns None, never 0 — "no deliveries yet" is not
-#      "0% on time".
-#   4. Filters are parsed once (`parse_filters`) and are the same field names
-#      the rest of the system can reuse (partials/global_filters.html).
-# =============================================================================
+
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
@@ -88,8 +66,6 @@ def parse_filters(q, default_timeline: str = "rolling30") -> dict:
         "date_from": g("date_from"), "date_to": g("date_to"),
         "basis": g("basis", "delivery") if g("basis", "delivery") in DATE_BASIS else "delivery",
         "customer": g("customer"), "brand": g("brand"), "recipe": g("recipe"),
-        # Batch 204: the query key is `order_status` — list screens already use
-        # `status` for their own (QC / packing / dispatch) status filter.
         "section": g("section"), "status": g("order_status"), "channel": g("channel"),
         "priority": g("priority"), "kitchen": g("kitchen"),
         "compare": g("compare", "prior"),
@@ -159,9 +135,6 @@ def _scope(f: dict, cid: int, prior: bool = False) -> tuple[str, dict]:
 
 
 class _Q:
-    """Query helper. A failing query degrades that widget to "no data" but is
-    LOGGED — a silent except is how a reserved-word alias (`delayed`) zeroed
-    four KPI cards during development of this batch without any visible error."""
 
     def __init__(self, db: Session):
         self.db = db
@@ -566,8 +539,6 @@ def list_scope(request, db: Session, alias: str, order_col: str = "order_no") ->
     params: dict = {"gf_cid": cid}
     if f["active"]:
         where, p = _scope(f, cid)
-        # Prefix every bind name with gf_ (whole-name match: ":s" must not
-        # touch ":st" or ":sec") so they cannot collide with the page's own.
         where = re.sub(r":([A-Za-z_]\w*)", lambda m: f":gf_{m.group(1)}" if m.group(1) in p else m.group(0), where)
         params.update({f"gf_{k}": v for k, v in p.items()})
         sql += f" AND {alias}.{order_col} IN (SELECT o.order_no FROM customer_orders o WHERE {where})"

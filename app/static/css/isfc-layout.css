@@ -487,3 +487,85 @@ tr.row-receive[data-status="received"],
 tr.row-process[data-status="received"] { background: #f4fbf6; }
 html[data-bs-theme="dark"] tr.row-receive[data-status="received"],
 html[data-bs-theme="dark"] tr.row-process[data-status="received"] { background: rgba(34,197,94,.06); }
+
+
+.exec-hero:has(.dropdown-menu.show),
+.isfc-hero:has(.dropdown-menu.show),
+.pis-hero:has(.dropdown-menu.show),
+.si-hero:has(.dropdown-menu.show),
+.po-hero:has(.dropdown-menu.show),
+.rep-hero:has(.dropdown-menu.show),
+.qc-hero:has(.dropdown-menu.show),
+.packing-hero:has(.dropdown-menu.show),
+.dispatch-hero:has(.dropdown-menu.show),
+.section-hero:has(.dropdown-menu.show),
+.hero:has(.dropdown-menu.show),
+.isfc-dropdown-open {
+  overflow: visible !important;
+}
+
+/* The banner sits above page content, so its menu must sit above the banner. */
+.exec-hero .dropdown-menu, .isfc-hero .dropdown-menu, .pis-hero .dropdown-menu,
+.si-hero .dropdown-menu, .po-hero .dropdown-menu, .rep-hero .dropdown-menu,
+.qc-hero .dropdown-menu, .packing-hero .dropdown-menu,
+.dispatch-hero .dropdown-menu, .section-hero .dropdown-menu,
+.hero .dropdown-menu {
+  z-index: 1080;
+}
+
+/* Hero menus are dark-on-light: force readable colours inside a coloured banner. */
+.exec-hero .dropdown-menu, .isfc-hero .dropdown-menu, .pis-hero .dropdown-menu,
+.si-hero .dropdown-menu, .po-hero .dropdown-menu, .rep-hero .dropdown-menu,
+.qc-hero .dropdown-menu, .packing-hero .dropdown-menu,
+.dispatch-hero .dropdown-menu, .section-hero .dropdown-menu,
+.hero .dropdown-menu {
+  color: var(--phoenix-body-color, #16233a);
+}
+.exec-hero .dropdown-item, .isfc-hero .dropdown-item, .pis-hero .dropdown-item,
+.si-hero .dropdown-item, .po-hero .dropdown-item, .rep-hero .dropdown-item,
+.qc-hero .dropdown-item, .packing-hero .dropdown-item,
+.dispatch-hero .dropdown-item, .section-hero .dropdown-item,
+.hero .dropdown-item {
+  color: inherit !important;
+}
+
+/* ============================================================================
+   Batch 213 — Module Launcher headline card (Image 1).
+   Sits above the module grid, carries the Command Center's own figures and
+   links to it. Dark so it reads as a summary band rather than a ninth tile.
+   ========================================================================== */
+/* Batch 215 (Image 1): the headline card follows the theme like everything
+   else — a white surface with coloured accents in light mode, deep navy in
+   dark. It used to be hard-coded navy, which read as a black slab on a light
+   page. Only the accent bar and the sparkline carry colour now. */
+.lch-hero{display:block;text-decoration:none;margin-bottom:1.25rem;border-radius:18px;
+  padding:18px 20px;background:var(--lch-surface,#fff);color:var(--lch-ink,#132947);
+  border:1px solid var(--lch-border,#e3e9f2);border-top:4px solid #1e5bb8;
+  box-shadow:0 10px 26px rgba(15,30,50,.08);transition:box-shadow .15s,transform .15s}
+[data-bs-theme="dark"] .lch-hero{--lch-surface:#131d30;--lch-ink:#e8eefb;--lch-border:#25324a;
+  box-shadow:0 10px 26px rgba(0,0,0,.35)}
+.lch-hero:hover{box-shadow:0 16px 34px rgba(15,30,50,.14);transform:translateY(-1px);filter:none}
+.lch-hero:focus-visible{outline:3px solid #1e5bb8;outline-offset:3px}
+.lch-hero-top{display:flex;flex-wrap:wrap;gap:.75rem;align-items:flex-start;justify-content:space-between}
+.lch-hero-eyebrow{font-size:.72rem;letter-spacing:.4px;text-transform:uppercase;color:#1e5bb8;font-weight:700}
+.lch-hero h2{font-size:1.5rem;font-weight:800;margin:.15rem 0 .1rem;color:var(--lch-ink,#132947)}
+.lch-hero p{margin:0;font-size:.8rem;color:var(--lch-muted,#6b7a90)}
+[data-bs-theme="dark"] .lch-hero p{--lch-muted:#94a5c0}
+.lch-late{color:#dc3545;font-weight:700}
+.lch-hero-cta{background:#1e5bb8;color:#fff;border-radius:999px;padding:.35rem .9rem;
+  font-size:.8rem;font-weight:700;white-space:nowrap}
+.lch-hero-metrics{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:.6rem;margin-top:1rem}
+.lch-m{background:var(--lch-tile,#f7fafd);border:1px solid var(--lch-border,#e3e9f2);
+  border-radius:12px;padding:.55rem .65rem;border-top:3px solid var(--c,#1e5bb8)}
+[data-bs-theme="dark"] .lch-m{--lch-tile:#0e1726}
+.lch-m-t{font-size:.68rem;text-transform:uppercase;letter-spacing:.3px;color:var(--lch-muted,#6b7a90)}
+.lch-m-v{font-size:1.2rem;font-weight:800;color:var(--lch-ink,#132947);line-height:1.2;font-variant-numeric:tabular-nums}
+.lch-m-v small{font-size:.6rem;color:var(--lch-muted,#6b7a90);font-weight:600}
+.lch-m-d{font-size:.68rem;color:var(--lch-muted,#6b7a90);min-height:1em}
+.lch-m-d .good{color:#15803d;font-weight:700}
+.lch-m-d .bad{color:#b42318;font-weight:700}
+.lch-m .spark{width:100%;height:22px;margin-top:.2rem}
+.lch-m .spark polyline{stroke:var(--c,#1e5bb8)}
+.lch-m .spark-fill{fill:color-mix(in srgb,var(--c,#1e5bb8) 16%,transparent)}
+@media (max-width:1199px){.lch-hero-metrics{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media (max-width:575px){.lch-hero-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}

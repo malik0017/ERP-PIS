@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.core.templates import render
 from app.core.rbac import require_area
 from app.database.session import get_db
+from app.core.db_read import log_failure as db_read_log
 
 router = APIRouter(tags=["dashboard"])
 
@@ -13,14 +14,16 @@ router = APIRouter(tags=["dashboard"])
 def _one(db: Session, sql: str, params: dict | None = None):
     try:
         return db.execute(text(sql), params or {}).scalar() or 0
-    except Exception:
+    except Exception as _exc:
+        db_read_log(_exc, sql, 'routes.py._one')
         return 0
 
 
 def _rows(db: Session, sql: str, params: dict | None = None):
     try:
         return [dict(r) for r in db.execute(text(sql), params or {}).mappings().all()]
-    except Exception:
+    except Exception as _exc:
+        db_read_log(_exc, sql, 'routes.py._rows')
         return []
 
 
@@ -33,13 +36,7 @@ def _pct(value: float, base: float) -> float:
 
 @router.get("/dashboard", name="dashboard")
 async def dashboard(request: Request, db: Session = Depends(get_db)):
-    """Batch 203 — Production Command Center (Images 14–19).
-
-    Rebuilt on app/services/command_center.py: one global filter drives every
-    card, chart and table on the page, all company-scoped. ?mode=presentation
-    hides navigation for a meeting screen; ?mode=wallboard adds auto-refresh and
-    a dark theme for a kitchen/production TV.
-    """
+  
     require_area(request, "dashboard")
     from datetime import datetime as _dt
     from app.services import command_center as cc
@@ -69,6 +66,23 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
         "mode": mode if mode in ("presentation", "wallboard") else "",
         "generated_at": _dt.now().strftime("%Y-%m-%d %H:%M:%S"),
     })
+
+
+@router.get("/dashboard/order/{order_no}/360")
+async def order_360_json(request: Request, order_no: str, db: Session = Depends(get_db)):
+   
+    require_area(request, "dashboard")
+    from fastapi.responses import JSONResponse
+
+    from app.core.company import require_order_scope
+    from app.services import order_360
+
+    require_order_scope(db, request, order_no)
+    cid = int(request.session.get("company_id") or 1)
+    data = order_360.build(db, order_no, cid)
+    if not data:
+        return JSONResponse({"error": "Order not found"}, status_code=404)
+    return JSONResponse(data)
 
 
 @router.get("/dashboard/kpi/{key}")

@@ -1,7 +1,8 @@
 {% extends "layouts/base.html" %}
 {% block content %}
 <div class="container-fluid py-3">
-  <div class="req-hero d-flex align-items-center justify-content-between flex-wrap gap-3 mb-3">
+  <div class="isfc-hero mb-4 p-4 rounded-4 text-white d-flex align-items-center justify-content-between flex-wrap gap-3"
+       style="background:linear-gradient(135deg,#08243d,#1e5bb8)">
     <div>
       <h1 class="mb-1 fw-bold text-white"><i class="bi bi-stopwatch me-2"></i>{{ t('SLA Management') }}</h1>
       <p class="mb-0 opacity-75">{{ t('Configure delivery and operational service-level rules.') }}</p>
@@ -14,6 +15,36 @@
 
   {% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
   {% if request.query_params.get('error') %}<div class="alert alert-danger">{{ request.query_params.get('error') }}</div>{% endif %}
+  {% if request.query_params.get('msg') %}<div class="alert alert-subtle-success py-2">
+    <i class="bi bi-check-circle me-1"></i>{{ request.query_params.get('msg') }}</div>{% endif %}
+
+  {# Batch 214: the starter set. Shown only while nothing is configured — once
+     you have rules of your own this panel has nothing to add and disappears. #}
+  {% if can_action and can_action('settings','edit') and rules|length == 0 %}
+  <div class="card border mb-3" style="border-left:4px solid #1e5bb8">
+    <div class="card-body">
+      <h5 class="fw-bold mb-1"><i class="bi bi-lightning-charge me-1"></i>{{ t('Start with the four SLAs a catering operation commits to') }}</h5>
+      <p class="fs-9 text-body-tertiary mb-2">{{ t('No rules configured yet. These four cover the commitments customers usually write into a contract. Install them, then edit the minutes to match your own agreements.') }}</p>
+      <div class="table-responsive">
+        <table class="table table-sm small mb-2">
+          <thead><tr><th>{{ t('Name') }}</th><th>{{ t('Setting') }}</th><th>{{ t('Why it matters') }}</th></tr></thead>
+          <tbody>
+          {% for s in sla_templates %}
+            <tr><td class="fw-bold">{{ s.rule_name }}</td>
+              <td class="text-nowrap">{{ (s.sla_minutes / 60)|round(1) }} {{ t('hours') }}
+                <div class="fs-10 text-body-tertiary">{{ s.starts_on }} → {{ s.ends_on }}</div></td>
+              <td class="fs-10">{{ s.why }}</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <form method="post" action="/system/sla/install-templates">
+        <button class="btn btn-primary btn-sm fw-bold"><i class="bi bi-plus-lg me-1"></i>{{ t('Install these four rules') }}</button>
+        <span class="fs-10 text-body-tertiary ms-2">{{ t('Nothing is overwritten — anything you have already set is left alone.') }}</span>
+      </form>
+    </div>
+  </div>
+  {% endif %}
 
   {# Live effect of the rules, not just their definition. A config screen that
      only lists rules cannot tell you whether they are working. #}

@@ -21,6 +21,7 @@ from app.core.templates import render
 from app.core.rbac import require_area
 from app.database.session import get_db
 from app.core.sql_scope import scoped
+from app.core.db_read import log_failure as db_read_log
 
 router = APIRouter(tags=["Reports"])
 
@@ -35,7 +36,10 @@ def _count(db: Session, sql: str, params: dict | None = None, cid: int | None = 
         sql, params = scoped(sql, params, cid)
     try:
         return int(db.execute(text(sql), params or {}).scalar() or 0)
-    except Exception:
+    except Exception as _exc:
+        # Batch 221: logged, not swallowed — a silent except here makes
+        # a broken query look like an empty table (app/core/db_read.py).
+        db_read_log(_exc, sql, 'routes_workflow.py._count')
         return 0
 
 

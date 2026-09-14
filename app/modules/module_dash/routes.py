@@ -8,14 +8,10 @@ from app.core.templates import render
 from app.core.rbac import require_area, can_access
 from app.core.sql_scope import scoped
 from app.database import get_db
+from app.core.db_read import log_failure as db_read_log
 
 router = APIRouter(tags=["Module Dashboards"])
 
-# Batch 208: every KPI and chart query in this module comes from the config
-# table above, so scoping them one by one would leave the NEXT KPI someone adds
-# unscoped. scope_sql() adds the company condition to the outer query
-# mechanically; anything it cannot parse safely is left alone and reported by
-# scripts/test_company_scope.py rather than silently rewritten.
 def _scoped(sql: str, cid: int, params: dict | None = None):
     return scoped(sql, params, cid)
 
@@ -24,14 +20,20 @@ def _n(db: Session, sql: str, params: dict | None = None) -> float:
     try:
         v = db.execute(text(sql), params or {}).scalar()
         return float(v or 0)
-    except Exception:
+    except Exception as _exc:
+        # Batch 221: logged, not swallowed — a silent except here makes
+        # a broken query look like an empty table (app/core/db_read.py).
+        db_read_log(_exc, sql, 'routes.py._n')
         return 0.0
 
 
 def _rows(db: Session, sql: str, params: dict | None = None) -> list:
     try:
         return list(db.execute(text(sql), params or {}).mappings().all())
-    except Exception:
+    except Exception as _exc:
+        # Batch 221: logged, not swallowed — a silent except here makes
+        # a broken query look like an empty table (app/core/db_read.py).
+        db_read_log(_exc, sql, 'routes.py._rows')
         return []
 
 

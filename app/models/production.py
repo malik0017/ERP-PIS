@@ -265,4 +265,8 @@ class PackingDispatch(Base):
     delivery_otp_generated_at = Column(DateTime, nullable=True)
     delivery_confirmed_by = Column(String(20), nullable=True)
     pod_photo_path = Column(String(300), nullable=True)
+    # Batch 224 — OTIF evidence; see the schema guard in dispatch/routes.py.
+    delivered_at = Column(DateTime, nullable=True)
+    delivered_portions = Column(Float, nullable=True)
+    delivery_shortfall_reason = Column(String(255), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)

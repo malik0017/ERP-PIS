@@ -80,6 +80,23 @@
                 <input class="form-control" id="rejBags" type="number" min="0" step="1" name="rejected_bags" value="{{ rejected_bags or '' }}" placeholder="0"></div>
               <div class="col-6 col-md-9"><label class="form-label small fw-bold" for="rejReason">{{ t('Rejection Reason') }}</label>
                 <input class="form-control" id="rejReason" name="rejected_bags_reason" value="{{ rejected_reason or '' }}" placeholder="{{ t('e.g. torn bag, temperature breach, wrong label') }}"></div>
+              {# Batch 224: OTIF evidence. Only meaningful when the status is
+                 Delivered, so the fields are shown but explicitly optional —
+                 leaving the quantity blank keeps the order OUT of the in-full
+                 calculation rather than assuming it arrived complete. #}
+              <div class="col-6 col-md-3"><label class="form-label small fw-bold" for="dlvAt">{{ t('Delivered At') }}</label>
+                <input class="form-control" id="dlvAt" type="datetime-local" name="delivered_at"
+                       value="{{ (r.delivered_at|string)[:16]|replace(' ','T') if r.delivered_at else '' }}">
+                <div class="fs-10 text-body-tertiary">{{ t('Blank = now, when marked Delivered') }}</div></div>
+              <div class="col-6 col-md-3"><label class="form-label small fw-bold" for="dlvQty">{{ t('Delivered Portions') }}</label>
+                <input class="form-control" id="dlvQty" type="number" step="0.01" min="0" name="delivered_portions"
+                       value="{{ r.delivered_portions or '' }}"
+                       placeholder="{{ '%g'|format(order.total_planned_portions or 0) if order else '' }}">
+                <div class="fs-10 text-body-tertiary">{{ t('Leave blank if not counted') }}</div></div>
+              <div class="col-12 col-md-6"><label class="form-label small fw-bold" for="dlvWhy">{{ t('Shortfall Reason') }}</label>
+                <input class="form-control" id="dlvWhy" name="delivery_shortfall_reason"
+                       value="{{ r.delivery_shortfall_reason or '' }}"
+                       placeholder="{{ t('Only if fewer portions were delivered than ordered') }}"></div>
               <div class="col-6 col-md-3"><label class="form-label small fw-bold">{{ t('Dispatch Date') }}</label>
                 <input class="form-control" type="date" name="dispatch_date" value="{{ r.dispatch_date or '' }}"></div>
               <div class="col-6 col-md-3"><label class="form-label small fw-bold">{{ t('Status') }}</label>

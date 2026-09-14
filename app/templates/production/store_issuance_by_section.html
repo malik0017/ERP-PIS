@@ -120,8 +120,13 @@
            Required/Issued/UOM/Orders/Action) — safe for the shared
            toolbar, unlike Packing's two-row Recipe Pack Detail header. #}
         <table class="table table-sm si-table" data-isfc-table data-isfc-colfilters
-               data-isfc-title="Store Issuance — {{ g.section }} Consolidated"
-               data-isfc-subtitle="{{ filters.order or 'All orders' }}">
+               data-isfc-title="{{ t('Store Issuance') }} — {{ g.section }} {{ t('Consolidated') }}"
+               data-isfc-subtitle="{{ filters.order or t('All orders') }}{% if filters.customer %} · {{ filters.customer }}{% endif %}"
+               {# Batch 211 (Image 8): order context on the exported sheet. #}
+               data-isfc-meta='[["{{ t('Section') }}","{{ g.section }}"],
+                                ["{{ t('Order') }}","{{ filters.order or t('All orders') }}"],
+                                ["{{ t('Lines') }}","{{ g.consolidated|length }}"],
+                                ["{{ t('Pending Lines') }}","{{ g.pending_lines }}"]]'>
           <thead><tr><th>Code</th><th>Ingredient</th><th class="text-end">Total Required</th><th class="text-end">Issued</th><th class="text-end">{{ t('Excess / Short') }}</th><th>UOM</th><th>Orders</th><th class="si-action-col" data-isfc-nofilter>Action</th></tr></thead>
           <tbody>
           {% for c in g.consolidated %}
@@ -185,8 +190,12 @@
       <summary class="fw-bold text-secondary">Line detail ({{ g.lines|length }} lines)</summary>
       <div class="table-responsive mt-2">
       <table class="table align-middle si-table" data-isfc-table data-isfc-colfilters
-             data-isfc-title="Store Issuance — {{ g.section }} Line Detail"
-             data-isfc-subtitle="{{ filters.order or 'All orders' }}">
+             data-isfc-title="{{ t('Store Issuance') }} — {{ g.section }} {{ t('Line Detail') }}"
+             data-isfc-subtitle="{{ filters.order or t('All orders') }}{% if filters.customer %} · {{ filters.customer }}{% endif %}"
+             data-isfc-meta='[["{{ t('Section') }}","{{ g.section }}"],
+                              ["{{ t('Order') }}","{{ filters.order or t('All orders') }}"],
+                              ["{{ t('Lines') }}","{{ g.lines }}"],
+                              ["{{ t('Pending Lines') }}","{{ g.pending_lines }}"]]'>
         <thead><tr><th>Priority</th><th>Order</th><th>Customer</th><th>Recipe</th><th>Ingredient</th><th class="text-end">Required</th><th class="text-end">Issued</th><th>Status</th></tr></thead>
         <tbody>
         {% for l in g.lines %}

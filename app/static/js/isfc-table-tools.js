@@ -104,9 +104,87 @@
       });
     return _pdfLibReady;
   }
+  // --------------------------------------------------------------------------
+  // Batch 222 — Arabic PDFs.
+  //
+  // jsPDF's built-in fonts have no Arabic glyphs, and Arabic also needs shaping
+  // (letters change form by position) and bidi reordering. None of that belongs
+  // in the browser. When the page is Arabic, or the table itself contains
+  // Arabic, the rows are posted to /export/table-pdf and rendered server-side
+  // with the Amiri font — the same engine that already produces the picking
+  // list. Latin-only tables keep the instant client-side path.
+  // --------------------------------------------------------------------------
+  var AR_RE = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/;
+
+  function needsServerPdf(table, title) {
+    var lang = (document.documentElement.getAttribute('lang') || '').toLowerCase();
+    var dir = (document.documentElement.getAttribute('dir') || '').toLowerCase();
+    if (lang.indexOf('ar') === 0 || dir === 'rtl') return true;
+    return AR_RE.test((title || '') + ' ' + (table.innerText || '').slice(0, 4000));
+  }
+
+  function serverPdf(table, name, title, btn) {
+    var head = [], body = [];
+    var clone = document.createElement('div');
+    clone.innerHTML = printableTable(table);      // controls stripped, filter row gone
+    var t = clone.querySelector('table');
+    (t.querySelectorAll('thead tr')[0] || { cells: [] }).cells &&
+      Array.prototype.forEach.call(t.querySelectorAll('thead tr')[0].cells, function (th) {
+        // Strip the sort-arrow glyphs the header carries in the DOM.
+        head.push((th.textContent || '').replace(/[\u25B2\u25BC\u2191\u2193\u21C5]/g, '')
+                                        .replace(/\s+/g, ' ').trim());
+      });
+    Array.prototype.forEach.call(t.querySelectorAll('tbody tr'), function (tr) {
+      if (tr.style.display === 'none') return;    // respect the current filter
+      var row = [];
+      Array.prototype.forEach.call(tr.cells, function (td) {
+        // Amiri has no dingbats: a tick copied from a checkbox renders as a
+        // missing-glyph box in the PDF. Send words instead of symbols.
+        row.push((td.innerText || '')
+          .replace(/\u2713/g, 'Y').replace(/\u2717|\u2718/g, 'N')
+          .replace(/\s+/g, ' ').trim());
+      });
+      if (row.length) body.push(row);
+    });
+    var meta = [];
+    try { meta = JSON.parse(table.getAttribute('data-isfc-meta') || '[]'); } catch (e) { meta = []; }
+
+    return fetch('/export/table-pdf', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: title || name || 'Export',
+        subtitle: table.getAttribute('data-isfc-subtitle') || '',
+        meta: meta, head: head, body: body,
+        lang: document.documentElement.getAttribute('lang') || 'ar',
+        landscape: head.length > 7
+      })
+    }).then(function (r) {
+      if (!r.ok) throw new Error(r.status);
+      return r.blob();
+    }).then(function (blob) {
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = (name || 'export') + '.pdf';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function () { URL.revokeObjectURL(a.href); }, 4000);
+    });
+  }
+
   function downloadPDF(table, name, title, btn) {
     var old = btn ? btn.innerHTML : '';
     if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>'; }
+    if (needsServerPdf(table, title)) {
+      serverPdf(table, name, title, btn)
+        .catch(function () {
+          // Server route unreachable: fall back to the browser print window,
+          // which renders Arabic correctly (Batch 211) — better than a PDF
+          // with the Arabic silently removed.
+          printTable(table, title);
+        })
+        .then(function () { if (btn) { btn.disabled = false; btn.innerHTML = old; } });
+      return;
+    }
     ensurePdfLib().then(function () {
       var jsPDF = window.jspdf.jsPDF;
       // Batch 122: the jsPDF core font (Helvetica) is Latin-1 only. Sortable
@@ -130,22 +208,89 @@
       var landscape = rows[0].length > 6;
       var doc = new jsPDF({ orientation: landscape ? 'landscape' : 'portrait', unit: 'pt', format: 'a4' });
       var dir = document.documentElement.getAttribute('dir') || 'ltr';
-      doc.setFontSize(13);
-      doc.text(pdfClean(title || 'Export'), 40, 34);
-      doc.setFontSize(8); doc.setTextColor(120);
-      // Batch 139: optional subtitle line (e.g. "Order … · Customer …") so every
-      // exported document is self-describing.
+      // ----------------------------------------------------------------------
+      // Batch 211 (Images 6, 8) — every table PDF in the system now prints in
+      // the Bill of Quantity house style instead of black-on-white: a navy
+      // title band, the order context as fact boxes, a coloured column header,
+      // zebra rows, status cells tinted by meaning, and page numbers.
+      //
+      // Done HERE, in the shared generator, rather than per screen: this one
+      // function produces the PDF for every `data-isfc-table` in the system, so
+      // Store Issuance Lines, Butchery Consolidated and roughly forty other
+      // exports pick up the same look from a single change.
+      //
+      // Context comes from data-isfc-meta='[["Customer","…"],["Delivery","…"]]'
+      // on the table. Absent on most screens — the header simply collapses.
+      // ----------------------------------------------------------------------
+      var NAVY = [19, 41, 71], BLUE = [30, 91, 184], MUTED = [107, 122, 144];
+      var pageW = doc.internal.pageSize.getWidth();
+      var meta = [];
+      try { meta = JSON.parse(table.getAttribute('data-isfc-meta') || '[]'); } catch (e) { meta = []; }
+
+      doc.setFillColor(NAVY[0], NAVY[1], NAVY[2]);
+      doc.rect(0, 0, pageW, 46, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(14); doc.setFont(undefined, 'bold');
+      doc.text(pdfClean(title || 'Export'), 40, 24);
+      doc.setFont(undefined, 'normal'); doc.setFontSize(8);
       var _sub = table.getAttribute('data-isfc-subtitle');
-      var _yStart = 60;
-      if (_sub) { doc.text(pdfClean(_sub), 40, 48); doc.text(new Date().toLocaleString() + '  \u00b7  ISFC ERP', 40, 60); _yStart = 74; }
-      else { doc.text(new Date().toLocaleString() + '  \u00b7  ISFC ERP', 40, 48); }
+      if (_sub) doc.text(pdfClean(_sub), 40, 37);
+      var stampTxt = new Date().toLocaleString() + '  \u00b7  ISFC PIMS';
+      doc.text(stampTxt, pageW - 40 - doc.getTextWidth(stampTxt), 37);
+
+      var _yStart = 62;
+      if (meta.length) {
+        // Fact boxes, four per row, mirroring the BOQ sheet's header strip.
+        var perRow = 4, boxW = (pageW - 80 - (perRow - 1) * 8) / perRow, boxH = 26, bx = 40, by = 56;
+        meta.forEach(function (m, i) {
+          if (i && i % perRow === 0) { by += boxH + 6; bx = 40; }
+          doc.setDrawColor(214, 222, 234); doc.setFillColor(255, 255, 255);
+          doc.roundedRect(bx, by, boxW, boxH, 3, 3, 'FD');
+          doc.setFontSize(6); doc.setTextColor(MUTED[0], MUTED[1], MUTED[2]);
+          doc.text(pdfClean(String(m[0] || '')).toUpperCase(), bx + 5, by + 9);
+          doc.setFontSize(8.5); doc.setTextColor(19, 41, 71);
+          doc.text(pdfClean(String(m[1] == null ? '' : m[1])), bx + 5, by + 20);
+          bx += boxW + 8;
+        });
+        _yStart = by + boxH + 10;
+      }
+
+      // Status-like cells get a tint so exceptions are findable on paper.
+      var TINT = [
+        [/(^|\s)short/i,            [253, 232, 232], [164, 35, 35]],
+        [/excess|over.?issued/i,    [255, 241, 224], [180, 83, 9]],
+        [/pending|waiting|not\s/i,  [255, 248, 224], [146, 96, 10]],
+        [/issued|exact|passed|ok|complete|delivered|transferred/i, [226, 246, 233], [10, 122, 51]],
+        [/reject|fail|delay|late/i, [253, 232, 232], [164, 35, 35]]
+      ];
       doc.autoTable({
         head: head, body: body, startY: _yStart,
-        styles: { fontSize: 7, cellPadding: 3, overflow: 'linebreak',
+        styles: { fontSize: 7, cellPadding: 3.2, overflow: 'linebreak',
+                  lineColor: [223, 231, 240], lineWidth: 0.4,
                   halign: dir === 'rtl' ? 'right' : 'left' },
-        headStyles: { fillColor: [71, 85, 105], textColor: 255, fontSize: 7 },
-        alternateRowStyles: { fillColor: [245, 248, 252] },
-        margin: { left: 40, right: 40 },
+        headStyles: { fillColor: NAVY, textColor: 255, fontSize: 7, fontStyle: 'bold' },
+        alternateRowStyles: { fillColor: [247, 250, 253] },
+        margin: { left: 40, right: 40, top: 56 },
+        didParseCell: function (d) {
+          if (d.section !== 'body') return;
+          var txt = String(d.cell.raw == null ? '' : d.cell.raw).trim();
+          if (!txt || txt.length > 28) return;
+          for (var i = 0; i < TINT.length; i++) {
+            if (TINT[i][0].test(txt)) {
+              d.cell.styles.fillColor = TINT[i][1];
+              d.cell.styles.textColor = TINT[i][2];
+              d.cell.styles.fontStyle = 'bold';
+              return;
+            }
+          }
+        },
+        didDrawPage: function (d) {
+          var n = doc.internal.getNumberOfPages();
+          doc.setFontSize(7); doc.setTextColor(MUTED[0], MUTED[1], MUTED[2]);
+          doc.text('Generated by ISFC PIMS', 40, doc.internal.pageSize.getHeight() - 18);
+          var pg = 'Page ' + d.pageNumber + ' / ' + n;
+          doc.text(pg, pageW - 40 - doc.getTextWidth(pg), doc.internal.pageSize.getHeight() - 18);
+        }
       });
       doc.save((name || 'export') + '.pdf');
     }).catch(function (e) {
@@ -165,23 +310,94 @@
     });
   }
 
+  function printableTable(table) {
+    // Batch 211: a printed sheet is a document, not a form. The live table
+    // carries checkboxes, quantity inputs, section dropdowns, a per-column
+    // filter row and an action column — all meaningless on paper and all
+    // previously printed as-is. Clone it, replace each control with the value
+    // it currently holds, and drop the filter row and action column.
+    var clone = table.cloneNode(true);
+    clone.querySelectorAll('input, select, textarea').forEach(function (el) {
+      var span = document.createElement('span');
+      if (el.type === 'checkbox' || el.type === 'radio') {
+        span.textContent = el.checked ? '\u2713' : '';
+      } else if (el.tagName === 'SELECT') {
+        span.textContent = el.options.length && el.selectedIndex >= 0
+          ? el.options[el.selectedIndex].text : '';
+      } else {
+        span.textContent = el.value || '';
+      }
+      el.parentNode.replaceChild(span, el);
+    });
+    // The filter row is the header row whose cells only ever held inputs.
+    clone.querySelectorAll('thead tr').forEach(function (tr) {
+      if (tr.classList.contains('isfc-filter-row') ||
+          (tr.querySelectorAll('th').length &&
+           !Array.prototype.some.call(tr.querySelectorAll('th'), function (th) {
+             return (th.textContent || '').trim().length;
+           }))) {
+        tr.parentNode.removeChild(tr);
+      }
+    });
+    // Drop columns marked as actions / no-print, header and body together.
+    var drop = [];
+    clone.querySelectorAll('thead tr:first-child th').forEach(function (th, i) {
+      if (th.classList.contains('si-action-col') || th.hasAttribute('data-isfc-noprint') ||
+          /^(action|save)s?$/i.test((th.textContent || '').trim())) drop.push(i);
+    });
+    if (drop.length) {
+      clone.querySelectorAll('tr').forEach(function (tr) {
+        drop.slice().reverse().forEach(function (i) {
+          if (tr.cells[i]) tr.deleteCell(i);
+        });
+      });
+    }
+    return clone.outerHTML;
+  }
+
   function printTable(table, title) {
+    // Batch 211: the print view now uses the SAME stylesheet as every other
+    // ISFC document (app/static/css/isfc-report.css, Batch 209), so "Print"
+    // and "PDF" from a table look like the Bill of Quantity rather than a bare
+    // browser table. Meta boxes come from data-isfc-meta, same as the PDF.
     var w = window.open('', '_blank');
     var dir = document.documentElement.getAttribute('dir') || 'ltr';
     var sub = table.getAttribute('data-isfc-subtitle');
-    w.document.write('<html dir="' + dir + '"><head><title>' + (title || 'Print') + '</title>' +
-      '<style>body{font-family:"Nunito Sans",Arial,sans-serif;padding:24px;color:#1f2937}' +
-      'h2{margin:0 0 4px}p{margin:0 0 16px;color:#6b7a90;font-size:12px}' +
-      'table{border-collapse:collapse;width:100%;font-size:12px}' +
-      'th,td{border:1px solid #d8e2ef;padding:6px 9px;text-align:' + (dir === 'rtl' ? 'right' : 'left') + '}' +
-      'th{background:#f5f8fc;text-transform:uppercase;font-size:10px;letter-spacing:.04em}' +
-      '.badge{border:1px solid #cbd5e1;border-radius:8px;padding:1px 6px;font-size:10px}</style></head><body>' +
-      '<h2>' + (title || '') + '</h2>' +
-      (sub ? '<p style="font-weight:600;color:#334">' + sub + '</p>' : '') +
-      '<p>' + new Date().toLocaleString() + ' · ISFC ERP</p>' +
-      table.outerHTML + '</body></html>');
+    var meta = [];
+    try { meta = JSON.parse(table.getAttribute('data-isfc-meta') || '[]'); } catch (e) { meta = []; }
+    function esc(v) {
+      return String(v == null ? '' : v).replace(/[&<>"]/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+      });
+    }
+    var facts = meta.length
+      ? '<div class="rp-facts' + (meta.length > 4 ? ' rp-6' : '') + '">' +
+        meta.map(function (m) { return '<div><b>' + esc(m[0]) + '</b>' + esc(m[1]) + '</div>'; }).join('') +
+        '</div>'
+      : '';
+    var css = (document.querySelector('link[href*="isfc-report.css"]') || {}).href ||
+              '/css/isfc-report.css';
+    w.document.write(
+      '<html dir="' + dir + '"><head><meta charset="utf-8"><title>' + esc(title || 'Print') + '</title>' +
+      '<link rel="stylesheet" href="' + css + '">' +
+      '<style>.rp-sheet{width:auto}.rp-status-short{background:#fde8e8;color:#a42323;font-weight:700}' +
+      '.rp-status-excess{background:#fff1e0;color:#b45309;font-weight:700}' +
+      '.rp-status-pending{background:#fff8e0;color:#92600a;font-weight:700}' +
+      '.rp-status-ok{background:#e2f6e9;color:#0a7a33;font-weight:700}</style></head><body>' +
+      '<div class="rp-sheet rp-wide"><div class="rp-head"><div><h1>' + esc(title || '') + '</h1>' +
+      (sub ? '<div class="rp-sub">' + esc(sub) + '</div>' : '') + '</div>' +
+      '<div class="rp-right"><div class="rp-sub">International Specialized Food Company</div>' +
+      '<div class="rp-ref">' + new Date().toLocaleString() + ' \u00b7 ISFC PIMS</div></div></div>' +
+      facts + printableTable(table) +
+      '<div class="rp-stamp">Generated by ISFC PIMS</div></div>' +
+      '<script>(function(){var re=[[/(^|\\s)short/i,"short"],[/excess|over.?issued/i,"excess"],' +
+      '[/pending|waiting/i,"pending"],[/issued|exact|passed|delivered|transferred|complete/i,"ok"]];' +
+      'document.querySelectorAll("tbody td").forEach(function(td){var t=(td.textContent||"").trim();' +
+      'if(!t||t.length>28)return;for(var i=0;i<re.length;i++){if(re[i][0].test(t)){' +
+      'td.className+=" rp-status-"+re[i][1];return;}}});})();<\/script>' +
+      '</body></html>');
     w.document.close(); w.focus();
-    setTimeout(function () { w.print(); w.close(); }, 300);
+    setTimeout(function () { w.print(); w.close(); }, 400);
   }
 
   // Batch 141: per-column filters, generalised from the hand-copied Batch 137

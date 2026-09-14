@@ -1,10 +1,7 @@
 {% extends "layouts/base.html" %}
 {% block title %}{{ t('Production Command Center') }}{% endblock %}
 {% block content %}
-{# ============================================================================
-   Batch 203 — Production Command Center (Images 14–19).
-   Data: app/services/command_center.py (one global filter, company-scoped).
-   ============================================================================ #}
+
 {% macro fmt(v, kind, unit='') -%}
   {%- if v is none -%}—
   {%- elif kind == 'money' -%}
@@ -55,6 +52,17 @@
   .cc-pill.ontrack{background:#e3f6ea;color:#15803d}.cc-pill.delayed{background:#fde8e8;color:#b42318}
   .cc-pill.hold{background:#fff3dc;color:#a15c00}.cc-pill.done{background:#e8f0fe;color:#1e5bb8}
   .cc-pill.qc-Passed{background:#e3f6ea;color:#15803d}.cc-pill.qc-Rejected{background:#fde8e8;color:#b42318}.cc-pill.qc-Hold{background:#fff3dc;color:#a15c00}.cc-pill.qc-none{background:#eef1f5;color:#6b7a90}
+  /* Batch 210 (Image 2): softer row colouring — zebra + status tint rather than
+     a wall of bold text, and the delayed rows stand out without shouting. */
+  .cc-batch thead th{background:#eef3fb;color:#33496b;border-bottom:2px solid #d8e3f4}
+  .cc-batch tbody tr:nth-child(even) td{background:#fbfdff}
+  .cc-batch tbody tr:hover td{background:#eef5ff}
+  .cc-batch tbody tr[data-health="Delayed"] td:first-child{box-shadow:inset 3px 0 0 #dc3545}
+  .cc-batch tbody tr[data-health="On hold"] td:first-child{box-shadow:inset 3px 0 0 #e59f0b}
+  .cc-batch tbody tr[data-health="Completed"] td:first-child{box-shadow:inset 3px 0 0 #15803d}
+  .cc-batch tbody tr[data-health="On track"] td:first-child{box-shadow:inset 3px 0 0 #1e5bb8}
+  .cc-pager{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;padding:.6rem 1rem;border-top:1px solid var(--cc-border)}
+  .cc-pager .btn{padding:.15rem .6rem}
   .cc-drawer .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:.5rem}
   .cc-drawer .tiles div{border:1px solid var(--cc-border);border-radius:.55rem;padding:.45rem .55rem;font-size:.7rem;color:var(--cc-muted)}
   .cc-drawer .tiles strong{display:block;font-size:1rem;color:var(--phoenix-emphasis-color,#132947)}
@@ -63,10 +71,35 @@
   @media (max-width:1199px){.cc-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
   @media (max-width:575px){.cc-kpis,.cc-att,.cc-stage{grid-template-columns:1fr}.cc-fresh{grid-template-columns:1fr 1fr}}
   /* Presentation & wallboard: navigation off, content full width */
-  body.cc-present .navbar-vertical, body.cc-present .navbar-top, body.cc-present footer, body.cc-present .isfc-customize-btn{display:none!important}
-  body.cc-present .content{margin-inline-start:0!important;padding-top:1rem!important;max-width:100%!important}
-  body.cc-wall .cc-kpi .v{font-size:2.2rem}
-  body.cc-present .gf-card.cc-hide-present{display:none}
+
+  .cc{
+    --cc-surface:#fff; --cc-surface-2:#f7fafd; --cc-ink:#132947;
+    --cc-border:#dfe5ee; --cc-muted:#6b7a90; --cc-page:#f3f6fb;
+  }
+  [data-bs-theme="dark"] .cc{
+    --cc-surface:#131d30; --cc-surface-2:#0e1726; --cc-ink:#e8eefb;
+    --cc-border:#25324a; --cc-muted:#94a5c0; --cc-page:#0a1220;
+  }
+  .cc-kpi,.cc-panel,.cc-fresh,.cc-att a{background:var(--cc-surface);border-color:var(--cc-border)}
+  .cc-kpi .v,.cc-head h1,.cc-panel .cc-ph h2,.cc-fresh strong{color:var(--cc-ink)}
+  .cc-bar,.cc-batch tbody tr:nth-child(even) td{background:var(--cc-surface-2)}
+  [data-bs-theme="dark"] .cc-batch thead th{background:#18243a;color:#cbd9f0;border-bottom-color:#25324a}
+  [data-bs-theme="dark"] .cc-batch tbody tr:hover td{background:#1b2940}
+  [data-bs-theme="dark"] .cc-delta.flat{background:#25324a;color:#a9b8d1}
+  [data-bs-theme="dark"] .cc-pill.ontrack{background:#123524;color:#7fe0a3}
+  [data-bs-theme="dark"] .cc-pill.delayed{background:#3a1720;color:#ffa3a3}
+  [data-bs-theme="dark"] .cc-pill.hold{background:#3a2c10;color:#ffd48a}
+  [data-bs-theme="dark"] .cc-pill.done{background:#122a45;color:#8ab9ff}
+  [data-bs-theme="dark"] .cc-drawer .tiles div,[data-bs-theme="dark"] .cc-drawer .sec{border-color:var(--cc-border)}
+
+  /* Presentation / wallboard: size and chrome only, never colour. */
+  body.wb-wall .cc-kpi .v{font-size:2.4rem}
+  body.wb-wall .cc-kpi .t{font-size:.86rem}
+  body.wb-wall .cc-panel .cc-ph h2{font-size:1.05rem}
+  body.wb-wall .cc-batch{font-size:.9rem}
+  body.wb-wall .cc{--cc-page:transparent}
+  html{scroll-behavior:auto}
+  body.wb-on .gf-card.cc-hide-present{display:none}
   @media (prefers-reduced-motion:reduce){.cc-kpi{transition:none}}
 </style>
 
@@ -78,14 +111,7 @@
       <!-- <p>{{ t('Orders, cost, waste, quality and delivery for the selected period — one filter drives every number.') }}</p> -->
     </div>
     <div class="ms-auto d-flex flex-wrap gap-2">
-      {% set _qs = request.url.query %}
-      {% if mode %}
-      <a class="btn btn-sm btn-phoenix-secondary" href="/dashboard?{{ _qs|replace('mode=' ~ mode, '')|trim('&') }}"><i class="bi bi-box-arrow-left me-1"></i>{{ t('Exit') }} {{ t(mode|capitalize) }}</a>
-      {% else %}
-      <a class="btn btn-sm btn-phoenix-secondary" href="/dashboard?{{ _qs }}{{ '&' if _qs }}mode=presentation"><i class="bi bi-easel me-1"></i>{{ t('Presentation') }}</a>
-      <a class="btn btn-sm btn-phoenix-secondary" href="/dashboard?{{ _qs }}{{ '&' if _qs }}mode=wallboard"><i class="bi bi-display me-1"></i>{{ t('Wallboard') }}</a>
-      {% endif %}
-      <button type="button" class="btn btn-sm btn-phoenix-secondary" id="ccFull" aria-label="{{ t('Full screen') }}"><i class="bi bi-arrows-fullscreen"></i></button>
+      {% set wb_route = '/dashboard' %}{% include 'partials/wallboard_mode.html' %}
       <!-- <a class="btn btn-sm btn-primary" href="/production/orders"><i class="bi bi-list-task me-1"></i>{{ t('Production Orders') }}</a> -->
     </div>
   </div>
@@ -234,9 +260,9 @@
   {# ------------------------------ Batch table ------------------------------ #}
   <div role="region" class="cc-panel mb-3">
     <div class="cc-ph"><h2>{{ t('Production order detail') }}</h2><small>{{ t('Stage, quantities, cycle, delay and QC evidence') }}</small></div>
-    <div class="b p-0">
+    <div class="b p-4">
       <div class="table-responsive">
-        <table class="table table-sm table-hover mb-0 small" data-isfc-table data-isfc-colfilters
+        <table class="table table-sm table-hover mb-0 small cc-batch" id="ccBatchTable" data-isfc-table data-isfc-colfilters
                data-isfc-title="{{ t('Production order detail') }}" data-isfc-subtitle="{{ filters.date_from }} → {{ filters.date_to }}">
           <thead class="bg-body-highlight"><tr>
             <th>{{ t('Order') }}</th><th>{{ t('Delivery') }}</th><th>{{ t('Customer') }}</th><th>{{ t('Recipe') }}</th>
@@ -249,8 +275,13 @@
           <tbody>
           {% for b in batches %}
             {% set hcls = {'Delayed': 'delayed', 'On hold': 'hold', 'Completed': 'done'}.get(b.health, 'ontrack') %}
-            <tr>
-              <td><a class="fw-bold" href="/production/orders/{{ b.order_no }}">{{ b.order_no }}</a></td>
+            <tr data-health="{{ b.health }}">
+              {# Batch 216: the order number opens the 360 drawer instead of
+                 navigating away — on a wall board, leaving the page loses the
+                 view everyone is watching. The full order page is one click
+                 further, from inside the drawer. #}
+              <td><a class="fw-bold" href="/production/orders/{{ b.order_no }}"
+                     data-order-360="{{ b.order_no }}">{{ b.order_no }}</a></td>
               <td class="text-nowrap">{{ b.delivery_date }}</td>
               <td>{{ b.customer_name }}</td>
               <td>{{ b.first_recipe or '—' }}{% if b.recipes and b.recipes > 1 %} <span class="text-body-tertiary">+{{ b.recipes - 1 }}</span>{% endif %}</td>
@@ -276,9 +307,22 @@
           </tbody>
         </table>
       </div>
+      <div class="cc-pager">
+        <label class="fs-9 text-body-tertiary mb-0" for="ccRows">{{ t('Rows per page') }}</label>
+        <select id="ccRows" class="form-select form-select-sm" style="width:auto">
+          <option>10</option><option selected>25</option><option>50</option><option>100</option>
+        </select>
+        <span class="fs-9 text-body-tertiary" id="ccPageInfo"></span>
+        <div class="ms-auto btn-group btn-group-sm">
+          <button type="button" class="btn btn-phoenix-secondary" id="ccPrev">&laquo; {{ t('Previous') }}</button>
+          <button type="button" class="btn btn-phoenix-secondary" id="ccNext">{{ t('Next') }} &raquo;</button>
+        </div>
+      </div>
     </div>
   </div>
 </div>
+
+{% include 'partials/order_360_drawer.html' %}
 
 {# ------------------------------ KPI drawer ------------------------------ #}
 <div class="offcanvas offcanvas-end cc-drawer" tabindex="-1" id="ccDrawer" aria-labelledby="ccDrawerTitle" style="width:min(880px,100vw)">
@@ -316,8 +360,6 @@
   var I18N = {{ {'no_rows': t('No records for this filter.'), 'loading': t('Loading…'), 'days': t('days'), 'period': filters.date_from ~ ' → ' ~ filters.date_to}|tojson }};
   var root = document.getElementById('ccRoot');
   var mode = root.dataset.mode;
-  if (mode) document.body.classList.add('cc-present');
-  if (mode === 'wallboard') { document.body.classList.add('cc-wall'); document.documentElement.setAttribute('data-bs-theme', 'dark'); }
 
   function fmt(v, kind, unit) {
     if (v === null || v === undefined) return '—';
@@ -367,7 +409,7 @@
           document.getElementById('ccDUnit').textContent = d.unit || '';
           if (!d.rows || !d.rows.length) { body.innerHTML = '<tr><td colspan="5" class="text-body-tertiary">' + esc(I18N.no_rows) + '</td></tr>'; return; }
           body.innerHTML = d.rows.map(function (r) {
-            return '<tr><td><a href="/production/orders/' + encodeURIComponent(r.ref) + '">' + esc(r.ref) + '</a></td><td>' + esc(r.customer) +
+            return '<tr><td><a href="/production/orders/' + encodeURIComponent(r.ref) + '" data-order-360="' + esc(r.ref) + '">' + esc(r.ref) + '</a></td><td>' + esc(r.customer) +
                    '</td><td>' + esc(r.stage) + '</td><td class="text-nowrap">' + esc(r.due) + '</td><td class="text-end fw-bold">' + esc(r.metric) + '</td></tr>';
           }).join('');
         })
@@ -375,12 +417,51 @@
     });
   });
 
-  var full = document.getElementById('ccFull');
-  if (full) full.addEventListener('click', function () {
-    if (!document.fullscreenElement) { (document.documentElement.requestFullscreen || function () {}).call(document.documentElement); }
-    else if (document.exitFullscreen) { document.exitFullscreen(); }
-  });
-  if (mode === 'wallboard') { setTimeout(function () { location.reload(); }, 120000); }
+
+  // ---- Batch 210: pagination for the production order table ---------------
+  (function () {
+    var table = document.getElementById('ccBatchTable');
+    if (!table) return;
+    var body = table.tBodies[0];
+    var sel = document.getElementById('ccRows');
+    var info = document.getElementById('ccPageInfo');
+    var prev = document.getElementById('ccPrev');
+    var next = document.getElementById('ccNext');
+    var page = 1;
+
+    function rows() {
+   
+      return Array.prototype.filter.call(body.rows, function (r) {
+        return !r.dataset.ccHidden && r.style.display !== 'none' && r.cells.length > 3;
+      });
+    }
+    function render() {
+      var all = Array.prototype.filter.call(body.rows, function (r) { return r.cells.length > 3; });
+      all.forEach(function (r) { if (r.dataset.ccHidden) { r.style.display = ''; delete r.dataset.ccHidden; } });
+      var visible = Array.prototype.filter.call(body.rows, function (r) {
+        return r.style.display !== 'none' && r.cells.length > 3;
+      });
+      var size = parseInt(sel.value, 10) || 25;
+      var pages = Math.max(1, Math.ceil(visible.length / size));
+      if (page > pages) page = pages;
+      var from = (page - 1) * size;
+      visible.forEach(function (r, i) {
+        if (i < from || i >= from + size) { r.style.display = 'none'; r.dataset.ccHidden = '1'; }
+      });
+      info.textContent = visible.length
+        ? (from + 1) + '–' + Math.min(from + size, visible.length) + ' / ' + visible.length +
+          '  ·  ' + {{ t('page')|tojson }} + ' ' + page + '/' + pages
+        : '';
+      prev.disabled = page <= 1;
+      next.disabled = page >= pages;
+    }
+    sel.addEventListener('change', function () { page = 1; render(); });
+    prev.addEventListener('click', function () { if (page > 1) { page--; render(); } });
+    next.addEventListener('click', function () { page++; render(); });
+    // Re-page after a column filter runs (the table tools filter on input).
+    table.addEventListener('input', function () { page = 1; setTimeout(render, 0); });
+    render();
+  })();
 })();
 </script>
 {% endblock %}

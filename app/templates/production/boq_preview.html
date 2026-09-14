@@ -101,7 +101,7 @@
     .boq-order>summary{list-style:none;cursor:pointer;padding:.85rem 1rem;background:linear-gradient(135deg,#0d2a4a,#1e5bb8);color:#fff;display:flex;flex-wrap:wrap;gap:.5rem 1.25rem;align-items:center}
     .boq-order>summary::-webkit-details-marker{display:none}
     .boq-order>summary .ord{font-weight:700;font-size:1.05rem}
-    .boq-order>summary .meta{opacity:.85;font-size:.8rem}
+    /* .boq-order>summary .meta{opacity:.85;font-size:.8rem} */
     .boq-order>summary .chip{background:rgba(255,255,255,.16);border-radius:1rem;padding:.1rem .6rem;font-size:.75rem}
     .boq-recipe{border-bottom:1px solid var(--phoenix-border-color,#e6ebf2)}
     .boq-recipe:last-child{border-bottom:0}
@@ -156,10 +156,13 @@
       <i class="bi bi-grid-3x3-gap me-1"></i>{{ t('By Section') }}</button></li>
     <li class="nav-item"><button class="nav-link" data-view="byrecipe" data-bs-toggle="tab" data-bs-target="#tabByRecipe" type="button">
       <i class="bi bi-egg-fried me-1"></i>{{ t('By Recipe') }}</button></li>
-    <li class="nav-item"><button class="nav-link" data-view="pick" data-bs-toggle="tab" data-bs-target="#tabPick" type="button">
-      <i class="bi bi-basket me-1"></i>{{ t('Consolidated Pick List') }}</button></li>
-    <li class="nav-item"><button class="nav-link" data-view="customer" data-bs-toggle="tab" data-bs-target="#tabCust" type="button">
-      <i class="bi bi-people me-1"></i>{{ t('By Customer') }}</button></li>
+    {# Batch 210 (Image 4): the Consolidated Pick List and By Customer tabs are
+       removed from this screen. Both are STORE views, and the store already has
+       them on its own screens (Store Issuance by Section, and the pick list in
+       the Excel export). The BOQ is the chef's document; three recipe views is
+       the whole job. The panes and the Excel sheets are untouched, so nothing
+       that linked to ?view=pick stops working — it just falls back to the
+       Recipe Sheet. #}
   </ul>
 
   <div class="d-flex flex-wrap gap-2 align-items-center mb-3 py-2 boq-tools">

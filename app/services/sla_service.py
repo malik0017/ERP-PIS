@@ -43,6 +43,21 @@ METRIC_CODES = [
     ("DELIVERED", "Delivered", "orders"),
     ("SLA_COMPLIANCE", "SLA Compliance", "%"),
     ("ON_TIME_DELIVERY", "On-Time Delivery", "%"),
+    # Batch 214 — the money and quality measures the business actually manages
+    # to. Every one of these was already computed somewhere (Command Center,
+    # Yield Report), but none could be set as a TARGET, so "Target vs Actual"
+    # could only ever compare volume counts. These five close that gap.
+    ("GROSS_MARGIN_PCT", "Gross Margin %", "%"),
+    ("FOOD_COST_PCT", "Food Cost % of Sales", "%"),
+    ("WASTE_PCT", "Waste % of Input", "%"),
+    ("QC_PASS_RATE", "QC Pass Rate %", "%"),
+    ("YIELD_PCT", "Kitchen Yield %", "%"),
+    # Batch 224 — real OTIF, and each half on its own so a miss can be
+    # attributed. ON_TIME_DELIVERY above measures against SLA instances and is
+    # kept; these three measure the delivery record itself.
+    ("OTIF_PCT", "OTIF (On Time In Full) %", "%"),
+    ("ON_TIME_PCT", "Delivered On Time %", "%"),
+    ("IN_FULL_PCT", "Delivered In Full %", "%"),
 ]
 METRIC_LABELS = {c: l for c, l, _ in METRIC_CODES}
 
@@ -201,6 +216,8 @@ def measure_metric(db: Session, metric_code: str, date_from: str | None,
     """
     if metric_code in ("SLA_COMPLIANCE", "ON_TIME_DELIVERY"):
         return _measure_sla_percent(db, metric_code, date_from, date_to, customer)
+    if metric_code in _RATIO_SQL:
+        return _measure_ratio(db, metric_code, date_from, date_to, customer)
 
     spec = _METRIC_SQL.get(metric_code)
     if not spec:
@@ -221,6 +238,105 @@ def measure_metric(db: Session, metric_code: str, date_from: str | None,
     try:
         v = db.execute(text(sql.format(d=dclause, c=cclause)), params).scalar()
         return float(v or 0)
+    except Exception:
+        return None
+
+
+# Batch 214 — ratio metrics. Each returns (numerator, denominator) in ONE
+# query so the two halves always come from the same rows; two separate queries
+# would drift the moment a filter differed. A zero denominator returns None,
+# never 0 — "no production today" is not "0% yield".
+# --------------------------------------------------------------------------
+# Batch 224 — OTIF.
+#
+# OTIF = On Time In Full: the share of deliveries that arrived BOTH by the
+# agreed time AND complete. Half a delivery on time scores zero; a complete
+# delivery that is late scores zero. It is the number customers put in
+# catering contracts, and until this batch the system could not compute it:
+# there was no receipt timestamp and no delivered quantity.
+#
+# Deliberate choices, because each one changes the number:
+#
+#   * The DENOMINATOR is deliveries with evidence — delivered_at present.
+#     An order marked Delivered before this batch has no timestamp and is
+#     excluded rather than scored. Counting it as a failure would invent a
+#     breach; counting it as a success would flatter the figure.
+#   * ON TIME is measured against the order's required delivery date, to the
+#     END of that day. The system has no per-order delivery WINDOW (a noon
+#     lunch service is not modelled), so an intra-day promise cannot be
+#     judged and is not pretended to be. Adding a required_delivery_time
+#     column would tighten this — noted in the batch README.
+#   * IN FULL allows a 1% tolerance. Portioned food is weighed, not counted
+#     to the gram, and a 0.2% variance is not a service failure.
+# --------------------------------------------------------------------------
+_OTIF_BASE = """
+    FROM packing_dispatch pd
+    JOIN customer_orders co ON co.order_no = pd.order_no
+    WHERE pd.delivered_at IS NOT NULL {d} {c}
+"""
+_ON_TIME = "pd.delivered_at <= TIMESTAMP(co.required_delivery_date, '23:59:59')"
+_IN_FULL = ("pd.delivered_portions IS NOT NULL "
+            "AND COALESCE(co.total_planned_portions,0) > 0 "
+            "AND pd.delivered_portions >= COALESCE(co.total_planned_portions,0) * 0.99")
+
+_RATIO_SQL = {
+    "OTIF_PCT": (
+        f"SELECT SUM(CASE WHEN {_ON_TIME} AND {_IN_FULL} THEN 1 ELSE 0 END) AS num,"
+        f" COUNT(*) AS den {_OTIF_BASE}", "co.required_delivery_date"),
+    "ON_TIME_PCT": (
+        f"SELECT SUM(CASE WHEN {_ON_TIME} THEN 1 ELSE 0 END) AS num,"
+        f" COUNT(*) AS den {_OTIF_BASE}", "co.required_delivery_date"),
+    "IN_FULL_PCT": (
+        f"SELECT SUM(CASE WHEN {_IN_FULL} THEN 1 ELSE 0 END) AS num,"
+        f" COUNT(*) AS den {_OTIF_BASE}", "co.required_delivery_date"),
+    "GROSS_MARGIN_PCT": (
+        "SELECT COALESCE(SUM(COALESCE(co.total_estimated_selling_value,0)"
+        " - COALESCE(co.total_estimated_food_cost,0)),0) AS num,"
+        " COALESCE(SUM(COALESCE(co.total_estimated_selling_value,0)),0) AS den"
+        " FROM customer_orders co WHERE 1=1 {d} {c}", "co.order_date"),
+    "FOOD_COST_PCT": (
+        "SELECT COALESCE(SUM(COALESCE(co.total_estimated_food_cost,0)),0) AS num,"
+        " COALESCE(SUM(COALESCE(co.total_estimated_selling_value,0)),0) AS den"
+        " FROM customer_orders co WHERE 1=1 {d} {c}", "co.order_date"),
+    "WASTE_PCT": (
+        "SELECT COALESCE(SUM(COALESCE(k.waste_qty_standard,0)),0) AS num,"
+        " COALESCE(SUM(COALESCE(k.received_qty_standard,0)),0) AS den"
+        " FROM kitchen_section_transactions k"
+        " JOIN customer_orders co ON co.order_no = k.order_no"
+        " WHERE k.current_section NOT IN ('QC','Trayline / Packing','Dispatch') {d} {c}",
+        "co.order_date"),
+    "QC_PASS_RATE": (
+        "SELECT SUM(CASE WHEN q.qc_status='Passed' THEN 1 ELSE 0 END) AS num,"
+        " SUM(CASE WHEN q.qc_status IN ('Passed','Rejected','Hold') THEN 1 ELSE 0 END) AS den"
+        " FROM qc_checks q JOIN customer_orders co ON co.order_no = q.order_no"
+        " WHERE 1=1 {d} {c}", "co.order_date"),
+    "YIELD_PCT": (
+        "SELECT COALESCE(SUM(COALESCE(k.transferred_qty_standard,0)),0) AS num,"
+        " COALESCE(SUM(COALESCE(k.received_qty_standard,0)),0) AS den"
+        " FROM kitchen_section_transactions k"
+        " JOIN customer_orders co ON co.order_no = k.order_no"
+        " WHERE k.current_section NOT IN ('QC','Trayline / Packing','Dispatch') {d} {c}",
+        "co.order_date"),
+}
+
+
+def _measure_ratio(db: Session, code: str, date_from, date_to, customer):
+    sql, datecol = _RATIO_SQL[code]
+    params: dict = {}
+    dclause = ""
+    if date_from:
+        dclause += f" AND {datecol} >= :df"; params["df"] = date_from
+    if date_to:
+        dclause += f" AND {datecol} <= :dt"; params["dt"] = date_to
+    cclause = ""
+    if customer:
+        cclause = " AND co.customer_name = :cust"; params["cust"] = customer
+    try:
+        row = db.execute(text(sql.format(d=dclause, c=cclause)), params).mappings().first()
+        den = float((row or {}).get("den") or 0)
+        if den <= 0:
+            return None
+        return round(float((row or {}).get("num") or 0) / den * 100, 1)
     except Exception:
         return None
 

@@ -285,6 +285,23 @@
     init();
   }
 
+  // --------------------------------------------------------------------------
+  // Batch 210 — fallback for the clipped-hero-dropdown fix in isfc-layout.css.
+  // The CSS uses :has(), which every current browser supports. This keeps the
+  // behaviour working on anything older by toggling a plain class instead, so
+  // a menu inside a hero can never silently fail to appear again.
+  // --------------------------------------------------------------------------
+  var HERO = '.exec-hero,.isfc-hero,.pis-hero,.si-hero,.po-hero,.rep-hero,' +
+             '.qc-hero,.packing-hero,.dispatch-hero,.section-hero,.hero';
+  document.addEventListener('show.bs.dropdown', function (e) {
+    var hero = e.target && e.target.closest && e.target.closest(HERO);
+    if (hero) hero.classList.add('isfc-dropdown-open');
+  });
+  document.addEventListener('hidden.bs.dropdown', function (e) {
+    var hero = e.target && e.target.closest && e.target.closest(HERO);
+    if (hero) hero.classList.remove('isfc-dropdown-open');
+  });
+
   // Re-scan when content arrives later (modals, AJAX-refreshed panels).
   window.isfcUiTools = { init: init, exitFullscreen: exitFullscreen };
 })();

@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from app.core.templates import render
 from app.core.rbac import can_access
 from app.database.session import get_db
+from app.core.db_read import log_failure as db_read_log
 
 router = APIRouter(prefix="/search", tags=["Search"])
 
@@ -84,7 +85,10 @@ def _filter_by_access(request: Request, results: list[dict]) -> list[dict]:
 def _rows(db: Session, sql: str, params: dict | None = None) -> list[dict]:
     try:
         return [dict(r) for r in db.execute(text(sql), params or {}).mappings().all()]
-    except Exception:
+    except Exception as _exc:
+        # Batch 221: logged, not swallowed — a silent except here makes
+        # a broken query look like an empty table (app/core/db_read.py).
+        db_read_log(_exc, sql, 'routes.py._rows')
         return []
 
 
@@ -138,11 +142,6 @@ def build_results(db: Session, q: str, cid: int, limit: int = 8, request: Reques
     # Pages / reports / dashboards
     results.extend(_page_results(q)[:limit])
 
-    # Batch 81 fix: search had no company scoping at all — any logged-in
-    # user could find another company's orders, production records, and
-    # recipes by name/code. The queries below now filter to the caller's
-    # company (NULL-tolerant, matching every other company-scoped query in
-    # this codebase, for legacy rows written before scoping existed).
     for r in _rows(db, """
         SELECT order_no, customer_name, COALESCE(brand,'') AS brand, COALESCE(status,'') AS status,
                COALESCE(required_delivery_date, delivery_date, '') AS delivery_date
@@ -173,14 +172,6 @@ def build_results(db: Session, q: str, cid: int, limit: int = 8, request: Reques
         url = f"/recipes/{r['id']}" if r.get("id") else "/recipes"
         results.append({"type":"Recipe", "title":f"{r.get('recipe_code','')} - {r.get('recipe_name','')}", "subtitle":f"{r.get('category','')} · {r.get('customer_name','')}", "url":url, "meta":r.get("status") or "Recipe"})
 
-    # Batch 82: finished the company-scoping pass started last batch.
-    # Verified via the actual model definitions (not assumed) that
-    # customers/suppliers/chefs/brands all have company_id — so do
-    # purchase_orders/grn_receipts/ar_invoices/ap_invoices/finance_payments
-    # (each confirmed by their own INSERT statements stamping company_id
-    # already). ingredients is the one exception, left unscoped on purpose:
-    # confirmed in an earlier audit it has no company_id column at all —
-    # it's shared master data across companies, not a leak.
     for table, code_col, name_col, url_prefix, label in [
         ("customers", "customer_code", "customer_name", "/masters/customers", "Customer"),
         ("suppliers", "supplier_code", "supplier_name", "/masters/suppliers", "Supplier"),
@@ -197,8 +188,6 @@ def build_results(db: Session, q: str, cid: int, limit: int = 8, request: Reques
             """, {"like": like, "lim": limit, "cid": cid}):
                 results.append({"type":label, "title":f"{r.get('code','')} - {r.get('name','')}", "subtitle":label, "url":f"{url_prefix}/{r.get('id')}", "meta":r.get("status") or "Master"})
 
-    # Inventory item master (ingredients) — intentionally NOT company-scoped:
-    # confirmed this table has no company_id column, it's shared across companies.
     for r in _rows(db, """
         SELECT ingredient_code AS code, name AS name, COALESCE(main_category, category, '') AS category,
                COALESCE(standard_uom, purchase_uom, recipe_uom, '') AS uom
@@ -259,9 +248,6 @@ def build_results(db: Session, q: str, cid: int, limit: int = 8, request: Reques
         if key not in seen:
             seen.add(key); clean.append(x)
 
-    # Batch 98: apply module-access filtering LAST, so it covers every result
-    # type including any added later. Filtering inside each query block would
-    # mean a new block could be written without the check and nobody notices.
     if request is not None:
         clean = _filter_by_access(request, clean)
     return clean[:50]

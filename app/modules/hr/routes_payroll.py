@@ -31,6 +31,7 @@ from app.core.templates import render
 from app.core.rbac import require_area, require_action
 from app.core.notifications import notify_role
 from app.database.session import get_db
+from app.core.db_read import log_failure as db_read_log
 
 router = APIRouter(prefix="/hr", tags=["HCM"])
 
@@ -52,7 +53,10 @@ def _user(request: Request) -> str:
 def _rows(db, sql, params=None):
     try:
         return [dict(r) for r in db.execute(text(sql), params or {}).mappings().all()]
-    except Exception:
+    except Exception as _exc:
+        # Batch 221: logged, not swallowed — a silent except here makes
+        # a broken query look like an empty table (app/core/db_read.py).
+        db_read_log(_exc, sql, 'routes_payroll.py._rows')
         return []
 
 
@@ -60,7 +64,10 @@ def _one(db, sql, params=None):
     try:
         r = db.execute(text(sql), params or {}).mappings().first()
         return dict(r) if r else None
-    except Exception:
+    except Exception as _exc:
+        # Batch 221: logged, not swallowed — a silent except here makes
+        # a broken query look like an empty table (app/core/db_read.py).
+        db_read_log(_exc, sql, 'routes_payroll.py._one')
         return None
 
 

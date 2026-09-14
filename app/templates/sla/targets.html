@@ -1,7 +1,8 @@
 {% extends "layouts/base.html" %}
 {% block content %}
 <div class="container-fluid py-3">
-  <div class="req-hero d-flex align-items-center justify-content-between flex-wrap gap-3 mb-3">
+  <div class="isfc-hero mb-4 p-4 rounded-4 text-white d-flex align-items-center justify-content-between flex-wrap gap-3"
+       style="background:linear-gradient(135deg,#08243d,#1e5bb8)">
     <div>
       <h1 class="mb-1 fw-bold text-white"><i class="bi bi-bullseye me-2"></i>{{ t('Performance Targets') }}</h1>
       <p class="mb-0 opacity-75">{{ t('Manage operational targets and performance benchmarks.') }}</p>
@@ -12,6 +13,36 @@
   </div>
 
   {% if request.query_params.get('error') %}<div class="alert alert-danger">{{ request.query_params.get('error') }}</div>{% endif %}
+  {% if request.query_params.get('msg') %}<div class="alert alert-subtle-success py-2">
+    <i class="bi bi-check-circle me-1"></i>{{ request.query_params.get('msg') }}</div>{% endif %}
+
+  {# Batch 214: the starter set. Shown only while nothing is configured — once
+     you have rules of your own this panel has nothing to add and disappears. #}
+  {% if can_action and can_action('settings','edit') and targets|length == 0 %}
+  <div class="card border mb-3" style="border-left:4px solid #1e5bb8">
+    <div class="card-body">
+      <h5 class="fw-bold mb-1"><i class="bi bi-lightning-charge me-1"></i>{{ t('Start with the six measures this system already calculates') }}</h5>
+      <p class="fs-9 text-body-tertiary mb-2">{{ t('No targets set yet. Each of these is already computed on the Command Center or the Kitchen Reports — it simply has nothing to be compared against. Install them, then adjust the numbers to your own plan.') }}</p>
+      <div class="table-responsive">
+        <table class="table table-sm small mb-2">
+          <thead><tr><th>{{ t('Name') }}</th><th>{{ t('Setting') }}</th><th>{{ t('Why it matters') }}</th></tr></thead>
+          <tbody>
+          {% for tg in target_templates %}
+            <tr><td class="fw-bold">{{ tg.target_name }}</td>
+              <td class="text-nowrap">{{ tg.target_value }}{{ tg.unit }}
+                <div class="fs-10 text-body-tertiary">{{ t(tg.period|capitalize) }}</div></td>
+              <td class="fs-10">{{ tg.why }}</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <form method="post" action="/system/targets/install-templates">
+        <button class="btn btn-primary btn-sm fw-bold"><i class="bi bi-plus-lg me-1"></i>{{ t('Install these six targets') }}</button>
+        <span class="fs-10 text-body-tertiary ms-2">{{ t('Nothing is overwritten — anything you have already set is left alone.') }}</span>
+      </form>
+    </div>
+  </div>
+  {% endif %}
 
   <div class="row g-3 mb-3">
     <div class="col-6 col-lg-3"><div class="card border h-100"><div class="card-body">

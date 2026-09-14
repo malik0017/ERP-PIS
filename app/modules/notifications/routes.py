@@ -37,6 +37,7 @@ from app.core.rbac import can_access
 from app.core.notifications import ensure_notifications_schema
 from app.core.company import company_clause
 from app.database.session import get_db
+from app.core.db_read import log_failure as db_read_log
 
 router = APIRouter(prefix="/notifications", tags=["Notifications"])
 
@@ -45,7 +46,10 @@ def _safe_rows(db: Session, sql: str, params: dict | None = None) -> list:
     """Run a query defensively - a missing table must never crash the bell."""
     try:
         return list(db.execute(text(sql), params or {}).mappings().all())
-    except Exception:
+    except Exception as _exc:
+        # Batch 221: logged, not swallowed — a silent except here makes
+        # a broken query look like an empty table (app/core/db_read.py).
+        db_read_log(_exc, sql, 'routes.py._safe_rows')
         return []
 
 

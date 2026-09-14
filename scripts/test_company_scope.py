@@ -105,6 +105,12 @@ def live_probe() -> tuple[list[str], int]:
 
 
 LIST_URLS = [
+    # Batch 220: the launcher tiles were the last screen counting across
+    # companies. Added here so a regression fails the test instead of being
+    # noticed on a customer's screen.
+    # (/settings/modules is deliberately NOT here: it lists the module catalogue,
+    # which is the same for every company by design.)
+    "/modules",
     "/dashboard", "/notifications", "/notifications/summary", "/reports",
     "/reports/yield-wastage", "/reports/workflow", "/reports/relationship-map",
     "/module/reports/dashboard", "/module/production/dashboard",
