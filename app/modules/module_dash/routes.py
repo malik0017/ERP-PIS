@@ -21,8 +21,6 @@ def _n(db: Session, sql: str, params: dict | None = None) -> float:
         v = db.execute(text(sql), params or {}).scalar()
         return float(v or 0)
     except Exception as _exc:
-        # Batch 221: logged, not swallowed — a silent except here makes
-        # a broken query look like an empty table (app/core/db_read.py).
         db_read_log(_exc, sql, 'routes.py._n')
         return 0.0
 
@@ -31,8 +29,6 @@ def _rows(db: Session, sql: str, params: dict | None = None) -> list:
     try:
         return list(db.execute(text(sql), params or {}).mappings().all())
     except Exception as _exc:
-        # Batch 221: logged, not swallowed — a silent except here makes
-        # a broken query look like an empty table (app/core/db_read.py).
         db_read_log(_exc, sql, 'routes.py._rows')
         return []
 
@@ -118,9 +114,6 @@ MODULE_DASHBOARDS: dict[str, dict] = {
         "kpis": [
             ("Open POs", "SELECT COUNT(*) FROM purchase_orders WHERE COALESCE(status,'') NOT IN ('Closed','Cancelled')", ""),
             ("Total POs", "SELECT COUNT(*) FROM purchase_orders WHERE 1=1 {range}", ""),
-            # Batch 87 fix: "grns" isn't a real table (the real one is
-            # grn_receipts) — this silently returned 0 the same way the
-            # Inventory cockpit's broken queries did.
             ("GRNs", "SELECT COUNT(*) FROM grn_receipts WHERE 1=1 {range}", ""),
             ("Suppliers", "SELECT COUNT(*) FROM suppliers", ""),
         ],
@@ -265,9 +258,6 @@ MODULE_DASHBOARDS: dict[str, dict] = {
         ],
         "charts": [
             {"title": "Document Volume",
-             # Batch 208: scope_sql() refuses UNION queries by design (it rewrites
-             # the outer query only, and a UNION has several). Written out with
-             # the condition on each branch instead of leaving it unscoped.
              "sql": "SELECT 'Orders' AS label, COUNT(*) AS value FROM customer_orders "
                     "WHERE (company_id = :scope_cid OR company_id IS NULL) "
                     "UNION ALL SELECT 'BOM Lines', COUNT(*) FROM bom_lines "
@@ -411,10 +401,8 @@ async def module_dashboard(request: Request, key: str, db: Session = Depends(get
     if not cfg:
         raise HTTPException(status_code=404, detail="Unknown module dashboard")
 
-    # RBAC gate — admins bypass inside require_area/can_access.
     require_area(request, cfg["area"])
 
-    # ---- Time slicer (applies to charts that declare range_col) ----
     range_key = (request.query_params.get("range") or "3m").lower()
     if range_key not in RANGES:
         range_key = "3m"
@@ -456,9 +444,9 @@ async def module_dashboard(request: Request, key: str, db: Session = Depends(get
         col = cfg.get("kpi_range_col", "created_at")
         if ranged:
             value, ok = _n_probe(sql.replace("{range}", _range_cond(col)))
-            if not ok:                      # date column missing / bad SQL
+            if not ok:                      
                 value, ok = _n_probe(sql.replace("{range}", ""))
-                ranged = False              # be honest: this one is all-time
+                ranged = False             
         else:
             value, ok = _n_probe(sql)
         kpis.append({"label": label, "value": value, "hint": hint,
@@ -466,7 +454,6 @@ async def module_dashboard(request: Request, key: str, db: Session = Depends(get
     for k in kpis:
         k["value"] = int(k["value"]) if float(k["value"]).is_integer() else round(k["value"], 2)
 
-    # ---- Charts: new multi-chart list, with legacy single "chart" fallback ----
     chart_cfgs = cfg.get("charts") or ([cfg["chart"]] if cfg.get("chart") else [])
     charts = []
     for cc in chart_cfgs:
@@ -478,15 +465,12 @@ async def module_dashboard(request: Request, key: str, db: Session = Depends(get
         rows = _rows(db, _q, _p)
         labels = [str(r.get("label", "")) for r in rows]
         values = [float(r.get("value") or 0) for r in rows]
-        # trend charts come back DESC for LIMIT; flip to chronological
         if cc.get("range_col") and labels:
             labels, values = labels[::-1], values[::-1]
         if labels:
             charts.append({"title": cc["title"], "labels": labels, "values": values,
                            "default": cc.get("default", "hbar"),
                            "has_range": "{range}" in cc["sql"],
-                           # Batch 111: chart-level unit/note feed the richer
-                           # tooltips added in Batch 107.
                            "unit": cc.get("unit", ""),
                            "note": cc.get("note", "")})
 
@@ -507,12 +491,10 @@ async def module_dashboard(request: Request, key: str, db: Session = Depends(get
         "links": links,
         "module_key": key,
         "range_key": range_key,
-        # Batch 111: human label for the badge on each KPI card.
         "range_label": {"7d": "7 days", "1m": "1 month", "3m": "3 months",
                         "1y": "1 year", "all": "all time"}.get(range_key, range_key),
         "has_range": has_range,
         "ranges": [("7d", "7 Days"), ("1m", "1 Month"), ("3m", "3 Months"), ("1y", "1 Year"), ("all", "Max")],
-        # Batch 121: absolute date filter state
         "date_from": date_from,
         "date_to": date_to,
         "use_abs": use_abs,

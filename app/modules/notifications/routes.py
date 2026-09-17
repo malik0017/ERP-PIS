@@ -122,7 +122,12 @@ def _collect(db: Session, cid: int = 1) -> dict:
           AND NOT EXISTS (
               SELECT 1 FROM qc_checks q
               WHERE q.order_no = co.order_no
-                AND UPPER(COALESCE(q.status, q.qc_status, '')) = 'PASSED'
+                -- Batch 229: this read q.status, which does not exist on
+                -- qc_checks (the column is qc_status). The whole statement was
+                -- rejected, the helper returned nothing, and the QC-pending
+                -- count silently fell back to a second query. Found by the
+                -- Batch 221 logging, not by anyone noticing the number.
+                AND UPPER(COALESCE(q.qc_status, '')) = 'PASSED'
           ) """ + company_clause("co", param="scope_cid") + """
         ORDER BY co.id DESC LIMIT 50
     """, _p) or _safe_rows(db, """

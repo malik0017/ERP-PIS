@@ -1,0 +1,135 @@
+{# ============================================================================
+   partials/order_360_card.html — Batch 246 (Image 12)
+
+   An INLINE Order 360 card for the dashboard / reports. Pick an order and it
+   loads that order's live status in real time: KPI tiles + the process pipeline
+   (Sales Order → BOM → Material Issue → Kitchen → QC → Delivery). "Open full
+   360" hands off to the existing drawer (window.openOrder360), so the deep
+   detail (execution, materials, quality, financial, audit) is one click away.
+
+   Include once, anywhere in a page's content:
+       {% include 'partials/order_360_card.html' %}
+
+   It is fully self-contained: it fetches its own order list from
+   /dashboard/orders/list-360 and each order's data from the existing
+   /dashboard/order/<order_no>/360 endpoint. No page context required.
+   ============================================================================ #}
+<style>
+  .o3c{border:1px solid var(--phoenix-border-color,#dfe5ee);border-radius:16px;background:var(--phoenix-body-bg,#fff);overflow:hidden}
+  .o3c-head{display:flex;justify-content:space-between;align-items:center;gap:.6rem;flex-wrap:wrap;
+    padding:.85rem 1.05rem;border-bottom:1px solid var(--phoenix-border-color,#dfe5ee);
+    background:var(--phoenix-body-highlight-bg,#f5f8fc)}
+  .o3c-title{font-weight:800;color:var(--phoenix-emphasis-color,#132947);display:flex;align-items:center;gap:.4rem}
+  .o3c-pick{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap}
+  .o3c-pick select{min-width:230px}
+  .o3c-body{padding:1rem 1.05rem}
+  .o3c-tiles{display:flex;flex-wrap:wrap;gap:.6rem;margin-bottom:1rem}
+  .o3c-tile{flex:1 1 120px;min-width:110px;border:1px solid var(--phoenix-border-color,#e2ecf5);
+    border-radius:12px;padding:.6rem .75rem;background:var(--phoenix-body-bg,#fbfdff)}
+  .o3c-tile .k{font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:#6b7a90;font-weight:800}
+  .o3c-tile .v{font-size:1.15rem;font-weight:800;color:var(--phoenix-emphasis-color,#132947)}
+  .o3c-chain{display:flex;gap:.4rem;align-items:stretch;overflow-x:auto;padding-bottom:.35rem}
+  .o3c-node{flex:1 1 0;min-width:132px;border:1px solid var(--phoenix-border-color,#e2ecf5);
+    border-radius:12px;padding:.7rem .75rem;position:relative;background:var(--phoenix-body-bg,#fff)}
+  .o3c-node .lbl{font-size:.72rem;font-weight:800;color:var(--phoenix-emphasis-color,#132947);display:flex;align-items:center;gap:.35rem}
+  .o3c-node .ref{font-size:.72rem;color:#6b7a90;margin-top:.2rem;word-break:break-word}
+  .o3c-dot{width:.6rem;height:.6rem;border-radius:50%;flex:0 0 .6rem;background:#c3ccd8}
+  .o3c-dot.ok{background:#10b981}.o3c-dot.pending{background:#c3ccd8}
+  .o3c-dot.bad{background:#ef4444}.o3c-dot.half{background:#f59e0b}
+  .o3c-arrow{align-self:center;color:#b7c2d2;flex:0 0 auto}
+  .o3c-empty{color:#6b7a90;padding:1.4rem;text-align:center}
+  [data-bs-theme="dark"] .o3c,[data-bs-theme="dark"] .o3c-tile,[data-bs-theme="dark"] .o3c-node{background:#111c2e;border-color:#25324a}
+  [data-bs-theme="dark"] .o3c-head{background:#16233a}
+  [data-bs-theme="dark"] .o3c-tile .v,[data-bs-theme="dark"] .o3c-node .lbl{color:#e6edf6}
+  html[dir="rtl"] .o3c-arrow{transform:scaleX(-1)}
+</style>
+
+<div class="o3c mb-3" id="o3cCard">
+  <div class="o3c-head">
+    <div class="o3c-title"><i class="bi bi-diagram-3"></i>{{ t('Order 360') }}
+      <span class="fw-normal text-body-tertiary small">· {{ t('Live order status') }}</span></div>
+    <div class="o3c-pick">
+      <select class="form-select form-select-sm" id="o3cSelect" aria-label="{{ t('Select order') }}">
+        <option value="">{{ t('Loading orders…') }}</option>
+      </select>
+      <a class="btn btn-outline-primary btn-sm fw-bold d-none" id="o3cOpen" href="#" data-order-360="">
+        <i class="bi bi-box-arrow-up-right me-1"></i>{{ t('Open full 360') }}</a>
+    </div>
+  </div>
+  <div class="o3c-body">
+    <div id="o3cContent"><div class="o3c-empty">{{ t('Select an order to see its live status.') }}</div></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var card = document.getElementById('o3cCard');
+  if (!card || card.dataset.ready) return;      // include-once guard
+  card.dataset.ready = '1';
+
+  var sel = document.getElementById('o3cSelect');
+  var open = document.getElementById('o3cOpen');
+  var content = document.getElementById('o3cContent');
+  var I18N = {{ {
+    'select': t('Select an order to see its live status.'),
+    'loading': t('Loading…'),
+    'failed': t('Could not load this order.'),
+    'none': t('No orders found.'),
+    'status': t('Status')
+  }|tojson }};
+
+  function esc(v){return (v==null?'':String(v)).replace(/[&<>"]/g,function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+
+  // Populate the picker.
+  fetch('/dashboard/orders/list-360', {headers:{'Accept':'application/json'}})
+    .then(function(r){return r.json();})
+    .then(function(d){
+      var orders = (d && d.orders) || [];
+      if (!orders.length){ sel.innerHTML = '<option value="">'+esc(I18N.none)+'</option>'; return; }
+      sel.innerHTML = '<option value="">— '+esc(I18N.status)+' —</option>' +
+        orders.map(function(o){
+          var label = o.order_no + (o.customer ? ' · ' + o.customer : '');
+          return '<option value="'+esc(o.order_no)+'">'+esc(label)+'</option>';
+        }).join('');
+    })
+    .catch(function(){ sel.innerHTML = '<option value="">'+esc(I18N.failed)+'</option>'; });
+
+  function dotClass(s){ return (s==='ok'||s==='bad'||s==='half') ? s : 'pending'; }
+
+  function render(d){
+    var tiles = '<div class="o3c-tiles">' +
+      '<div class="o3c-tile"><div class="k">'+esc(I18N.status)+'</div><div class="v">'+esc(d.header&&d.header.status||'—')+'</div></div>' +
+      ((d.tiles||[]).map(function(t){
+        return '<div class="o3c-tile"><div class="k">'+esc(t.label)+'</div><div class="v">'+esc(t.value)+'</div></div>';
+      }).join('')) + '</div>';
+
+    var chain = '<div class="o3c-chain">' + (d.pipeline||[]).map(function(s,i){
+      var node = '<div class="o3c-node">' +
+        '<div class="lbl"><span class="o3c-dot '+dotClass(s.state)+'"></span>'+esc(s.label)+'</div>' +
+        '<div class="ref">'+esc(s.ref||'—')+'</div></div>';
+      var arrow = (i < (d.pipeline.length-1)) ? '<i class="bi bi-chevron-right o3c-arrow"></i>' : '';
+      return node + arrow;
+    }).join('') + '</div>';
+
+    content.innerHTML = tiles + chain;
+  }
+
+  sel.addEventListener('change', function(){
+    var ord = sel.value;
+    if (!ord){ content.innerHTML = '<div class="o3c-empty">'+esc(I18N.select)+'</div>'; open.classList.add('d-none'); return; }
+    open.setAttribute('data-order-360', ord);
+    open.classList.remove('d-none');
+    content.innerHTML = '<div class="o3c-empty"><span class="spinner-border spinner-border-sm me-2"></span>'+esc(I18N.loading)+'</div>';
+    fetch('/dashboard/order/'+encodeURIComponent(ord)+'/360', {headers:{'Accept':'application/json'}})
+      .then(function(r){ if(!r.ok) throw 0; return r.json(); })
+      .then(function(d){ render(d); })
+      .catch(function(){ content.innerHTML = '<div class="o3c-empty text-danger"><i class="bi bi-exclamation-triangle me-1"></i>'+esc(I18N.failed)+'</div>'; });
+  });
+
+  // "Open full 360" falls back to the drawer if it isn't caught by delegation.
+  open.addEventListener('click', function(e){
+    if (window.openOrder360){ e.preventDefault(); window.openOrder360(open.getAttribute('data-order-360')); }
+  });
+})();
+</script>

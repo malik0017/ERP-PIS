@@ -1,0 +1,72 @@
+{% extends 'layouts/base.html' %}
+{% block title %}{{ t('Section Standing Stock') }}{% endblock %}
+{% block content %}
+<style>
+  .ss-hero{background:linear-gradient(120deg,#0b1f3a,#123a73 55%,#2f6bff);color:#fff;border-radius:16px;padding:22px 26px;margin-bottom:16px}
+  .ss-card{background:var(--phoenix-body-bg,#fff);border:1px solid var(--phoenix-border-color,#e3ebf5);border-radius:14px;padding:16px 18px;margin-bottom:16px}
+  .ss-filters{display:flex;flex-wrap:wrap;gap:12px;align-items:end}
+  .ss-filters label{font-size:12px;font-weight:700;color:var(--phoenix-tertiary-color,#5b6b82);display:block;margin-bottom:3px}
+  table.ss{width:100%;border-collapse:collapse;font-size:13.5px}
+  table.ss th{background:#f4f8fc;color:#0b1f3a;text-transform:uppercase;font-size:11px;letter-spacing:.03em;padding:9px 11px;text-align:left;border-bottom:2px solid #e3ebf5}
+  table.ss td{padding:8px 11px;border-bottom:1px solid #eef2f7}
+  table.ss tr:nth-child(even) td{background:#fbfdff}
+  .ss-bal{font-weight:800}
+  .ss-pos{color:#0f7b53}.ss-neg{color:#b42318}
+  .ss-badge{display:inline-block;font-size:11px;font-weight:800;padding:2px 9px;border-radius:999px;background:#eaf2ff;color:#1e5bb8}
+  [data-bs-theme="dark"] table.ss th{background:#16233a;color:#e6edf6;border-color:#25324a}
+  [data-bs-theme="dark"] table.ss tr:nth-child(even) td{background:#111c2e}
+</style>
+
+<div class="ss-hero d-flex justify-content-between align-items-center flex-wrap gap-2">
+  <div>
+    <h2 class="fw-bold mb-1 text-white"><i class="bi bi-box-seam me-2"></i>{{ t('Section Standing Stock') }}</h2>
+    <div class="opacity-75" style="font-size:13.5px">{{ t('Material already issued to a section that a new order can use before the store issues again.') }}</div>
+  </div>
+  <a class="btn btn-light btn-sm fw-bold" href="/production/store-issuance"><i class="bi bi-arrow-left me-1"></i>{{ t('Store Issuance') }}</a>
+</div>
+
+<div class="ss-card">
+  <form class="ss-filters" method="get">
+    <div><label>{{ t('Section') }}</label>
+      <select name="section" class="form-select form-select-sm" style="min-width:170px">
+        <option value="">{{ t('All sections') }}</option>
+        {% for s in sections %}<option value="{{ s }}" {% if filters.section==s %}selected{% endif %}>{{ s }}</option>{% endfor %}
+      </select></div>
+    <div><label>{{ t('From') }}</label><input type="date" name="date_from" class="form-control form-control-sm" value="{{ filters.date_from }}"></div>
+    <div><label>{{ t('To') }}</label><input type="date" name="date_to" class="form-control form-control-sm" value="{{ filters.date_to }}"></div>
+    <div><button class="btn btn-primary btn-sm"><i class="bi bi-funnel me-1"></i>{{ t('Apply') }}</button>
+      <a class="btn btn-phoenix-secondary btn-sm" href="/production/section-standing-stock">{{ t('Reset') }}</a></div>
+  </form>
+</div>
+
+<div class="ss-card">
+  {% if rows %}
+  <table class="ss">
+    <thead><tr>
+      <th>{{ t('Section') }}</th><th>{{ t('Ingredient') }}</th><th>{{ t('Code') }}</th>
+      <th class="text-end">{{ t('Standing balance') }}</th><th>{{ t('UOM') }}</th>
+      <th class="text-end">{{ t('Orders') }}</th><th>{{ t('Oldest') }}</th><th>{{ t('Latest') }}</th>
+    </tr></thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td><span class="ss-badge">{{ r.section }}</span></td>
+        <td><strong>{{ r.ingredient_name or '—' }}</strong></td>
+        <td class="text-muted">{{ r.ingredient_code }}</td>
+        <td class="text-end ss-bal {{ 'ss-pos' if (r.balance or 0) > 0 else 'ss-neg' }}">{{ '%.3f'|format(r.balance or 0) }}</td>
+        <td>{{ r.uom or '' }}</td>
+        <td class="text-end">{{ r.orders or 0 }}</td>
+        <td class="text-muted">{{ r.oldest.strftime('%Y-%m-%d') if r.oldest and r.oldest.strftime is defined else (r.oldest or '—') }}</td>
+        <td class="text-muted">{{ r.latest.strftime('%Y-%m-%d') if r.latest and r.latest.strftime is defined else (r.latest or '—') }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="text-center text-muted py-5">
+    <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+    {{ t('No standing stock. It builds up as orders are finalized with more issued than required.') }}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

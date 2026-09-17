@@ -49,19 +49,24 @@ def _cid(request: Request) -> int:
 
 def _filters(request: Request) -> dict:
     q = request.query_params
+    # Batch E (Image 1): customer / order / section are multi-select now.
+    # getlist() returns every repeated param; a single value still arrives as a
+    # one-item list, so old single-value bookmarks keep working.
+    customers = [c.strip() for c in q.getlist("customer") if c.strip()]
+    order_nos = [o.strip() for o in q.getlist("order_no") if o.strip()]
+    sections = [s.strip() for s in q.getlist("section") if s.strip()]
     return {
         "date_from": (q.get("date_from") or "").strip(),
         "date_to": (q.get("date_to") or "").strip(),
-        "customer": (q.get("customer") or "").strip(),
-        "order_no": (q.get("order_no") or "").strip(),
+        "customer": customers[0] if customers else "",
+        "order_no": order_nos[0] if order_nos else "",
+        "customers": customers,
+        "order_nos": order_nos,
+        "sections": sections,
         "brand": (q.get("brand") or "").strip(),
         "kitchen": (q.get("kitchen") or "").strip(),
-        # Batch 200: chef-sheet filters. `recipe` is an exact recipe code
-        # (dropdown), `section` a kitchen section — see boq_service for how
-        # each view interprets it.
         "recipe": (q.get("recipe") or "").strip(),
-        "section": (q.get("section") or "").strip(),
-        # Which tab to open on load (recipe | section | byrecipe | pick | customer)
+        "section": sections[0] if sections else "",
         "view": (q.get("view") or "recipe").strip(),
     }
 
@@ -74,9 +79,14 @@ def _where(f: dict, cid: int) -> tuple[str, dict]:
 
 def consolidated(db: Session, f: dict, cid: int) -> list[dict]:
     where, params = _where(f, cid)
-    if f.get("section"):
-        # Pick list = what the store hands to a section, so it filters on the
-        # ISSUE section (fresh produce for a salad is issued to Cutting).
+    if f.get("sections"):
+        # Batch E (Image 1): the pick list can target several sections at once.
+        binds = []
+        for i, s in enumerate(f["sections"]):
+            k = f"sec{i}"; binds.append(f":{k}"); params[k] = s
+        where += (" AND COALESCE(NULLIF(b.default_issue_section, ''), i.default_issue_section, '') "
+                  f"IN ({','.join(binds)})")
+    elif f.get("section"):
         where += " AND COALESCE(NULLIF(b.default_issue_section, ''), i.default_issue_section, '') = :sec"
         params["sec"] = f["section"]
     try:

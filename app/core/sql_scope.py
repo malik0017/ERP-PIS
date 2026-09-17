@@ -1,36 +1,5 @@
 # app/core/sql_scope.py
-# =============================================================================
-# Batch 208 — COMPANY SCOPE FOR RAW-SQL LIST AND AGGREGATE QUERIES
-# -----------------------------------------------------------------------------
-# Batch 207 closed direct document access (a URL keyed by an order number).
-# The 12 Sep audit also found 22 aggregate/list queries that read the order
-# tables with no company condition — report totals, module-dashboard KPIs,
-# batch recall, SLA metrics. They expose counts and sums rather than documents,
-# but they still cross the tenancy boundary.
-#
-# Many of them live in CONFIG TABLES (module_dash.MODULE_DASHBOARDS) rather than
-# in a route, so hand-editing each one would be both large and fragile — the
-# next KPI someone adds to the config would arrive unscoped. This module adds
-# the condition mechanically instead.
-#
-# WHAT IT DOES, AND JUST AS IMPORTANTLY WHAT IT DOES NOT
-#
-#   * It rewrites the OUTERMOST query only. Parenthesis depth is tracked, so a
-#     derived table or a correlated sub-select is never touched — those are
-#     already constrained by the outer query, and rewriting them is how a
-#     "helpful" rewriter silently changes results.
-#   * It only acts when the outer FROM names one of `SCOPED_TABLES`. Anything
-#     else (inventory, suppliers, GL) is returned unchanged.
-#   * It appends to an existing top-level WHERE, or inserts a WHERE immediately
-#     before GROUP BY / HAVING / ORDER BY / LIMIT if there is none.
-#   * It refuses (returns the SQL unchanged) on anything it cannot parse with
-#     confidence: UNION, multiple top-level FROMs, no FROM at all. An unscoped
-#     query that still works beats a mangled one that returns wrong numbers —
-#     and `audit_unscoped()` lists whatever it declined so nothing hides.
-#
-# The clause matches the rest of the system: `company_id IS NULL` rows stay
-# visible, so history written before multi-company scoping is not lost.
-# =============================================================================
+
 from __future__ import annotations
 
 import re
@@ -93,10 +62,7 @@ def scope_sql(sql: str, param: str = "scope_cid") -> tuple[str, bool]:
     alias = froms[0].group(2)
     if alias and alias.lower() in _KEYWORD:
         alias = None
-    # Search for the tail keyword from the end of the TABLE NAME, not the end of
-    # the whole match: "FROM customer_orders GROUP BY x" makes the regex capture
-    # GROUP as an alias, and starting the search past it skipped that GROUP BY —
-    # the WHERE then landed after it and MySQL rejected the query.
+
     scan_from = froms[0].end(1)
     prefix = f"{alias}." if alias else f"{table}."
     clause = f"({prefix}company_id = :{param} OR {prefix}company_id IS NULL)"

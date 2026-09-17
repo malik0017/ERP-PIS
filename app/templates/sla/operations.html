@@ -18,6 +18,48 @@
   body.wb-wall .ops-card .cust{font-size:.92rem}
   body.wb-wall .ops-col>header{font-size:1rem}
   body.wb-on .exec-hero{padding:1rem 1.25rem!important}
+  /* Batch 232 — Today's Production stages. */
+  .ops-today{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:.45rem;margin-top:.6rem}
+  .ops-today>div{border:1px solid var(--phoenix-border-color,#dfe5ee);border-radius:.55rem;
+                 padding:.4rem .5rem;border-top:3px solid var(--c,#1e5bb8)}
+  .ops-today .n{display:block;font-size:1.25rem;font-weight:800;color:var(--c,#1e5bb8);line-height:1.1}
+  .ops-today .l{display:block;font-size:.66rem;color:var(--phoenix-tertiary-color,#6b7a90);min-height:2em}
+  [data-bs-theme="dark"] .ops-today>div{background:#131d30;border-color:#25324a}
+  @media (max-width:575px){.ops-today{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  /* Batch 232 — Delivery Health. */
+  .ops-health-head{display:flex;align-items:flex-start;gap:.75rem;margin-bottom:.5rem}
+  .ops-health-head .pct{display:block;font-size:2rem;font-weight:800;line-height:1;color:#15803d}
+  .ops-health-head .lbl{font-size:.72rem;color:var(--phoenix-tertiary-color,#6b7a90)}
+  .ops-health-bar{display:flex;height:12px;border-radius:6px;overflow:hidden;
+                  background:var(--phoenix-body-highlight-bg,#eef2f7)}
+  .ops-health-bar span{display:block;height:100%}
+  .ops-health-keys{display:flex;flex-wrap:wrap;gap:.3rem .8rem;margin-top:.5rem;font-size:.72rem;
+                   color:var(--phoenix-tertiary-color,#6b7a90)}
+  .ops-health-keys i{display:inline-block;width:.55rem;height:.55rem;border-radius:50%;margin-inline-end:.3rem}
+  .ops-health-keys b{color:var(--phoenix-emphasis-color,#132947)}
+  /* Batch 232 — value chips. Light fill, strong text: readable on a wall
+     screen, and never mistaken for a clickable button. */
+  .ops-chip{display:inline-block;border-radius:1rem;padding:.1rem .55rem;font-size:.7rem;
+            font-weight:700;white-space:nowrap;border:1px solid transparent}
+  .ops-chip-success{background:#e3f6ea;color:#15803d;border-color:#bfe8cd}
+  .ops-chip-warning{background:#fff4dd;color:#a15c00;border-color:#f4ddb0}
+  .ops-chip-danger{background:#fde8e8;color:#b42318;border-color:#f5c6c6}
+  .ops-chip-secondary{background:#eef1f5;color:#5a6a82;border-color:#dde3ec}
+  /* One light tint per production stage. */
+  .ops-stage-submitted{background:#eef1f5;color:#5a6a82;border-color:#dde3ec}
+  .ops-stage-store-pending{background:#fff4dd;color:#a15c00;border-color:#f4ddb0}
+  .ops-stage-bom-generated{background:#e6f6fb;color:#0b6f87;border-color:#c2e7f1}
+  .ops-stage-in-production{background:#e8eefb;color:#1e4fa3;border-color:#cdd9f4}
+  .ops-stage-packing-pending{background:#fdeee0;color:#a4500d;border-color:#f6d5b8}
+  .ops-stage-packed{background:#efe9fb;color:#5a3ba8;border-color:#dcd0f4}
+  .ops-stage-out-for-delivery{background:#e3f2fd;color:#15609b;border-color:#c5e2f7}
+  .ops-stage-dispatched{background:#e3f2fd;color:#15609b;border-color:#c5e2f7}
+  .ops-stage-delivered{background:#e3f6ea;color:#15803d;border-color:#bfe8cd}
+  .ops-stage-closed{background:#e3f6ea;color:#15803d;border-color:#bfe8cd}
+  .ops-stage-cancelled,.ops-stage-rejected{background:#fde8e8;color:#b42318;border-color:#f5c6c6}
+  .ops-stage-hold,.ops-stage-on-hold{background:#fff4dd;color:#a15c00;border-color:#f4ddb0}
+  .ops-stage-unknown{background:#eef1f5;color:#5a6a82;border-color:#dde3ec}
+  [data-bs-theme="dark"] .ops-chip{filter:saturate(.85) brightness(.92)}
   .ops-tbar{height:5px;border-radius:3px;background:var(--phoenix-body-highlight-bg,#eef2f7);margin-top:.25rem;overflow:hidden;max-width:260px}
   .ops-tbar span{display:block;height:100%}
   /* ---- Batch 217: KPI cards ---- */
@@ -216,7 +258,12 @@
           {% set att_total = attention | sum(attribute='count') %}
           <div class="ops-att">
             {% for a in attention %}
-            <a href="{{ a.url }}" class="ops-att-tile ops-{{ a.tone }}">
+            {# Batch 232 (Image 3): the tile opens a side panel listing the orders
+               behind the number. It is still a real link, so middle-click and
+               "open in new tab" reach the full screen — the panel is an
+               enhancement, not a replacement for the href. #}
+            <a href="{{ a.url }}" class="ops-att-tile ops-{{ a.tone }}"
+               {% if a.key %}data-att="{{ a.key }}" data-att-url="{{ a.url }}"{% endif %}>
               <div class="d-flex justify-content-between align-items-start">
                 <span class="n">{{ a.count }}</span>
                 <i class="bi {{ a.icon or 'bi-exclamation-circle' }}"></i>
@@ -248,15 +295,33 @@
       <div class="card border h-100">
         <div class="card-header bg-body-highlight fw-bold">{{ t("Today's Production") }}</div>
         <div class="card-body">
-          <table class="table table-sm mb-3">
-            <tbody>
-              <tr><td>{{ t('Orders received') }}</td><td class="text-end fw-bold">{{ today.received or 0 }}</td></tr>
-              <tr><td>{{ t('In production') }}</td><td class="text-end fw-bold">{{ today.in_production or 0 }}</td></tr>
-              <tr><td>{{ t('QC completed') }}</td><td class="text-end fw-bold">{{ today.qc_done or 0 }}</td></tr>
-              <tr><td>{{ t('Packed') }}</td><td class="text-end fw-bold">{{ today.packed or 0 }}</td></tr>
-              <tr><td>{{ t('Dispatched') }}</td><td class="text-end fw-bold">{{ today.dispatched or 0 }}</td></tr>
-            </tbody>
-          </table>
+          {# Batch 232 (Image 3): a five-row table of numbers is the slowest way
+             to read a shift. The same five figures are now a funnel — received
+             to dispatched, in the order work actually moves — with the numbers
+             kept beside it as coloured stages, because a wall screen is read
+             from across the room. #}
+          {% set _today_stages = [
+               ('Orders received', today.received or 0, '#1e5bb8'),
+               ('In production',   today.in_production or 0, '#c2410c'),
+               ('QC completed',    today.qc_done or 0, '#0ea5c6'),
+               ('Packed',          today.packed or 0, '#8a5a00'),
+               ('Dispatched',      today.dispatched or 0, '#15803d')] %}
+          {% set _today_max = (_today_stages | map(attribute=1) | max) or 0 %}
+          {% if _today_max %}
+          <div style="min-height:210px" data-isfc-chart="funnel" data-types="funnel,hbar,bar,donut"
+               data-unit="{{ t('orders') }}"
+               data-labels='{{ _today_stages | map(attribute=0) | list | tojson }}'
+               data-values='{{ _today_stages | map(attribute=1) | list | tojson }}'></div>
+          {% endif %}
+          <div class="ops-today">
+            {% for label, value, colour in _today_stages %}
+            <div style="--c:{{ colour }}">
+              <span class="n">{{ value }}</span>
+              <span class="l">{{ t(label) }}</span>
+              <div class="ops-bar"><span style="width:{{ ((value / _today_max * 100)|round) if _today_max else 0 }}%"></span></div>
+            </div>
+            {% endfor %}
+          </div>
           {% if today.completion is not none %}
           <div class="d-flex justify-content-between fs-9 fw-bold mb-1">
             <span>{{ t('Completion') }}</span><span>{{ today.completion }}%</span>
@@ -314,17 +379,39 @@
         <div class="card-header bg-body-highlight fw-bold">{{ t('Delivery Health') }}</div>
         <div class="card-body">
           {% if health.total %}
-          {% for key, label, tone in [('on_track','On Time','success'),('at_risk','At Risk','warning'),('overdue','Overdue','danger'),('breached','Breached','danger'),('completed','Completed','info')] %}
-          {% if health[key] %}
-          <div class="d-flex justify-content-between fs-9 mb-1">
-            <span><span class="badge bg-{{ tone }}" style="width:9px;height:9px;border-radius:50%;padding:0"></span>
-              {{ t(label) }}</span><span class="fw-bold">{{ health[key] }}</span>
+          {# Batch 232 (Image 3): a headline first — the share ON TIME is the one
+             number this panel exists to give — then a single stacked bar for the
+             mix, then the counts. Five separate progress bars made every state
+             look equally important, which is how a breach gets the same visual
+             weight as a completed delivery. #}
+          {% set _states = [('on_track','On Time','#15803d'),('at_risk','At Risk','#e59f0b'),
+                            ('overdue','Overdue','#dc3545'),('breached','Breached','#a4161a'),
+                            ('completed','Completed','#0ea5c6')] %}
+          {% set _ok = (health.on_track or 0) + (health.completed or 0) %}
+          <div class="ops-health-head">
+            <div>
+              <span class="pct">{{ (_ok / health.total * 100)|round }}%</span>
+              <span class="lbl">{{ t('On time or completed') }}</span>
+            </div>
+            <div class="ms-auto text-end fs-9 text-body-tertiary">
+              {{ health.total }} {{ t('orders measured') }}
+              {%- if health.overdue or health.breached %}
+              <div class="text-danger fw-bold">{{ (health.overdue or 0) + (health.breached or 0) }} {{ t('need attention') }}</div>
+              {% endif %}
+            </div>
           </div>
-          <div class="progress mb-2" style="height:10px">
-            <div class="progress-bar bg-{{ tone }}" style="width:{{ (health[key] / health.total * 100)|round }}%"></div>
+          <div class="ops-health-bar" role="img"
+               aria-label="{{ t('Delivery health mix') }}">
+            {% for key, label, colour in _states %}{% if health[key] %}
+            <span style="width:{{ (health[key] / health.total * 100) }}%;background:{{ colour }}"
+                  title="{{ t(label) }}: {{ health[key] }}"></span>
+            {% endif %}{% endfor %}
           </div>
-          {% endif %}
-          {% endfor %}
+          <div class="ops-health-keys">
+            {% for key, label, colour in _states %}{% if health[key] %}
+            <span><i style="background:{{ colour }}"></i>{{ t(label) }} <b>{{ health[key] }}</b></span>
+            {% endif %}{% endfor %}
+          </div>
           <div style="min-height:200px" data-isfc-chart="donut" data-types="donut,bar,hbar,pie"
                data-unit="{{ t('orders') }}"
                data-labels='{{ [t("On Time"), t("At Risk"), t("Overdue"), t("Breached"), t("Completed")] | tojson }}'
@@ -386,7 +473,10 @@
                 <td class="text-end fw-semibold">{% if r.actual is not none %}{{ '%.0f'|format(r.actual) }}{% else %}—{% endif %}</td>
                 <td class="text-end">
                   {% if r.achievement is not none %}
-                  <span class="badge badge-phoenix badge-phoenix-{{ _tone }}">{{ r.achievement }}%</span>
+                  {# Batch 232 (Image 3): the Phoenix badge renders a dark pill on
+                     some themes, which read as a button rather than a value. Own
+                     light-tinted chip, one per state, legible in both themes. #}
+                  <span class="ops-chip ops-chip-{{ _tone }}">{{ r.achievement }}%</span>
                   {% else %}<span class="text-body-tertiary">—</span>{% endif %}</td>
               </tr>
               {% else %}
@@ -448,7 +538,10 @@
                     'Delivered': 'success', 'Closed': 'success',
                     'Cancelled': 'danger', 'Rejected': 'danger', 'Hold': 'warning'
                   }.get(o.status, 'secondary') %}
-                <td><span class="badge badge-phoenix badge-phoenix-{{ _tone }} fs-10">{{ t(o.status) or '—' }}</span></td>
+                {# Batch 232: a distinct LIGHT background per stage. The Phoenix
+                   badge only offers five tones, so six stages shared colours and
+                   the column read as one blue block. #}
+                <td><span class="ops-chip ops-stage-{{ (o.status or 'unknown')|lower|replace(' ','-')|replace('/','-') }}">{{ t(o.status) or '—' }}</span></td>
                 <td class="fs-9">{{ o.required_delivery_date or '—' }}</td>
                 <td class="text-end">{{ '%.1f'|format(o.total_portions|float) if o.total_portions else '—' }}</td>
                 <td class="text-end fs-9">{{ '%.2f'|format(o.order_value|float) if o.order_value else '—' }}</td>
@@ -473,4 +566,72 @@
   {% endif %}
 </div>
 {% include 'partials/order_360_drawer.html' %}
+
+{# ---- Batch 232: Needs Attention side panel ---- #}
+<div class="offcanvas offcanvas-end" tabindex="-1" id="attPanel" style="width:min(640px,100vw)">
+  <div class="offcanvas-header border-bottom">
+    <div>
+      <h5 class="offcanvas-title mb-0" id="attTitle">—</h5>
+      <small class="text-body-tertiary" id="attCount"></small>
+    </div>
+    <div class="ms-auto d-flex gap-2 align-items-start">
+      <a class="btn btn-sm btn-phoenix-secondary" id="attFull" href="#">{{ t('Open the full list') }}</a>
+      <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="{{ t('Close') }}"></button>
+    </div>
+  </div>
+  <div class="offcanvas-body pt-2">
+    <div class="table-responsive">
+      <table class="table table-sm small mb-0">
+        <thead><tr><th>{{ t('Order') }}</th><th>{{ t('Customer') }}</th><th>{{ t('Status') }}</th>
+          <th>{{ t('Due') }}</th><th class="text-end">{{ t('Qty') }}</th></tr></thead>
+        <tbody id="attRows"><tr><td colspan="5" class="text-body-tertiary">…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  var el = document.getElementById('attPanel');
+  if (!el) return;
+  function panel() {
+    return (window.bootstrap && bootstrap.Offcanvas) ? bootstrap.Offcanvas.getOrCreateInstance(el) : null;
+  }
+  function esc(v) {
+    return String(v == null ? '' : v).replace(/[&<>"]/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; });
+  }
+  document.addEventListener('click', function (e) {
+    var t = e.target.closest('[data-att]');
+    if (!t) return;
+    e.preventDefault();
+    document.getElementById('attTitle').textContent = (t.querySelector('.l') || {}).textContent || '';
+    document.getElementById('attCount').textContent = '';
+    document.getElementById('attFull').href = t.getAttribute('data-att-url') || '#';
+    var body = document.getElementById('attRows');
+    body.innerHTML = '<tr><td colspan="5" class="text-body-tertiary">' + {{ t('Loading…')|tojson }} + '</td></tr>';
+    var oc = panel(); if (oc) oc.show();
+    fetch('/dashboard/attention/' + encodeURIComponent(t.getAttribute('data-att')), { credentials: 'same-origin' })
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function (d) {
+        document.getElementById('attTitle').textContent = d.title || '';
+        document.getElementById('attCount').textContent = (d.rows || []).length + ' ' + {{ t('orders')|tojson }};
+        if (!d.rows || !d.rows.length) {
+          body.innerHTML = '<tr><td colspan="5" class="text-body-tertiary">' + {{ t('Nothing recorded yet.')|tojson }} + '</td></tr>';
+          return;
+        }
+        // Each row opens the Order 360 drawer, so the panel is a way IN rather
+        // than a dead end.
+        body.innerHTML = d.rows.map(function (r) {
+          return '<tr><td><a href="/production/orders/' + encodeURIComponent(r.order_no) +
+            '" data-order-360="' + esc(r.order_no) + '">' + esc(r.order_no) + '</a></td><td>' +
+            esc(r.customer_name) + '</td><td>' + esc(r.status) + '</td><td class="text-nowrap">' +
+            esc(r.due) + '</td><td class="text-end">' + (r.portions || 0) + '</td></tr>';
+        }).join('');
+      })
+      .catch(function () {
+        body.innerHTML = '<tr><td colspan="5" class="text-danger">' + {{ t('Could not load this order.')|tojson }} + '</td></tr>';
+      });
+  });
+})();
+</script>
 {% endblock %}

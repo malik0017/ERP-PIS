@@ -28,7 +28,16 @@ from app.models.user import User
 router = APIRouter(tags=["Users & Access"])
 
 MODULES = [
-    ("dashboard", "Dashboard", "Executive production intelligence dashboard"),
+    ("dashboard", "Command Center (Dashboard)", "Executive production intelligence dashboard"),
+    ("logistics", "Logistics Board", "Driver/vehicle assignment and region-wise bags"),
+    ("boq", "Bill of Quantity", "Consolidated material requirement across orders"),
+    ("kitchen_reports", "Kitchen / Section Reports", "Section production, yield and protein-chain reports"),
+    ("store_standing_stock", "Section Standing Stock", "Material already issued to a section (carry-forward)"),
+    ("tray_line", "Tray Line Report", "Delivery-bags confirmation sheet"),
+    ("logistics_board", "Logistics Board (Assign)", "Assign drivers, vehicles and region bags"),
+    ("reports_center", "Reports Center", "Production reports landing page"),
+    ("report_builder", "Report Builder", "Build and save custom reports"),
+    ("yield_wastage", "Yield & Wastage Report", "Section input/output/waste analytics"),
     ("relationship", "Relationship Map", "Document relationship map"),
     ("reports", "Reports Center", "Operational and management reports"),
     ("master_upload", "Master Upload", "Upload customers, suppliers, inventory and recipes"),

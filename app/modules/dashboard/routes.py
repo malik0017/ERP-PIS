@@ -85,6 +85,26 @@ async def order_360_json(request: Request, order_no: str, db: Session = Depends(
     return JSONResponse(data)
 
 
+@router.get("/dashboard/orders/list-360")
+async def order_360_list(request: Request, db: Session = Depends(get_db)):
+    """Batch 246 (Image 12): order picker for the inline Order 360 card.
+    Recent, non-cancelled orders for the active company."""
+    require_area(request, "dashboard")
+    from fastapi.responses import JSONResponse
+    cid = int(request.session.get("company_id") or 1)
+    try:
+        rows = db.execute(text(
+            "SELECT order_no, COALESCE(customer_name,'') AS customer "
+            "FROM customer_orders "
+            "WHERE (company_id = :cid OR company_id IS NULL) "
+            "AND COALESCE(status,'') NOT IN ('Cancelled','Rejected') "
+            "ORDER BY id DESC LIMIT 300"), {"cid": cid}).mappings().all()
+        orders = [{"order_no": r["order_no"], "customer": r["customer"]} for r in rows]
+    except Exception:
+        orders = []
+    return JSONResponse({"orders": orders})
+
+
 @router.get("/dashboard/kpi/{key}")
 async def dashboard_kpi_drill(request: Request, key: str, db: Session = Depends(get_db)):
     """Batch 203 (Image 16) — side-panel evidence for one KPI card, same filter."""

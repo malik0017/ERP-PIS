@@ -1,30 +1,43 @@
 {# ============================================================================
-   partials/wallboard_mode.html — Batch 218
+   partials/wallboard_mode.html — Batch 240 (auto-scroll engine rewrite)
 
    Unattended-screen behaviour, shared by every board that runs on a wall.
    Include it once per page and pass the route it belongs to:
 
-       {% set wb_route = '/dashboard/operations' %}
+       {% set wb_route = '/dashboard' %}
        {% include 'partials/wallboard_mode.html' %}
 
-   It provides, for ?mode=presentation and ?mode=wallboard:
-     * Presentation / Wallboard / Exit buttons and a full-screen toggle
-     * navigation, footer and chrome hidden; content full width
-     * auto-scroll: down, pause, back up, pause, repeat
-     * auto-refresh aligned to the top of the scroll cycle, so the page never
-       jumps mid-read
-     * a live clock, because a screen on a wall has to prove it is not frozen
-     * any real interaction (wheel, touch, key, click) suspends scrolling for a
-       minute, so someone walking up to the screen is not fought by it
+   Used by: Production Command Center (/dashboard) and Executive / Operations
+   Overview (/dashboard/operations). Fixing the loop here fixes both.
 
-   Batch 215 built this for the Command Center only. Operations Overview needed
-   the same thing, and copying ~60 lines of JS into a second template is how
-   two boards start behaving differently six months later. Extracted here
-   instead; the Command Center now includes this file too, so there is one
-   implementation and one place to change it.
+   Modes (?mode=presentation and ?mode=wallboard):
+     * Presentation / Wallboard / Exit buttons + full-screen toggle
+     * navigation, footer and chrome hidden; content full width
+     * auto-scroll cycle:  RUN down (smooth, slow) → HOLD at bottom →
+       INSTANT jump to top → short HOLD → RUN down again … forever
+     * auto-refresh fires ONLY at the top of the cycle, so a reload never
+       interrupts a mid-page read
+     * a live clock, because a wall screen has to prove it is not frozen
+     * any real interaction (wheel/touch/key/click) pauses the cycle; it
+       resumes on its own 3 s after the last interaction
+
+   ── WHY THIS WAS REWRITTEN ────────────────────────────────────────────────
+   Batch 231 drove the scroll from a 40 ms setInterval that nudged 2 px and
+   inferred "the end" from whether the last nudge moved. Two problems the user
+   hit on a tall board:
+     1. it returned to the top with behavior:'smooth'. On a 5 000 px page that
+        animation outlived the hold window, so the next RUN tick fought the
+        still-running smooth-scroll — the board stalled mid-page and looked
+        "stuck / not scrolling".
+     2. speed was frame-count based (2 px per 40 ms), so it drifted with load
+        and never felt like a steady crawl.
+   This version uses requestAnimationFrame with a time-based delta (constant
+   px/second regardless of frame rate), a tiny 3-state machine, and an INSTANT
+   jump to the top (no smooth animation to fight). Smooth to read on the way
+   down; snappy and reliable on the way back up.
 
    COLOUR IS NOT SET HERE. The board follows data-bs-theme like the rest of the
-   system (Batch 215) — these modes change size and chrome only.
+   system — these modes change size and chrome only.
    ============================================================================ #}
 {% set wb_route = wb_route or request.url.path %}
 {% set wb_mode = (request.query_params.get('mode') or '') %}
@@ -40,7 +53,7 @@
   .wb-bar { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
   .wb-clock { font-variant-numeric: tabular-nums; font-weight: 700; letter-spacing: .5px; }
   #wbScroll { opacity: .55; }
-  #wbScroll.on { opacity: 1; border-color: #1e5bb8; color: #1e5bb8; }
+  #wbScroll.on { opacity: 1; border-color: var(--phoenix-primary, #1e5bb8); color: var(--phoenix-primary, #1e5bb8); }
   @media print { .wb-bar { display: none; } }
 </style>
 
@@ -65,51 +78,133 @@
 <script>
 (function () {
   var mode = {{ wb_mode|tojson }};
-  var REFRESH_MS = 120000;
 
+  // Full-screen toggle works in every mode.
   var full = document.getElementById('wbFull');
   if (full) full.addEventListener('click', function () {
     if (!document.fullscreenElement) {
       (document.documentElement.requestFullscreen || function () {}).call(document.documentElement);
     } else if (document.exitFullscreen) { document.exitFullscreen(); }
   });
+
   if (!mode) return;
 
   document.body.classList.add('wb-on');
   if (mode === 'wallboard') document.body.classList.add('wb-wall');
 
-  // A wall screen has to prove it is live. A stale board with plausible
-  // numbers is worse than a blank one, so the clock ticks even between refreshes.
+  // Live clock — a stale board with plausible numbers is worse than a blank one.
   var clock = document.getElementById('wbClock');
   function tick() {
-    if (clock) clock.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    if (clock) clock.textContent = new Date().toLocaleTimeString(
+      [], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   }
   tick(); setInterval(tick, 1000);
 
-  var auto = { on: true, dir: 1, idleUntil: 0, refreshAt: Date.now() + REFRESH_MS }, holdUntil = 0;
-  function pause(ms) { auto.idleUntil = Date.now() + (ms || 60000); }
-  ['wheel', 'touchstart', 'keydown', 'mousedown'].forEach(function (ev) {
-    window.addEventListener(ev, function () { pause(); }, { passive: true });
-  });
+  // ── tunables ──────────────────────────────────────────────────────────────
+  var SPEED_PX_S  = {{ (wb_speed if wb_speed is defined else 42) }}; // crawl speed, px/second
+  var IDLE_MS     = 3000;    // resume 3 s after the last interaction (as requested)
+  var HOLD_BOTTOM = 5000;    // let people finish the last screen before jumping up
+  var HOLD_TOP    = 1500;    // let the jump land before crawling down again
+  var REFRESH_MS  = 120000;  // reload the data every 2 min — only ever at the top
+  var END_EPS     = 2;       // px tolerance for "at the bottom"
 
+  // ── state ─────────────────────────────────────────────────────────────────
+  var auto       = { on: true };
+  var idleUntil  = 0;                       // interaction pause deadline
+  var state      = 'run';                   // 'run' | 'holdBottom' | 'holdTop'
+  var stateUntil = 0;
+  var acc        = 0;                       // sub-pixel accumulator (slow speeds)
+  var refreshAt  = Date.now() + REFRESH_MS;
+  var lastTs     = 0;
+
+  // Any interaction pauses the cycle; it self-resumes IDLE_MS later.
+  ['wheel', 'touchstart', 'touchmove', 'keydown', 'mousedown', 'pointerdown', 'click']
+    .forEach(function (ev) {
+      window.addEventListener(ev, function () { idleUntil = Date.now() + IDLE_MS; }, { passive: true });
+    });
+
+  // A drawer/modal/dropdown open on screen means someone is reading it.
+  function busy() {
+    return !!document.querySelector('.offcanvas.show, .modal.show, .dropdown-menu.show');
+  }
+
+  // The element that actually scrolls: the window if the document does,
+  // otherwise the nearest overflowing ancestor of .content. Works in
+  // fullscreen and after the content height changes on a refresh.
+  function scroller() {
+    var doc = document.scrollingElement || document.documentElement;
+    if (doc.scrollHeight - doc.clientHeight > END_EPS) return doc;
+    var node = document.querySelector('.content') || document.body;
+    while (node && node !== document.body) {
+      if (node.scrollHeight - node.clientHeight > END_EPS) return node;
+      node = node.parentElement;
+    }
+    return doc;
+  }
+  function isWin(el) { return el === (document.scrollingElement || document.documentElement); }
+  function maxOf(el) { return el.scrollHeight - el.clientHeight; }
+  function posOf(el) { return isWin(el) ? (window.scrollY || el.scrollTop) : el.scrollTop; }
+  function setPos(el, y) {                  // INSTANT — never smooth (no fight)
+    if (isWin(el)) window.scrollTo(0, y); else el.scrollTop = y;
+  }
+
+  // Toggle button.
   var btn = document.getElementById('wbScroll');
   if (btn) btn.addEventListener('click', function (e) {
     e.stopPropagation();
-    auto.on = !auto.on; auto.idleUntil = 0;
+    auto.on = !auto.on;
+    idleUntil = 0;
+    if (auto.on) { state = 'run'; lastTs = 0; }   // resume cleanly from here
     btn.classList.toggle('on', auto.on);
-    btn.querySelector('span').textContent = auto.on ? {{ t('Auto-scroll on')|tojson }} : {{ t('Auto-scroll off')|tojson }};
+    btn.querySelector('span').textContent =
+      auto.on ? {{ t('Auto-scroll on')|tojson }} : {{ t('Auto-scroll off')|tojson }};
   });
 
-  setInterval(function () {
+  // ── the loop ────────────────────────────────────────────────────────────
+  // rAF gives a smooth, frame-rate-independent crawl. dt is clamped so that
+  // returning from a hidden tab doesn't teleport the page.
+  function frame(ts) {
+    requestAnimationFrame(frame);
+
     var now = Date.now();
-    if (!auto.on || now < auto.idleUntil || document.hidden || now < holdUntil) return;
-    // Refresh only at the top, so a reload never interrupts a read mid-page.
-    if (now > auto.refreshAt && window.scrollY < 40) { location.reload(); return; }
-    var max = document.body.scrollHeight - window.innerHeight;
-    if (max <= 0) return;
-    if (auto.dir > 0 && window.scrollY >= max - 2) { auto.dir = -1; holdUntil = now + 6000; return; }
-    if (auto.dir < 0 && window.scrollY <= 2) { auto.dir = 1; holdUntil = now + 6000; return; }
-    window.scrollBy(0, auto.dir * 2);
-  }, 40);
+    if (!lastTs) { lastTs = ts; return; }
+    var dt = (ts - lastTs) / 1000;
+    lastTs = ts;
+    if (dt > 0.1) dt = 0.1;
+
+    if (!auto.on || document.hidden || now < idleUntil || busy()) return;
+
+    var el  = scroller();
+    var max = maxOf(el);
+    var pos = posOf(el);
+
+    // Page fits on screen: nothing to scroll — just keep the refresh cadence.
+    if (max <= END_EPS) {
+      if (now > refreshAt) location.reload();
+      return;
+    }
+
+    if (state === 'run') {
+      acc += SPEED_PX_S * dt;
+      var step = acc | 0;                   // whole px this frame
+      if (step >= 1) { acc -= step; setPos(el, Math.min(pos + step, max)); }
+      if (posOf(el) >= max - END_EPS) {     // reached the bottom
+        state = 'holdBottom';
+        stateUntil = now + HOLD_BOTTOM;
+      }
+    } else if (state === 'holdBottom') {
+      if (now >= stateUntil) {
+        setPos(el, 0);                      // INSTANT jump to the top
+        acc = 0;
+        state = 'holdTop';
+        stateUntil = now + HOLD_TOP;
+      }
+    } else { // holdTop
+      // Only place a reload can fire — we are guaranteed to be at the top.
+      if (now > refreshAt) { location.reload(); return; }
+      if (now >= stateUntil) state = 'run';
+    }
+  }
+  requestAnimationFrame(frame);
 })();
 </script>

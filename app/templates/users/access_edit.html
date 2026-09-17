@@ -34,10 +34,14 @@
 </style>
 
 <div class="container-fluid py-4">
-  <div class="acc-hero">
-    <h1><i class="bi bi-shield-lock me-2"></i>Edit User Access</h1>
-    <p>Screen-wise and action-wise control. <b>View</b> opens the page; Add / Edit / Delete / Export control what the user can do inside it.</p>
+  <div class="isfc-hero mb-4 p-4 rounded-4 text-white d-flex align-items-center justify-content-between flex-wrap gap-3"
+       style="background: linear-gradient(120deg,#0f172a 0%,#1e3a8a 55%,#2563eb 100%);">
+      <div>
+      <h1><i class="bi bi-shield-lock me-2"></i>Edit User Access</h1>
+      <p>Screen-wise and action-wise control.</p>
+    </div>
   </div>
+ 
 
   <form method="post" action="/admin/users/{{ target_user.id }}/access">
     <div class="card border shadow-none p-3 mb-3">
@@ -76,15 +80,17 @@
          appended below so an area can never again be invisible just because
          nobody added it to this hardcoded list. #}
       {% set GROUPS = [
-        ('Sales & Orders', 'cart', ['orders','order_portal','immediate_order','sales_review','customer_portal','production_orders','subscriptions']),
-        ('Production & Kitchen', 'activity', ['dashboard','head_chef','bom','store','store_issuance','kitchen','kitchen_summary','section_cutting','section_butchery','section_hot_kitchen','section_cold_kitchen','section_bakery_pastry','qc','packing','dispatch']),
+        ('Main', 'grid', ['module_home','dashboard']),
+        ('Sales & Orders', 'cart', ['orders','order_portal','immediate_order','sales_review','customer_portal','subscriptions']),
+        ('Production & Kitchen', 'activity', ['production_orders','head_chef','bom','store','store_issuance','store_standing_stock','boq','kitchen','kitchen_summary','kitchen_reports','section_cutting','section_butchery','section_hot_kitchen','section_cold_kitchen','section_bakery_pastry','qc']),
+        ('Logistics', 'truck', ['packing','dispatch','logistics','logistics_board','tray_line']),
         ('Recipes', 'journal-text', ['recipes','recipe_list','recipe_prepare','recipe_missing','recipe_approvals']),
         ('Procurement', 'bag', ['purchase_requisition','procurement']),
         ('Inventory', 'box-seam', ['inventory_valuation']),
         ('Finance', 'cash-coin', ['finance']),
-        ('Reports & Data', 'bar-chart-line', ['reports','relationship','masters','master_upload','master_data','master_approvals']),
+        ('Reports & Data', 'bar-chart-line', ['reports','reports_center','report_builder','yield_wastage','relationship','masters','master_upload','master_data','master_approvals']),
         ('Projects & HR', 'people', ['project_management','project_list','project_detail','project_team','project_timeline','hr']),
-        ('Administration', 'shield-lock', ['module_home','settings','users','audit'])
+        ('Administration', 'shield-lock', ['settings','users','audit'])
       ] %}
       {# Any area present in the matrix but not claimed by a group above. #}
       {% set _grouped = [] %}
@@ -98,7 +104,7 @@
       {% for gname, gicon, gkeys in GROUPS %}
       {% set present = gkeys|select('in', MOD)|list %}
       {% if present %}
-      <details class="acc-group" {% if gname in ['Sales & Orders','Production & Kitchen'] %}open{% endif %} data-group="{{ loop.index }}">
+      <details class="acc-group" {% if gname in ['Main','Sales & Orders','Production & Kitchen','Logistics'] %}open{% endif %} data-group="{{ loop.index }}">
         <summary>
           <i class="bi bi-chevron-right chev"></i>
           <i class="bi bi-{{ gicon }} text-primary"></i>

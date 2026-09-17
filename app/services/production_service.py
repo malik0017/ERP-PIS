@@ -113,6 +113,9 @@ def _json_list(value: str | None) -> list[str]:
 
 
 def _dump_route(route: list[str]) -> str:
+    # Batch 225: every route written to the database passes through here, so
+    # deduping at this one point means no caller can persist a self-transfer.
+    route = dedupe_route(route)
     return json.dumps(route, ensure_ascii=False)
 
 
@@ -313,6 +316,7 @@ def generate_bom_for_order(db: Session, order_no: str, approved_by: str | None =
     lines = db.query(OrderLine).filter(OrderLine.order_no == order_no).order_by(OrderLine.line_no).all()
     created: list[BOMLine] = []
     total_cost = 0.0
+    _assembly_cache: dict = {}
 
     for ol in lines:
         recipe = (
@@ -338,6 +342,9 @@ def generate_bom_for_order(db: Session, order_no: str, approved_by: str | None =
             .order_by(RecipeIngredient.line_no)
             .all()
         )
+        # Batch A (Image 5): where this recipe is assembled, so a Hot-cooked
+        # component of a cold dish routes Hot → Cold → QC.
+        assembly_section = recipe_assembly_section(db, recipe.recipe_code, _assembly_cache)
 
         for ri in recipe_items:
             ingredient_code = ri.inventory_code or f"NO-CODE-{ri.id}"
@@ -436,7 +443,8 @@ def generate_bom_for_order(db: Session, order_no: str, approved_by: str | None =
             # Batch 200: the recipe line decides the route, not the name guess.
             route = route_for_line(first_section,
                                         map_excel_section(getattr(ri, "kitchen_section", None)),
-                                        route)
+                                        route,
+                                        assembly_section=assembly_section)
 
             bom = BOMLine(
                 company_id=getattr(order, "company_id", None),
@@ -885,9 +893,75 @@ def update_store_issuance_line(
 
 COOK_SECTIONS = ("Hot Kitchen", "Cold Kitchen", "Bakery/Pastry")
 
+# Batch A (Image 5) — a recipe is FINISHED in one section even when its
+# ingredients are prepped in several. A salad is assembled in the Cold Kitchen,
+# so the grilled chicken it contains (cooked in the Hot Kitchen) has to travel
+# Hot → Cold to be plated, THEN go to QC — not straight from Hot to QC. The
+# assembly section is the section where most of the recipe's ingredient lines
+# live; Cold wins ties (cold dishes are assembled cold), then Bakery, then Hot.
+_ASSEMBLY_PRIORITY = {"Cold Kitchen": 3, "Bakery/Pastry": 2, "Hot Kitchen": 1}
+
+
+def recipe_assembly_section(db: Session, recipe_no: str | None, cache: dict) -> str | None:
+    """The section a recipe is finished/assembled in, from its ingredient lines'
+    workbook Section column. Cached per recipe. None when no cook section is used."""
+    if not recipe_no:
+        return None
+    if recipe_no in cache:
+        return cache[recipe_no]
+    val = None
+    try:
+        rows = db.execute(text("""
+            SELECT ri.kitchen_section, COUNT(*) AS c
+            FROM recipe_ingredients ri JOIN recipes r ON r.id = ri.recipe_id
+            WHERE r.recipe_code = :rc
+              AND UPPER(TRIM(COALESCE(r.status,''))) = 'ACTIVE'
+            GROUP BY ri.kitchen_section
+        """), {"rc": recipe_no}).all()
+        counts: dict[str, int] = {}
+        for raw, c in rows:
+            m = map_excel_section(raw)
+            if m in _ASSEMBLY_PRIORITY:
+                counts[m] = counts.get(m, 0) + int(c or 0)
+        if counts:
+            val = max(counts.items(), key=lambda kv: (kv[1], _ASSEMBLY_PRIORITY[kv[0]]))[0]
+    except Exception:
+        val = None
+    cache[recipe_no] = val
+    return val
+
+
+def dedupe_route(route: list[str]) -> list[str]:
+    """Batch 225 ROOT CAUSE (Image 2 — "54 ingredients where the recipe has 27").
+
+    A route template that names the same section twice in a row —
+    ["Store", "Hot Kitchen", "Hot Kitchen", "QC", ...] — makes the section
+    transfer to ITSELF. The transfer creates a second row whose
+    current_section is the same section, so the workstation lists every
+    ingredient twice: once "Transferred to Hot Kitchen" and once "Received,
+    issue to QC". The ingredient count doubles and the section appears to have
+    twice the work it has.
+
+    The duplicate arises when the ingredient's own default route already starts
+    with the section that issuance then inserts in front of it, so neither side
+    is individually wrong — which is why it survived: both halves look correct
+    in isolation.
+
+    Collapses consecutive repeats only. A route that legitimately revisits a
+    section later (prep, then finish after QC) keeps both visits.
+    """
+    out: list[str] = []
+    for step in route or []:
+        if not step:
+            continue
+        if out and out[-1] == step:
+            continue
+        out.append(step)
+    return out
+
 
 def route_for_line(first_section: str | None, recipe_section: str | None,
-                   fallback_route: list[str]) -> list[str]:
+                   fallback_route: list[str], assembly_section: str | None = None) -> list[str]:
     """Batch 200 ROOT CAUSE (Image 2 — salad produce routed Cutting → Hot Kitchen).
 
     The route a line follows after the store came from
@@ -904,21 +978,38 @@ def route_for_line(first_section: str | None, recipe_section: str | None,
 
     Rule now — the recipe line decides, the guess is only a fallback:
       first stop Cutting + recipe names another section → Cutting → that section
-      first stop is a cooking section → that section → QC → Trayline
+      first stop is a cooking section → that section → (assembly) → QC → Trayline
       first stop Trayline → Trayline only
       anything else (e.g. Butchery → Hot Kitchen for grilling) → unchanged
+
+    Batch A (Image 5): `assembly_section` is where the whole recipe is finished.
+    When a line is cooked in one section but the recipe is assembled in a
+    DIFFERENT cook section (grilled chicken in a cold salad), the line now
+    travels through the assembly section before QC — Hot → Cold → QC — instead
+    of Hot → QC.
     """
     rs = (recipe_section or "").strip()
     fs = (first_section or "").strip()
+    asm = (assembly_section or "").strip()
     if fs == "Cutting" and rs and rs != "Cutting":
         if rs == "Trayline / Packing":
-            return ["Store", "Cutting", "Trayline / Packing"]
-        return ["Store", "Cutting", rs, "QC", "Trayline / Packing"]
+            return dedupe_route(["Store", "Cutting", "Trayline / Packing"])
+        # A cut item destined for a cold salad but whose own line says a cook
+        # section still lands in the assembly section for plating.
+        tail = [rs]
+        if asm and asm in COOK_SECTIONS and asm != rs:
+            tail.append(asm)
+        return dedupe_route(["Store", "Cutting", *tail, "QC", "Trayline / Packing"])
     if fs in COOK_SECTIONS:
-        return ["Store", fs, "QC", "Trayline / Packing"]
+        mid = [fs]
+        if asm and asm in COOK_SECTIONS and asm != fs:
+            mid.append(asm)
+        return dedupe_route(["Store", *mid, "QC", "Trayline / Packing"])
     if fs == "Trayline / Packing":
-        return ["Store", "Trayline / Packing"]
-    return fallback_route
+        return dedupe_route(["Store", "Trayline / Packing"])
+    # Batch 225: the fallback is the ingredient's own guessed route, which is
+    # where the duplicated section came from. Deduped on the way out.
+    return dedupe_route(fallback_route)
 
 
 def _recipe_section_for(db: Session, recipe_no: str | None, ingredient_code: str | None,
@@ -958,10 +1049,10 @@ def realign_cutting_routes(db: Session, order_no: str | None = None, commit: boo
     changed = 0
 
     def _fix(obj, first, recipe_no, code) -> bool:
-        current = _json_list(obj.route_template)
+        current = dedupe_route(_json_list(obj.route_template))
         recipe_sec = _recipe_section_for(db, recipe_no, code, cache) if first == "Cutting" else None
         wanted = route_for_line(first, recipe_sec, current)
-        if wanted != current:
+        if wanted != _json_list(obj.route_template):
             obj.route_template = _dump_route(wanted)
             return True
         return False
@@ -1293,9 +1384,23 @@ def transfer_transaction(
     tx.waste_reason = waste_reason
     tx.section_remarks = remarks
 
-    route = _json_list(tx.route_template)
+    # Batch 225: read the route through dedupe_route() so a legacy row whose
+    # template still names this section twice cannot transfer to ITSELF and
+    # create the duplicate line documented on dedupe_route(). Old rows are
+    # repaired as they are touched, without a migration.
+    _raw_route = _json_list(tx.route_template)
+    route = dedupe_route(_raw_route)
+    if route != _raw_route:
+        tx.route_template = _dump_route(route)
+        if tx.current_section in route:
+            tx.route_step_no = route.index(tx.current_section)
     next_step = _num(tx.route_step_no) + 1
     next_section = route[int(next_step)] if len(route) > int(next_step) else None
+    # Belt and braces: whatever the template says, a section never hands work
+    # to itself. Skip forward to the first step that is a different section.
+    while next_section and _normalize_section(next_section) == _normalize_section(tx.current_section):
+        next_step += 1
+        next_section = route[int(next_step)] if len(route) > int(next_step) else None
 
     # Client requirement: each section workstation can decide the next section
     # when production needs to branch (Thawing -> Butchery/Hot Kitchen, Cutting -> Cold Kitchen, etc.).
@@ -1679,6 +1784,23 @@ def bulk_process_transfer_recipe(
         next_section, waste_reason, remarks, user, captures, output_uom)
 
 
+def _ordered_portions(db: Session, order_no: str, recipe_no: str | None) -> float:
+    """Portions ordered for one recipe on one order. 0 when unknown — never a
+    guess, because a chef comparing produced against ordered needs the real
+    number or none at all."""
+    if not recipe_no:
+        return 0.0
+    try:
+        v = db.execute(text("""
+            SELECT COALESCE(SUM(required_portions), 0) FROM order_lines
+            WHERE order_no = :o AND recipe_no = :r"""),
+            {"o": order_no, "r": recipe_no}).scalar()
+        return float(v or 0)
+    except Exception:
+        db.rollback()
+        return 0.0
+
+
 def bakery_pastry_consolidated(db: Session, order_no: str | None = None,
                                section: str = "Bakery/Pastry") -> list[dict[str, Any]]:
     """Group a section's work at recipe level, not item level.
@@ -1703,6 +1825,10 @@ def bakery_pastry_consolidated(db: Session, order_no: str | None = None,
                 "recipe_no": tx.recipe_no,
                 "recipe_name": tx.recipe_name,
                 "ingredients_count": 0,
+                # Batch 225 (Image 1): the portions the CUSTOMER ordered for this
+                # recipe, so a cold-section chef can see what they are aiming at
+                # while entering produced portions. Read once per group.
+                "ordered_portions": _ordered_portions(db, tx.order_no, tx.recipe_no),
                 "total_issued_qty_standard": 0.0,
                 "total_received_qty_standard": 0.0,
                 "total_processed_qty_standard": 0.0,

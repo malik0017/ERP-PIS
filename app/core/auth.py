@@ -17,13 +17,7 @@ def get_current_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(security_scheme),
     db: Session = Depends(get_db),
 ) -> User:
-    """
-    Current user dependency for normal web pages.
-
-    Priority:
-    1. Session login: request.session["user_id"]
-    2. Bearer token: Authorization: Bearer <token>
-    """
+   
 
     user_id = None
 

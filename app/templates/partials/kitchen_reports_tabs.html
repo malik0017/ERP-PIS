@@ -1,8 +1,4 @@
-{# Batch 202 (Image 8) — "show the single kitchen report and inside show all
-   three reports". The three reports keep their own routes, filters and exports
-   (nothing about their numbers changes); this strip makes them one Kitchen
-   Reports workspace with one menu entry. Common filters (section, cooking
-   dates, customer) are carried between tabs so switching view keeps context. #}
+
 {% set _kq = request.query_params %}
 {% set _carry = [] %}
 {% for k in ['section', 'date_from', 'date_to', 'customer'] %}{% if _kq.get(k) %}{% set _ = _carry.append(k ~ '=' ~ (_kq.get(k)|urlencode)) %}{% endif %}{% endfor %}

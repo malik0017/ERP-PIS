@@ -10,7 +10,10 @@
       <p class="mb-0 opacity-75">{{ t('Assign driver, vehicle and region-wise bags per order.') }}</p>
     </div>
     <div class="d-flex gap-2">
-      <a class="btn btn-light fw-bold" href="/dispatch/logistics"><i class="bi bi-bar-chart me-1"></i>{{ t('Region Report') }}</a>
+      {# Batch 243 (Image 5): the region / logistics report now lives only in the
+         Packing Reports hub ("not here"), so the standalone button was removed;
+         it is one click away via All Packing Reports. #}
+      <a class="btn btn-light fw-bold" href="/packing/reports"><i class="bi bi-clipboard-data me-1"></i>{{ t('All Packing Reports') }}</a>
     </div>
   </div>
 
@@ -77,7 +80,7 @@
               <td>{% if r.driver_name %}{{ r.driver_name }}{% else %}<span class="text-warning small">— set —</span>{% endif %}</td>
               <td>{{ r.vehicle_no or '—' }}</td>
               <td>{{ r.dispatch_date or '—' }}</td>
-              <td><span class="badge {% if r.dispatch_status=='Delivered' %}bg-success{% elif r.dispatch_status in ['Rejected','Cancelled'] %}bg-danger{% elif r.dispatch_status=='Assigned' %}bg-info text-dark{% else %}bg-warning text-dark{% endif %}">{{ r.dispatch_status }}</span></td>
+              <td><span class="badge badge-phoenix {% if r.dispatch_status=='Delivered' %}badge-phoenix-success{% elif r.dispatch_status in ['Rejected','Cancelled'] %}badge-phoenix-danger{% elif r.dispatch_status=='Assigned' %}badge-phoenix-info{% elif r.dispatch_status=='Out for Delivery' %}badge-phoenix-primary{% else %}badge-phoenix-warning{% endif %}">{{ t(r.dispatch_status) }}</span></td>
               <td><a href="/dispatch/logistics/order/{{ r.id }}" class="btn btn-primary btn-sm fw-bold"><i class="bi bi-pencil-square me-1"></i>{{ t('Assign') }}</a></td>
             </tr>
             {% else %}

@@ -12,9 +12,7 @@
       <i class="bi bi-file-earmark-plus me-1"></i>{{ t('Purchase Requisitions') }}</a>
   </div>
 
-  {#- Batch 141: each card is now a link to the matching filtered view, and the
-      counts are computed over the same search/date predicate as the table, so a
-      card can no longer show a number the grid below refuses to display. -#}
+  
   {%- set _qs = ('&search=' ~ filters.search if filters.search else '')
                 ~ ('&date_from=' ~ filters.date_from if filters.date_from else '')
                 ~ ('&date_to=' ~ filters.date_to if filters.date_to else '') -%}
@@ -120,7 +118,6 @@
             {% set review = o.sales_review_status or 'Approved' %}
             <tr>
               <td>
-                {# Batch 120: date + brand promoted to bold on top, request no. below. #}
                 <div class="fw-bold">{{ o.order_date }}{% if o.brand %} · {{ o.brand }}{% endif %}</div>
                 <a href="/sales-requests/{{ o.order_no }}" class="small-muted text-decoration-none">{{ o.order_no }}</a>
               </td>
@@ -166,24 +163,7 @@
                 <a href="/sales-requests/{{ o.order_no }}" class="btn btn-sm btn-primary">
                   <i class="bi bi-eye me-1"></i>{{ t('Review') }}</a>
                 {% else %}
-                {# Batch 184 (Img 3, 4) — "Open Order" alone sent a decided
-                   request straight to the BOM/production view with no way
-                   back to the Sales Request page it started as. The Sales
-                   Request detail route (sales_review/routes.py:
-                   sales_request_detail) already renders correctly for an
-                   Approved/Rejected order — it never restricted by status —
-                   so this was a missing link on the list page, not a
-                   missing capability on the detail page. Both buttons now
-                   show: one back to the original sales request (same
-                   design whatever its status), one forward to where it
-                   ended up in production.
-                   Batch 199 (Img 1) — "fix these buttons gaps and show in
-                   one row not two rows": the two <a> tags were plain inline
-                   elements with no width constraint, so at normal column
-                   width they wrapped onto a second line like two long
-                   words in a paragraph. Wrapping both in a nowrap flex row
-                   keeps them side by side; a small explicit gap replaces
-                   whatever inconsistent whitespace the wrap was creating. #}
+                
                 <div class="d-flex gap-1 justify-content-end flex-nowrap">
                   <a href="/sales-requests/{{ o.order_no }}" class="btn btn-sm btn-phoenix-secondary text-nowrap">
                     <i class="bi bi-eye me-1"></i>{{ t('View Request') }}</a>

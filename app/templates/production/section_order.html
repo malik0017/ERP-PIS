@@ -170,26 +170,22 @@
           <div class="fld" style="width:88px"><label class="small-muted d-block">Carb g</label><input class="pis-input num" type="number" step="0.0001" min="0" name="bulk_carb" id="bulkCarb" value="0" oninput="bulkRecalc()"></div>
           <div class="fld" style="width:88px"><label class="small-muted d-block">Protein g</label><input class="pis-input num" type="number" step="0.0001" min="0" name="bulk_protein" id="bulkProtein" value="0" oninput="bulkRecalc()"></div>
           <div class="fld" style="width:88px"><label class="small-muted d-block">Vegetable g</label><input class="pis-input num" type="number" step="0.0001" min="0" name="bulk_veg" id="bulkVeg" value="0" oninput="bulkRecalc()"></div>
-          <div class="fld" style="width:88px"><label class="small-muted d-block">Yield g</label><input class="pis-input num" type="number" step="0.0001" name="bulk_yield" id="bulkYield" value="0" readonly title="Auto = processed − (carb + protein + vegetable)"></div>
+          {# Batch 242 (Image 11): Hot Kitchen no longer shows 'Other g'. Whatever
+             is not carb/protein/vegetable is Waste, and a second box only splits
+             one number two ways. Kept as a hidden zero so bulkRecalc() and the
+             POST shape are unchanged. #}
+          <input type="hidden" name="bulk_yield" id="bulkYield" value="0">
           {% elif section in ('Cold Kitchen', 'Bakery/Pastry') %}
           <div class="fld" style="width:100px"><label class="small-muted d-block">Produced Portion</label><input class="pis-input num" type="number" step="0.01" min="0" name="bulk_ck_portion" value="0"></div>
           <div class="fld" style="width:100px"><label class="small-muted d-block">Portion Wt g</label><input class="pis-input num" type="number" step="0.01" min="0" name="bulk_ck_weight" value="0"></div>
           <div class="fld" style="width:100px"><label class="small-muted d-block">Output UOM</label><select class="pis-input" name="bulk_ck_uom"><option selected>Gram</option><option>Portion</option><option>Box</option><option>Kg</option><option>Ml</option></select></div>
-          {# Batch 192 (Img 2, 3 — Packing/QC): Packing's Recipe Pack Detail
-             and the QC Checklist both expect Protein/Carb/Veg weight for a
-             recipe regardless of which section produced it, but only Hot
-             Kitchen ever captured those fields — so any Cold Kitchen or
-             Bakery/Pastry recipe showed permanently blank Received Weight
-             downstream, not a data-migration gap but a structural one.
-             Added here as INFORMATIONAL fields only — deliberately NOT
-             wired into this section's existing Transfer auto-calculation
-             (which already correctly derives Transfer from
-             received/waste/return for these two sections) — so nothing
-             about their already-tested balance logic changes; this only
-             adds data Packing/QC can read. #}
-          <div class="fld" style="width:88px"><label class="small-muted d-block">Carb g</label><input class="pis-input num" type="number" step="0.0001" min="0" name="bulk_carb" id="bulkCarb" value="0"></div>
-          <div class="fld" style="width:88px"><label class="small-muted d-block">Protein g</label><input class="pis-input num" type="number" step="0.0001" min="0" name="bulk_protein" id="bulkProtein" value="0"></div>
-          <div class="fld" style="width:88px"><label class="small-muted d-block">Vegetable g</label><input class="pis-input num" type="number" step="0.0001" min="0" name="bulk_veg" id="bulkVeg" value="0"></div>
+          {# Batch 242 (Images 1–2): Cold Kitchen and Bakery/Pastry work in
+             PORTIONS, not nutrition splits. Carb / Protein / Vegetable are no
+             longer shown here (they were informational only). Kept as hidden
+             zeros so the POST shape is identical and no route/service changes. #}
+          <input type="hidden" name="bulk_carb" id="bulkCarb" value="0">
+          <input type="hidden" name="bulk_protein" id="bulkProtein" value="0">
+          <input type="hidden" name="bulk_veg" id="bulkVeg" value="0">
           {% endif %}
           <div class="fld" style="width:90px"><label class="small-muted d-block">Waste</label><input class="pis-input num" type="number" step="0.0001" min="0" name="bulk_waste" id="bulkWaste" value="0" oninput="bulkRecalc()"></div>
           <div class="fld" style="width:90px"><label class="small-muted d-block">Return</label><input class="pis-input num" type="number" step="0.0001" min="0" name="bulk_return" id="bulkReturn" value="0" oninput="bulkRecalc()"></div>
@@ -273,18 +269,36 @@
                   <div class="fld" style="width:88px"><label>Carb g</label><input form="txf{{ tx.id }}" class="pis-input num hk-carb" data-tx="{{ tx.id }}" type="number" step="0.0001" min="0" name="hk_carb" value="0"></div>
                   <div class="fld" style="width:88px"><label>Protein g</label><input form="txf{{ tx.id }}" class="pis-input num hk-protein" data-tx="{{ tx.id }}" type="number" step="0.0001" min="0" name="hk_protein" value="0"></div>
                   <div class="fld" style="width:88px"><label>Vegetable g</label><input form="txf{{ tx.id }}" class="pis-input num hk-veg" data-tx="{{ tx.id }}" type="number" step="0.0001" min="0" name="hk_veg" value="0"></div>
-                  <div class="fld" style="width:88px"><label>Other g</label><input form="txf{{ tx.id }}" class="pis-input num hk-yield" data-tx="{{ tx.id }}" type="number" step="0.0001" name="hk_yield" value="0" readonly title="Batch 183: renamed from 'Yield g' — this is Processed minus (Carb+Protein+Vegetable), i.e. weight not attributed to any of the three (moisture loss, plating waste, etc). It was never a percentage and was never Yield in the correct sense — see the real Yield % field below."></div>
-                  <div class="fld" style="width:88px"><label>Yield %</label><input class="pis-input num hk-yield-pct" data-tx="{{ tx.id }}" type="text" value="—" readonly title="Batch 183 — the correct formula: Transfer (good output) ÷ Processed (raw material input) × 100, matching your recipe master's own Yield % column and the standard food-production definition. Live-computed as you fill in Transfer."></div>
+{# Batch 226 (Image 7): Hot Kitchen captures Carb / Protein / Vegetable and
+   nothing else. 'Other g' and 'By-product' are hidden there — whatever is
+   not carb, protein or vegetable IS waste in that section, and a second
+   place to put it only splits one number two ways. Both stay in the form
+   as hidden zeros so the POST shape and the other sections are untouched.
+   Yield is renamed PROTEIN YIELD and computed from protein alone. #}
+                  {% if section != 'Hot Kitchen' %}
+                  <div class="fld" style="width:88px"><label>Other g</label><input form="txf{{ tx.id }}" class="pis-input num hk-yield" data-tx="{{ tx.id }}" type="number" step="0.0001" name="hk_yield" value="0" readonly></div>
+                  {% else %}
+                  <input form="txf{{ tx.id }}" class="hk-yield" data-tx="{{ tx.id }}" type="hidden" name="hk_yield" value="0">
+                  {% endif %}
+                  <div class="fld" style="width:88px"><label>{{ "Protein Yield %" if section == "Hot Kitchen" else "Yield %" }}</label><input class="pis-input num hk-yield-pct" data-tx="{{ tx.id }}" type="text" value="—" readonly title="Batch 183 — the correct formula: Transfer (good output) ÷ Processed (raw material input) × 100, matching your recipe master's own Yield % column and the standard food-production definition. Live-computed as you fill in Transfer."></div>
                   {% endif %}
                   {% if section in ('Cold Kitchen', 'Bakery/Pastry') %}
                   <div class="fld" style="width:100px"><label>Produced Portion</label><input form="txf{{ tx.id }}" class="pis-input num ck-portion" data-tx="{{ tx.id }}" type="number" step="0.01" min="0" name="ck_portion" value="0"></div>
                   <div class="fld" style="width:100px"><label>Portion Wt g</label><input form="txf{{ tx.id }}" class="pis-input num ck-weight" data-tx="{{ tx.id }}" type="number" step="0.01" min="0" name="ck_weight" value="0"></div>
+                  <div class="fld" style="width:110px"><label>Total Wt g</label>
+                    <input form="txf{{ tx.id }}" class="pis-input num ck-total" data-tx="{{ tx.id }}"
+                           type="number" step="0.0001" min="0" value="0" readonly
+                           title="Produced portion x portion weight"></div>
                   <div class="fld" style="width:100px"><label>Output UOM</label><select form="txf{{ tx.id }}" class="pis-input ck-uom" name="ck_uom"><option selected>Gram</option><option>Portion</option><option>Box</option><option>Kg</option><option>Ml</option></select></div>
-                  <div class="fld" style="width:88px"><label>Carb g</label><input form="txf{{ tx.id }}" class="pis-input num" data-tx="{{ tx.id }}" type="number" step="0.0001" min="0" name="hk_carb" value="0"></div>
-                  <div class="fld" style="width:88px"><label>Protein g</label><input form="txf{{ tx.id }}" class="pis-input num" data-tx="{{ tx.id }}" type="number" step="0.0001" min="0" name="hk_protein" value="0"></div>
-                  <div class="fld" style="width:88px"><label>Vegetable g</label><input form="txf{{ tx.id }}" class="pis-input num" data-tx="{{ tx.id }}" type="number" step="0.0001" min="0" name="hk_veg" value="0"></div>
+                  <input form="txf{{ tx.id }}" type="hidden" name="hk_carb" value="0">
+                  <input form="txf{{ tx.id }}" type="hidden" name="hk_protein" value="0">
+                  <input form="txf{{ tx.id }}" type="hidden" name="hk_veg" value="0">
                   {% endif %}
+                  {% if section not in ('Hot Kitchen', 'Cold Kitchen', 'Bakery/Pastry') %}
                   <div class="fld" style="width:92px"><label>By-product</label><input form="txf{{ tx.id }}" class="pis-input num tx-byproduct" data-tx="{{ tx.id }}" type="number" step="0.0001" min="0" name="byproduct_qty_standard" value="0" title="Optional — kept and used elsewhere (e.g. bones/trim), not discarded (Waste) or sent back (Return)"></div>
+                  {% else %}
+                  <input form="txf{{ tx.id }}" class="tx-byproduct" data-tx="{{ tx.id }}" type="hidden" name="byproduct_qty_standard" value="0">
+                  {% endif %}
                   <div class="fld" style="width:92px"><label>Waste</label><input form="txf{{ tx.id }}" class="pis-input num tx-waste" data-tx="{{ tx.id }}" type="number" step="0.0001" min="0" name="waste_qty_standard" value="0"></div>
                   <div class="fld" style="width:92px"><label>Return</label><input form="txf{{ tx.id }}" class="pis-input num tx-return" data-tx="{{ tx.id }}" type="number" step="0.0001" min="0" name="returned_qty_standard" value="0"></div>
                   <div class="fld" style="width:110px"><label>Transfer ⟳</label><input form="txf{{ tx.id }}" class="pis-input num tx-transfer" data-tx="{{ tx.id }}" data-full="{{ tx.balance_qty_standard or tx.received_qty_standard or tx.issued_qty_standard or 0 }}" type="number" step="0.0001" min="0" name="transferred_qty_standard" value="{{ tx.balance_qty_standard or tx.received_qty_standard or tx.issued_qty_standard or 0 }}"></div>
@@ -385,16 +399,34 @@
                 <div class="fld" style="width:88px"><label>Carb g</label><input class="pis-input num ip-carb" type="number" step="0.0001" min="0" name="hk_carb" value="0"></div>
                 <div class="fld" style="width:88px"><label>Protein g</label><input class="pis-input num ip-protein" type="number" step="0.0001" min="0" name="hk_protein" value="0"></div>
                 <div class="fld" style="width:88px"><label>Vegetable g</label><input class="pis-input num ip-veg" type="number" step="0.0001" min="0" name="hk_veg" value="0"></div>
-                <div class="fld" style="width:88px"><label>Other g</label><input class="pis-input num ip-yield" type="number" step="0.0001" name="hk_yield" value="0" readonly title="Batch 183: renamed from 'Yield g' — this is Processed minus (Carb+Protein+Vegetable), i.e. weight not attributed to any of the three. Never a percentage, never Yield in the correct sense — see Yield % below."></div>
-                <div class="fld" style="width:88px"><label>Yield %</label><input class="pis-input num ip-yield-pct" type="text" value="—" readonly title="Batch 183 — Transfer ÷ Processed × 100, matching your recipe master's Yield % column."></div>
+                {% if section != 'Hot Kitchen' %}
+                <div class="fld" style="width:88px"><label>Other g</label><input class="pis-input num ip-yield" type="number" step="0.0001" name="hk_yield" value="0" readonly></div>
+                {% else %}
+                <input class="ip-yield" type="hidden" name="hk_yield" value="0">
+                {% endif %}
+                <div class="fld" style="width:88px"><label>{{ "Protein Yield %" if section == "Hot Kitchen" else "Yield %" }}</label><input class="pis-input num ip-yield-pct" type="text" value="—" readonly title="Batch 183 — Transfer ÷ Processed × 100, matching your recipe master's Yield % column."></div>
                 {% endif %}
                 {% if section in ('Cold Kitchen', 'Bakery/Pastry') %}
                 <div class="fld" style="width:100px"><label>Produced Portion</label><input class="pis-input num ip-ckportion" type="number" step="0.01" min="0" name="ck_portion" value="0"></div>
                 <div class="fld" style="width:100px"><label>Portion Wt g</label><input class="pis-input num ip-ckweight" type="number" step="0.01" min="0" name="ck_weight" value="0"></div>
+                {# Batch 233: the same portion arithmetic the By Recipe panel got
+                   in Batch 225. It was only ever wired into one of the three
+                   views, so a chef working By Ingredient or By Line still had to
+                   multiply by hand — the calculation existed but not where half
+                   the work happens. #}
+                <div class="fld" style="width:110px"><label>Total Wt g</label>
+                  <input class="pis-input num ip-cktotal" type="number" step="0.0001" min="0" value="0" readonly
+                         title="Produced portion x portion weight"></div>
                 <div class="fld" style="width:100px"><label>Output UOM</label><select class="pis-input ip-ckuom" name="ck_uom"><option selected>Gram</option><option>Portion</option><option>Box</option><option>Kg</option><option>Ml</option></select></div>
-                <div class="fld" style="width:88px"><label>Carb g</label><input class="pis-input num" type="number" step="0.0001" min="0" name="hk_carb" value="0"></div>
-                <div class="fld" style="width:88px"><label>Protein g</label><input class="pis-input num" type="number" step="0.0001" min="0" name="hk_protein" value="0"></div>
-                <div class="fld" style="width:88px"><label>Vegetable g</label><input class="pis-input num" type="number" step="0.0001" min="0" name="hk_veg" value="0"></div>
+                                {# Batch 226 (Images 1–2 of 14 Sep): nutrition is captured in HOT
+                   KITCHEN only. Cold Kitchen and Bakery/Pastry work in portions —
+                   produced portion x portion weight — so Carb/Protein/Vegetable
+                   and By-product are hidden there. They stay in the form as hidden
+                   zeros so the POST shape is unchanged and no route or service had
+                   to be touched. #}
+                <input type="hidden" name="hk_carb" value="0">
+                <input type="hidden" name="hk_protein" value="0">
+                <input type="hidden" name="hk_veg" value="0">
                 {% endif %}
                 <div class="fld" style="width:92px"><label>Waste</label><input class="pis-input num ip-waste" type="number" step="0.0001" min="0" name="waste_qty_standard" value="0"></div>
                 <div class="fld" style="width:92px"><label>Return</label><input class="pis-input num ip-return" type="number" step="0.0001" min="0" name="returned_qty_standard" value="0"></div>
@@ -504,16 +536,44 @@
                 <div class="fld" style="width:88px"><label>Carb g</label><input class="pis-input num rc-carb" type="number" step="0.0001" min="0" name="hk_carb" value="0"></div>
                 <div class="fld" style="width:88px"><label>Protein g</label><input class="pis-input num rc-protein" type="number" step="0.0001" min="0" name="hk_protein" value="0"></div>
                 <div class="fld" style="width:88px"><label>Vegetable g</label><input class="pis-input num rc-veg" type="number" step="0.0001" min="0" name="hk_veg" value="0"></div>
-                <div class="fld" style="width:88px"><label>Other g</label><input class="pis-input num rc-yield" type="number" step="0.0001" name="hk_yield" value="0" readonly title="Batch 183: renamed from 'Yield g' — this is Processed minus (Carb+Protein+Vegetable), i.e. weight not attributed to any of the three. Never a percentage, never Yield in the correct sense — see Yield % below."></div>
-                <div class="fld" style="width:88px"><label>Yield %</label><input class="pis-input num rc-yield-pct" type="text" value="—" readonly title="Batch 183 — Transfer ÷ Processed × 100, matching your recipe master's Yield % column."></div>
+                {% if section != 'Hot Kitchen' %}
+                <div class="fld" style="width:88px"><label>Other g</label><input class="pis-input num rc-yield" type="number" step="0.0001" name="hk_yield" value="0" readonly></div>
+                {% else %}
+                <input class="rc-yield" type="hidden" name="hk_yield" value="0">
+                {% endif %}
+                <div class="fld" style="width:88px"><label>{{ "Protein Yield %" if section == "Hot Kitchen" else "Yield %" }}</label><input class="pis-input num rc-yield-pct" type="text" value="—" readonly title="Batch 183 — Transfer ÷ Processed × 100, matching your recipe master's Yield % column."></div>
                 {% endif %}
                 {% if section in ('Cold Kitchen', 'Bakery/Pastry') %}
+                {# Batch 225 (Image 1): the cold/pastry sections work in PORTIONS,
+                   not kilos. The chef enters how many portions were produced and
+                   what one weighs; the total, the transfer and the waste follow
+                   from those two numbers:
+                       Total weight = produced portion x portion weight
+                       Transfer     = total weight
+                       Waste        = processed - total weight
+                   Ordered Portion is shown beside them so the chef can see at a
+                   glance whether they are over or under the order. All three
+                   derived fields stay editable — the arithmetic is a default,
+                   not a lock, because a chef who weighs the tray is more right
+                   than the calculation. #}
+                <div class="fld" style="width:104px"><label>Ordered Portion</label>
+                  <input class="pis-input num" type="text" value="{{ '%g'|format(r.ordered_portions or 0) }}" readonly
+                         title="Portions on the customer order for this recipe"></div>
                 <div class="fld" style="width:100px"><label>Produced Portion</label><input class="pis-input num rc-ckportion" type="number" step="0.01" min="0" name="ck_portion" value="0"></div>
                 <div class="fld" style="width:100px"><label>Portion Wt g</label><input class="pis-input num rc-ckweight" type="number" step="0.01" min="0" name="ck_weight" value="0"></div>
+                <div class="fld" style="width:110px"><label>Total Wt g</label>
+                  <input class="pis-input num rc-cktotal" type="number" step="0.0001" min="0" value="0" readonly
+                         title="Produced portion x portion weight"></div>
                 <div class="fld" style="width:100px"><label>Output UOM</label><select class="pis-input rc-ckuom" name="ck_uom"><option selected>Gram</option><option>Portion</option><option>Box</option><option>Kg</option><option>Ml</option></select></div>
-                <div class="fld" style="width:88px"><label>Carb g</label><input class="pis-input num" type="number" step="0.0001" min="0" name="hk_carb" value="0"></div>
-                <div class="fld" style="width:88px"><label>Protein g</label><input class="pis-input num" type="number" step="0.0001" min="0" name="hk_protein" value="0"></div>
-                <div class="fld" style="width:88px"><label>Vegetable g</label><input class="pis-input num" type="number" step="0.0001" min="0" name="hk_veg" value="0"></div>
+                                {# Batch 226 (Images 1–2 of 14 Sep): nutrition is captured in HOT
+                   KITCHEN only. Cold Kitchen and Bakery/Pastry work in portions —
+                   produced portion x portion weight — so Carb/Protein/Vegetable
+                   and By-product are hidden there. They stay in the form as hidden
+                   zeros so the POST shape is unchanged and no route or service had
+                   to be touched. #}
+                <input type="hidden" name="hk_carb" value="0">
+                <input type="hidden" name="hk_protein" value="0">
+                <input type="hidden" name="hk_veg" value="0">
                 {% endif %}
                 <div class="fld" style="width:92px"><label>Waste</label><input class="pis-input num rc-waste" type="number" step="0.0001" min="0" name="waste_qty_standard" value="0"></div>
                 <div class="fld" style="width:92px"><label>Return</label><input class="pis-input num rc-return" type="number" step="0.0001" min="0" name="returned_qty_standard" value="0"></div>
@@ -586,6 +646,30 @@ function filterGroups(){
     var el=e.target,tx=el.dataset&&el.dataset.tx;if(!tx)return;
     var g=group(tx);if(!g.waste||!g.ret||!g.tra)return;
     function bp(){return g.byp?n(g.byp.value):0;}
+    // Batch 233 — Cold Kitchen / Bakery portion arithmetic, By Line.
+    //   Total weight = produced portion x portion weight
+    //   Transfer     = total weight
+    //   Waste        = processed - total weight   (never negative)
+    // Same rule as the other two views; this was the last one still asking the
+    // chef to multiply by hand.
+    if(el.classList.contains('ck-portion')||el.classList.contains('ck-weight')){
+      var ckp=document.querySelector('.ck-portion[data-tx="'+tx+'"]');
+      var ckw=document.querySelector('.ck-weight[data-tx="'+tx+'"]');
+      var ckt=document.querySelector('.ck-total[data-tx="'+tx+'"]');
+      var total=n(ckp&&ckp.value)*n(ckw&&ckw.value);
+      if(ckt) ckt.value = total ? +total.toFixed(4) : 0;
+      if(total){
+        if(total>g.avail&&g.avail>0&&window.showToast){
+          showToast('Produced weight ('+total.toFixed(0)+'g) is more than the '+g.avail.toFixed(0)+
+                    'g this section received','warning','Check portion weight');
+        }
+        g.tra.value=+total.toFixed(4);
+        var cw=g.avail-total-n(g.ret.value)-bp();
+        g.waste.value=+(cw>0?cw:0).toFixed(4);
+        updateYieldPct(tx);
+      }
+      return;
+    }
     var carb=document.querySelector('.hk-carb[data-tx="'+tx+'"]');
     var prot=document.querySelector('.hk-protein[data-tx="'+tx+'"]');
     var veg=document.querySelector('.hk-veg[data-tx="'+tx+'"]');
@@ -647,8 +731,19 @@ document.querySelectorAll('.ing-proc-form').forEach(function(f){
   var carb=f.querySelector('.ip-carb'),prot=f.querySelector('.ip-protein'),
       veg=f.querySelector('.ip-veg'),yld=f.querySelector('.ip-yield'),
       yldPct=f.querySelector('.ip-yield-pct');
+  // Batch 226 (Image 7): in Hot Kitchen the yield the chef cares about is
+  // the PROTEIN yield — protein out of the protein that came in — not the
+  // whole tray. Other sections keep transfer ÷ processed.
+  var IS_HOT = {{ 'true' if section == 'Hot Kitchen' else 'false' }};
   function ipYieldPct(){
-    if(!yldPct||!tra) return;
+    if(!yldPct) return;
+    if(IS_HOT){
+      var pin = n(prot && prot.dataset ? prot.dataset.received : 0) || avail;
+      yldPct.value = (prot && n(prot.value) > 0 && pin > 0)
+        ? ((n(prot.value)/pin)*100).toFixed(1)+'%' : '—';
+      return;
+    }
+    if(!tra) return;
     yldPct.value = avail>0 ? ((n(tra.value)/avail)*100).toFixed(1)+'%' : '—';
   }
   function ipNut(){
@@ -677,6 +772,29 @@ document.querySelectorAll('.ing-proc-form').forEach(function(f){
 
   if(tra) tra.addEventListener('input',function(){var w=avail-n(tra.value)-n(ret.value);waste.value=(w>0?w:0).toFixed(4);ipYieldPct();});
   if(waste) waste.addEventListener('input',function(){var r=avail-n(tra.value)-n(waste.value);ret.value=(r>0?r:0).toFixed(4);ipYieldPct();});
+
+  // Batch 233 — Cold Kitchen / Bakery portion arithmetic, By Ingredient.
+  //   Total weight = produced portion x portion weight
+  //   Transfer     = total weight
+  //   Waste        = processed - total weight   (never negative)
+  // Identical rule to the By Recipe panel; the fields stay editable because a
+  // weighed tray beats the calculation.
+  var ipP=f.querySelector('.ip-ckportion'), ipW=f.querySelector('.ip-ckweight'),
+      ipT=f.querySelector('.ip-cktotal');
+  function ipCk(){
+    if(!ipP||!ipW||!ipT)return;
+    var total=n(ipP.value)*n(ipW.value);
+    if(!total){ipT.value='0';return;}
+    if(total>avail&&avail>0&&window.showToast){
+      showToast('Produced weight ('+total.toFixed(0)+'g) is more than the '+avail.toFixed(0)+
+                'g this section received','warning','Check portion weight');
+    }
+    ipT.value=+total.toFixed(4);
+    if(tra) tra.value=+total.toFixed(4);
+    if(waste){var w=avail-total-n(ret?ret.value:0);waste.value=+(w>0?w:0).toFixed(4);}
+    ipYieldPct();
+  }
+  [ipP,ipW].forEach(function(el){if(el)el.addEventListener('input',ipCk);});
 });
 /* Batch 134: same auto-calc for the By-Recipe process form (prep sections). */
 document.querySelectorAll('.rc-proc-form').forEach(function(f){
@@ -686,8 +804,19 @@ document.querySelectorAll('.rc-proc-form').forEach(function(f){
   var carb=f.querySelector('.rc-carb'),prot=f.querySelector('.rc-protein'),
       veg=f.querySelector('.rc-veg'),yld=f.querySelector('.rc-yield'),
       yldPct=f.querySelector('.rc-yield-pct');
+  // Batch 226 (Image 7): in Hot Kitchen the yield the chef cares about is
+  // the PROTEIN yield — protein out of the protein that came in — not the
+  // whole tray. Other sections keep transfer ÷ processed.
+  var IS_HOT = {{ 'true' if section == 'Hot Kitchen' else 'false' }};
   function rcYieldPct(){
-    if(!yldPct||!tra) return;
+    if(!yldPct) return;
+    if(IS_HOT){
+      var pin = n(prot && prot.dataset ? prot.dataset.received : 0) || avail;
+      yldPct.value = (prot && n(prot.value) > 0 && pin > 0)
+        ? ((n(prot.value)/pin)*100).toFixed(1)+'%' : '—';
+      return;
+    }
+    if(!tra) return;
     yldPct.value = avail>0 ? ((n(tra.value)/avail)*100).toFixed(1)+'%' : '—';
   }
   function rcNut(){
@@ -715,6 +844,33 @@ document.querySelectorAll('.rc-proc-form').forEach(function(f){
 
   if(tra) tra.addEventListener('input',function(){var w=avail-n(tra.value)-n(ret.value);waste.value=(w>0?w:0).toFixed(4);rcYieldPct();});
   if(waste) waste.addEventListener('input',function(){var r=avail-n(tra.value)-n(waste.value);ret.value=(r>0?r:0).toFixed(4);rcYieldPct();});
+
+  // ------------------------------------------------------------------
+  // Batch 225 (Image 1) — Cold Kitchen / Bakery work in PORTIONS.
+  //   Total weight = produced portion x portion weight
+  //   Transfer     = total weight
+  //   Waste        = processed - total weight   (never negative)
+  // The chef enters two numbers and the other three follow. They stay
+  // editable: a weighed tray beats the arithmetic, and locking the fields
+  // would force the chef to fight the form when the two disagree.
+  // ------------------------------------------------------------------
+  var ckPortion=f.querySelector('.rc-ckportion'),
+      ckWeight=f.querySelector('.rc-ckweight'),
+      ckTotal=f.querySelector('.rc-cktotal');
+  function ckRecalc(){
+    if(!ckPortion||!ckWeight||!ckTotal)return;
+    var total=n(ckPortion.value)*n(ckWeight.value);
+    if(!total){ckTotal.value='0';return;}
+    if(total>avail&&avail>0){
+      if(window.showToast)showToast('Produced weight ('+total.toFixed(0)+'g) is more than the '+
+        avail.toFixed(0)+'g this section received','warning','Check portion weight');
+    }
+    ckTotal.value=+total.toFixed(4);
+    if(tra) tra.value=+total.toFixed(4);
+    if(waste){var w=avail-total-n(ret?ret.value:0);waste.value=+(w>0?w:0).toFixed(4);}
+    rcYieldPct();
+  }
+  [ckPortion,ckWeight].forEach(function(el){if(el)el.addEventListener('input',ckRecalc);});
 });
 document.querySelectorAll('.bulk-process-form').forEach(function(f){
   var out=f.querySelector('.bp-output'),waste=f.querySelector('.bp-waste');

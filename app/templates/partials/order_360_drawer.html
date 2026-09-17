@@ -35,7 +35,9 @@
   .o360-chain{display:flex;gap:.4rem;overflow-x:auto;padding:.2rem 0 .6rem}
   .o360-step{position:relative;min-width:128px;border:1px solid var(--phoenix-border-color,#dfe5ee);
              border-radius:.6rem;padding:.55rem .6rem;background:var(--phoenix-body-bg,#fff);text-align:center}
-  .o360-step i{font-size:1.1rem;color:#1e5bb8}
+  .o360-step{border-top:3px solid var(--sc,#1e5bb8)}
+  .o360-step i{font-size:1.1rem;color:var(--sc,#1e5bb8)}
+  .o360-step .lbl-c{color:var(--sc,#1e5bb8)}
   .o360-step .lbl{font-size:.74rem;font-weight:700;margin-top:.2rem}
   .o360-step .ref{font-size:.66rem;color:var(--phoenix-tertiary-color,#6b7a90)}
   .o360-step .dot{position:absolute;inset-block-start:.45rem;inset-inline-end:.45rem;
@@ -153,11 +155,23 @@
         return '<div><b>' + esc(t.label) + '</b><span>' + esc(t.value) + '</span></div>';
       }).join('') + '</div></div>';
 
+    // Batch 234 (Image 4): a colour per stage, lighter and more distinct than
+    // the single blue every step used to carry. The status DOT (green/amber/
+    // red/grey) still shows how the stage is doing; the tint tells you which
+    // stage it is at a glance, the way the reference dashboard does.
+    var STAGE = {
+      order:    { icon: 'receipt',      c: '#1e5bb8' },
+      bom:      { icon: 'diagram-3',    c: '#0ea5c6' },
+      issue:    { icon: 'box-seam',     c: '#8a5a00' },
+      kitchen:  { icon: 'fire',         c: '#c2410c' },
+      qc:       { icon: 'patch-check',  c: '#7048a8' },
+      dispatch: { icon: 'truck',        c: '#15803d' }
+    };
     var chain = '<div class="o360-chain">' + d.pipeline.map(function (s, i) {
+      var st = STAGE[s.key] || { icon: 'circle', c: '#1e5bb8' };
       return (i ? '<i class="bi bi-chevron-right o360-arrow"></i>' : '') +
-        '<div class="o360-step ' + esc(s.state) + '"><span class="dot"></span>' +
-        '<i class="bi bi-' + ({ order: 'receipt', bom: 'diagram-3', issue: 'box-seam',
-                                kitchen: 'fire', qc: 'patch-check', dispatch: 'truck' }[s.key] || 'circle') + '"></i>' +
+        '<div class="o360-step ' + esc(s.state) + '" style="--sc:' + st.c + '"><span class="dot"></span>' +
+        '<i class="bi bi-' + st.icon + '"></i>' +
         '<div class="lbl">' + esc(s.label) + '</div><div class="ref">' + esc(s.ref) + '</div></div>';
     }).join('') + '</div>';
 

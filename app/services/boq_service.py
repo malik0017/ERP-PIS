@@ -54,9 +54,21 @@ def order_where(f: dict, cid: int) -> tuple[str, dict]:
         clauses.append("o.required_delivery_date >= :df"); params["df"] = f["date_from"]
     if f.get("date_to"):
         clauses.append("o.required_delivery_date <= :dt"); params["dt"] = f["date_to"]
-    if f.get("customer"):
+    if f.get("customers"):
+        # Batch E (Image 1): pick several customers at once.
+        binds = []
+        for i, c in enumerate(f["customers"]):
+            k = f"cu{i}"; binds.append(f":{k}"); params[k] = c
+        clauses.append(f"o.customer_name IN ({','.join(binds)})")
+    elif f.get("customer"):
         clauses.append("o.customer_name LIKE :cu"); params["cu"] = f"%{f['customer']}%"
-    if f.get("order_no"):
+    if f.get("order_nos"):
+        # Batch E (Image 1): several orders at once, alongside the customer filter.
+        binds = []
+        for i, o in enumerate(f["order_nos"]):
+            k = f"on{i}"; binds.append(f":{k}"); params[k] = o
+        clauses.append(f"o.order_no IN ({','.join(binds)})")
+    elif f.get("order_no"):
         clauses.append("o.order_no LIKE :on"); params["on"] = f"%{f['order_no']}%"
     if f.get("brand"):
         clauses.append("COALESCE(o.brand,'') LIKE :br"); params["br"] = f"%{f['brand']}%"
@@ -142,7 +154,10 @@ def recipe_sheet(db: Session, f: dict, cid: int) -> list[dict]:
         return []
 
     masters = _recipe_lines(db, sorted({r["recipe_no"] for r in bom if r["recipe_no"]}), cid)
-    want_section = (f.get("section") or "").strip()
+    # Batch E (Image 1): one or several sections.
+    want_sections = set(f.get("sections") or [])
+    if not want_sections and (f.get("section") or "").strip():
+        want_sections = {f["section"].strip()}
 
     # used[(order_line_id or order/recipe key, recipe line id)] — pairing state
     used: dict[tuple, set] = {}
@@ -183,7 +198,7 @@ def recipe_sheet(db: Session, f: dict, cid: int) -> list[dict]:
 
         component = ((ri or {}).get("sub_recipe_code") or "").strip() or MAIN_COMPONENT
         kitchen = map_excel_section((ri or {}).get("kitchen_section")) or b["issue_section"] or "—"
-        if want_section and want_section not in (kitchen, b["issue_section"]):
+        if want_sections and not (want_sections & {kitchen, b["issue_section"]}):
             continue
 
         portions = _f(b["portions"])

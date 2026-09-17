@@ -104,10 +104,6 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if not user_id:
             return RedirectResponse(url="/login", status_code=302)
 
-        # Batch 155: session idle-expiry. If there's been no activity for longer
-        # than IDLE_TIMEOUT_MINUTES, clear the session and force re-login. This is
-        # in addition to the cookie max_age (absolute lifetime) — idle-expiry caps
-        # how long an unattended, logged-in browser stays usable.
         import time as _time
         IDLE_TIMEOUT_MINUTES = 60
         now = _time.time()
@@ -129,22 +125,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
 async def lifespan(app: FastAPI):
     logger.info(f"Starting {APP_NAME}...")
     logger.info(f"Company: {COMPANY_NAME}")
-    # -------------------------------------------------------------------------
-    # Batch 201 ROOT CAUSE — the startup schema guards never ran.
-    #
-    # FastAPI/Starlette IGNORE @app.on_event("startup") handlers when the app is
-    # created with lifespan=... (they are mutually exclusive; no error, no
-    # warning in our logs). Every guard inside startup_event() below —
-    # packed_bags, sales_review_status, purchase_requisitions, top-up/sampling,
-    # inventory_transactions.qc_status, supplier rating — has therefore only
-    # ever been created lazily, by whichever route happened to call it first.
-    # Proof from the server log: lifespan's "Starting ISFC PIMS..." is logged,
-    # startup_event()'s "Application startup complete" never is.
-    #
-    # The guards are idempotent and individually try/except-wrapped, so calling
-    # them from here is safe; they are looked up at run time because they are
-    # defined further down this module.
-    # -------------------------------------------------------------------------
+
     try:
         await startup_event()
     except Exception as exc:  # never block the app from starting
@@ -173,14 +154,11 @@ app = FastAPI(
 # Required request flow:
 # CORS -> Session -> Auth -> Route
 
+from app.core.module_gate import ModuleGateMiddleware
+app.add_middleware(ModuleGateMiddleware)
+
 app.add_middleware(AuthMiddleware)
 
-
-# Batch 155 — CSRF protection in MONITOR mode.
-# Reads the _csrf form field / X-CSRF-Token header on state-changing requests and
-# logs a warning when it doesn't match the session token, WITHOUT blocking. This
-# lets the token be rolled into forms safely; once every POST form carries
-# {{ csrf_form_field()|safe }}, flip CSRF_ENFORCE=True to reject mismatches.
 CSRF_ENFORCE = False
 
 
@@ -197,9 +175,7 @@ class CSRFMiddleware(BaseHTTPMiddleware):
             session_tok = None
         if session_tok:
             sent = request.headers.get("x-csrf-token")
-            # Monitor mode checks the header only; reading the form body here could
-            # interfere with downstream handlers on some setups. The per-route
-            # csrf_valid() helper validates the _csrf FORM field when enforcing.
+
             if sent is not None and sent != session_tok:
                 logger.warning(f"CSRF header mismatch on {request.method} {request.url.path} (monitor mode)")
                 if CSRF_ENFORCE:
@@ -214,8 +190,6 @@ app.add_middleware(
     SessionMiddleware,
     secret_key=SECRET_KEY,
     session_cookie="isfc_session",
-    # Batch 155: absolute cookie lifetime capped at 12h (was 24h); combined with
-    # the 60-min idle-expiry in AuthMiddleware, an unattended session can't linger.
     max_age=43200,
     same_site="lax",
     https_only=False,
@@ -246,25 +220,21 @@ except Exception as e:
 # ===== REGISTER ROUTERS =====
 app.include_router(auth_router)
 app.include_router(self_register_router)
-# Batch 101: registered BEFORE recipes_router on purpose. That router has a
-# catch-all /recipes/{recipe_id}, which matched "/recipes/template" first and
-# turned the template download into a 401. FastAPI resolves in registration
-# order, so the specific paths have to come before the parameterised one.
-from app.modules.recipes.routes_excel import router as recipes_excel_router  # Batch 101
-from app.modules.recipes.routes_bulk import router as recipes_bulk_router    # Batch 103
-from app.modules.reports.routes_inventory import router as inv_reports_router  # Batch 103
-from app.modules.masters.routes_bulk import router as masters_bulk_router      # Batch 104
-from app.modules.production.routes_boq import router as boq_router             # Batch 105
-from app.modules.admin.routes_audit import router as audit_viewer_router       # Batch 106
-from app.modules.inventory.routes_reorder import router as reorder_router      # Batch 107
-from app.modules.procurement.routes_match import router as match_router        # Batch 108
-from app.modules.setup.routes_import import router as setup_import_router      # Batch 109
-from app.modules.finance.routes_coa import router as coa_router                # Batch 110
-from app.modules.settings.routes_approval import router as approval_router     # Batch 111
-from app.modules.procurement.routes_landed import router as landed_router      # Batch 112
-from app.modules.qc.routes_recall import router as recall_router               # Batch 112
-from app.modules.reports.routes_builder import router as rbuilder_router       # Batch 113
-from app.modules.finance.routes_budget import router as budget_router          # Batch 114
+from app.modules.recipes.routes_excel import router as recipes_excel_router  
+from app.modules.recipes.routes_bulk import router as recipes_bulk_router    
+from app.modules.reports.routes_inventory import router as inv_reports_router 
+from app.modules.masters.routes_bulk import router as masters_bulk_router      
+from app.modules.production.routes_boq import router as boq_router            
+from app.modules.admin.routes_audit import router as audit_viewer_router       
+from app.modules.inventory.routes_reorder import router as reorder_router      
+from app.modules.procurement.routes_match import router as match_router        
+from app.modules.setup.routes_import import router as setup_import_router      
+from app.modules.finance.routes_coa import router as coa_router              
+from app.modules.settings.routes_approval import router as approval_router     
+from app.modules.procurement.routes_landed import router as landed_router     
+from app.modules.qc.routes_recall import router as recall_router               
+from app.modules.reports.routes_builder import router as rbuilder_router       
+from app.modules.finance.routes_budget import router as budget_router          
 app.include_router(recipes_excel_router)
 app.include_router(recipes_bulk_router)
 app.include_router(inv_reports_router)
@@ -287,7 +257,7 @@ app.include_router(kitchen_prod_router)
 app.include_router(inventory_router)
 app.include_router(masters_router)
 app.include_router(orders_router)
-from app.modules.orders.routes_menu import router as menu_router  # Batch 102
+from app.modules.orders.routes_menu import router as menu_router  
 app.include_router(menu_router)
 app.include_router(sales_review_router)   
 app.include_router(purchase_req_router)   
@@ -295,7 +265,7 @@ app.include_router(qc_router)
 app.include_router(qc_sampling_router)    
 app.include_router(topup_router)          
 app.include_router(packing_router)
-app.include_router(exports_pdf_router)   # Batch 222: Arabic-capable table PDF
+app.include_router(exports_pdf_router)  
 app.include_router(dispatch_router)
 app.include_router(prod_docs_router)
 app.include_router(settings_router)
@@ -323,16 +293,12 @@ app.include_router(reports_workflow_router)
 app.include_router(finance_statements_router)
 app.include_router(finance_periods_router)
 
-# Batch 170: SLA Management + Performance Targets
-from app.modules.sla.routes import router as sla_router  # noqa: E402
-# BATCH 173 — the requisitions module was never registered. Its templates link
-# to /requisitions, /requisitions/new and /requisitions/{id}/approve, all of
-# which 404'd: five dead links and a whole module unreachable.
-from app.modules.requisitions.routes import router as requisitions_router  # noqa: E402
+from app.modules.sla.routes import router as sla_router  
+from app.modules.requisitions.routes import router as requisitions_router  
 app.include_router(requisitions_router)
 
 app.include_router(sla_router)
-from app.modules.sla.routes import ops_router as sla_ops_router  # noqa: E402
+from app.modules.sla.routes import ops_router as sla_ops_router 
 app.include_router(sla_ops_router)
 
 # ===== ROUTES =====
@@ -347,10 +313,7 @@ async def module_launcher(request: Request):
         from app.database.session import SessionLocal
         _db = SessionLocal()
         try:
-            ctx = build_launcher_context(_db, cid)   # Batch 220: company-scoped
-            # Batch 213 (Image 1): the headline business card. Built separately
-            # and guarded separately — if it fails the launcher still opens with
-            # its module tiles rather than showing an error page.
+            ctx = build_launcher_context(_db, cid) 
             from app.modules.module_dash.routes_launcher import command_centre_card
             try:
                 hero = command_centre_card(_db, cid)
@@ -471,39 +434,9 @@ async def forbidden_handler(request: Request, exc):
     except Exception:
         return JSONResponse(status_code=403, content={"detail": detail})
 
-# ===== STARTUP EVENT =====
-# =============================================================================
-# Batch 102 — schema guards that run at IMPORT, not only at startup.
-#
-# WHY THIS MOVED.  Batch 101 added recipes.day_of_week to the ORM model and put
-# the ALTER inside @app.on_event("startup"). That is how every other migration
-# in this file works, and it still produced a hard 500 on /recipes/upload-excel:
-#
-#     Unknown column 'recipes.day_of_week' in 'field list'
-#
-# The moment a column exists on the ORM model, EVERY query SQLAlchemy builds
-# for that model selects it. So the window between "model imported" and
-# "startup event finished" is a window in which the entire Recipes module is
-# broken — and anything that imports app.main without running the lifespan
-# (a script, a worker, a test client that isn't used as a context manager, or
-# a reload that races) never closes that window at all.
-#
-# My own note from Batch 89 says additive features should prefer raw SQL over
-# ORM model changes precisely because of this. Adding the column to the model
-# was the right call for readability, so the guard has to be stronger instead:
-# it now runs at import time, before the app object can serve anything, AND
-# again at startup. It is idempotent, so running twice costs one cheap
-# information_schema lookup.
-# =============================================================================
-def _ensure_recipe_menu_columns() -> None:
-    """Add recipes.day_of_week if missing, and WIDEN it if it exists too narrow.
 
-    Batch 132: FRSH multi-day recipes (salads/snacks) store the explicit day
-    list, e.g. "Saturday & Sunday & Monday & Tuesday & Wednesday & Thursday"
-    (59 chars). The original column was VARCHAR(20), so those inserts died with
-    MySQL 1406 'Data too long for column day_of_week' and every multi-day recipe
-    silently vanished from the menu (the missing salads). We create at — and
-    grow existing installs to — VARCHAR(120). Idempotent."""
+def _ensure_recipe_menu_columns() -> None:
+   
     try:
         from app.database.session import SessionLocal as _SL
         from sqlalchemy import text as _t
@@ -519,15 +452,13 @@ def _ensure_recipe_menu_columns() -> None:
                 try:
                     _db.execute(_t("CREATE INDEX idx_recipes_day ON recipes (day_of_week)"))
                 except Exception:
-                    pass   # index already there, or insufficient privilege
+                    pass   
                 _db.commit()
                 logger.info("Added recipes.day_of_week VARCHAR(120)")
             elif int(info) < 120:
-                # Column exists but is the old narrow width — widen in place.
                 _db.execute(_t("ALTER TABLE recipes MODIFY COLUMN day_of_week VARCHAR(120) NULL"))
                 _db.commit()
                 logger.info(f"Widened recipes.day_of_week from VARCHAR({info}) to VARCHAR(120)")
-            # Batch 158: SMC meal_order (BREAKFAST/LUNCH/DINNER).
             has_meal = _db.execute(_t("""
                 SELECT COUNT(*) FROM information_schema.columns
                 WHERE table_schema = DATABASE() AND table_name = 'recipes'
@@ -540,25 +471,14 @@ def _ensure_recipe_menu_columns() -> None:
         finally:
             _db.close()
     except Exception as exc:
-        # Never block import over this — log loudly and let startup retry.
         logger.error(f"Schema guard failed (recipes.day_of_week): {exc}")
 
 
-# Run immediately at import, before any router can receive a request.
 _ensure_recipe_menu_columns()
 
 
 def _ensure_packing_bags_column() -> None:
-    """Batch 122 — add packing_dispatch.packed_bags if missing, AT IMPORT TIME.
-
-    Root cause of the 500s in Batch 121: the ORM model gained `packed_bags`,
-    but the migration only ran in the startup event — which fires AFTER the app
-    can serve requests, and is skipped entirely if an earlier guard raised or if
-    the running process was never restarted. Every `db.query(PackingDispatch)`
-    then failed with 'Unknown column packed_bags'. Following the day_of_week
-    pattern, this guard runs at import, before any router is live, and is
-    idempotent so repeat calls cost one cheap information_schema lookup.
-    """
+   
     try:
         from app.database.session import SessionLocal as _SL
         from sqlalchemy import text as _t
@@ -579,8 +499,6 @@ def _ensure_packing_bags_column() -> None:
         logger.error(f"Schema guard failed (packing_dispatch.packed_bags): {exc}")
 
 
-# Run immediately at import — the packed_bags column is read by the packing,
-# dispatch AND QC-pass flows, so it must exist before any of them is hit.
 _ensure_packing_bags_column()
 
 
@@ -602,7 +520,6 @@ def _ensure_dispatch_region_column() -> None:
                 _db.execute(_t("ALTER TABLE packing_dispatch ADD COLUMN region VARCHAR(50) NULL"))
                 _db.commit()
                 logger.info("Added packing_dispatch.region")
-            # Batch 152a: region-wise bag allocation JSON.
             has_rb = _db.execute(_t("""
                 SELECT COUNT(*) FROM information_schema.columns
                 WHERE table_schema = DATABASE() AND table_name = 'packing_dispatch'
@@ -650,21 +567,10 @@ def _ensure_output_capture_columns() -> None:
             ("protein_g", "DECIMAL(14,4) NULL"),
             ("vegetable_g", "DECIMAL(14,4) NULL"),
             ("yield_g", "DECIMAL(14,4) NULL"),
-            # Batch 176 — 176-H. Waste vs Returned (sent back to store) were
-            # already distinguished; a genuine by-product (bones/trim kept
-            # and used elsewhere, not discarded and not simply unused) had
-            # no field of its own. Additive and optional — defaults to NULL,
-            # so nothing that doesn't fill it in changes behaviour.
             ("byproduct_qty_standard", "DECIMAL(18,4) NULL"),
         ],
         "bom_lines": [
-            # Batch 167 — pre-trim requirement, so the yield gap is visible
-            # whatever basis the BOM was generated on.
             ("gross_required_qty_standard", "DECIMAL(18,4) NULL"),
-            # Batch 206 — the NET (post-trim) requirement, stored alongside the
-            # gross one. The Bill of Quantity reports on NET (what goes into the
-            # pot); the store still issues the GROSS weight. Keeping both on the
-            # line means every report agrees without recomputing from the recipe.
             ("net_required_qty_standard", "DECIMAL(18,4) NULL"),
         ],
         "packing_dispatch": [
@@ -699,27 +605,7 @@ _ensure_output_capture_columns()
 
 
 def _ensure_packing_pack_lines_table() -> None:
-    """Batch 157 — per-recipe packed weights recorded at Trayline.
-
-    THE DESIGN DECISION I WAS BLOCKED ON, resolved without forcing it.
-
-    I asked whether packed weight should be captured once per recipe, or per
-    recipe per region. Rather than guess and risk a table that has to be rebuilt,
-    the table carries a nullable `region` column and a unique key of
-    (order_no, recipe_no, region):
-
-      * TODAY the UI writes region = '' — one row per recipe, which is the
-        simpler workflow and what the Excel sheet shows.
-      * IF you later want per-region capture, the UI writes region = 'Riyadh'
-        etc. and the same table holds both. No migration, no rebuild, and orders
-        captured under the old shape keep working because '' is just another
-        region value to the unique key.
-
-    So the answer can change later at the cost of a UI change only. That is why
-    this ships now instead of waiting.
-
-    Idempotent — checks information_schema before creating.
-    """
+  
     try:
         from app.database.session import SessionLocal as _SL
         from sqlalchemy import text as _t
@@ -759,16 +645,7 @@ def _ensure_packing_pack_lines_table() -> None:
 _ensure_packing_pack_lines_table()
 
 def _ensure_meal_order_width() -> None:
-    """Batch 159 — widen recipes.meal_order from VARCHAR(30) to VARCHAR(64).
-
-    meal_order now holds a per-day map, at its longest
-    "SAT=LD|SUN=LD|MON=LD|TUE=LD|WED=LD|THU=LD|FRI=LD" — 48 characters.
-    At VARCHAR(30) MySQL would silently truncate that to
-    "SAT=LD|SUN=LD|MON=LD|TUE=LD|WE", leaving the last three days with no
-    meals at all: recipes would vanish from Thursday and Friday menus with no
-    error anywhere. This is the same silent overflow as the day_of_week
-    VARCHAR fix in Batch 131, so it gets the same guard.
-    """
+   
     try:
         from app.database.session import SessionLocal as _SL
         from sqlalchemy import text as _t
@@ -792,19 +669,7 @@ def _ensure_meal_order_width() -> None:
 _ensure_meal_order_width()
 
 def _ensure_sla_target_tables() -> None:
-    """Batch 170 — SLA rules + Performance Targets.
-
-    order_sla holds ONE SNAPSHOT PER ORDER, written when the rule is applied.
-    Deliberately not recomputed from sla_rules on every read: an order judged
-    under a 4-hour SLA must stay judged under it when someone later changes the
-    rule to 6 hours. A live join would silently rewrite history, and SLA history
-    is exactly the thing people argue about.
-
-    sla_exceptions is separate from the instance so an approved extension never
-    overwrites the original deadline — you can always see both.
-
-    Idempotent via information_schema.
-    """
+   
     _DDL = {
         "sla_rules": """
             CREATE TABLE sla_rules (
@@ -899,14 +764,7 @@ _ensure_sla_target_tables()
 
 
 def _ensure_recipe_ingredient_section_column() -> None:
-    """Batch 131 — add recipe_ingredients.kitchen_section if missing, at import.
-
-    The store-issuance section routing (PRD1 → Cutting; else the recipe's own
-    kitchen section) needs the workbook's "Section" value carried down to each
-    ingredient line. The ORM model now declares `kitchen_section`, so — per the
-    day_of_week / packed_bags precedent — the column MUST exist before any route
-    queries RecipeIngredient, or every recipe/BOM read would 500 with 'Unknown
-    column kitchen_section'. Raw additive column, idempotent."""
+   
     try:
         from app.database.session import SessionLocal as _SL
         from sqlalchemy import text as _t
@@ -957,8 +815,7 @@ async def startup_event():
     except Exception as exc:
         logger.error(f"Startup schema check failed (sales_review_status): {exc}")
 
-    _ensure_recipe_menu_columns()   # Batch 102: also runs at import — see below
-
+    _ensure_recipe_menu_columns()   
     try:
         from app.database.session import SessionLocal
         from app.modules.purchase_req.routes import ensure_schema as _pr_ensure_schema
@@ -971,8 +828,6 @@ async def startup_event():
     except Exception as exc:
         logger.error(f"Startup schema check failed (purchase_requisitions): {exc}")
 
-    # Batch 121: packing_dispatch.packed_bags — the packer records physical
-    # bag/tray count; Dispatch reads it. Needs to exist before packing save.
     try:
         from app.database.session import SessionLocal
         from app.modules.packing.routes import ensure_schema as _packing_schema
@@ -985,8 +840,6 @@ async def startup_event():
     except Exception as exc:
         logger.error(f"Startup schema check failed (packed_bags): {exc}")
 
-    # Batch 94: top-up requests and the QC sampling config, same startup
-    # migration reasoning as everything above it.
     try:
         from app.database.session import SessionLocal
         from app.modules.production.routes_topup import ensure_schema as _topup_schema
@@ -1001,20 +854,11 @@ async def startup_event():
     except Exception as exc:
         logger.error(f"Startup schema check failed (topup/sampling): {exc}")
 
-    # Batch 93: same reasoning as above — the new Incoming QC gate needs
-    # inventory_transactions.qc_status to exist before any GRN posts or
-    # any stock-availability query runs, not just when /qc/inspection or
-    # a GRN receipt happens to be the first thing hit.
     try:
         from app.database.session import SessionLocal
         from app.core.stock_ledger import ensure_qc_status_column, ensure_ledger_schema
         _db = SessionLocal()
         try:
-            # Batch 94: repair a legacy-shaped ledger table BEFORE the
-            # qc_status check — on a fresh database created through
-            # init_db.py the ORM model wins the CREATE TABLE race and
-            # produces a table with none of the modern columns, which breaks
-            # every stock read in the system. See ensure_ledger_schema().
             ensure_ledger_schema(_db)
             ensure_qc_status_column(_db)
             logger.info("Verified inventory_transactions schema (shape + qc_status)")
@@ -1023,10 +867,6 @@ async def startup_event():
     except Exception as exc:
         logger.error(f"Startup schema check failed (qc_status): {exc}")
 
-    # Batch 95: same reasoning again — supplier ratings are read by the PO
-    # creation and PO detail supplier dropdowns, so the column needs to
-    # exist before either of those is ever hit, not just when the ratings
-    # screen itself happens to be visited first.
     try:
         from app.database.session import SessionLocal
         from app.modules.procurement.routes import _ensure_supplier_rating_schema

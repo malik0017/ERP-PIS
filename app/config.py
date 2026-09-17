@@ -14,12 +14,7 @@ STATIC_DIR = BASE_DIR / "static"
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 # Security
-# Batch 77: a hardcoded fallback here meant that a missing/misconfigured
-# .env didn't stop the app — it started anyway, signing every session
-# cookie with a secret that's sitting in plain text in the source code
-# published on GitHub. Fail loud instead: a missing SECRET_KEY is a
-# configuration error the person running the app needs to see immediately,
-# not a state the app should ever run in silently.
+
 SECRET_KEY = os.getenv("SECRET_KEY")
 if not SECRET_KEY:
     raise RuntimeError(

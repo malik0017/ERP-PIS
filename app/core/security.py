@@ -117,7 +117,7 @@ def csrf_valid(request) -> bool:
     try:
         session_tok = request.session.get("_csrf_token")
     except Exception:
-        return True  # no session → nothing to protect (login etc.)
+        return True  
     if not session_tok:
         return True
     sent = request.headers.get("x-csrf-token")

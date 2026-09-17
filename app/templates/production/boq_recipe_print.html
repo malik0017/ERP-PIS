@@ -21,8 +21,8 @@
     {% for rec in sgrp.recipes %}
     <div class="rp-group">
       <h2><span>{{ rec.recipe_name }} <small style="color:#5a6a82">{{ rec.recipe_no }} · {{ rec.order_no }} · {{ rec.customer_name }}</small></span><span class="rp-pill">{{ '%g'|format(rec.portions) }} {{ t('portions') }}</span></h2>
-      <table><thead><tr><th>{{ t('Component') }}</th><th>{{ t('Code') }}</th><th>{{ t('Ingredient') }}</th><th class="rp-num">{{ t('Net Qty') }}</th><th class="rp-num">{{ t('Issue Qty') }}</th><th>{{ t('UOM') }}</th><th>✓</th></tr></thead>
-      <tbody>{% for ln in rec.lines %}<tr><td>{{ ln.component }}</td><td>{{ ln.ingredient_code }}</td><td>{{ ln.ingredient_name }}</td><td class="rp-num rp-q">{{ '%.3f'|format(ln.required_qty) }}</td><td class="rp-num">{{ '%.3f'|format(ln.issue_qty) }}</td><td>{{ ln.uom }}</td><td><span class="rp-tick"></span></td></tr>{% endfor %}</tbody></table>
+      <table><thead><tr><th>{{ t('Component') }}</th><th>{{ t('Code') }}</th><th>{{ t('Ingredient') }}</th><th class="rp-num">{{ t('Net Qty') }}</th><th class="rp-num">{{ t('Issue Qty') }}</th><th>{{ t('UOM') }}</th><th>{{ t('Cutting / Portion') }}</th><th>✓</th></tr></thead>
+      <tbody>{% for ln in rec.lines %}<tr><td>{{ ln.component }}</td><td>{{ ln.ingredient_code }}</td><td>{{ ln.ingredient_name }}</td><td class="rp-num rp-q">{{ '%.3f'|format(ln.required_qty) }}</td><td class="rp-num">{{ '%.3f'|format(ln.issue_qty) }}</td><td>{{ ln.uom }}</td><td>{{ ln.cutting }}</td><td><span class="rp-tick"></span></td></tr>{% endfor %}</tbody></table>
     </div>
     {% endfor %}
     <div class="rp-sig"><div>{{ t('Section Chef') }}</div><div>{{ t('Head Chef') }}</div><div>{{ t('Date / Time') }}</div></div>
@@ -35,8 +35,8 @@
     {% for rec in recipe_view %}
     <div class="rp-group">
       <h2><span>{{ rec.recipe_name }} <small style="color:#5a6a82">{{ rec.recipe_no }} · {% for x in rec.orders %}{{ x.order_no }} ({{ '%g'|format(x.portions) }}){{ ', ' if not loop.last }}{% endfor %}</small></span><span class="rp-pill">{{ '%g'|format(rec.portions) }} {{ t('portions') }}</span></h2>
-      <table><thead><tr><th>{{ t('Component') }}</th><th>{{ t('Code') }}</th><th>{{ t('Ingredient') }}</th><th>{{ t('Section') }}</th><th class="rp-num">{{ t('Total Net Qty') }}</th><th class="rp-num">{{ t('Total Issue Qty') }}</th><th>{{ t('UOM') }}</th><th>✓</th></tr></thead>
-      <tbody>{% for ln in rec.lines %}<tr><td>{{ ln.component }}</td><td>{{ ln.ingredient_code }}</td><td>{{ ln.ingredient_name }}</td><td>{{ t(ln.kitchen_section) }}</td><td class="rp-num rp-q">{{ '%.3f'|format(ln.required_qty) }}</td><td class="rp-num">{{ '%.3f'|format(ln.issue_qty) }}</td><td>{{ ln.uom }}</td><td><span class="rp-tick"></span></td></tr>{% endfor %}</tbody></table>
+      <table><thead><tr><th>{{ t('Component') }}</th><th>{{ t('Code') }}</th><th>{{ t('Ingredient') }}</th><th>{{ t('Section') }}</th><th class="rp-num">{{ t('Total Net Qty') }}</th><th class="rp-num">{{ t('Total Issue Qty') }}</th><th>{{ t('UOM') }}</th><th>{{ t('Cutting / Portion') }}</th><th>✓</th></tr></thead>
+      <tbody>{% for ln in rec.lines %}<tr><td>{{ ln.component }}</td><td>{{ ln.ingredient_code }}</td><td>{{ ln.ingredient_name }}</td><td>{{ t(ln.kitchen_section) }}</td><td class="rp-num rp-q">{{ '%.3f'|format(ln.required_qty) }}</td><td class="rp-num">{{ '%.3f'|format(ln.issue_qty) }}</td><td>{{ ln.uom }}</td><td>{{ ln.cutting }}</td><td><span class="rp-tick"></span></td></tr>{% endfor %}</tbody></table>
     </div>
     {% else %}<div class="empty">{{ t('No recipe lines for this filter.') }}</div>{% endfor %}
   </div>

@@ -48,20 +48,16 @@
         <input type="date" name="date_to" value="{{ filters.date_to }}" class="form-control form-control-sm">
       </div>
       <div class="col-md-2">
-        <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('Customer') }}</label>
-        <input name="customer" value="{{ filters.customer }}" list="boqCustomers" autocomplete="off"
-               class="form-control form-control-sm" placeholder="{{ t('Any — type to search') }}">
-        <datalist id="boqCustomers">
-          {% for c in pick.customers %}<option value="{{ c }}"></option>{% endfor %}
-        </datalist>
+        <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('Customer') }} <span class="text-body-tertiary">({{ t('multi') }})</span></label>
+        <select name="customer" multiple size="4" class="form-select form-select-sm boq-multi" data-ph="{{ t('Any customer') }}">
+          {% for c in pick.customers %}<option value="{{ c }}" {% if c in filters.customers %}selected{% endif %}>{{ c }}</option>{% endfor %}
+        </select>
       </div>
       <div class="col-md-2">
-        <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('Order No') }}</label>
-        <input name="order_no" value="{{ filters.order_no }}" list="boqOrders" autocomplete="off"
-               class="form-control form-control-sm" placeholder="{{ t('Any') }}">
-        <datalist id="boqOrders">
-          {% for o in pick.orders %}<option value="{{ o }}"></option>{% endfor %}
-        </datalist>
+        <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('Order No') }} <span class="text-body-tertiary">({{ t('multi') }})</span></label>
+        <select name="order_no" multiple size="4" class="form-select form-select-sm boq-multi" data-ph="{{ t('Any order') }}">
+          {% for o in pick.orders %}<option value="{{ o }}" {% if o in filters.order_nos %}selected{% endif %}>{{ o }}</option>{% endfor %}
+        </select>
       </div>
       <div class="col-md-2">
         <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('Brand') }}</label>
@@ -79,20 +75,52 @@
         </select>
       </div>
       <div class="col-md-2">
-        <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('Section') }}</label>
-        <select name="section" class="form-select form-select-sm">
-          <option value="">{{ t('All sections') }}</option>
-          {% for sname in pick.sections %}<option value="{{ sname }}" {% if filters.section == sname %}selected{% endif %}>{{ t(sname) }}</option>{% endfor %}
+        <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('Section') }} <span class="text-body-tertiary">({{ t('multi') }})</span></label>
+        <select name="section" multiple size="4" class="form-select form-select-sm boq-multi" data-ph="{{ t('All sections') }}">
+          {% for sname in pick.sections %}<option value="{{ sname }}" {% if sname in filters.sections %}selected{% endif %}>{{ t(sname) }}</option>{% endfor %}
         </select>
       </div>
       <input type="hidden" name="view" value="{{ filters.view }}" id="boqViewField">
       <div class="col-md-2 d-flex gap-1">
         <button class="btn btn-primary btn-sm w-100" aria-label="{{ t('Apply filters') }}"><i class="bi bi-search me-1"></i>{{ t('Apply') }}</button>
       </div>
+      {# Batch E (Image 1): Planning's column chooser for the recipe sheet. #}
+      <div class="col-md-3">
+        <div class="dropdown">
+          <button class="btn btn-phoenix-secondary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
+            <i class="bi bi-layout-three-columns me-1"></i>{{ t('Columns') }}</button>
+          <div class="dropdown-menu p-2" style="min-width:220px">
+            <div class="fs-10 text-uppercase fw-bold text-body-tertiary mb-1 px-1">{{ t('Recipe sheet columns') }}</div>
+            {% for col in [[3,'Section'],[4,'Per Portion'],[5,'Net Qty'],[6,'Issue Qty'],[7,'UOM'],[8,'Cutting / Portion']] %}
+            <label class="dropdown-item d-flex align-items-center gap-2 py-1" style="cursor:pointer">
+              <input type="checkbox" class="boq-col-toggle" data-col="{{ col[0] }}" checked> {{ t(col[1]) }}
+            </label>{% endfor %}
+          </div>
+        </div>
+      </div>
       <div class="col-12">
         <a href="/production/boq/preview" class="btn btn-link btn-sm px-0">{{ t('Clear filters') }}</a>
+        <span class="fs-10 text-body-tertiary ms-2"><i class="bi bi-info-circle me-1"></i>{{ t('Ctrl / Cmd-click to pick more than one customer, order or section.') }}</span>
       </div>
     </form>
+
+    <style>
+      {% for n in [3,4,5,6,7,8] %}
+      body.boq-hide-c{{ n }} table.boq-rs th:nth-child({{ n }}),
+      body.boq-hide-c{{ n }} table.boq-rs td:nth-child({{ n }}){display:none}
+      {% endfor %}
+      select.boq-multi{min-height:64px}
+    </style>
+    <script>
+      (function(){
+        // Column chooser — hide/show recipe-sheet columns for Planning.
+        document.querySelectorAll('.boq-col-toggle').forEach(function(cb){
+          cb.addEventListener('change', function(){
+            document.body.classList.toggle('boq-hide-c'+cb.getAttribute('data-col'), !cb.checked);
+          });
+        });
+      })();
+    </script>
   </div></div>
 
   <style>
@@ -200,7 +228,7 @@
             <span class="boq-portions ms-auto">{{ '%g'|format(rec.portions) }} {{ t('portions') }}</span>
           </div>
           <div class="table-responsive">
-            <table class="table table-sm boq-table">
+            <table class="table table-sm boq-table boq-rs">
               <thead><tr>
                 <th style="width:120px">{{ t('Code') }}</th><th>{{ t('Ingredient') }}</th>
                 <th>{{ t('Section') }}</th>
@@ -259,12 +287,18 @@
           </div>
           <div class="table-responsive"><table class="table table-sm boq-table">
             <thead><tr><th>{{ t('Component') }}</th><th>{{ t('Code') }}</th><th>{{ t('Ingredient') }}</th>
-              <th class="text-end">{{ t('Net Qty') }}</th><th class="text-end">{{ t('Issue Qty') }}</th><th>{{ t('UOM') }}</th><th>{{ t('Issued To') }}</th></tr></thead>
+              {# Batch 234 (Image 6): the cutting / portion instruction is what the
+                 section actually needs to DO with the ingredient, so it belongs on
+                 the By Section and By Recipe views too — not only on the Recipe
+                 Sheet. #}
+              <th class="text-end">{{ t('Net Qty') }}</th><th class="text-end">{{ t('Issue Qty') }}</th><th>{{ t('UOM') }}</th>
+              <th>{{ t('Cutting / Portion') }}</th><th>{{ t('Issued To') }}</th></tr></thead>
             <tbody>{% for ln in rec.lines %}
               <tr><td class="fs-9 text-primary">{{ t(ln.component) if ln.component == main_component else ln.component }}</td>
                 <td class="text-body-tertiary">{{ ln.ingredient_code }}</td><td>{{ ln.ingredient_name }}</td>
                 <td class="text-end boq-qty">{{ '%.3f'|format(ln.required_qty) }}</td>
                 <td class="text-end">{{ '%.3f'|format(ln.issue_qty) }}</td><td>{{ ln.uom }}</td>
+                <td class="fs-9 text-body-tertiary">{{ ln.cutting or '' }}</td>
                 <td class="fs-9">{{ t(ln.issue_section) }}</td></tr>
             {% endfor %}</tbody>
           </table></div>
@@ -292,13 +326,15 @@
         </div>
         <div class="table-responsive"><table class="table table-sm boq-table">
           <thead><tr><th>{{ t('Component') }}</th><th>{{ t('Code') }}</th><th>{{ t('Ingredient') }}</th><th>{{ t('Section') }}</th>
-            <th class="text-end">{{ t('Total Net Qty') }}</th><th class="text-end">{{ t('Total Issue Qty') }}</th><th>{{ t('UOM') }}</th></tr></thead>
+            <th class="text-end">{{ t('Total Net Qty') }}</th><th class="text-end">{{ t('Total Issue Qty') }}</th><th>{{ t('UOM') }}</th>
+            <th>{{ t('Cutting / Portion') }}</th></tr></thead>
           <tbody>{% for ln in rec.lines %}
             <tr><td class="fs-9 text-primary">{{ t(ln.component) if ln.component == main_component else ln.component }}</td>
               <td class="text-body-tertiary">{{ ln.ingredient_code }}</td><td>{{ ln.ingredient_name }}</td>
               <td><span class="boq-sec" data-s="{{ ln.kitchen_section }}">{{ t(ln.kitchen_section) }}</span></td>
               <td class="text-end boq-qty">{{ '%.3f'|format(ln.required_qty) }}</td>
-              <td class="text-end">{{ '%.3f'|format(ln.issue_qty) }}</td><td>{{ ln.uom }}</td></tr>
+              <td class="text-end">{{ '%.3f'|format(ln.issue_qty) }}</td><td>{{ ln.uom }}</td>
+              <td class="fs-9 text-body-tertiary">{{ ln.cutting or '' }}</td></tr>
           {% endfor %}</tbody>
         </table></div>
       </details>

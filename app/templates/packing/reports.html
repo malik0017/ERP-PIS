@@ -1,0 +1,81 @@
+{% extends "layouts/base.html" %}
+{% block title %}{{ t('Packing Reports') }}{% endblock %}
+{% block content %}
+
+<div class="container-fluid py-3">
+  <div class="isfc-hero mb-4 p-4 rounded-4 text-white d-flex align-items-center justify-content-between flex-wrap gap-3"
+       style="background:linear-gradient(135deg,#08243d,#1e5bb8)">
+    <div >
+      <h2><i class="bi bi-clipboard-data me-2 text-white"></i>{{ t('Packing Reports') }}</h2>
+      <p>{{ t('Every report for the packing, dispatch and logistics stages, in one place.') }}</p>
+    </div>
+    <a class="btn btn-light fw-bold" href="/packing"><i class="bi bi-arrow-left me-1"></i>{{ t('Back to Trayline') }}</a>
+  </div>
+
+  <div class="row g-3">
+    {% for r in reports %}
+    <div class="col-md-6 col-xl-4">
+      <a class="pk-rep" href="{{ r.url }}" style="--c:{{ r.color }}">
+        <div class="d-flex align-items-start gap-2">
+          <i class="bi {{ r.icon }}"></i>
+          <div>
+            <h2>{{ t(r.title) }}</h2>
+            <p>{{ t(r.blurb) }}</p>
+          </div>
+        </div>
+        <span class="pk-open">{{ t('Open') }} <i class="bi bi-arrow-right"></i></span>
+      </a>
+    </div>
+    {% endfor %}
+  </div>
+
+  {% if recent %}
+  <div class="card mt-3">
+    <div class="card-header py-2 d-flex align-items-center">
+      <h5 class="mb-0 fw-bold">{{ t('Recent packed orders') }}</h5>
+      <span class="ms-auto fs-9 text-body-tertiary">{{ t('Jump straight to an order’s pack report') }}</span>
+    </div>
+    <div class="card-body p-4">
+      <div class="table-responsive">
+        <table class="table table-sm table-hover mb-0 small" data-isfc-table
+               data-isfc-title="{{ t('Recent packed orders') }}">
+          <thead class="bg-body-highlight"><tr>
+            <th>{{ t('Order') }}</th><th>{{ t('Customer') }}</th><th>{{ t('Dispatch No') }}</th>
+            <th>{{ t('Status') }}</th><th class="text-end">{{ t('Bags') }}</th><th></th>
+          </tr></thead>
+          <tbody>
+            {% for o in recent %}
+            <tr>
+              <td class="fw-bold">{{ o.order_no }}</td>
+              <td>{{ o.customer_name or '—' }}</td>
+              <td class="text-body-tertiary">{{ o.dispatch_no or '—' }}</td>
+              <td><span class="badge badge-phoenix badge-phoenix-{{ 'success' if o.dispatch_status == 'Delivered' else ('info' if o.dispatch_status in ('Packed','Assigned','Out for Delivery') else 'warning') }}">{{ t(o.dispatch_status or '—') }}</span></td>
+              <td class="text-end">{{ o.packed_bags or 0 }}</td>
+              <td class="text-end"><a class="fs-10" href="/packing/{{ o.id }}/report">{{ t('Pack report') }} <i class="bi bi-arrow-right"></i></a></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+<style>
+  .pk-hero{display:flex;flex-wrap:wrap;gap:1rem;align-items:center;justify-content:space-between;
+    background:linear-gradient(135deg,#08243d,#1e5bb8);color:#fff;border-radius:18px;padding:20px 24px}
+  .pk-hero h1{font-size:1.6rem;font-weight:800;margin:0}
+  .pk-hero p{margin:.15rem 0 0;opacity:.85;font-size:.85rem}
+  .pk-rep{display:flex;flex-direction:column;justify-content:space-between;height:100%;
+    text-decoration:none;color:inherit;background:var(--phoenix-body-bg,#fff);
+    border:1px solid var(--phoenix-border-color,#dfe5ee);border-radius:.9rem;padding:1rem 1.1rem;
+    border-top:3px solid var(--c,#1e5bb8);transition:transform .12s,box-shadow .12s}
+  .pk-rep:hover{transform:translateY(-2px);box-shadow:0 12px 26px rgba(15,30,50,.10);color:inherit}
+  .pk-rep i{font-size:1.4rem;color:var(--c,#1e5bb8)}
+  .pk-rep h2{font-size:1rem;font-weight:700;margin:0}
+  .pk-rep p{font-size:.78rem;color:var(--phoenix-tertiary-color,#6b7a90);margin:.2rem 0 0}
+  .pk-open{align-self:flex-start;margin-top:.9rem;font-size:.78rem;font-weight:700;color:var(--c,#1e5bb8)}
+  [data-bs-theme="dark"] .pk-rep{background:#131d30;border-color:#25324a}
+</style>
+{% endblock %}

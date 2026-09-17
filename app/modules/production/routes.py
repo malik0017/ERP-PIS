@@ -983,16 +983,46 @@ async def store_issuance_page(request: Request, order_no: str, db: Session = Dep
         .order_by(StoreIssuanceLine.recipe_name)
         .all()
     )
+    # Batch D — how much of each line's ingredient is already standing at its
+    # section (from previous over-issues), so the store can issue the NET.
+    avail = {}
+    try:
+        from app.services import section_stock
+        cid = _company_id_from_session(request)
+        avail = section_stock.available_map(
+            db, cid, [(l.issue_to_section, l.ingredient_code) for l in lines])
+    except Exception:
+        avail = {}
     return render(
         request,
         "production/store_issuance.html",
         {
             "order": order,
             "lines": lines,
+            "avail": avail,
             "page_title": "Store Issuance",
             "error": request.query_params.get("error"),
         },
     )
+
+
+@router.get("/section-standing-stock")
+async def section_standing_stock(request: Request, db: Session = Depends(get_db)):
+    """Batch D — Section Standing Stock: what is already issued to each section
+    that a new order can use before the store issues anything new."""
+    require_area(request, "store_issuance")
+    cid = _company_id_from_session(request)
+    section = (request.query_params.get("section") or "").strip()
+    date_from = (request.query_params.get("date_from") or "").strip()
+    date_to = (request.query_params.get("date_to") or "").strip()
+    from app.services import section_stock
+    rows = section_stock.standing(db, cid, section or None, date_from or None, date_to or None)
+    sections = ["Cutting", "Butchery", "Hot Kitchen", "Cold Kitchen", "Bakery/Pastry", "Trayline / Packing"]
+    return render(request, "production/section_standing_stock.html", {
+        "rows": rows, "sections": sections,
+        "filters": {"section": section, "date_from": date_from, "date_to": date_to},
+        "page_title": "Section Standing Stock",
+    })
 
 
 @router.post("/store-issuance/{line_id}/update")
@@ -1100,6 +1130,16 @@ async def finalize_store(request: Request, order_no: str, db: Session = Depends(
         finalize_store_issuance(db, order_no, issued_by=current_user_name(request))
     except ValueError as exc:
         return redirect_with_error(f"/production/orders/{order_no}/store-issuance", str(exc))
+
+    # Batch D — record this order's issue deltas into the Section Standing Stock
+    # ledger, so over-issued surplus is tracked and a later order draws it down
+    # instead of re-issuing. Never blocks the finalize.
+    try:
+        from app.services import section_stock
+        section_stock.post_order_issue(db, order_no, _company_id_from_session(request),
+                                       current_user_name(request))
+    except Exception:
+        db.rollback()
 
     # Batch 69: auto-post store issuance to the GL — Dr 5100 WIP/COGS / Cr 1130
     # Inventory, valued at issued-qty × ingredient standard cost. This is when
@@ -2968,6 +3008,30 @@ async def section_production_report(request: Request, db: Session = Depends(get_
     _STD_SQ = """(SELECT MAX(r2.standard_portions) FROM recipes r2
                    WHERE r2.recipe_code = bl.recipe_no
                      AND (r2.company_id = :cid OR r2.company_id IS NULL))"""
+
+    # ------------------------------------------------------------------
+    # Batch B1 (Images 2, 4, 6) — DE-FAN the actuals.
+    #
+    # The old summary/consolidated queries pulled received/transferred/waste
+    # with a correlated sub-query PER bom_line and then SUM()'d it. Because
+    # kitchen_section_transactions holds ONE row per (order, recipe, ingredient,
+    # section) but a recipe can list the same ingredient on several bom_lines
+    # (Musakhan lists chicken twice), that single actual was summed once for
+    # each line — Fresh Garlic showed 303.671 received instead of the true
+    # 183.906. Fix: aggregate the transactions ONCE into a derived table and
+    # LEFT JOIN it, then collapse duplicate bom_lines to the (order, recipe,
+    # ingredient) grain with MAX(act.*) before rolling up. Each actual is now
+    # counted exactly once, by construction — no correlated-subquery fan-out.
+    # ------------------------------------------------------------------
+    _ACT_AGG = """(SELECT k.order_no, k.recipe_no, k.ingredient_code,
+                          SUM(COALESCE(k.received_qty_standard, 0))    AS received,
+                          SUM(COALESCE(k.transferred_qty_standard, 0)) AS transferred,
+                          SUM(COALESCE(k.waste_qty_standard, 0))       AS waste,
+                          GROUP_CONCAT(DISTINCT NULLIF(k.to_section,'')
+                                       ORDER BY k.to_section SEPARATOR ', ') AS issued_to_section
+                     FROM kitchen_section_transactions k
+                    WHERE k.current_section = :sec
+                    GROUP BY k.order_no, k.recipe_no, k.ingredient_code)"""
     try:
         if mode == "detail":
             rows = db.execute(text(f"""
@@ -3002,81 +3066,108 @@ async def section_production_report(request: Request, db: Session = Depends(get_
 
         elif mode == "consolidated":
             rows = db.execute(text(f"""
-                SELECT bl.ingredient_code, bl.ingredient_name,
-                       MIN(COALESCE(co.cooking_date, co.required_delivery_date)) AS work_date,
-                       COUNT(DISTINCT bl.recipe_no) AS recipe_count,
-                       COUNT(DISTINCT bl.order_no) AS order_count,
-                       SUM(COALESCE(bl.total_required_with_waste_standard, 0)) AS qty,
-                       SUM(COALESCE(bl.net_required_qty_standard,
-                                    bl.total_required_with_waste_standard, 0)) AS net_qty,
-                       SUM({_act('received_qty_standard', True)}) AS received_qty,
-                       SUM({_act('transferred_qty_standard', True)}) AS transferred_qty,
-                       SUM({_act('waste_qty_standard', True)}) AS waste_qty,
-                       MAX({_next_section(True)}) AS issued_to_section,
-                       MAX(COALESCE(bl.standard_uom,'')) AS uom
-                FROM bom_lines bl
-                JOIN customer_orders co ON co.order_no = bl.order_no
-                WHERE {w}
-                GROUP BY bl.ingredient_code, bl.ingredient_name
+                SELECT g.ingredient_code, g.ingredient_name,
+                       MIN(g.work_date) AS work_date,
+                       COUNT(DISTINCT g.recipe_no) AS recipe_count,
+                       COUNT(DISTINCT g.order_no) AS order_count,
+                       SUM(g.qty) AS qty,
+                       SUM(g.net_qty) AS net_qty,
+                       SUM(g.received) AS received_qty,
+                       SUM(g.transferred) AS transferred_qty,
+                       SUM(g.waste) AS waste_qty,
+                       MAX(g.issued_to_section) AS issued_to_section,
+                       MAX(g.uom) AS uom
+                FROM (
+                    SELECT bl.order_no, bl.recipe_no, bl.ingredient_code, bl.ingredient_name,
+                           COALESCE(co.cooking_date, co.required_delivery_date) AS work_date,
+                           MAX(COALESCE(bl.standard_uom,'')) AS uom,
+                           SUM(COALESCE(bl.total_required_with_waste_standard, 0)) AS qty,
+                           SUM(COALESCE(bl.net_required_qty_standard,
+                                        bl.total_required_with_waste_standard, 0)) AS net_qty,
+                           MAX(act.received) AS received,
+                           MAX(act.transferred) AS transferred,
+                           MAX(act.waste) AS waste,
+                           MAX(act.issued_to_section) AS issued_to_section
+                    FROM bom_lines bl
+                    JOIN customer_orders co ON co.order_no = bl.order_no
+                    LEFT JOIN {_ACT_AGG} act
+                           ON act.order_no = bl.order_no
+                          AND act.recipe_no = bl.recipe_no
+                          AND act.ingredient_code = bl.ingredient_code
+                    WHERE {w}
+                    GROUP BY bl.order_no, bl.recipe_no, bl.ingredient_code, bl.ingredient_name,
+                             COALESCE(co.cooking_date, co.required_delivery_date)
+                ) g
+                GROUP BY g.ingredient_code, g.ingredient_name
                 ORDER BY qty DESC
                 LIMIT :cap
             """), {**params, "cap": ROW_CAP + 1}).mappings().all()
 
         else:
             rows = db.execute(text(f"""
-                SELECT bl.recipe_no, bl.recipe_name,
-                       MIN(COALESCE(co.cooking_date, co.required_delivery_date)) AS work_date,
-                       GROUP_CONCAT(DISTINCT co.customer_name ORDER BY co.customer_name
+                SELECT g.recipe_no, g.recipe_name,
+                       MIN(g.work_date) AS work_date,
+                       GROUP_CONCAT(DISTINCT g.customer_name ORDER BY g.customer_name
                                     SEPARATOR ', ') AS customers,
-                       GROUP_CONCAT(DISTINCT bl.order_no ORDER BY bl.order_no
+                       GROUP_CONCAT(DISTINCT g.order_no ORDER BY g.order_no
                                     SEPARATOR ', ') AS orders,
-                       -- Batch 190 (Img 15) ROOT CAUSE — "wrong required
-                       -- portion, here show the order portion at the time
-                       -- of sale request."
-                       --
-                       -- order_lines has ONE row per (order, recipe) — its
-                       -- required_portions is a per-recipe-per-order fact.
-                       -- bom_lines has ONE row per (order, recipe,
-                       -- INGREDIENT) — many rows per recipe. Joining the
-                       -- two and then SUM()-ing required_portions sums the
-                       -- SAME portions value once for every ingredient
-                       -- line the recipe has — a recipe with 7 ingredients
-                       -- showed 7x the real portion count (this is exactly
-                       -- why 175 appeared for what should have been a much
-                       -- smaller, human-sized order quantity).
-                       --
-                       -- SUM(DISTINCT ...) fixes the common case (different
-                       -- orders almost always order different portion
-                       -- counts) without a full query rewrite. Known
-                       -- edge case, worth naming rather than hiding: if
-                       -- two DIFFERENT orders for the same recipe in the
-                       -- same filtered window happen to request the exact
-                       -- same portion count, DISTINCT collapses them to one
-                       -- and slightly UNDER-counts — a far smaller, rarer
-                       -- error than the multiplication bug this replaces,
-                       -- and one that undercounts rather than silently
-                       -- inflating. A fully precise fix needs a derived-
-                       -- table restructure (aggregate order_lines by
-                       -- (order_no, recipe_no) before ever joining to
-                       -- bom_lines) — flagged for a follow-up batch rather
-                       -- than risked here without a live DB to verify it
-                       -- against your real data first.
-                       SUM(DISTINCT COALESCE(ol.required_portions, 0)) AS req_portions,
-                       SUM(COALESCE(bl.total_required_with_waste_standard, 0)) AS qty,
-                       SUM(COALESCE(bl.net_required_qty_standard,
-                                    bl.total_required_with_waste_standard, 0)) AS net_qty,
-                       SUM({_act('received_qty_standard', True)}) AS received_qty,
-                       SUM({_act('transferred_qty_standard', True)}) AS transferred_qty,
-                       SUM({_act('waste_qty_standard', True)}) AS waste_qty,
-                       MAX({_next_section(True)}) AS issued_to_section,
-                       MAX(COALESCE(bl.standard_uom,'')) AS uom,
-                       MAX({_PORTION_SQ}) AS portion_size
-                FROM bom_lines bl
-                JOIN customer_orders co ON co.order_no = bl.order_no
-                LEFT JOIN order_lines ol
-                       ON ol.order_no = bl.order_no AND ol.recipe_no = bl.recipe_no
-                WHERE {w}
-                GROUP BY bl.recipe_no, bl.recipe_name
+                       -- Batch B1 (Img 15 + 190) — required portions the
+                       -- de-fanned way. The innermost grain is (order, recipe,
+                       -- ingredient); the middle grain (order, recipe) takes
+                       -- MAX(req_portions) so the per-order portion count is
+                       -- carried ONCE, not once per ingredient line; the outer
+                       -- SUM then totals across orders. No 7x multiplication,
+                       -- no DISTINCT under-count.
+                       SUM(g.req_portions) AS req_portions,
+                       SUM(g.qty) AS qty,
+                       SUM(g.net_qty) AS net_qty,
+                       SUM(g.received) AS received_qty,
+                       SUM(g.transferred) AS transferred_qty,
+                       SUM(g.waste) AS waste_qty,
+                       MAX(g.issued_to_section) AS issued_to_section,
+                       -- Img 6 — a recipe mixes Gram and Ml lines, so the old
+                       -- MAX(uom) returned 'Ml' alphabetically. The section
+                       -- total is reported in Gram (Ml treated 1:1 with g, the
+                       -- operational convention for cooking liquids).
+                       'Gram' AS uom,
+                       MAX(g.portion_size) AS portion_size
+                FROM (
+                    SELECT i.order_no, i.recipe_no, i.recipe_name, i.customer_name, i.work_date,
+                           MAX(i.req_portions) AS req_portions,
+                           SUM(i.qty) AS qty, SUM(i.net_qty) AS net_qty,
+                           SUM(i.received) AS received, SUM(i.transferred) AS transferred,
+                           SUM(i.waste) AS waste,
+                           MAX(i.issued_to_section) AS issued_to_section,
+                           MAX(i.portion_size) AS portion_size
+                    FROM (
+                        SELECT bl.order_no, bl.recipe_no, bl.recipe_name, co.customer_name,
+                               COALESCE(co.cooking_date, co.required_delivery_date) AS work_date,
+                               bl.ingredient_code,
+                               COALESCE(ol.required_portions, 0) AS req_portions,
+                               SUM(COALESCE(bl.total_required_with_waste_standard, 0)) AS qty,
+                               SUM(COALESCE(bl.net_required_qty_standard,
+                                            bl.total_required_with_waste_standard, 0)) AS net_qty,
+                               MAX(act.received) AS received,
+                               MAX(act.transferred) AS transferred,
+                               MAX(act.waste) AS waste,
+                               MAX(act.issued_to_section) AS issued_to_section,
+                               MAX({_PORTION_SQ}) AS portion_size
+                        FROM bom_lines bl
+                        JOIN customer_orders co ON co.order_no = bl.order_no
+                        LEFT JOIN order_lines ol
+                               ON ol.order_no = bl.order_no AND ol.recipe_no = bl.recipe_no
+                        LEFT JOIN {_ACT_AGG} act
+                               ON act.order_no = bl.order_no
+                              AND act.recipe_no = bl.recipe_no
+                              AND act.ingredient_code = bl.ingredient_code
+                        WHERE {w}
+                        GROUP BY bl.order_no, bl.recipe_no, bl.recipe_name, co.customer_name,
+                                 COALESCE(co.cooking_date, co.required_delivery_date),
+                                 bl.ingredient_code, COALESCE(ol.required_portions, 0)
+                    ) i
+                    GROUP BY i.order_no, i.recipe_no, i.recipe_name, i.customer_name, i.work_date
+                ) g
+                GROUP BY g.recipe_no, g.recipe_name
                 ORDER BY qty DESC
                 LIMIT :cap
             """), {**params, "cap": ROW_CAP + 1}).mappings().all()

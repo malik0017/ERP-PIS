@@ -333,17 +333,7 @@
             </div>
 
             <div class="pis-toolbar-right">
-                {# Batch 101: template download + check-before-import.
-
-                   Previously the only action was "Upload Excel", which wrote
-                   straight to the database. A wrong header name is not an
-                   error to the parser — it simply doesn't match, so the value
-                   is dropped silently. That is how 55 Frsh recipes imported
-                   with no category: the data was in the file and nothing ever
-                   said it wasn't being read.
-
-                   "Check File" runs the SAME parser and reports what would
-                   happen, writing nothing. #}
+               
                 <form id="recipeExcelForm" method="post" enctype="multipart/form-data"
                       action="/recipes/validate-excel" style="display:flex; gap:8px; flex-wrap:wrap;">
                     <a href="/recipes/template" class="pis-btn pis-btn-secondary">
@@ -388,12 +378,7 @@
     </div>
     {% endif %}
 
-    {# Batch 81 fix: these cards now reflect the active Category/Customer/
-       Search filters (previously always showed the unfiltered company
-       total, out of sync with the table below), and each card is also a
-       one-click filter itself — clicking "Active Recipes" jumps straight
-       to status=ACTIVE while keeping whatever Category/Customer/Search is
-       currently applied. #}
+   
     {% set _qs = '&search=' + search|urlencode if search else '' %}
     {% set _qs = _qs + '&category=' + selected_category|urlencode if selected_category and selected_category != 'All Categories' else _qs %}
     {% set _qs = _qs + '&customer=' + selected_customer|urlencode if selected_customer and selected_customer != 'All Customers' else _qs %}
@@ -481,9 +466,6 @@
                             <th>RECIPE NAME</th>
                             <th>CATEGORY</th>
                             <th>CUSTOMER</th>
-                            {# Batch 116: Brand and Day were imported but never
-                               displayed, so the weekly menu was invisible on
-                               the screen people actually work from. #}
                             <th>BRAND</th>
                             <th>DAY</th>
                             <th>VERSION</th>

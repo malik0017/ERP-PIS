@@ -124,9 +124,6 @@ def post_dispatch_cogs_journal(db, request, order_no: str, value: float,
 
 def post_adjustment_journal(db, request, ref_no: str, value: float,
                             write_up: bool, note: str = "") -> str | None:
-    """Inventory count posted. write_up=True -> stock increased.
-       Up:   Dr 1130 Inventory  /  Cr 5100 Adj expense
-       Down: Dr 5100 Adj expense /  Cr 1130 Inventory."""
     value = round(abs(float(value or 0)), 4)
     if value <= 0:
         return None

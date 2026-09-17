@@ -133,6 +133,86 @@ DATASETS: dict[str, dict] = {
                        "Margin", "money"),
         },
     },
+    # -----------------------------------------------------------------------
+    # Batch G (Image 11) — production datasets the floor actually asked for:
+    # waste & yield, short/excess issuance, and section-wise progress. All read
+    # the same live tables the kitchen writes, so a built report matches the
+    # section screens.
+    # -----------------------------------------------------------------------
+    "waste_yield": {
+        "label": "Waste & Yield (kitchen)",
+        "area": "reports",
+        "base": "FROM kitchen_section_transactions k",
+        "scope": "(k.company_id = :cid OR k.company_id IS NULL)",
+        "columns": {
+            "order_no": ("k.order_no", "Order No", "text"),
+            "section": ("COALESCE(k.current_section,'')", "Section", "text"),
+            "recipe_no": ("COALESCE(k.recipe_no,'')", "Recipe No", "text"),
+            "recipe": ("COALESCE(k.recipe_name,'')", "Recipe", "text"),
+            "item_code": ("COALESCE(k.ingredient_code,'')", "Item Code", "text"),
+            "item": ("COALESCE(k.ingredient_name,'')", "Item", "text"),
+            "uom": ("COALESCE(k.standard_uom,'')", "UOM", "text"),
+            "input": ("COALESCE(k.issued_qty_standard,0)", "Input", "number"),
+            "output": ("COALESCE(k.processed_qty_standard,0)", "Output", "number"),
+            "transferred": ("COALESCE(k.transferred_qty_standard,0)", "Transferred", "number"),
+            "waste": ("COALESCE(k.waste_qty_standard,0)", "Waste", "number"),
+            "waste_pct": ("ROUND(CASE WHEN COALESCE(k.issued_qty_standard,0)>0 "
+                          "THEN COALESCE(k.waste_qty_standard,0)/k.issued_qty_standard*100 ELSE 0 END,2)",
+                          "Waste %", "number"),
+            "yield_pct": ("ROUND(CASE WHEN COALESCE(k.received_qty_standard,0)>0 "
+                          "THEN COALESCE(k.transferred_qty_standard,0)/k.received_qty_standard*100 ELSE 0 END,2)",
+                          "Yield %", "number"),
+            "status": ("COALESCE(k.transaction_status,'')", "Status", "text"),
+            "updated": ("k.updated_at", "Updated", "date"),
+        },
+    },
+    "short_excess": {
+        "label": "Short & Excess (store issuance)",
+        "area": "reports",
+        "base": "FROM store_issuance_lines s",
+        "scope": "(s.company_id = :cid OR s.company_id IS NULL)",
+        "columns": {
+            "order_no": ("s.order_no", "Order No", "text"),
+            "section": ("COALESCE(s.issue_to_section,'')", "Section", "text"),
+            "recipe": ("COALESCE(s.recipe_name,'')", "Recipe", "text"),
+            "item_code": ("COALESCE(s.ingredient_code,'')", "Item Code", "text"),
+            "item": ("COALESCE(s.ingredient_name,'')", "Item", "text"),
+            "uom": ("COALESCE(s.standard_uom,'')", "UOM", "text"),
+            "required": ("COALESCE(s.required_qty_with_waste_standard, s.required_qty_standard, 0)",
+                         "Required", "number"),
+            "issued": ("COALESCE(s.issued_qty_standard, s.input_material_issued, 0)", "Issued", "number"),
+            "variance": ("(COALESCE(s.issued_qty_standard, s.input_material_issued, 0) "
+                         "- COALESCE(s.required_qty_with_waste_standard, s.required_qty_standard, 0))",
+                         "Variance (+excess/-short)", "number"),
+            "variance_kind": ("CASE WHEN COALESCE(s.issued_qty_standard, s.input_material_issued, 0) "
+                              "> COALESCE(s.required_qty_with_waste_standard, s.required_qty_standard, 0) THEN 'Excess' "
+                              "WHEN COALESCE(s.issued_qty_standard, s.input_material_issued, 0) "
+                              "< COALESCE(s.required_qty_with_waste_standard, s.required_qty_standard, 0) THEN 'Short' "
+                              "ELSE 'Exact' END", "Result", "text"),
+            "status": ("COALESCE(s.issuance_status,'')", "Status", "text"),
+            "issued_at": ("s.issued_at", "Issued At", "date"),
+        },
+    },
+    "section_progress": {
+        "label": "Section-wise Progress",
+        "area": "reports",
+        "base": "FROM kitchen_section_transactions k",
+        "scope": "(k.company_id = :cid OR k.company_id IS NULL)",
+        "columns": {
+            "order_no": ("k.order_no", "Order No", "text"),
+            "section": ("COALESCE(k.current_section,'')", "Section", "text"),
+            "next_section": ("COALESCE(k.to_section,'')", "Next Section", "text"),
+            "recipe": ("COALESCE(k.recipe_name,'')", "Recipe", "text"),
+            "item": ("COALESCE(k.ingredient_name,'')", "Item", "text"),
+            "status": ("COALESCE(k.transaction_status,'')", "Status", "text"),
+            "received": ("COALESCE(k.received_qty_standard,0)", "Received", "number"),
+            "transferred": ("COALESCE(k.transferred_qty_standard,0)", "Transferred", "number"),
+            "balance": ("COALESCE(k.balance_qty_standard,0)", "Balance", "number"),
+            "step": ("COALESCE(k.route_step_no,0)", "Route Step", "number"),
+            "received_at": ("k.received_at", "Received At", "date"),
+            "transferred_at": ("k.transferred_at", "Transferred At", "date"),
+        },
+    },
 }
 
 OPS = {

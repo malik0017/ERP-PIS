@@ -81,11 +81,19 @@ body {
 .rp-ref, .doc-ref { font-size: 9px; color: var(--rp-faint); letter-spacing: .3px; }
 
 /* --- fact strip ---------------------------------------------------------- */
-/* .rp-facts, .meta {
-  display: grid; grid-template-columns: repeat(4, 1fr);
-  gap: 6px; margin-bottom: 10px;
-} */
-.rp-facts.rp-6, .meta.rp-6 { grid-template-columns: repeat(6, 1fr); }
+/* Batch 234 (Image 6): this rule had been commented out, so the fact cards
+   lost their layout and stacked one per line at full width — the whole header
+   became four tall bars instead of a strip. Restored as FLEX rather than the
+   original fixed 4-column grid: a sheet with three facts should not leave a
+   gap, and one with six should not squeeze. Each card takes an equal share of
+   the row and wraps when there is no room. */
+.rp-facts, .meta {
+  display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px;
+}
+.rp-facts > div, .meta > div {
+  flex: 1 1 130px; min-width: 110px;
+}
+.rp-facts.rp-6 > div, .meta.rp-6 > div { flex: 1 1 100px; min-width: 90px; }
 .rp-facts > div, .meta > div {
   border: 1px solid var(--rp-line); border-radius: 6px; padding: 5px 7px;
 }

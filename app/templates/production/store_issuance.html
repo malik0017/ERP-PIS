@@ -326,6 +326,7 @@
             <th>Ingredient</th>
             <th>Recipe</th>
             <th>Required</th>
+            <th data-isfc-nofilter title="Already standing at this section from earlier over-issues">Available @ Section</th>
             <th data-isfc-nofilter>Issue Qty</th>
             <th data-isfc-nofilter>UOM</th>
             <th data-isfc-nofilter>Issue To Section</th>
@@ -348,6 +349,11 @@
               <span class="mini text-muted">{{ l.recipe_no }}</span>
             </td>
             <td>{{ '%.4f'|format(l.required_qty_with_waste_standard or 0) }} {{ l.standard_uom }}</td>
+            {% set _av = (avail|default({})).get(l.issue_to_section ~ '||' ~ l.ingredient_code, 0) %}
+            {% set _need = (l.required_qty_with_waste_standard or 0) %}
+            {% set _net = (_need - _av) if (_need - _av) > 0 else 0 %}
+            <td>{% if _av and _av > 0.0001 %}<span class="badge bg-warning text-dark" title="Standing stock at {{ l.issue_to_section }} — issue the net">{{ '%.3f'|format(_av) }}</span>
+                <div class="mini text-muted">net {{ '%.3f'|format(_net) }}</div>{% else %}<span class="text-muted">—</span>{% endif %}</td>
             <td><input form="issue-form-{{ l.id }}" class="form-control form-control-sm" type="number" step="0.0001" name="input_material_issued" style="min-width:110px"
                 value="{{ l.input_material_issued if l.input_material_issued is not none else (l.required_qty_with_waste_standard or 0) }}" {% if l.finalized %}readonly{% endif %}></td>
             {# Batch 161: the UOM value was never missing — the input had no width
@@ -377,7 +383,7 @@
               {% endif %}
             </td>
           </tr>{% else %}<tr>
-            <td colspan="10" class="text-muted text-center py-4">No store issuance lines. Approve order, generate BOM,
+            <td colspan="11" class="text-muted text-center py-4">No store issuance lines. Approve order, generate BOM,
               then release BOM to Store.</td>
           </tr>{% endfor %}</tbody>
       </table>

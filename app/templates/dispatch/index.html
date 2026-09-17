@@ -184,8 +184,15 @@
 {% endblock %}
 {% block content %}
 <div class="rep-page container-fluid">
-  <div class="rep-hero mb-3">
-    <h1>Packing & Dispatch / Delivery</h1>
+  {# Batch 228: the dispatch stage's own report, on the dispatch page. #}
+  <div class="rep-hero mb-3 d-flex flex-wrap gap-2 align-items-center">
+    <h1 class="mb-0">Packing &amp; Dispatch / Delivery</h1>
+    <div class="ms-auto d-flex gap-2">
+      <a class="btn btn-light btn-sm fw-bold" href="/dispatch/report">
+        <i class="bi bi-truck me-1"></i>{{ t('Dispatch Report') }}</a>
+      <a class="btn btn-light btn-sm fw-bold" href="/packing/reports">
+        <i class="bi bi-clipboard-data me-1"></i>{{ t('All Packing Reports') }}</a>
+    </div>
   </div>
   {% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
   {% set active_step = 'Dispatch' %}{% include 'partials/process_status_row.html' %}

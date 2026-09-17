@@ -28,6 +28,13 @@ PAGE_AREAS = {
     # Project Management
     "project_management", "project_list", "project_detail", "project_team",
     "project_timeline",
+
+    # Batch I (Image 8) — production & report SCREENS that existed as pages but
+    # had no grantable row of their own. Registered so the access matrix lists
+    # them; each has a parent below, so a user granted the parent inherits it
+    # (nothing is newly denied) and an admin can now grant/deny per screen.
+    "boq", "kitchen_reports", "store_standing_stock", "tray_line",
+    "logistics_board", "reports_center", "report_builder", "yield_wastage",
 }
 
 AREA_PARENTS = {
@@ -55,6 +62,15 @@ AREA_PARENTS = {
     "project_detail": "project_management",
     "project_team": "project_management",
     "project_timeline": "project_management",
+    # Batch I — new screens inherit an existing area so nothing is newly denied.
+    "boq": "production_orders",
+    "kitchen_reports": "kitchen",
+    "store_standing_stock": "store_issuance",
+    "tray_line": "dispatch",
+    "logistics_board": "logistics",
+    "reports_center": "reports",
+    "report_builder": "reports",
+    "yield_wastage": "reports",
 }
 
 PARENT_CHILDREN: dict[str, set] = {}
@@ -243,7 +259,6 @@ def can_action(request: Request, area: str, action: str) -> bool:
             if isinstance(entry, dict):
                 return bool(entry.get(action))
             return action in entry
-        # Area granted via `user_access` but no action row: allow view only.
         return action == "view"
 
     # Role-default fallback.

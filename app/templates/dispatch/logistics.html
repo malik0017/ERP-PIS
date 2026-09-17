@@ -17,6 +17,17 @@
     <div class="card-body d-flex flex-wrap gap-3 align-items-end">
       <div><label class="form-label small fw-bold">{{ t('From') }}</label><input type="date" name="from_date" class="form-control" value="{{ filters.from_date }}"></div>
       <div><label class="form-label small fw-bold">{{ t('To') }}</label><input type="date" name="to_date" class="form-control" value="{{ filters.to_date }}"></div>
+      {# Batch 243 (Image 6): customer- and order-wise filters. #}
+      <div><label class="form-label small fw-bold">{{ t('Customer') }}</label>
+        <select name="customer" class="form-select">
+          <option value="">{{ t('All customers') }}</option>
+          {% for c in customer_opts %}<option value="{{ c }}" {% if filters.customer==c %}selected{% endif %}>{{ c }}</option>{% endfor %}
+        </select></div>
+      <div><label class="form-label small fw-bold">{{ t('Order No') }}</label>
+        <select name="order_no" class="form-select">
+          <option value="">{{ t('All orders') }}</option>
+          {% for o in order_opts %}<option value="{{ o }}" {% if filters.order_no==o %}selected{% endif %}>{{ o }}</option>{% endfor %}
+        </select></div>
       <div><button class="btn btn-primary"><i class="bi bi-funnel me-1"></i>{{ t('Apply') }}</button>
         <a class="btn btn-phoenix-secondary" href="/dispatch/logistics">{{ t('Reset') }}</a></div>
       <div class="ms-auto text-end">
@@ -65,8 +76,8 @@
   <div class="card mb-3">
     <div class="card-header d-flex justify-content-between align-items-center bg-body-highlight">
       <h5 class="mb-0 fw-bold"><i class="bi bi-geo-alt me-1"></i>{{ region }}</h5>
-      <div><span class="badge bg-primary">{{ g.bags }} bags</span>
-        <span class="badge bg-secondary">{{ g.orders }} orders</span></div>
+      <div class="d-flex gap-2"><span class="badge badge-phoenix badge-phoenix-primary">{{ g.bags }} {{ t('bags') }}</span>
+        <span class="badge badge-phoenix badge-phoenix-info">{{ g.orders }} {{ t('orders') }}</span></div>
     </div>
     <div class="table-responsive">
       <table class="table table-sm mb-0">

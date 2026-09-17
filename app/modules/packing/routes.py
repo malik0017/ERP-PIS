@@ -16,9 +16,6 @@ from app.core.company import require_order_scope, require_record_scope
 
 router = APIRouter(prefix="/packing", tags=["Trayline / Packing"])
 
-# Batch 201: ONE region list for Packing, Dispatch and Logistics. Packing had no
-# "Dammam" while Dispatch did, so a bag allocated to Dammam at dispatch showed
-# as the first option (Riyadh) when the packing screen was reopened.
 PACK_REGIONS = ["Riyadh", "Eastern", "Dammam", "Jeddah", "Makkah", "Madinah", "Qassim", "Other"]
 
 
@@ -35,11 +32,7 @@ def _redirect_with_error(url: str, message: str) -> RedirectResponse:
 
 
 def ensure_schema(db: Session) -> None:
-    """Batch 121 — packed_bags. Batch 201 — rejected_bags + rejected_bags_reason,
-    so Dispatch can record bags rejected at the dock with a reason instead of
-    silently lowering the bag count. Runs at startup (main.py) via this same
-    function; information_schema check first because ADD COLUMN IF NOT EXISTS
-    is not available on this MySQL."""
+   
     cols = {
         "packed_bags": "INT NULL",
         "rejected_bags": "INT NULL",
@@ -60,17 +53,7 @@ def ensure_schema(db: Session) -> None:
 
 
 def pack_reconciliation(db: Session, order_no: str) -> list[dict]:
-    """Batch 201 — one row per recipe showing the whole material journey:
-
-        Required (BOM)  →  Issued (store)  →  Transferred (kitchen → QC)
-        →  Received at QC  →  Received P/C/V  →  Packed P/C/V  →  Excess/Shortage
-
-    Nutrition is SUMMED per recipe. Since Batch 200 a bulk capture is split
-    pro-rata across the recipe's lines, so the recipe total is the sum; the old
-    MAX() read only the largest line's share and under-reported every recipe.
-    Portion weight is per portion, so it stays MAX. Quantities are in each
-    line's standard UOM; `uom` is the dominant one for the recipe.
-    """
+  
     def _q(sql: str) -> dict:
         try:
             return {r["recipe_no"]: r for r in db.execute(text(sql), {"o": order_no}).mappings().all()}
@@ -162,8 +145,7 @@ def packing_dashboard(request: Request, db: Session = Depends(get_db)):
     if status_f:
         extra += " AND COALESCE(pd.dispatch_status,'Packing Pending') = :status_f"
         params["status_f"] = status_f
-    # Batch 144: default to current work (delivery today onward) unless a date
-    # range or scope=all is set. Priority sort = nearest delivery first.
+   
     if scope != "all" and not from_date and not to_date:
         extra += " AND COALESCE(co.required_delivery_date, '9999-12-31') >= CURDATE()"
     rows = db.execute(text(f"""
@@ -199,9 +181,45 @@ def packing_dashboard(request: Request, db: Session = Depends(get_db)):
                                                    "error": request.query_params.get("error")})
 
 
+@router.get("/reports", response_class=HTMLResponse)
+async def packing_reports(request: Request, db: Session = Depends(get_db)):
+   
+    require_area(request, "packing")
+    from app.core.company import company_clause
+    from app.core.db_read import rows as _rows
+
+    cid = int(request.session.get("company_id") or 1)
+    recent = _rows(db, """
+        SELECT pd.id, pd.order_no, pd.customer_name, pd.dispatch_no,
+               pd.dispatch_status, pd.packed_bags
+        FROM packing_dispatch pd
+        WHERE 1=1""" + company_clause("pd") + """
+        ORDER BY pd.id DESC LIMIT 15""", {"scope_cid": cid}, label="packing reports hub")
+
+    reports = [
+        {"title": "Tray Line Report", "url": "/dispatch/logistics/tray-line",
+         "icon": "bi-clipboard-check", "color": "#1e5bb8",
+         "blurb": "The delivery-bags form — one row per receiver, per region, for signing at handover."},
+        {"title": "Logistics / Region Report", "url": "/dispatch/logistics",
+         "icon": "bi-geo-alt", "color": "#0ea5c6",
+         "blurb": "Region-wise bag counts by customer, with totals and export."},
+        {"title": "Logistics Board", "url": "/dispatch/logistics/board",
+         "icon": "bi-truck", "color": "#8a5a00",
+         "blurb": "Assign driver, vehicle and region bags to each dispatch."},
+        {"title": "Dispatch / Delivery", "url": "/dispatch",
+         "icon": "bi-box-seam", "color": "#15803d",
+         "blurb": "Bag management, proof of delivery and the OTIF evidence."},
+        {"title": "Trayline queue", "url": "/packing",
+         "icon": "bi-grid-3x3-gap", "color": "#8c68f5",
+         "blurb": "Orders waiting to be packed, and the packed weights per recipe."},
+    ]
+    return render(request, "packing/reports.html", {
+        "page_title": "Packing Reports", "reports": reports, "recent": recent,
+    })
+
+
 @router.get("/{packing_id}", response_class=HTMLResponse)
 def packing_order(request: Request, packing_id: int, db: Session = Depends(get_db)):
-    # Batch 207: an order number in the URL is not authorisation — 404 if it belongs to another company.
     require_record_scope(db, request, "packing_dispatch", packing_id)
     require_area(request, "packing")
     row = db.query(PackingDispatch).filter(PackingDispatch.id == packing_id).first()
@@ -216,18 +234,6 @@ def packing_order(request: Request, packing_id: int, db: Session = Depends(get_d
         LIMIT 5
     """), {"order_no": row.order_no}).mappings().all()
 
-    # Batch 130: per-recipe packing detail. Pull the recipe outputs that reached
-    # QC/packing, with planned portions (from order_lines) vs received, the lack
-    # (planned − received), and the protein/carb captured by Hot Kitchen in the
-    # [NUT w= p= c=] tag on the section remark.
-    # Batch 146 (fixes image 11): the previous GROUP BY included per-ingredient
-    # columns (received/remarks), so a recipe appeared once PER INGREDIENT — the
-    # long duplicated list in the screenshot. Aggregate to ONE row per recipe:
-    # planned from order_lines, received = SUM across the recipe's QC lines, and
-    # the section it came from. Nutrition (protein/carb) is pulled from any line
-    # of the recipe that carries the Hot Kitchen [NUT ...] tag.
-    # Batch 201: the per-recipe reconciliation lives in pack_reconciliation()
-    # so the screen, CSV and printable report cannot disagree.
     pack_lines = pack_reconciliation(db, row.order_no)
 
     delivery_weekday = ""
@@ -242,9 +248,6 @@ def packing_order(request: Request, packing_id: int, db: Session = Depends(get_d
     except Exception:
         delivery_weekday = ""
 
-    # Batch 148: existing region/bag split for the allocator. Passed explicitly
-    # (an undefined name in Jinja is falsy, which would render an empty
-    # allocator on an order that already has one and quietly wipe it on save).
     _PACK_REGIONS = PACK_REGIONS
     region_bags = []
     if getattr(row, "region_bags", None):
@@ -254,29 +257,16 @@ def packing_order(request: Request, packing_id: int, db: Session = Depends(get_d
                 region_bags.append({"name": name, "bags": cnt})
         except Exception:
             region_bags = []
-    # Batch 176 — 176-E1. The allocation table is now the ONLY place a region
-    # is entered (the standalone "Region" <select> is gone from the template).
-    # An order that predates this — single Region + Number of Bags, no
-    # per-region split — needs its one existing value migrated into a single
-    # allocation row, or it would open to an empty table and look like the
-    # data disappeared.
+
     if not region_bags and (getattr(row, "region", None) or getattr(row, "packed_bags", None)):
         region_bags = [{"name": row.region or _PACK_REGIONS[0], "bags": row.packed_bags or 0}]
     if not region_bags:
-        # Batch 201 (Image 11): a new order rendered NO allocation row, so the
-        # packer had to click "Add region" before entering anything. One row
-        # by default — a single-region order is just this row.
         region_bags = [{"name": _PACK_REGIONS[0], "bags": ""}]
 
     return render(request, "packing/order.html",
                   {"row": row, "order": order, "qc_rows": qc_rows,
                    "pack_lines": pack_lines, "delivery_weekday": delivery_weekday,
                    "region_bags": region_bags, "pack_regions": _PACK_REGIONS,
-                   # Batch 153: packed weights recorded at Trayline, keyed by
-                   # recipe. Passed explicitly — an undefined name in Jinja is
-                   # falsy, so omitting it would render a silent column of
-                   # dashes that looks like "nothing packed yet" rather than a
-                   # missing variable.
                    "packed_nutrition": {},
                    "page_title": f"Packing - {row.order_no}",
                    "error": request.query_params.get("error")})
@@ -284,10 +274,6 @@ def packing_order(request: Request, packing_id: int, db: Session = Depends(get_d
 
 @router.get("/{packing_id}/report", response_class=HTMLResponse)
 def packing_report(request: Request, packing_id: int, db: Session = Depends(get_db)):
-    """Batch 201 (Image 11) — printable pack reconciliation for one order:
-    required → issued → transferred → received → packed → excess/shortage,
-    plus bag allocation and rejected bags. Standalone page for Print / PDF."""
-    # Batch 207: an order number in the URL is not authorisation — 404 if it belongs to another company.
     require_record_scope(db, request, "packing_dispatch", packing_id)
     require_area(request, "packing")
     row = db.query(PackingDispatch).filter(PackingDispatch.id == packing_id).first()
@@ -326,22 +312,7 @@ def packing_report(request: Request, packing_id: int, db: Session = Depends(get_
 
 @router.post("/{packing_id}/pack-lines")
 async def save_pack_lines(request: Request, packing_id: int, db: Session = Depends(get_db)):
-    """Batch 157 — record packed weights per recipe at Trayline.
-
-    Saves the whole grid in one submit rather than a Save button per row: the
-    operator weighs the trays for an order as one pass, and a per-row save would
-    mean 19 round trips and 19 chances to lose a value by navigating away.
-
-    Upsert on (order_no, recipe_no, region) so re-weighing corrects the existing
-    row instead of stacking duplicates. region is '' today — see the schema
-    guard in main.py for why the column exists now rather than later.
-
-    A blank box is stored as NULL, not 0. Nothing weighed is not the same as
-    weighed-and-found-zero, and the pack sheet renders the two differently
-    ("—" versus 0.00). Writing 0 for blanks would make an unweighed recipe look
-    reconciled with a shortage equal to everything received.
-    """
-    # Batch 207: an order number in the URL is not authorisation — 404 if it belongs to another company.
+    
     require_record_scope(db, request, "packing_dispatch", packing_id)
     require_action(request, "packing", "edit")
     row = db.execute(text("SELECT order_no FROM packing_dispatch WHERE id = :i"),
@@ -376,9 +347,7 @@ async def save_pack_lines(request: Request, packing_id: int, db: Session = Depen
         vals = {"o": order_no, "r": rc,
                 "p": _opt(prot, i), "c": _opt(carb, i),
                 "v": _opt(veg, i), "pp": _opt(portion, i)}
-        # Batch 205: the packed-portions box was removed from the screen, so it
-        # is no longer posted. Without this the ON DUPLICATE UPDATE would write
-        # NULL over a value captured before this batch.
+
         if vals["pp"] is None:
             try:
                 vals["pp"] = db.execute(text(
@@ -424,7 +393,7 @@ async def update_packing(
     region: str = Form(""),
     db: Session = Depends(get_db),
 ):
-    # Batch 207: an order number in the URL is not authorisation — 404 if it belongs to another company.
+
     require_record_scope(db, request, "packing_dispatch", packing_id)
     require_action(request, "packing", "edit")
     row = db.query(PackingDispatch).filter(PackingDispatch.id == packing_id).first()
@@ -445,23 +414,6 @@ async def update_packing(
     if (region or "").strip():
         row.region = region.strip()
 
-    # ------------------------------------------------------------------
-    # BATCH 148 — REGION-WISE BAG ALLOCATION MOVES TO TRAYLINE
-    #
-    # The allocation lived on the Dispatch screen, which is the wrong place:
-    # Trayline is where bags are physically filled and where the operator knows
-    # that 10 bags are Riyadh and 8 are Dammam. Dispatch was being asked to
-    # re-enter a fact that had already happened upstream, which is how the two
-    # screens end up disagreeing.
-    #
-    # Same JSON shape and same column as the Dispatch form wrote, so the
-    # logistics report and the existing per-region expansion keep working
-    # untouched. Dispatch keeps its editor as a correction path.
-    #
-    # packed_bags is DERIVED from the allocation when one is supplied, so the
-    # header count and the region rows can never disagree. Without an
-    # allocation the manually entered packed_bags below still applies.
-    # ------------------------------------------------------------------
     _alloc_total = None
     try:
         _form = await request.form()
@@ -483,17 +435,11 @@ async def update_packing(
             if alloc:
                 row.region_bags = _json.dumps(alloc)
                 _alloc_total = sum(alloc.values())
-                # Primary region = the one with the most bags, matching what the
-                # Dispatch form already did, so single-region views are stable.
                 row.region = max(alloc, key=alloc.get)
             else:
-                # An explicitly emptied allocation clears it rather than leaving
-                # a stale split behind a now-single-region order.
                 row.region_bags = None
     except Exception:
         pass
-    # Batch 121: persist bag count (column added via ensure_schema). Written
-    # with raw SQL so it works even if the ORM model attribute isn't present.
     try:
         db.execute(
             text("UPDATE packing_dispatch SET packed_bags = :b WHERE id = :i"),

@@ -1,6 +1,7 @@
 # app/modules/dispatch/routes.py
 import os
 import secrets
+import logging
 from datetime import date, datetime
 from typing import Optional
 
@@ -16,6 +17,8 @@ from app.database.session import get_db
 from app.models.production import CustomerOrder, PackingDispatch
 from app.modules.packing.routes import PACK_REGIONS, ensure_schema as _ensure_packing_schema
 from app.core.company import require_order_scope, require_record_scope
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/dispatch", tags=["Dispatch"])
 
@@ -203,6 +206,94 @@ def _logistics_region_rows(db: Session, from_date: str, to_date: str,
     return regions, flat_rows
 
 
+@router.get("/report", response_class=HTMLResponse)
+def dispatch_report(request: Request, db: Session = Depends(get_db)):
+    """Batch 228 — the dispatch stage's own report.
+
+    Built on the SAME delivery evidence as the OTIF metric (Batch 224) — the
+    delivered_at timestamp and delivered_portions — so the report and the
+    dashboard can never disagree about whether an order was late or short.
+
+    Declared before /logistics only for readability; both are literal paths.
+    """
+    require_area(request, "dispatch")
+    from app.core.company import company_clause
+    from app.core.db_read import rows as _rows
+
+    cid = int(request.session.get("company_id") or 1)
+    f = {
+        "from": (request.query_params.get("from") or "").strip(),
+        "to": (request.query_params.get("to") or "").strip(),
+        "customer": (request.query_params.get("customer") or "").strip(),
+        "region": (request.query_params.get("region") or "").strip(),
+        "status": (request.query_params.get("status") or "").strip(),
+    }
+    where, params = ["1=1"], {"scope_cid": cid}
+    where.append(company_clause("pd").replace(" AND ", "", 1))
+    # Filter on the DISPATCH date, falling back to the required delivery date —
+    # an order packed but not yet dispatched has no dispatch date and would
+    # otherwise vanish from every dated report.
+    if f["from"]:
+        where.append("COALESCE(pd.dispatch_date, o.required_delivery_date) >= :df"); params["df"] = f["from"]
+    if f["to"]:
+        where.append("COALESCE(pd.dispatch_date, o.required_delivery_date) <= :dt"); params["dt"] = f["to"]
+    if f["customer"]:
+        where.append("pd.customer_name = :cust"); params["cust"] = f["customer"]
+    if f["region"]:
+        where.append("COALESCE(pd.region,'') = :reg"); params["reg"] = f["region"]
+    if f["status"]:
+        where.append("COALESCE(pd.dispatch_status,'') = :st"); params["st"] = f["status"]
+
+    rows = _rows(db, f"""
+        SELECT pd.id, pd.order_no, pd.customer_name, pd.dispatch_no, pd.region,
+               pd.driver_name, pd.vehicle_no, pd.dispatch_date, pd.delivered_at,
+               pd.delivered_portions, pd.packed_bags, pd.dispatch_status,
+               o.required_delivery_date,
+               COALESCE(o.total_planned_portions, 0) AS ordered_portions
+        FROM packing_dispatch pd
+        JOIN customer_orders o ON o.order_no = pd.order_no
+        WHERE {' AND '.join(where)}
+        ORDER BY COALESCE(pd.dispatch_date, o.required_delivery_date) DESC, pd.id DESC
+        LIMIT 500""", params, label="dispatch report")
+
+    totals = {"dispatches": len(rows), "delivered": 0, "bags": 0,
+              "portions": 0, "late": 0, "short": 0}
+    for r in rows:
+        totals["bags"] += float(r.get("packed_bags") or 0)
+        totals["portions"] += float(r.get("ordered_portions") or 0)
+        if (r.get("dispatch_status") or "") == "Delivered":
+            totals["delivered"] += 1
+        # None, not False, where there is no evidence — same rule as OTIF.
+        r["on_time"] = None
+        r["in_full"] = None
+        if r.get("delivered_at") and r.get("required_delivery_date"):
+            r["on_time"] = str(r["delivered_at"])[:10] <= str(r["required_delivery_date"])[:10]
+            if not r["on_time"]:
+                totals["late"] += 1
+        if r.get("delivered_portions") is not None and float(r.get("ordered_portions") or 0) > 0:
+            r["in_full"] = float(r["delivered_portions"]) >= float(r["ordered_portions"]) * 0.99
+            if not r["in_full"]:
+                totals["short"] += 1
+        r["delivered_at"] = str(r["delivered_at"])[:16] if r.get("delivered_at") else ""
+        r["dispatch_date"] = str(r["dispatch_date"])[:10] if r.get("dispatch_date") else ""
+        r["required_delivery_date"] = str(r["required_delivery_date"])[:10] if r.get("required_delivery_date") else ""
+
+    opts_rows = _rows(db, """
+        SELECT DISTINCT pd.customer_name AS customer, COALESCE(pd.region,'') AS region,
+               COALESCE(pd.dispatch_status,'') AS status
+        FROM packing_dispatch pd WHERE 1=1""" + company_clause("pd"),
+        {"scope_cid": cid}, label="dispatch report options")
+    options = {
+        "customers": sorted({r["customer"] for r in opts_rows if r.get("customer")}),
+        "regions": sorted({r["region"] for r in opts_rows if r.get("region")}),
+        "statuses": sorted({r["status"] for r in opts_rows if r.get("status")}),
+    }
+    return render(request, "dispatch/report.html", {
+        "page_title": "Dispatch Report", "rows": rows, "totals": totals,
+        "filters": f, "options": options,
+    })
+
+
 @router.get("/logistics", response_class=HTMLResponse)
 def logistics_report(request: Request, db: Session = Depends(get_db)):
     """Batch 129 — Logistics report: region-wise bag counts by customer
@@ -213,7 +304,30 @@ def logistics_report(request: Request, db: Session = Depends(get_db)):
     q = request.query_params
     from_date = (q.get("from_date") or "").strip()
     to_date = (q.get("to_date") or "").strip()
-    regions, rows = _logistics_region_rows(db, from_date, to_date)
+    # Batch 243 (Image 6): customer- and order-wise filters, on top of the
+    # existing date range. _logistics_region_rows already accepts these via
+    # `extra`; the report route just never passed them through.
+    customer = (q.get("customer") or "").strip()
+    order_no = (q.get("order_no") or "").strip()
+    extra = {}
+    if customer:
+        extra["customer"] = customer
+    if order_no:
+        extra["order_no"] = order_no
+    regions, rows = _logistics_region_rows(db, from_date, to_date, extra=extra or None)
+
+    # Dropdown option lists for the filter bar.
+    try:
+        customer_opts = [c for c in db.execute(text(
+            "SELECT DISTINCT customer_name FROM packing_dispatch "
+            "WHERE COALESCE(customer_name,'') <> '' ORDER BY customer_name"
+        )).scalars().all()]
+        order_opts = [o for o in db.execute(text(
+            "SELECT DISTINCT order_no FROM packing_dispatch "
+            "WHERE COALESCE(order_no,'') <> '' ORDER BY order_no DESC LIMIT 300"
+        )).scalars().all()]
+    except Exception:
+        customer_opts, order_opts = [], []
 
     if q.get("export") == "csv":
         import csv, io
@@ -233,7 +347,9 @@ def logistics_report(request: Request, db: Session = Depends(get_db)):
              "portions": sum(g["portions"] for g in regions.values())}
     return render(request, "dispatch/logistics.html",
                   {"regions": regions, "grand": grand, "flat_rows": rows,
-                   "filters": {"from_date": from_date, "to_date": to_date},
+                   "filters": {"from_date": from_date, "to_date": to_date,
+                               "customer": customer, "order_no": order_no},
+                   "customer_opts": customer_opts, "order_opts": order_opts,
                    "page_title": "Logistics Report"})
 
 
@@ -242,27 +358,57 @@ def tray_line_report(request: Request, db: Session = Depends(get_db)):
    
     require_area(request, "dispatch")
     _ensure_tray_line_schema(db)
+    # Batch 230: needed by the option and detail queries below.
+    from app.core.db_read import rows as _rows
+
+    cid = int(request.session.get("company_id") or 1)
     q = request.query_params
     d = (q.get("date") or date.today().isoformat()).strip()
     # Batch 201 (Image 13): customer / order / brand / region / status filters.
     filters = {k: (q.get(k) or "").strip() for k in ("customer", "order_no", "brand", "region", "status")}
     regions, _ = _logistics_region_rows(db, d, d, extra=filters, delivery_fallback=True)
 
-    def _opts(sql):
+    # ------------------------------------------------------------------
+    # Batch 230 — the dropdowns used to list ONLY what was already on the
+    # chosen date. On a day with nothing dispatched they came back empty, so
+    # the filters looked broken exactly when you needed them to find the order
+    # you were looking for.
+    #
+    # They now offer the day's dispatches AND every RUNNING order (packed,
+    # assigned or out for delivery, whatever its date), so you can pick an
+    # order first and let the date follow. Each list is de-duplicated and
+    # sorted; the day's own entries come first because that is the common case.
+    # ------------------------------------------------------------------
+    def _opts(col, extra_where="", params=None):
+        base = ("FROM packing_dispatch pd "
+                "LEFT JOIN customer_orders co ON co.order_no = pd.order_no "
+                "WHERE (pd.company_id = :cid OR pd.company_id IS NULL) ")
         try:
-            return [r[0] for r in db.execute(text(sql), {"d": d}).all() if r[0]]
-        except Exception:
+            return [r[0] for r in db.execute(
+                text(f"SELECT DISTINCT {col} {base} {extra_where} ORDER BY 1"),
+                {"d": d, "cid": cid, **(params or {})}).all() if r[0]]
+        except Exception as exc:
+            logger.warning("tray line options query failed: %s", str(exc).splitlines()[0][:200])
             db.rollback()
             return []
-    _day = ("FROM packing_dispatch pd LEFT JOIN customer_orders co ON co.order_no = pd.order_no "
-            "WHERE COALESCE(pd.dispatch_date, co.required_delivery_date) = :d "
+
+    _DAY = ("AND COALESCE(pd.dispatch_date, co.required_delivery_date) = :d "
             "AND COALESCE(pd.dispatch_status,'') IN ('Packed','Assigned','Out for Delivery','Delivered')")
+    _RUNNING = "AND COALESCE(pd.dispatch_status,'') IN ('Packed','Assigned','Out for Delivery')"
+
+    def _merge(col):
+        day = _opts(col, _DAY)
+        running = [x for x in _opts(col, _RUNNING) if x not in day]
+        return day + running
+
     options = {
-        "customers": _opts(f"SELECT DISTINCT pd.customer_name {_day} ORDER BY 1"),
-        "orders": _opts(f"SELECT DISTINCT pd.order_no {_day} ORDER BY 1"),
-        "brands": _opts(f"SELECT DISTINCT co.brand {_day} ORDER BY 1"),
+        "customers": _merge("pd.customer_name"),
+        "orders": _merge("pd.order_no"),
+        "brands": _merge("co.brand"),
         "regions": PACK_REGIONS,
         "statuses": ["Packed", "Assigned", "Out for Delivery", "Delivered"],
+        # So the template can mark which entries belong to the selected day.
+        "day_orders": _opts("pd.order_no", _DAY),
     }
 
     confirmations = {
@@ -272,8 +418,28 @@ def tray_line_report(request: Request, db: Session = Depends(get_db)):
             FROM delivery_confirmations WHERE dispatch_date = :d
         """), {"d": d}).mappings().all()
     }
+    # Batch 230: the order detail behind each receiver line. The paper form has
+    # a box count and nothing else, so nobody could tell WHICH orders made up a
+    # receiver's bags without opening dispatch. One query for the whole day,
+    # grouped in Python — a per-row query would be one round trip per receiver.
+    detail: dict = {}
+    for r in _rows(db, """
+        SELECT COALESCE(pd.region,'Unassigned') AS region, pd.customer_name,
+               pd.order_no, pd.dispatch_no, COALESCE(pd.packed_bags,0) AS bags,
+               COALESCE(pd.dispatch_status,'') AS status,
+               COALESCE(o.total_planned_portions,0) AS portions,
+               COALESCE(o.brand,'') AS brand
+        FROM packing_dispatch pd
+        LEFT JOIN customer_orders o ON o.order_no = pd.order_no
+        WHERE COALESCE(pd.dispatch_date, o.required_delivery_date) = :d
+          AND COALESCE(pd.dispatch_status,'') IN ('Packed','Assigned','Out for Delivery','Delivered')
+          AND (pd.company_id = :cid OR pd.company_id IS NULL)
+        ORDER BY pd.order_no""", {"d": d, "cid": cid}, label="tray line order detail"):
+        detail.setdefault((r["region"], r["customer_name"]), []).append(r)
+
     for region, g in regions.items():
         for r in g["rows"]:
+            r["orders"] = detail.get((region, r["customer_name"]), [])
             c = confirmations.get((region, r["customer_name"]))
             r["received_boxes"] = c["received_boxes"] if c else None
             r["confirmed_time"] = c["confirmed_time"] if c else None

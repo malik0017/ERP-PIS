@@ -1,0 +1,120 @@
+{% extends "layouts/base.html" %}
+{% block title %}{{ t('Dispatch Report') }}{% endblock %}
+{% block content %}
+{# ============================================================================
+   Batch 228 — DISPATCH REPORT
+
+   The dispatch stage had no report of its own: Trayline had the Tray Line
+   Report and logistics had the Region Report, but "what went out, when, to
+   whom, and was it on time" could only be read one order at a time.
+
+   Deliberately built on the SAME delivery evidence as OTIF (Batch 224), so the
+   report and the metric can never disagree — an order counted late here is an
+   order counted late there.
+   ============================================================================ #}
+<div class="container-fluid py-3">
+  <div class="rep-hero mb-3 d-flex flex-wrap gap-2 align-items-center">
+    <div>
+      <h1 class="mb-0"><i class="bi bi-truck me-2"></i>{{ t('Dispatch Report') }}</h1>
+      <p class="mb-0 small opacity-75">{{ t('What was dispatched and delivered, with on-time and in-full evidence.') }}</p>
+    </div>
+    <div class="ms-auto d-flex gap-2">
+      <a class="btn btn-light btn-sm fw-bold" href="/dispatch"><i class="bi bi-arrow-left me-1"></i>{{ t('Back to Dispatch') }}</a>
+      <a class="btn btn-light btn-sm fw-bold" href="/packing/reports"><i class="bi bi-clipboard-data me-1"></i>{{ t('All Packing Reports') }}</a>
+    </div>
+  </div>
+
+  <form method="get" class="card mb-3"><div class="card-body py-2">
+    <div class="row g-2 align-items-end">
+      <div class="col-6 col-md-2"><label class="form-label small fw-bold" for="dfFrom">{{ t('From') }}</label>
+        <input id="dfFrom" type="date" name="from" value="{{ filters.from }}" class="form-control form-control-sm"></div>
+      <div class="col-6 col-md-2"><label class="form-label small fw-bold" for="dfTo">{{ t('To') }}</label>
+        <input id="dfTo" type="date" name="to" value="{{ filters.to }}" class="form-control form-control-sm"></div>
+      <div class="col-6 col-md-3"><label class="form-label small fw-bold" for="dfCust">{{ t('Customer') }}</label>
+        <input id="dfCust" name="customer" value="{{ filters.customer }}" list="dfCustList" autocomplete="off"
+               class="form-control form-control-sm" placeholder="{{ t('All customers') }}">
+        <datalist id="dfCustList">{% for c in options.customers %}<option value="{{ c }}"></option>{% endfor %}</datalist></div>
+      <div class="col-6 col-md-2"><label class="form-label small fw-bold" for="dfRegion">{{ t('Region') }}</label>
+        <select id="dfRegion" name="region" class="form-select form-select-sm"><option value="">{{ t('All') }}</option>
+          {% for r in options.regions %}<option {% if filters.region == r %}selected{% endif %}>{{ r }}</option>{% endfor %}</select></div>
+      <div class="col-6 col-md-2"><label class="form-label small fw-bold" for="dfStatus">{{ t('Status') }}</label>
+        <select id="dfStatus" name="status" class="form-select form-select-sm"><option value="">{{ t('All') }}</option>
+          {% for st in options.statuses %}<option {% if filters.status == st %}selected{% endif %}>{{ st }}</option>{% endfor %}</select></div>
+      <div class="col-12 col-md-1 d-flex gap-2">
+        <button class="btn btn-primary btn-sm w-100"><i class="bi bi-funnel"></i></button>
+        <a class="btn btn-phoenix-secondary btn-sm" href="/dispatch/report" title="{{ t('Reset') }}"><i class="bi bi-x-lg"></i></a>
+      </div>
+    </div>
+  </div></form>
+
+  <div class="row g-2 mb-3">
+    {% for k, label, tone in [('dispatches','Dispatches','primary'), ('delivered','Delivered','success'),
+                              ('bags','Bags','info'), ('portions','Portions','primary'),
+                              ('late','Late','danger'), ('short','Short delivered','warning')] %}
+    <div class="col-6 col-md-2">
+      <div class="card h-100 border-top border-3 border-{{ tone }}"><div class="card-body py-2">
+        <div class="fs-10 text-uppercase fw-bold text-body-tertiary">{{ t(label) }}</div>
+        <div class="fs-4 fw-bold">{{ '{:,.0f}'.format(totals[k]) }}</div>
+      </div></div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="card">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm table-hover mb-0 small" data-isfc-table data-isfc-colfilters
+               data-isfc-title="{{ t('Dispatch Report') }}"
+               data-isfc-subtitle="{{ filters.from or '…' }} → {{ filters.to or '…' }}"
+               data-isfc-meta='[["{{ t('From') }}","{{ filters.from or '—' }}"],
+                                ["{{ t('To') }}","{{ filters.to or '—' }}"],
+                                ["{{ t('Dispatches') }}","{{ totals.dispatches }}"],
+                                ["{{ t('Bags') }}","{{ totals.bags }}"]]'>
+          <thead class="bg-body-highlight"><tr>
+            <th>{{ t('Order') }}</th><th>{{ t('Customer') }}</th><th>{{ t('Dispatch No') }}</th>
+            <th>{{ t('Region') }}</th><th>{{ t('Driver') }}</th><th>{{ t('Vehicle') }}</th>
+            <th>{{ t('Required') }}</th><th>{{ t('Dispatched') }}</th><th>{{ t('Delivered At') }}</th>
+            <th class="text-end">{{ t('Bags') }}</th>
+            <th class="text-end">{{ t('Ordered') }}</th><th class="text-end">{{ t('Delivered') }}</th>
+            <th>{{ t('On Time') }}</th><th>{{ t('In Full') }}</th><th>{{ t('Status') }}</th>
+          </tr></thead>
+          <tbody>
+          {% for r in rows %}
+            <tr>
+              <td class="fw-bold"><a href="/production/orders/{{ r.order_no }}" data-order-360="{{ r.order_no }}">{{ r.order_no }}</a></td>
+              <td>{{ r.customer_name or '—' }}</td>
+              <td class="text-body-tertiary">{{ r.dispatch_no or '—' }}</td>
+              <td>{{ r.region or '—' }}</td>
+              <td>{{ r.driver_name or '—' }}</td>
+              <td>{{ r.vehicle_no or '—' }}</td>
+              <td class="text-nowrap">{{ r.required_delivery_date or '—' }}</td>
+              <td class="text-nowrap">{{ r.dispatch_date or '—' }}</td>
+              <td class="text-nowrap">{{ r.delivered_at or '—' }}</td>
+              <td class="text-end">{{ r.packed_bags or 0 }}</td>
+              <td class="text-end">{{ '%g'|format(r.ordered_portions or 0) }}</td>
+              <td class="text-end">{{ '%g'|format(r.delivered_portions) if r.delivered_portions is not none else '—' }}</td>
+              {# Blank, not a cross, when there is no evidence: an order with no
+                 delivery timestamp is unmeasured, not late (see Batch 224). #}
+              <td>{% if r.on_time is none %}<span class="text-body-tertiary">—</span>
+                  {% elif r.on_time %}<span class="badge badge-phoenix badge-phoenix-success">{{ t('On time') }}</span>
+                  {% else %}<span class="badge badge-phoenix badge-phoenix-danger">{{ t('Late') }}</span>{% endif %}</td>
+              <td>{% if r.in_full is none %}<span class="text-body-tertiary">—</span>
+                  {% elif r.in_full %}<span class="badge badge-phoenix badge-phoenix-success">{{ t('In full') }}</span>
+                  {% else %}<span class="badge badge-phoenix badge-phoenix-warning">{{ t('Short') }}</span>{% endif %}</td>
+              <td><span class="badge badge-phoenix badge-phoenix-{{ {'Delivered':'success','Out for Delivery':'primary','Assigned':'info','Packed':'info'}.get(r.dispatch_status,'secondary') }}">{{ t(r.dispatch_status or '—') }}</span></td>
+            </tr>
+          {% else %}
+            <tr><td colspan="15" class="text-center text-body-tertiary py-4">{{ t('No dispatches in this filter.') }}</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% include 'partials/order_360_drawer.html' %}
+<style>
+  .rep-hero{background:linear-gradient(135deg,#08243d,#1e5bb8);color:#fff;border-radius:18px;padding:18px 22px}
+  .rep-hero h1{font-size:1.5rem;font-weight:800}
+</style>
+{% endblock %}

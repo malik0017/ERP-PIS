@@ -120,6 +120,11 @@
     {% set gf_action = '/dashboard' %}{% set gf = filters %}{% set gf_options = options %}{% include 'partials/global_filters.html' %}
   </div>
 
+  {# Batch 246 (Image 12): inline Order 360 — pick an order, see its live status. #}
+  <div class="{{ 'd-none' if mode == 'wallboard' }}">
+    {% include 'partials/order_360_card.html' %}
+  </div>
+
   <div class="cc-fresh">
     <div><strong>{{ generated_at }}</strong>{{ t('Data as of') }}</div>
     <div><strong>{{ periods.current.orders }} {{ t('orders') }}</strong>{{ t('In scope') }} · {{ '%g'|format(periods.current.portions) }} {{ t('portions') }}</div>

@@ -1,6 +1,16 @@
 {% extends "layouts/base.html" %}
 {% block content %}
 <style>
+  /* Batch 230 — order detail under each receiver. */
+  .tl-orders{display:flex;flex-wrap:wrap;gap:.25rem .5rem;margin-top:.25rem}
+  .tl-ord{font-size:.7rem;color:var(--phoenix-tertiary-color,#6b7a90);
+          background:var(--phoenix-body-highlight-bg,#f2f6fb);border-radius:.4rem;padding:.05rem .4rem}
+  .tl-ord b{color:#1e5bb8}
+  .tl-hint{font-size:.7rem;color:var(--phoenix-tertiary-color,#6b7a90)}
+  @media print{.tl-ord{background:none;padding:0}}
+  [data-bs-theme="dark"] .tl-ord{background:#18243a}
+</style>
+<style>
 .tl-hero{background:linear-gradient(135deg,#08243d,#1e5bb8);border-radius:22px;color:#fff;padding:24px 28px}
 .tl-card{background:#fff;border:1px solid #dce8f2;border-radius:18px;box-shadow:0 12px 28px rgba(15,30,50,.06);margin-bottom:20px}
 .tl-region-head{background:#eef5fb;border-radius:14px 14px 0 0;padding:12px 18px;font-weight:800;display:flex;justify-content:space-between;align-items:center}
@@ -9,6 +19,20 @@
 .tl-table td,.tl-table th{padding:8px 12px;border-bottom:1px solid #e7eef5}
 .tl-total-row td{font-weight:800;background:#f8fafc}
 .tl-sig{padding:14px 18px;color:#152b49;font-size:13px}
+/* Batch 244 (Image 7): BOQ-style document chrome + per-order detail table. */
+.tl-doc-head{display:flex;flex-wrap:wrap;gap:10px;padding:14px 18px;border-bottom:1px solid #e7eef5}
+.tl-doc-cell{flex:1 1 150px;min-width:140px;border:1px solid #e2ecf5;border-radius:10px;padding:8px 12px;background:#fbfdff}
+.tl-doc-cell .k{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:#6b7a90;font-weight:800}
+.tl-doc-cell .v{font-size:14px;font-weight:800;color:#152b49}
+.tl-detail-row>td{padding:0 12px 10px!important;background:#fff;border-bottom:1px solid #e7eef5}
+.tl-detail{width:100%;border:1px solid #e2ecf5;border-radius:8px;overflow:hidden;font-size:12px}
+.tl-detail th{background:#f4f8fc;color:#152b49;text-transform:uppercase;letter-spacing:.04em;font-size:10.5px;padding:5px 10px;text-align:start}
+.tl-detail td{padding:5px 10px;border-top:1px solid #eef4fa}
+.tl-detail b{color:#1e5bb8}
+[data-bs-theme="dark"] .tl-doc-cell{background:#111c2e;border-color:#25324a}
+[data-bs-theme="dark"] .tl-doc-cell .v{color:#e6edf6}
+[data-bs-theme="dark"] .tl-detail{border-color:#25324a}
+[data-bs-theme="dark"] .tl-detail th{background:#16233a;color:#e6edf6}
 @media print{
   .no-print{display:none!important}
   .tl-card{box-shadow:none;border:1px solid #000;break-inside:avoid}
@@ -23,8 +47,6 @@
   </div>
 
   <div class="tl-card p-3 no-print">
-    {# Batch 201 (Image 13): filters. Dropdowns list only values that have
-       packed bags on the chosen date, so every choice returns rows. #}
     <form method="get" class="row g-2 align-items-end">
       <div class="col-6 col-md-2"><label class="form-label fw-bold small">{{ t('Date') }}</label>
         <input type="date" name="date" value="{{ date }}" class="form-control form-control-sm"></div>
@@ -33,7 +55,14 @@
           {% for c in options.customers %}<option {% if filters.customer == c %}selected{% endif %}>{{ c }}</option>{% endfor %}</select></div>
       <div class="col-6 col-md-2"><label class="form-label fw-bold small">{{ t('Order No') }}</label>
         <select name="order_no" class="form-select form-select-sm"><option value="">{{ t('All orders') }}</option>
-          {% for o in options.orders %}<option {% if filters.order_no == o %}selected{% endif %}>{{ o }}</option>{% endfor %}</select></div>
+          {# Batch 230: the list now also carries orders that are RUNNING on
+             another date, marked so it is obvious they are not on this one —
+             picking one is how you find the date you actually wanted. #}
+          {% for o in options.orders %}
+          <option {% if filters.order_no == o %}selected{% endif %} value="{{ o }}">{{ o }}{% if o not in options.day_orders %} · {{ t('other date') }}{% endif %}</option>
+          {% endfor %}</select>
+        <!-- <div class="tl-hint">{{ t('Running orders are listed even when they are not on this date.') }}</div> -->
+      </div>
       <div class="col-6 col-md-1"><label class="form-label fw-bold small">{{ t('Brand') }}</label>
         <select name="brand" class="form-select form-select-sm"><option value="">{{ t('All') }}</option>
           {% for b in options.brands %}<option {% if filters.brand == b %}selected{% endif %}>{{ b }}</option>{% endfor %}</select></div>
@@ -44,7 +73,7 @@
         <select name="status" class="form-select form-select-sm"><option value="">{{ t('All') }}</option>
           {% for st in options.statuses %}<option value="{{ st }}" {% if filters.status == st %}selected{% endif %}>{{ t(st) }}</option>{% endfor %}</select></div>
       <div class="col-12 col-md-2 d-flex gap-2">
-        <button class="btn btn-primary btn-sm fw-bold flex-fill"><i class="bi bi-search"></i> {{ t('Load') }}</button>
+        <button class="btn btn-primary fw-bold flex-fill"><i class="bi bi-search"></i> {{ t('Load') }}</button>
         <a class="btn btn-outline-secondary btn-sm" href="?date={{ date }}" title="{{ t('Clear filters') }}"><i class="bi bi-x-lg"></i></a>
       </div>
       <div class="col-12 d-flex flex-wrap gap-3 align-items-center small text-body-tertiary">
@@ -62,7 +91,19 @@
     <input type="hidden" name="dispatch_date" value="{{ date }}">
 
     <div class="tl-card">
-      <div class="p-3 pb-0"><strong>ISFC</strong> <span class="text-secondary">· Date: {{ date }}</span></div>
+      <div class="p-3 pb-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div><strong class="fs-6">ISFC</strong> <span class="text-secondary">· {{ t('Tray Line Delivery Report') }}</span></div>
+        <div class="text-secondary small">{{ t('Generated') }} {{ date }}</div>
+      </div>
+      {# Batch 244 (Image 7): document header in the Bill-of-Quantity style. #}
+      <div class="tl-doc-head">
+        <div class="tl-doc-cell"><div class="k">{{ t('Date') }}</div><div class="v">{{ date }}</div></div>
+        <div class="tl-doc-cell"><div class="k">{{ t('Customer') }}</div><div class="v">{{ filters.customer or t('All customers') }}</div></div>
+        <div class="tl-doc-cell"><div class="k">{{ t('Brand') }}</div><div class="v">{{ filters.brand or t('All') }}</div></div>
+        <div class="tl-doc-cell"><div class="k">{{ t('Regions') }}</div><div class="v">{{ totals.regions }}</div></div>
+        <div class="tl-doc-cell"><div class="k">{{ t('Receivers') }}</div><div class="v">{{ totals.receivers }}</div></div>
+        <div class="tl-doc-cell"><div class="k">{{ t('Total Bags') }}</div><div class="v">{{ totals.bags }}</div></div>
+      </div>
 
       {% for region, g in regions.items() %}
       <div class="p-3">
@@ -94,6 +135,39 @@
                 <td><input class="form-control form-control-sm" type="time" name="dc_time" value="{{ r.confirmed_time or '' }}"></td>
                 <td><input class="form-control form-control-sm" type="text" name="dc_comments" value="{{ r.comments or '' }}"></td>
               </tr>
+              {# Batch 244 (Image 7): the orders behind this receiver's bags, in the
+                 Bill-of-Quantity table format instead of inline chips, so the sheet
+                 reads and prints like the BOQ recipe sheet. #}
+              {% if r.orders %}
+              <tr class="tl-detail-row">
+                <td colspan="5">
+                  <table class="tl-detail">
+                    <thead>
+                      <tr>
+                        <th style="width:22%">{{ t('Order No') }}</th>
+                        <th style="width:22%">{{ t('Dispatch No') }}</th>
+                        <th>{{ t('Brand') }}</th>
+                        <th class="text-end">{{ t('Portions') }}</th>
+                        <th class="text-end">{{ t('Bags') }}</th>
+                        <th style="width:14%">{{ t('Status') }}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {% for o in r.orders %}
+                      <tr>
+                        <td><b>{{ o.order_no }}</b></td>
+                        <td>{{ o.dispatch_no or '—' }}</td>
+                        <td>{{ o.brand or '—' }}</td>
+                        <td class="text-end">{{ '%g'|format(o.portions) if o.portions else '—' }}</td>
+                        <td class="text-end">{{ o.bags or '—' }}</td>
+                        <td>{{ t(o.status) if o.status else '—' }}</td>
+                      </tr>
+                      {% endfor %}
+                    </tbody>
+                  </table>
+                </td>
+              </tr>
+              {% endif %}
               {% endfor %}
               <tr class="tl-total-row">
                 <td>Total Bags</td>

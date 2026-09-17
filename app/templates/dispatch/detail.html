@@ -1,11 +1,37 @@
 {% extends "layouts/base.html" %}
 {% block title %}Dispatch · {{ r.order_no }}{% endblock %}
 {% block content %}
+<style>
+  /* Batch 245 (Image 4): dispatch page polish — hero, logistics card, contents. */
+  .disp-hero{background:linear-gradient(120deg,#0b1f3a 0%,#123a73 48%,#2f6bff 100%);
+    box-shadow:0 14px 34px rgba(11,31,58,.28);position:relative;overflow:hidden}
+  .disp-hero::after{content:"";position:absolute;inset:0;background:
+    radial-gradient(1200px 200px at 90% -40%,rgba(255,255,255,.16),transparent);pointer-events:none}
+  .disp-assign{border:1px solid var(--phoenix-border-color,#dfe5ee);border-radius:14px}
+  .disp-assign .k{color:var(--phoenix-tertiary-color,#6b7a90);font-size:12px}
+  .disp-assign .v{font-weight:700}
+  .disp-chip{display:inline-flex;align-items:center;gap:.3rem;font-size:.72rem;font-weight:700;
+    padding:.15rem .55rem;border-radius:999px}
+  .disp-chip.ok{background:rgba(16,185,129,.12);color:#0f9d6b}
+  .disp-chip.wait{background:rgba(245,158,11,.14);color:#a86a00}
+  .disp-contents{border:1px solid var(--phoenix-border-color,#dfe5ee);border-radius:14px}
+  .disp-contents .head{display:flex;justify-content:space-between;align-items:center;
+    padding:.7rem .9rem;border-bottom:1px solid var(--phoenix-border-color,#dfe5ee);
+    background:var(--phoenix-body-highlight-bg,#f5f8fc);border-radius:14px 14px 0 0}
+  .disp-contents .body{max-height:360px;overflow:auto}
+  .disp-row{display:flex;align-items:center;justify-content:space-between;gap:.6rem;
+    padding:.5rem .9rem;border-bottom:1px solid var(--phoenix-border-color,#eef2f7)}
+  .disp-row:last-child{border-bottom:0}
+  .disp-row .rc{font-size:.68rem;color:var(--phoenix-tertiary-color,#6b7a90);font-family:monospace}
+  .disp-portion{font-weight:800;background:var(--phoenix-primary,#1e5bb8);color:#fff;
+    border-radius:999px;padding:.05rem .6rem;font-size:.78rem;min-width:2.2rem;text-align:center}
+  [data-bs-theme="dark"] .disp-assign,[data-bs-theme="dark"] .disp-contents{border-color:#25324a}
+  [data-bs-theme="dark"] .disp-contents .head{background:#16233a}
+</style>
 <div class="container-fluid py-3">
   {% set active_step = 'Dispatch' %}{% include 'partials/process_status_row.html' %}
 
-  <div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-3 p-4 rounded-4 text-white"
-       style="background:linear-gradient(135deg,#102542,#3874ff)">
+  <div class="disp-hero d-flex align-items-center justify-content-between flex-wrap gap-3 mb-3 p-4 rounded-4 text-white">
     <div>
       <h2 class="mb-1 fw-bold text-white"><i class="bi bi-truck me-2"></i>{{ r.order_no }} · {{ r.customer_name or 'Customer' }}</h2>
       <div class="opacity-75" style="font-size:13.5px">
@@ -19,7 +45,7 @@
     <div class="d-flex align-items-center gap-2">
       <a href="/dispatch/{{ r.id }}/delivery-note" target="_blank" class="btn btn-light btn-sm fw-bold"><i class="bi bi-truck me-1"></i>Delivery Note</a>
       <a href="/dispatch" class="btn btn-outline-light btn-sm fw-bold">Back to Dispatch</a>
-      <span class="badge {% if r.dispatch_status=='Delivered' %}bg-success{% elif r.dispatch_status in ['Rejected','Cancelled'] %}bg-danger{% elif r.dispatch_status=='Assigned' %}bg-info text-dark{% else %}bg-warning text-dark{% endif %}">{{ r.dispatch_status }}</span>
+      <span class="badge badge-phoenix {% if r.dispatch_status=='Delivered' %}badge-phoenix-success{% elif r.dispatch_status in ['Rejected','Cancelled'] %}badge-phoenix-danger{% elif r.dispatch_status=='Assigned' %}badge-phoenix-info{% elif r.dispatch_status=='Out for Delivery' %}badge-phoenix-primary{% else %}badge-phoenix-warning{% endif %}">{{ t(r.dispatch_status) }}</span>
     </div>
   </div>
 
@@ -117,30 +143,42 @@
     </div>
 
     <div class="col-lg-4">
-      <div class="card mb-3">
-        <div class="card-body">
-          <div class="d-flex justify-content-between align-items-center mb-2">
-            <h6 class="fw-bold mb-0"><i class="bi bi-person-badge me-1"></i>{{ t('Logistics Assignment') }}</h6>
-            <a class="btn btn-outline-primary btn-sm" href="/dispatch/logistics/order/{{ r.id }}">{{ t('Open in Logistics') }}</a>
-          </div>
-          <dl class="row mb-0 small">
-            <dt class="col-5 text-body-tertiary">{{ t('Driver') }}</dt><dd class="col-7">{{ r.driver_name or '—' }}</dd>
-            <dt class="col-5 text-body-tertiary">{{ t('Vehicle') }}</dt><dd class="col-7">{{ r.vehicle_no or '—' }}</dd>
-            <dt class="col-5 text-body-tertiary">{{ t('Temp °C') }}</dt><dd class="col-7 mb-0">{{ r.delivery_temperature_c if r.delivery_temperature_c is not none else '—' }}</dd>
-          </dl>
-          {% if not r.driver_name %}<div class="alert alert-subtle-warning py-1 px-2 small mt-2 mb-0">{{ t('Not yet assigned by Logistics.') }}</div>{% endif %}
+      {# Batch 245 (Image 4): Logistics Assignment — read-only summary of what the
+         Logistics screen has assigned, with a clear assigned/waiting chip. #}
+      <div class="disp-assign mb-3">
+        <div class="d-flex justify-content-between align-items-center px-3 pt-3 pb-2">
+          <h6 class="fw-bold mb-0"><i class="bi bi-person-badge me-1"></i>{{ t('Logistics Assignment') }}</h6>
+          {% if r.driver_name %}<span class="disp-chip ok"><i class="bi bi-check-circle-fill"></i>{{ t('Assigned') }}</span>
+          {% else %}<span class="disp-chip wait"><i class="bi bi-hourglass-split"></i>{{ t('Waiting') }}</span>{% endif %}
+        </div>
+        <div class="px-3 pb-2">
+          <div class="d-flex justify-content-between py-1"><span class="k">{{ t('Driver') }}</span><span class="v">{{ r.driver_name or '—' }}</span></div>
+          <div class="d-flex justify-content-between py-1"><span class="k">{{ t('Vehicle') }}</span><span class="v">{{ r.vehicle_no or '—' }}</span></div>
+          <div class="d-flex justify-content-between py-1"><span class="k">{{ t('Temp °C') }}</span><span class="v">{{ r.delivery_temperature_c if r.delivery_temperature_c is not none else '—' }}</span></div>
+        </div>
+        <div class="px-3 pb-3">
+          <a class="btn btn-outline-primary btn-sm w-100 fw-bold" href="/dispatch/logistics/order/{{ r.id }}">
+            <i class="bi bi-box-arrow-up-right me-1"></i>{{ t('Open in Logistics') }}</a>
+          {% if not r.driver_name %}<div class="text-body-tertiary small mt-2">{{ t('Driver, vehicle and temperature are set on the Logistics screen and appear here once assigned.') }}</div>{% endif %}
         </div>
       </div>
-      <div class="card">
-        <div class="card-body">
-          <h6 class="fw-bold mb-2"><i class="bi bi-list-ul me-1"></i>{{ t('Order Contents') }}</h6>
-          <table class="table table-sm mb-0 small">
-            <thead><tr><th>{{ t('Recipe') }}</th><th class="text-end">{{ t('Portions') }}</th></tr></thead>
-            <tbody>
-              {% for ln in order_lines %}<tr><td>{{ ln.recipe_name }}<div class="text-body-tertiary">{{ ln.recipe_no }}</div></td><td class="text-end">{{ '%g'|format(ln.portions or 0) }}</td></tr>
-              {% else %}<tr><td colspan="2" class="text-body-tertiary">—</td></tr>{% endfor %}
-            </tbody>
-          </table>
+
+      {# Batch 245 (Image 4): Order Contents redesigned — a scrollable list with a
+         total header and portion badges, instead of a plain table. #}
+      <div class="disp-contents">
+        <div class="head">
+          <span class="fw-bold"><i class="bi bi-list-ul me-1"></i>{{ t('Order Contents') }}</span>
+          <span class="small text-body-tertiary">{{ order_lines|length }} {{ t('recipes') }} · {{ '%g'|format(order.total_planned_portions or 0) if order else 0 }} {{ t('portions') }}</span>
+        </div>
+        <div class="body">
+          {% for ln in order_lines %}
+          <div class="disp-row">
+            <div><div class="fw-semibold">{{ ln.recipe_name }}</div><div class="rc">{{ ln.recipe_no }}</div></div>
+            <span class="disp-portion">{{ '%g'|format(ln.portions or 0) }}</span>
+          </div>
+          {% else %}
+          <div class="disp-row text-body-tertiary">—</div>
+          {% endfor %}
         </div>
       </div>
     </div>

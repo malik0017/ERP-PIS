@@ -386,6 +386,69 @@ ROLE_DEFAULT_VIEW = {
 }
 
 
+@ops_router.get("/dashboard/attention/{key}")
+def attention_drill(request: Request, key: str, db: Session = Depends(get_db)):
+    """Batch 232 — the orders behind one Needs Attention tile.
+
+    The tiles used to navigate to a whole screen, which loses the board on a
+    wall display and is a heavy answer to "which orders?". This returns just
+    the list; the tile opens it in a side panel, and the full screen is still
+    one click further.
+    """
+    require_area(request, "dashboard")
+    from fastapi.responses import JSONResponse
+
+    from app.core.company import company_clause
+    from app.core.db_read import rows as _rows
+
+    cid = int(request.session.get("company_id") or 1)
+    scope = company_clause("co", param="scope_cid")
+    SQL = {
+        "qc": ("Orders waiting for QC", f"""
+            SELECT co.order_no, co.customer_name, COALESCE(co.status,'') AS status,
+                   co.required_delivery_date AS due,
+                   COALESCE(co.total_planned_portions,0) AS portions
+            FROM customer_orders co
+            WHERE COALESCE(co.status,'') = 'In Production'
+              AND NOT EXISTS (SELECT 1 FROM qc_checks q WHERE q.order_no = co.order_no
+                              AND UPPER(COALESCE(q.qc_status,'')) = 'PASSED') {scope}
+            ORDER BY co.required_delivery_date LIMIT 50"""),
+        "store": ("Store lines not finalized", f"""
+            SELECT co.order_no, co.customer_name, COALESCE(co.status,'') AS status,
+                   co.required_delivery_date AS due,
+                   COUNT(s.id) AS portions
+            FROM customer_orders co
+            JOIN store_issuance_lines s ON s.order_no = co.order_no
+            WHERE COALESCE(s.finalized,0) = 0 {scope}
+            GROUP BY co.order_no, co.customer_name, co.status, co.required_delivery_date
+            ORDER BY co.required_delivery_date LIMIT 50"""),
+        "sla": ("Orders past their SLA deadline", f"""
+            SELECT co.order_no, co.customer_name, COALESCE(co.status,'') AS status,
+                   co.required_delivery_date AS due,
+                   COALESCE(co.total_planned_portions,0) AS portions
+            FROM customer_orders co
+            WHERE COALESCE(co.status,'') NOT IN ('Delivered','Closed','Cancelled','Rejected')
+              AND co.required_delivery_date < CURDATE() {scope}
+            ORDER BY co.required_delivery_date LIMIT 50"""),
+        "dispatch": ("Orders pending dispatch", f"""
+            SELECT co.order_no, co.customer_name, COALESCE(pd.dispatch_status,'') AS status,
+                   co.required_delivery_date AS due,
+                   COALESCE(pd.packed_bags,0) AS portions
+            FROM packing_dispatch pd
+            JOIN customer_orders co ON co.order_no = pd.order_no
+            WHERE COALESCE(pd.dispatch_status,'') IN ('Packed','Assigned','Out for Delivery') {scope}
+            ORDER BY co.required_delivery_date LIMIT 50"""),
+    }
+    if key not in SQL:
+        return JSONResponse({"title": "", "rows": []}, status_code=404)
+    title, sql = SQL[key]
+    rows = _rows(db, sql, {"scope_cid": cid}, label=f"attention drill {key}")
+    for r in rows:
+        r["due"] = str(r.get("due") or "")
+        r["portions"] = float(r.get("portions") or 0)
+    return JSONResponse({"title": title, "rows": rows})
+
+
 @ops_router.get("/dashboard/operations")
 async def operations_overview(request: Request, db: Session = Depends(get_db)):
     require_area(request, "dashboard")
@@ -455,16 +518,19 @@ async def operations_overview(request: Request, db: Session = Depends(get_db)):
     # Batch 212: each item carries an icon so the tiles read as a dashboard
     # rather than a list of sentences.
     attention = [
-        {"tone": "danger", "icon": "bi-patch-question", "count": kpis["qc_pending"], "label": "Orders waiting for QC",
+        # Batch 232: `key` drives the side panel; `url` is still the full screen
+        # behind "Open the full list", so nothing that worked before stops working.
+        {"key": "qc", "tone": "danger", "icon": "bi-patch-question", "count": kpis["qc_pending"],
+         "label": "Orders waiting for QC",
          "detail": "QC checks have not been completed.", "url": "/qc"},
-        {"tone": "warning", "icon": "bi-box-seam", "count": kpis["store_pending"], "label": "Store lines not finalized",
+        {"key": "store", "tone": "warning", "icon": "bi-box-seam", "count": kpis["store_pending"], "label": "Store lines not finalized",
          "detail": "Material demand is waiting for store confirmation.",
          "url": "/production/store-issuance"},
-        {"tone": "warning", "icon": "bi-alarm", "count": health.get("overdue", 0) + health.get("breached", 0),
+        {"key": "sla", "tone": "warning", "icon": "bi-alarm", "count": health.get("overdue", 0) + health.get("breached", 0),
          "label": "Orders past their SLA deadline",
          "detail": "Delivery commitment has been missed or is at grace.",
          "url": "/sales-requests?scope=all"},
-        {"tone": "info", "icon": "bi-truck", "count": kpis["pending_dispatch"], "label": "Orders pending dispatch",
+        {"key": "dispatch", "tone": "info", "icon": "bi-truck", "count": kpis["pending_dispatch"], "label": "Orders pending dispatch",
          "detail": "Dispatch documents are not completed.", "url": "/dispatch"},
     ]
     attention = [a for a in attention if (a["count"] or 0) > 0]

@@ -1,3 +1,22 @@
+{# ============================================================================
+   HIDING A MENU ITEM — Batch 229
+
+   Add  "hidden": true  to its entry below. Both the sidebar and the top navbar
+   skip it, the entry stays in the file, and you restore it by setting the flag
+   to false (or deleting it).
+
+   DO NOT wrap entries in a Jinja comment. NAV_MODULES is a Jinja list literal
+   inside {% set %}: everything between the brackets is parsed as an expression,
+   and a comment is not valid there. It raises
+       TemplateSyntaxError: unexpected char '#'
+   which takes down EVERY page, because this partial is imported by the sidebar
+   on the base layout — not only the pages you were trying to hide.
+
+   Hiding is cosmetic, not security: the page still answers if someone types the
+   URL. To actually block it, turn the module off in
+   System -> Settings -> Sellable Modules, which hides the menu AND returns 403.
+   ============================================================================ #}
+
 
 
 {% set NAV_MODULES = [
@@ -41,17 +60,18 @@
     {"title": "Kitchen Reports", "url": "/production/reports/section", "area": "production_orders", "feather": "clipboard", "match": "/production/reports/"},
   ]},
   {"key": "quality", "title": "Quality", "icon": "uil-shield-check", "children": [
-    {"title": "Incoming QC Inspection", "url": "/qc/inspection", "area": "qc", "feather": "clipboard", "match": "/qc/inspection"},
+    {"title": "Incoming QC Inspection", "url": "/qc/inspection", "area": "qc", "feather": "clipboard", "match": "/qc/inspection", "hidden": true},
     {"title": "In-Kitchen QC", "url": "/qc", "area": "qc", "feather": "check-circle", "match": "/qc/orders"},
-    {"title": "Customer Complaints", "url": "/qc/complaints", "area": "qc", "feather": "message-square", "match": "/qc/complaints"},
+    {"title": "Customer Complaints", "url": "/qc/complaints", "area": "qc", "feather": "message-square", "match": "/qc/complaints", "hidden": true},
     {"title": "QC Sampling Plan", "url": "/qc/sampling", "area": "qc", "feather": "shuffle", "match": "/qc/sampling"},
-    {"title": "Batch Recall Trace", "url": "/qc/recall", "area": "qc", "feather": "search", "match": "/qc/recall"},
+    {"title": "Batch Recall Trace", "url": "/qc/recall", "area": "qc", "feather": "search", "match": "/qc/recall", "hidden": true},
   ]},
   {"key": "logistics", "title": "Packing", "icon": "uil-truck", "children": [
     {"title": "Trayline / Packing", "url": "/packing", "area": "packing", "feather": "package", "match": "/packing"},
     {"title": "Dispatch / Delivery", "url": "/dispatch", "area": "dispatch", "feather": "truck", "match": "/dispatch"},
     {"title": "Logistics Board", "url": "/dispatch/logistics/board", "area": "logistics", "feather": "truck", "match": "/dispatch/logistics"},
     {"title": "Tray Line Report", "url": "/dispatch/logistics/tray-line", "area": "dispatch", "feather": "clipboard", "match": "/dispatch/logistics/tray-line"},
+    {"title": "Packing Reports", "url": "/packing/reports", "area": "packing", "feather": "bar-chart-2", "match": "/packing/reports"},
   ]},
   {"key": "procurement", "title": "Procurement", "icon": "uil-shop", "children": [
     {"title": "Procurement Cockpit", "url": "/module/procurement/dashboard", "area": "procurement", "feather": "bar-chart-2"},
@@ -144,7 +164,7 @@
 {% macro _module_children(m) -%}
   {%- set ns = namespace(items=[]) -%}
   {%- for c in m.children -%}
-    {%- if can_access(c.area) -%}{%- set ns.items = ns.items + [c] -%}{%- endif -%}
+    {%- if can_access(c.area) and not c.get('hidden') -%}{%- set ns.items = ns.items + [c] -%}{%- endif -%}
   {%- endfor -%}
   {{- ns.items | length -}}
 {%- endmacro %}
@@ -155,13 +175,13 @@
 {% macro top() %}
   {% set path = request.url.path %}
   {% set best = namespace(score=0) %}
-  {% for m in NAV_MODULES %}{% for c in m.children %}{% if can_access(c.area) %}
+  {% for m in NAV_MODULES %}{% for c in m.children %}{% if can_access(c.area) and not c.get('hidden') %}
     {% set sc = _match_len(c, path)|int %}{% if sc > best.score %}{% set best.score = sc %}{% endif %}
   {% endif %}{% endfor %}{% endfor %}
 
   {% for m in NAV_MODULES %}
     {% set visible = [] %}
-    {% for c in m.children %}{% if can_access(c.area) %}{% set _ = visible.append(c) %}{% endif %}{% endfor %}
+    {% for c in m.children %}{% if can_access(c.area) and not c.get('hidden') %}{% set _ = visible.append(c) %}{% endif %}{% endfor %}
     {% if visible %}
     {% set mod_active = [] %}
     {% for c in visible %}{% if _match_len(c, path)|int > 0 and _match_len(c, path)|int == best.score %}{% set _ = mod_active.append(1) %}{% endif %}{% endfor %}
@@ -192,13 +212,13 @@
 {% macro vertical() %}
   {% set path = request.url.path %}
   {% set best = namespace(score=0) %}
-  {% for m in NAV_MODULES %}{% for c in m.children %}{% if can_access(c.area) %}
+  {% for m in NAV_MODULES %}{% for c in m.children %}{% if can_access(c.area) and not c.get('hidden') %}
     {% set sc = _match_len(c, path)|int %}{% if sc > best.score %}{% set best.score = sc %}{% endif %}
   {% endif %}{% endfor %}{% endfor %}
 
   {% for m in NAV_MODULES %}
     {% set visible = [] %}
-    {% for c in m.children %}{% if can_access(c.area) %}{% set _ = visible.append(c) %}{% endif %}{% endfor %}
+    {% for c in m.children %}{% if can_access(c.area) and not c.get('hidden') %}{% set _ = visible.append(c) %}{% endif %}{% endfor %}
     {% if visible %}
     {% set mod_active = [] %}
     {% for c in visible %}{% if _match_len(c, path)|int > 0 and _match_len(c, path)|int == best.score %}{% set _ = mod_active.append(1) %}{% endif %}{% endfor %}

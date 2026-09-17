@@ -172,8 +172,10 @@
               value="{{ row.remarks or '' }}" placeholder="Trayline / packing notes" {% if _p_locked %}readonly{% endif %}></div>
         </div>
         {% if not _p_locked %}
-        <button class="btn-main mt-3" type="submit"><i class="bi bi-check2-circle"></i> Save Packing and Release to
-          Dispatch</button>
+        {# Batch 227: this button used to sit here, saved the header and
+           immediately redirected back to the Trayline list — losing the weights
+           the operator had not saved yet. The page now has ONE save, at the
+           bottom, after the weights. #}
         {% else %}
         <div class="mt-3 text-body-tertiary"><i class="bi bi-eye"></i> View-only — this order has already been dispatched.</div>
         {% endif %}
@@ -183,8 +185,12 @@
       <div class="d-flex justify-content-between align-items-center">
         <h3 class="mb-0">Order Summary</h3>
         <div class="d-flex gap-2">
-          <a class="btn btn-outline-secondary btn-sm fw-bold" href="/dispatch/logistics" title="Region-wise bag report across all orders">
-            <i class="bi bi-geo-alt"></i> Region-wise Report</a>
+          {# Batch 242 (Images 3 & 5): every report now lives in one hub. The
+             old 'Region-wise Report' link that jumped straight to
+             /dispatch/logistics is replaced by 'Packing Reports', which opens
+             the Trayline / Dispatch / Logistics reports together. #}
+          <a class="btn btn-outline-primary btn-sm fw-bold" href="/packing/reports" title="Trayline, Dispatch and Logistics reports in one place">
+            <i class="bi bi-clipboard-data"></i> {{ t('Packing Reports') }}</a>
           <button type="button" class="btn btn-outline-secondary btn-sm fw-bold" onclick="window.print()">
             <i class="bi bi-printer"></i> Print</button>
         </div>
@@ -267,17 +273,23 @@
               <input type="hidden" name="pl_recipe_no" value="{{ l.recipe_no }}"></td>
             <td><span class="text-secondary">{{ l.from_section or '—' }}</span></td>
             <td class="text-end">{{ '%g'|format(l.planned) }}</td>
-            <td class="text-end">{{ '%.2f'|format(l.recv_protein) if l.recv_protein is not none else '—' }}</td>
-            <td class="text-end">{{ '%.2f'|format(l.recv_carb) if l.recv_carb is not none else '—' }}</td>
-            <td class="text-end">{{ '%.2f'|format(l.recv_veg) if l.recv_veg is not none else '—' }}</td>
-           
-            {%- for nm, v in [('pl_protein', l.pk_protein), ('pl_carb', l.pk_carb), ('pl_veg', l.pk_veg)] %}
-            <td><input class="form-control form-control-sm text-end" type="number" step="0.01" min="0"
+            {# Batch 227: the received weight carries a data attribute so the
+               excess/shortage can be recomputed AS THE OPERATOR TYPES. Until now
+               it only appeared after Save, which meant nobody saw a shortfall
+               while they could still do something about it. #}
+            {%- for key, v in [('protein', l.recv_protein), ('carb', l.recv_carb), ('veg', l.recv_veg)] %}
+            <td class="text-end pk-recv" data-key="{{ key }}"
+                data-recv="{{ '%.4f'|format(v) if v is not none else '' }}">{{ '%.2f'|format(v) if v is not none else '—' }}</td>
+            {%- endfor %}
+
+            {%- for nm, key, v in [('pl_protein', 'protein', l.pk_protein), ('pl_carb', 'carb', l.pk_carb), ('pl_veg', 'veg', l.pk_veg)] %}
+            <td><input class="form-control form-control-sm text-end pk-packed" data-key="{{ key }}"
+                       type="number" step="0.01" min="0"
                        name="{{ nm }}" value="{{ '%.2f'|format(v) if v is not none else '' }}"
                        placeholder="—" {% if _p_locked %}readonly{% endif %} style="width:88px"></td>
             {%- endfor %}
-            {%- for d in [l.diff_protein, l.diff_carb, l.diff_veg] %}
-            <td class="text-end">
+            {%- for key, d in [('protein', l.diff_protein), ('carb', l.diff_carb), ('veg', l.diff_veg)] %}
+            <td class="text-end pk-diff" data-key="{{ key }}">
               {%- if d is not none -%}
                 <span class="{{ 'text-danger fw-bold' if d < -0.001 else ('text-warning fw-bold' if d > 0.001 else 'text-success') }}">{{ '%+.2f'|format(d) }}</span>
               {%- else -%}—{%- endif -%}
@@ -290,13 +302,67 @@
     </div>
     {% if not _p_locked %}
     <div class="text-end mt-2">
-      <button class="btn btn-primary btn-sm"><i class="bi bi-save me-1"></i>{{ t('Save Packed Weights') }}</button>
+      {# Batch 227: ONE save for the whole page. The header (bags, date, status,
+         regions, remarks) and the packed weights are two separate forms posting
+         to two routes, so this button saves the header first and only submits
+         the weights once that succeeded — if the header save fails the weights
+         are still on screen rather than lost to a redirect. #}
+      <button class="btn btn-primary" id="packSaveAll" type="submit">
+        <i class="bi bi-check2-circle me-1"></i>{{ t('Save Packing') }}</button>
     </div>
     {% endif %}
     </form>
   </div>
 </div>
 <script>
+// ---------------------------------------------------------------------------
+// Batch 227 — live excess / shortage.
+// Excess/Shortage = received from kitchen − packed at trayline, recomputed on
+// every keystroke. Previously it was only calculated server-side on save, so a
+// shortfall appeared after the operator had finished and moved on. A blank
+// packed box stays "—": nothing entered is not the same as zero packed.
+// ---------------------------------------------------------------------------
+(function () {
+  function recalc(row) {
+    ['protein', 'carb', 'veg'].forEach(function (key) {
+      var recvEl = row.querySelector('.pk-recv[data-key="' + key + '"]');
+      var packEl = row.querySelector('.pk-packed[data-key="' + key + '"]');
+      var outEl = row.querySelector('.pk-diff[data-key="' + key + '"]');
+      if (!recvEl || !packEl || !outEl) return;
+      var recvRaw = recvEl.getAttribute('data-recv');
+      var packRaw = (packEl.value || '').trim();
+      if (recvRaw === '' || recvRaw === null || packRaw === '') { outEl.innerHTML = '—'; return; }
+      var d = parseFloat(recvRaw) - parseFloat(packRaw);
+      if (isNaN(d)) { outEl.innerHTML = '—'; return; }
+      var cls = d < -0.001 ? 'text-danger fw-bold' : (d > 0.001 ? 'text-warning fw-bold' : 'text-success');
+      outEl.innerHTML = '<span class="' + cls + '">' + (d > 0 ? '+' : '') + d.toFixed(2) + '</span>';
+    });
+  }
+  document.querySelectorAll('.pk-packed').forEach(function (el) {
+    el.addEventListener('input', function () { recalc(el.closest('tr')); });
+  });
+
+  // One save: header first, then the weights.
+  var btn = document.getElementById('packSaveAll');
+  var header = document.getElementById('packForm');
+  if (btn && header) {
+    btn.addEventListener('click', function (e) {
+      e.preventDefault();
+      var weights = btn.closest('form');
+      btn.disabled = true;
+      var old = btn.innerHTML;
+      btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+      fetch(header.getAttribute('action'), {
+        method: 'POST', credentials: 'same-origin', body: new FormData(header), redirect: 'manual'
+      }).catch(function () { /* opaque redirect is a success for our purpose */ })
+        .then(function () { weights.submit(); })
+        .catch(function () {
+          btn.disabled = false; btn.innerHTML = old;
+          if (window.showToast) showToast('Could not save the packing header', 'danger', 'Not saved');
+        });
+    });
+  }
+})();
 
 </script>
 

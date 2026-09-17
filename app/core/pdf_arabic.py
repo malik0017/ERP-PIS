@@ -1,37 +1,5 @@
 # app/core/pdf_arabic.py
-# =============================================================================
-# Batch 222 — ARABIC IN PDF EXPORTS
-# -----------------------------------------------------------------------------
-# Arabic could not be rendered in any PDF this system produced:
-#
-#   * the browser-side exports (jsPDF, ~40 tables) use a built-in Latin font
-#     with no Arabic glyphs, so Arabic labels were STRIPPED before export
-#     (Batch 122). The PDF came out silently missing half its content.
-#   * the server-side exports (ReportLab) used Helvetica, which has no Arabic
-#     glyphs either — Arabic came out as black boxes.
-#
-# Three separate things are needed to print Arabic correctly, and missing any
-# one of them produces wrong output rather than an error:
-#
-#   1. A FONT that contains Arabic glyphs. Amiri (SIL Open Font License) ships
-#      in app/static/fonts. It is a Naskh face designed for body text, which is
-#      what a delivery note or a picking list is.
-#   2. SHAPING. Arabic letters change form depending on their neighbours
-#      (initial, medial, final, isolated). Unshaped text renders as a row of
-#      disconnected isolated letters — technically legible, visibly wrong, and
-#      the sort of thing a customer notices on a document with their name on
-#      it. `arabic_reshaper` does this.
-#   3. BIDI reordering. PDF draws glyphs left to right in the order given, so
-#      right-to-left text must be reversed before drawing, with embedded
-#      Latin/number runs kept in their own direction. `python-bidi` does this.
-#
-# Mixed text is the normal case here — "ORD-20260906-0001 · مؤسسة مأونة" — and
-# the bidi algorithm handles it, which is exactly why this is not a str[::-1].
-#
-# Everything degrades: if the font or a library is missing, the helpers fall
-# back to Helvetica and untouched text, log once, and the PDF still generates.
-# A report that prints imperfectly beats a report that 500s.
-# =============================================================================
+
 from __future__ import annotations
 
 import logging
