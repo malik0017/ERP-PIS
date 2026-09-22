@@ -1,10 +1,27 @@
 {% extends "layouts/base.html" %}
 {% block title %}{{ t('Bill of Quantity') }}{% endblock %}
 {% block content %}
-{% set qs = 'date_from=' ~ (filters.date_from or '') ~ '&date_to=' ~ (filters.date_to or '')
-            ~ '&customer=' ~ (filters.customer or '') ~ '&order_no=' ~ (filters.order_no or '')
-            ~ '&brand=' ~ (filters.brand or '') ~ '&recipe=' ~ (filters.recipe or '')
-            ~ '&section=' ~ (filters.section or '') %}
+{# Batch 159-5 (Image 6): hide Issue Qty until BOM generated. #}
+{% if not show_issue %}<style>.col-issue{display:none !important}</style>{% endif %}
+{# Batch 236 (Image 2) ROOT CAUSE — the print and export links dropped
+   every selection but the first.
+
+   This string was built from filters.customer / filters.order_no / filters.section,
+   which are the FIRST element of each multi-select, not the selection. Tick two
+   orders on screen, hit Print Recipe Sheet, and the sheet silently came back for
+   one of them — the reason your printed header read
+   "Filter: ORD-20260906-0001, ORD-20260906-0001" while the screen was filtered to
+   -0001 and -0002. Every selected value is repeated as its own parameter now,
+   which is exactly the shape _filters() reads back with getlist(). #}
+{% set _qs = [] %}
+{% if filters.date_from %}{% set _ = _qs.append('date_from=' ~ filters.date_from|urlencode) %}{% endif %}
+{% if filters.date_to %}{% set _ = _qs.append('date_to=' ~ filters.date_to|urlencode) %}{% endif %}
+{% for c in filters.customers %}{% set _ = _qs.append('customer=' ~ c|urlencode) %}{% endfor %}
+{% for o in filters.order_nos %}{% set _ = _qs.append('order_no=' ~ o|urlencode) %}{% endfor %}
+{% for b in filters.brands %}{% set _ = _qs.append('brand=' ~ b|urlencode) %}{% endfor %}
+{% for sname in filters.sections %}{% set _ = _qs.append('section=' ~ sname|urlencode) %}{% endfor %}
+{% if filters.recipe %}{% set _ = _qs.append('recipe=' ~ filters.recipe|urlencode) %}{% endif %}
+{% set qs = _qs|join('&') %}
 <div class="container-fluid py-3 isfc-page">
 
   <div class="isfc-hero mb-4 p-4 rounded-4 text-white d-flex justify-content-between align-items-center flex-wrap gap-3"
@@ -47,25 +64,39 @@
         <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('Delivery To') }}</label>
         <input type="date" name="date_to" value="{{ filters.date_to }}" class="form-control form-control-sm">
       </div>
-      <div class="col-md-2">
-        <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('Customer') }} <span class="text-body-tertiary">({{ t('multi') }})</span></label>
-        <select name="customer" multiple size="4" class="form-select form-select-sm boq-multi" data-ph="{{ t('Any customer') }}">
-          {% for c in pick.customers %}<option value="{{ c }}" {% if c in filters.customers %}selected{% endif %}>{{ c }}</option>{% endfor %}
-        </select>
-      </div>
-      <div class="col-md-2">
-        <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('Order No') }} <span class="text-body-tertiary">({{ t('multi') }})</span></label>
-        <select name="order_no" multiple size="4" class="form-select form-select-sm boq-multi" data-ph="{{ t('Any order') }}">
-          {% for o in pick.orders %}<option value="{{ o }}" {% if o in filters.order_nos %}selected{% endif %}>{{ o }}</option>{% endfor %}
-        </select>
-      </div>
-      <div class="col-md-2">
-        <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('Brand') }}</label>
-        <input name="brand" value="{{ filters.brand }}" list="boqBrands" autocomplete="off"
-               class="form-control form-control-sm" placeholder="{{ t('Any') }}">
-        <datalist id="boqBrands">
-          {% for b in pick.brands %}<option value="{{ b }}"></option>{% endfor %}
-        </datalist>
+      {# ==================================================================
+         Batch 236 (Image 1) — ONE BOX INSTEAD OF THREE.
+
+         Customer (multi), Order No (multi) and Brand (free text) all narrowed
+         the same thing: which orders are in scope. Three controls meant the
+         chef had to decide which box a thing lived in before typing it, and
+         a customer name belongs to two of them. Your note: *merge all three
+         fields into one, user can search with customer name, order code and
+         brand*.
+
+         One search box over one list (boq_service.finder_options), every
+         entry tagged with what it is. Typing a customer name surfaces the
+         customer AND that customer's orders, because that is what someone
+         means when they type it.
+
+         The three request parameters are UNCHANGED — the picker writes
+         hidden customer= / order_no= / brand= inputs — so old bookmarks, the
+         Excel export and the print sheet all keep reading the same filter.
+         ================================================================== #}
+      <div class="col-md-6">
+        <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">
+          {{ t('Find orders') }}
+          <span class="text-body-tertiary text-capitalize fw-normal">— {{ t('order no, customer or brand') }}</span>
+        </label>
+        {#- SINGLE quotes around the two JSON attributes, deliberately.
+            Jinja's tojson escapes ' < > & for HTML but leaves " alone, so a
+            double-quoted attribute is cut short at the first string in the
+            payload and JSON.parse throws on load — the picker would simply
+            never appear. Caught in test before this shipped. -#}
+        <div id="boqFinder" class="boq-finder"
+             data-options='{{ pick.finder|tojson }}'
+             data-selected='{{ {"customer": filters.customers, "order": filters.order_nos, "brand": filters.brands}|tojson }}'
+             data-ph="{{ t('Type an order number, customer or brand…') }}"></div>
       </div>
       <div class="col-md-4">
         <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('Recipe') }}</label>
@@ -74,7 +105,7 @@
           {% for r in pick.recipes %}<option value="{{ r.code }}" {% if filters.recipe == r.code %}selected{% endif %}>{{ r.name }} · {{ r.code }}</option>{% endfor %}
         </select>
       </div>
-      <div class="col-md-2">
+      <div class="col-md-4">
         <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('Section') }} <span class="text-body-tertiary">({{ t('multi') }})</span></label>
         <select name="section" multiple size="4" class="form-select form-select-sm boq-multi" data-ph="{{ t('All sections') }}">
           {% for sname in pick.sections %}<option value="{{ sname }}" {% if sname in filters.sections %}selected{% endif %}>{{ t(sname) }}</option>{% endfor %}
@@ -84,41 +115,253 @@
       <div class="col-md-2 d-flex gap-1">
         <button class="btn btn-primary btn-sm w-100" aria-label="{{ t('Apply filters') }}"><i class="bi bi-search me-1"></i>{{ t('Apply') }}</button>
       </div>
-      {# Batch E (Image 1): Planning's column chooser for the recipe sheet. #}
-      <div class="col-md-3">
-        <div class="dropdown">
-          <button class="btn btn-phoenix-secondary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
-            <i class="bi bi-layout-three-columns me-1"></i>{{ t('Columns') }}</button>
-          <div class="dropdown-menu p-2" style="min-width:220px">
-            <div class="fs-10 text-uppercase fw-bold text-body-tertiary mb-1 px-1">{{ t('Recipe sheet columns') }}</div>
-            {% for col in [[3,'Section'],[4,'Per Portion'],[5,'Net Qty'],[6,'Issue Qty'],[7,'UOM'],[8,'Cutting / Portion']] %}
-            <label class="dropdown-item d-flex align-items-center gap-2 py-1" style="cursor:pointer">
-              <input type="checkbox" class="boq-col-toggle" data-col="{{ col[0] }}" checked> {{ t(col[1]) }}
-            </label>{% endfor %}
+      {# ==================================================================
+         Batch 236 (Image 1) — COLUMNS, ON EVERY TAB, ALL OF THEM.
+
+         Your note: *this just work Recipe Sheet (By Order), it's not working
+         on By Section / By Recipe, but it should work on all three types and
+         show all columns — it shows limited columns.*
+
+         Both faults had the same cause. The old chooser hid columns with
+         `table.boq-rs td:nth-child(N)`: it named ONE table (the Recipe
+         Sheet's) and addressed columns by POSITION, so it could not reach the
+         other two tabs, and its six hard-coded positions were the only
+         columns it knew about. Position is also the wrong handle — insert a
+         column and every checkbox silently points one cell to the left.
+
+         Now every th/td carries data-c="<key>" and the menu is BUILT from the
+         active tab's own header row, so it always lists exactly that tab's
+         columns, all of them, whatever they are. A key shared by two tabs
+         (uom, cutting) hides in both, which is what someone ticking "UOM"
+         off means. Rebuilt on every tab switch — see the script below.
+         ================================================================== #}
+      <div class="col-md-4 d-flex gap-2">
+        <div class="dropdown flex-grow-1">
+          <button class="btn btn-phoenix-secondary btn-sm dropdown-toggle w-100" type="button"
+                  data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
+            <i class="bi bi-layout-three-columns me-1"></i>{{ t('Columns') }}
+            <span class="badge bg-primary ms-1 d-none" id="boqColCount">0</span></button>
+          <div class="dropdown-menu p-2" style="min-width:260px">
+            <div class="d-flex justify-content-between align-items-center mb-1 px-1">
+              <span class="fs-10 text-uppercase fw-bold text-body-tertiary" id="boqColTitle">{{ t('Columns') }}</span>
+              <button type="button" class="btn btn-link btn-sm p-0 fs-10" id="boqColAll">{{ t('Show all') }}</button>
+            </div>
+            <div id="boqColList"></div>
+            <div class="dropdown-divider"></div>
+            {# The printed sheet follows these ticks — see the print link rewrite. #}
+            <div class="fs-10 text-body-tertiary px-1">
+              <i class="bi bi-printer me-1"></i>{{ t('Print Recipe Sheet prints these columns only.') }}
+            </div>
           </div>
         </div>
+        {# Batch 236 (Image 2): ingredients per printed row. #}
+        <select id="boqPrintUp" class="form-select form-select-sm" style="max-width:150px"
+                title="{{ t('Ingredients per printed row') }}">
+          <option value="1">{{ t('1 per row') }}</option>
+          <option value="2" selected>{{ t('2 per row (saves paper)') }}</option>
+        </select>
       </div>
       <div class="col-12">
         <a href="/production/boq/preview" class="btn btn-link btn-sm px-0">{{ t('Clear filters') }}</a>
-        <span class="fs-10 text-body-tertiary ms-2"><i class="bi bi-info-circle me-1"></i>{{ t('Ctrl / Cmd-click to pick more than one customer, order or section.') }}</span>
+        <span class="fs-10 text-body-tertiary ms-2"><i class="bi bi-info-circle me-1"></i>{{ t('Search by order number, customer or brand — pick as many as you need. Ctrl / Cmd-click for sections.') }}</span>
       </div>
     </form>
 
     <style>
-      {% for n in [3,4,5,6,7,8] %}
-      body.boq-hide-c{{ n }} table.boq-rs th:nth-child({{ n }}),
-      body.boq-hide-c{{ n }} table.boq-rs td:nth-child({{ n }}){display:none}
-      {% endfor %}
       select.boq-multi{min-height:64px}
+      /* Batch 159-4 (Image 7): chip multi-select — click to add/remove, chips below. */
+      .boq-ms{position:relative}
+      .boq-ms .box{min-height:38px;border:1px solid var(--phoenix-input-border-color,#cbd5e1);border-radius:8px;
+        padding:5px 8px;display:flex;flex-wrap:wrap;gap:5px;align-items:center;cursor:pointer;background:var(--phoenix-input-bg,#fff)}
+      .boq-ms .ph{color:var(--phoenix-tertiary-color,#8a97a8);font-size:.85rem}
+      .boq-ms .chip{display:inline-flex;align-items:center;gap:5px;background:#e8f0fe;color:#1e5bb8;
+        border-radius:999px;padding:2px 8px;font-size:.76rem;font-weight:700}
+      .boq-ms .chip b{cursor:pointer;font-weight:800;opacity:.7}
+      .boq-ms .chip b:hover{opacity:1}
+      .boq-ms .menu{position:absolute;z-index:40;left:0;right:0;top:100%;margin-top:2px;max-height:240px;overflow:auto;
+        background:var(--phoenix-body-bg,#fff);border:1px solid var(--phoenix-border-color,#e3ebf5);border-radius:8px;
+        box-shadow:0 12px 28px rgba(15,30,60,.14);display:none}
+      .boq-ms.open .menu{display:block}
+      .boq-ms .opt{padding:7px 10px;font-size:.85rem;cursor:pointer;display:flex;align-items:center;gap:8px}
+      .boq-ms .opt:hover{background:var(--phoenix-body-highlight-bg,#f2f6fc)}
+      .boq-ms .opt.sel{font-weight:700;color:#1e5bb8}
+      .boq-ms .opt .tick{width:14px;text-align:center;opacity:0}
+      .boq-ms .opt.sel .tick{opacity:1}
+      [data-bs-theme="dark"] .boq-ms .chip{background:#122a4a;color:#8fb8ff}
+
+      /* ---- Batch 236 (Image 1): the unified order finder ------------------ */
+      .boq-finder{position:relative}
+      .boq-finder .fbox{min-height:38px;border:1px solid var(--phoenix-input-border-color,#cbd5e1);
+        border-radius:8px;padding:4px 8px;display:flex;flex-wrap:wrap;gap:5px;align-items:center;
+        background:var(--phoenix-input-bg,#fff)}
+      .boq-finder .fbox:focus-within{border-color:#1e5bb8;box-shadow:0 0 0 .18rem rgba(30,91,184,.15)}
+      .boq-finder input.fin{border:0;outline:0;flex:1 1 140px;min-width:120px;background:transparent;
+        font-size:.85rem;padding:4px 2px;color:inherit}
+      .boq-finder .chip{display:inline-flex;align-items:center;gap:5px;border-radius:999px;
+        padding:2px 6px 2px 4px;font-size:.76rem;font-weight:700;background:#e8f0fe;color:#1e5bb8}
+      .boq-finder .chip .k{font-size:.62rem;text-transform:uppercase;letter-spacing:.04em;
+        background:rgba(30,91,184,.16);border-radius:999px;padding:1px 5px}
+      .boq-finder .chip[data-k="customer"]{background:#e9f7ee;color:#1f7a3f}
+      .boq-finder .chip[data-k="customer"] .k{background:rgba(31,122,63,.16)}
+      .boq-finder .chip[data-k="brand"]{background:#f6effc;color:#7048a8}
+      .boq-finder .chip[data-k="brand"] .k{background:rgba(112,72,168,.16)}
+      .boq-finder .chip b{cursor:pointer;font-weight:800;opacity:.65}
+      .boq-finder .chip b:hover{opacity:1}
+      .boq-finder .fmenu{position:absolute;z-index:50;left:0;right:0;top:100%;margin-top:3px;
+        max-height:300px;overflow:auto;background:var(--phoenix-body-bg,#fff);
+        border:1px solid var(--phoenix-border-color,#e3ebf5);border-radius:8px;
+        box-shadow:0 12px 28px rgba(15,30,60,.16);display:none}
+      .boq-finder.open .fmenu{display:block}
+      .boq-finder .grp{font-size:.64rem;text-transform:uppercase;letter-spacing:.05em;font-weight:800;
+        color:var(--phoenix-tertiary-color,#8a97a8);padding:6px 10px 3px;
+        background:var(--phoenix-body-highlight-bg,#f6f8fc);position:sticky;top:0}
+      .boq-finder .fopt{padding:6px 10px;cursor:pointer;display:flex;align-items:baseline;gap:8px}
+      .boq-finder .fopt:hover,.boq-finder .fopt.hl{background:var(--phoenix-body-highlight-bg,#eef3fb)}
+      .boq-finder .fopt .lab{font-size:.85rem;font-weight:600}
+      .boq-finder .fopt .sub{font-size:.72rem;color:var(--phoenix-tertiary-color,#8a97a8)}
+      .boq-finder .fopt.sel .lab{color:#1e5bb8}
+      .boq-finder .none{padding:10px;font-size:.8rem;color:var(--phoenix-tertiary-color,#8a97a8)}
+      [data-bs-theme="dark"] .boq-finder .chip{background:#122a4a;color:#8fb8ff}
+      [data-bs-theme="dark"] .boq-finder .chip[data-k="customer"]{background:#123024;color:#7fd3a0}
+      [data-bs-theme="dark"] .boq-finder .chip[data-k="brand"]{background:#241a36;color:#c3a6f0}
     </style>
     <script>
       (function(){
-        // Column chooser — hide/show recipe-sheet columns for Planning.
-        document.querySelectorAll('.boq-col-toggle').forEach(function(cb){
-          cb.addEventListener('change', function(){
-            document.body.classList.toggle('boq-hide-c'+cb.getAttribute('data-col'), !cb.checked);
-          });
+        /* ---- existing chip multi-select, still used by Section ----------- */
+        document.querySelectorAll('select.boq-multi').forEach(function(sel){
+          var ph = sel.getAttribute('data-ph') || 'Select…';
+          var wrap = document.createElement('div'); wrap.className = 'boq-ms';
+          var box = document.createElement('div'); box.className = 'box';
+          var menu = document.createElement('div'); menu.className = 'menu';
+          sel.style.display = 'none';
+          sel.parentNode.insertBefore(wrap, sel.nextSibling);
+          wrap.appendChild(box); wrap.appendChild(menu);
+          function opts(){ return Array.prototype.slice.call(sel.options); }
+          function render(){
+            box.innerHTML = '';
+            var chosen = opts().filter(function(o){ return o.selected; });
+            if(!chosen.length){ var sp=document.createElement('span'); sp.className='ph'; sp.textContent=ph; box.appendChild(sp); }
+            chosen.forEach(function(o){
+              var c=document.createElement('span'); c.className='chip';
+              c.appendChild(document.createTextNode(o.textContent));
+              var x=document.createElement('b'); x.textContent='×';
+              x.addEventListener('click', function(ev){ ev.stopPropagation(); o.selected=false; render(); });
+              c.appendChild(x); box.appendChild(c);
+            });
+            menu.innerHTML = '';
+            opts().forEach(function(o){
+              var it=document.createElement('div'); it.className='opt'+(o.selected?' sel':'');
+              var tk=document.createElement('span'); tk.className='tick'; tk.textContent='✓';
+              it.appendChild(tk); it.appendChild(document.createTextNode(o.textContent));
+              it.addEventListener('click', function(ev){ ev.stopPropagation(); o.selected=!o.selected; render(); });
+              menu.appendChild(it);
+            });
+          }
+          box.addEventListener('click', function(){ wrap.classList.toggle('open'); });
+          document.addEventListener('click', function(e){ if(!wrap.contains(e.target)) wrap.classList.remove('open'); });
+          render();
         });
+
+        /* ================================================================
+           Batch 236 (Image 1) — the unified order finder.
+
+           Chips carry their kind, and each chip writes ONE hidden input with
+           the parameter that kind has always used (customer / order_no /
+           brand). The form therefore submits exactly what it submitted
+           before; only the way you choose has changed.
+           ================================================================ */
+        var host = document.getElementById('boqFinder');
+        if(host){
+          var OPTS = JSON.parse(host.getAttribute('data-options') || '[]');
+          var PRE  = JSON.parse(host.getAttribute('data-selected') || '{}');
+          var PH   = host.getAttribute('data-ph') || '';
+          var PARAM = {order:'order_no', customer:'customer', brand:'brand'};
+          var GRP   = {order:'Orders', customer:'Customers', brand:'Brands'};
+          var chosen = [];
+          ['customer','order','brand'].forEach(function(kind){
+            (PRE[kind] || []).forEach(function(v){
+              var hit = OPTS.filter(function(o){ return o.kind===kind && o.value===v; })[0];
+              chosen.push(hit || {kind:kind, value:v, label:v, sub:'', search:String(v).toLowerCase()});
+            });
+          });
+
+          var box = document.createElement('div'); box.className = 'fbox';
+          var inp = document.createElement('input');
+          inp.type='text'; inp.className='fin'; inp.autocomplete='off'; inp.placeholder = PH;
+          var menu = document.createElement('div'); menu.className='fmenu';
+          var hidden = document.createElement('div'); hidden.style.display='none';
+          host.appendChild(box); host.appendChild(menu); host.appendChild(hidden);
+
+          function has(o){ return chosen.some(function(c){ return c.kind===o.kind && c.value===o.value; }); }
+          function add(o){ if(!has(o)){ chosen.push(o); } inp.value=''; paint(); inp.focus(); }
+          function drop(o){ chosen = chosen.filter(function(c){ return !(c.kind===o.kind && c.value===o.value); }); paint(); }
+
+          function paintChips(){
+            box.innerHTML='';
+            chosen.forEach(function(o){
+              var c=document.createElement('span'); c.className='chip'; c.setAttribute('data-k', o.kind);
+              var k=document.createElement('span'); k.className='k'; k.textContent=o.kind;
+              c.appendChild(k);
+              c.appendChild(document.createTextNode(o.label));
+              var x=document.createElement('b'); x.textContent='×';
+              x.addEventListener('click', function(ev){ ev.stopPropagation(); drop(o); });
+              c.appendChild(x); box.appendChild(c);
+            });
+            box.appendChild(inp);
+            if(!chosen.length){ inp.placeholder = PH; } else { inp.placeholder = ''; }
+          }
+          function paintHidden(){
+            hidden.innerHTML='';
+            chosen.forEach(function(o){
+              var h=document.createElement('input');
+              h.type='hidden'; h.name = PARAM[o.kind] || 'order_no'; h.value = o.value;
+              hidden.appendChild(h);
+            });
+          }
+          function paintMenu(){
+            var q = inp.value.trim().toLowerCase();
+            menu.innerHTML='';
+            var pool = OPTS.filter(function(o){ return !has(o) && (!q || o.search.indexOf(q) !== -1); });
+            /* A bare list of 800 orders is unreadable, so each kind is capped
+               and labelled. Typing narrows it; the cap is generous enough that
+               a real search always reaches its target. */
+            var total = 0;
+            ['customer','brand','order'].forEach(function(kind){
+              var some = pool.filter(function(o){ return o.kind===kind; }).slice(0, kind==='order' ? 40 : 25);
+              if(!some.length) return;
+              var g=document.createElement('div'); g.className='grp'; g.textContent = GRP[kind]; menu.appendChild(g);
+              some.forEach(function(o){
+                var it=document.createElement('div'); it.className='fopt';
+                var l=document.createElement('span'); l.className='lab'; l.textContent=o.label;
+                var sb=document.createElement('span'); sb.className='sub'; sb.textContent=o.sub||'';
+                it.appendChild(l); it.appendChild(sb);
+                it.addEventListener('mousedown', function(ev){ ev.preventDefault(); add(o); });
+                menu.appendChild(it); total++;
+              });
+            });
+            if(!total){
+              var n=document.createElement('div'); n.className='none';
+              n.textContent = q ? 'No order, customer or brand matches “'+inp.value+'”.'
+                               : 'No open orders.';
+              menu.appendChild(n);
+            }
+          }
+          function paint(){ paintChips(); paintHidden(); paintMenu(); }
+
+          inp.addEventListener('input', function(){ host.classList.add('open'); paintMenu(); });
+          inp.addEventListener('focus', function(){ host.classList.add('open'); paintMenu(); });
+          inp.addEventListener('keydown', function(e){
+            if(e.key==='Backspace' && !inp.value && chosen.length){ drop(chosen[chosen.length-1]); }
+            if(e.key==='Enter'){
+              var first = menu.querySelector('.fopt');
+              if(first && inp.value.trim()){ e.preventDefault(); first.dispatchEvent(new MouseEvent('mousedown')); }
+            }
+            if(e.key==='Escape'){ host.classList.remove('open'); }
+          });
+          box.addEventListener('click', function(){ inp.focus(); });
+          document.addEventListener('click', function(e){ if(!host.contains(e.target)) host.classList.remove('open'); });
+          paint();
+        }
       })();
     </script>
   </div></div>
@@ -149,6 +392,19 @@
     .boq-sec[data-s="Bakery/Pastry"]{background:#f6effc;color:#7048a8}
     .boq-sec[data-s="Trayline / Packing"]{background:#fff6df;color:#8a5a00}
     .boq-tools{position:sticky;top:64px;z-index:5;background:var(--phoenix-body-bg,#fff)}
+    /* Batch 236 (Image 1): hide a column by KEY, in every table that has it.
+       ~= matches one word inside the space-separated list on <body>, so one
+       attribute drives every hidden column without a rule per column. */
+    body[data-boq-hide~="code"] [data-c="code"],
+    body[data-boq-hide~="ingredient"] [data-c="ingredient"],
+    body[data-boq-hide~="section"] [data-c="section"],
+    body[data-boq-hide~="component"] [data-c="component"],
+    body[data-boq-hide~="per_portion"] [data-c="per_portion"],
+    body[data-boq-hide~="net_qty"] [data-c="net_qty"],
+    body[data-boq-hide~="issue_qty"] [data-c="issue_qty"],
+    body[data-boq-hide~="uom"] [data-c="uom"],
+    body[data-boq-hide~="cutting"] [data-c="cutting"],
+    body[data-boq-hide~="issued_to"] [data-c="issued_to"]{display:none !important}
   </style>
 
   <div class="row g-3 mb-4">
@@ -198,7 +454,7 @@
            placeholder="{{ t('Find recipe or ingredient…') }}" aria-label="{{ t('Find recipe or ingredient') }}">
     <button type="button" class="btn btn-sm btn-phoenix-secondary" data-boq-expand="1"><i class="bi bi-arrows-expand me-1"></i>{{ t('Expand all') }}</button>
     <button type="button" class="btn btn-sm btn-phoenix-secondary" data-boq-expand="0"><i class="bi bi-arrows-collapse me-1"></i>{{ t('Collapse all') }}</button>
-    <span class="fs-9 text-body-tertiary ms-auto">{{ t('Net Qty = the recipe weight that goes into the pot. Issue Qty = the pre-trim weight the store hands over; the difference is the expected trim loss.') }}</span>
+    <span class="fs-9 text-body-tertiary ms-auto">{{ t('Net Qty = per portion × required portions (the recipe weight that goes into the pot). Issue Qty = the pre-trim weight the store hands over; the difference is the expected trim loss. When there is no trim, the two are equal.') }}</span>
   </div>
 
   <div class="tab-content">
@@ -229,29 +485,32 @@
           </div>
           <div class="table-responsive">
             <table class="table table-sm boq-table boq-rs">
+              {# Batch 236: data-c is the column's identity. The Columns menu is
+                 built from these, so it lists this tab's columns — all of them —
+                 and hiding works by key, not by cell position. #}
               <thead><tr>
-                <th style="width:120px">{{ t('Code') }}</th><th>{{ t('Ingredient') }}</th>
-                <th>{{ t('Section') }}</th>
-                <th class="text-end">{{ t('Per Portion') }}</th>
-                <th class="text-end">{{ t('Net Qty') }}</th>
-                <th class="text-end">{{ t('Issue Qty') }}</th><th>{{ t('UOM') }}</th>
-                <th>{{ t('Cutting / Portion') }}</th>
+                <th style="width:120px" data-c="code">{{ t('Code') }}</th><th data-c="ingredient">{{ t('Ingredient') }}</th>
+                <th data-c="section">{{ t('Section') }}</th>
+                <th class="text-end" data-c="per_portion">{{ t('Per Portion') }}</th>
+                <th class="text-end" data-c="net_qty">{{ t('Net Qty') }}</th>
+                <th class="text-end col-issue" data-c="issue_qty">{{ t('Issue Qty') }}</th><th data-c="uom">{{ t('UOM') }}</th>
+                <th data-c="cutting">{{ t('Cutting / Portion') }}</th>
               </tr></thead>
               <tbody>
               {% for comp in rec.components %}
                 <tr class="boq-comp"><td colspan="8"><i class="bi bi-diagram-2 me-1"></i>{{ t(comp.name) if comp.name == main_component else comp.name }}</td></tr>
                 {% for ln in comp.lines %}
                 <tr>
-                  <td class="text-body-tertiary">{{ ln.ingredient_code }}</td>
-                  <td>{{ ln.ingredient_name }}</td>
-                  <td><span class="boq-sec" data-s="{{ ln.kitchen_section }}">{{ t(ln.kitchen_section) }}</span>
+                  <td class="text-body-tertiary" data-c="code">{{ ln.ingredient_code }}</td>
+                  <td data-c="ingredient">{{ ln.ingredient_name }}</td>
+                  <td data-c="section"><span class="boq-sec" data-s="{{ ln.kitchen_section }}">{{ t(ln.kitchen_section) }}</span>
                     {% if ln.issue_section != ln.kitchen_section %}<div class="fs-10 text-body-tertiary">{{ t('issued to') }} {{ t(ln.issue_section) }}</div>{% endif %}</td>
-                  <td class="text-end text-body-tertiary">{{ '%.3f'|format(ln.net_per_portion or ln.per_portion) }} {{ ln.recipe_uom }}</td>
-                  <td class="text-end boq-qty">{{ '%.3f'|format(ln.required_qty) }}</td>
-                  <td class="text-end">{{ '%.3f'|format(ln.issue_qty) }}
+                  <td class="text-end text-body-tertiary" data-c="per_portion">{{ '%.3f'|format(ln.net_per_portion or ln.per_portion) }} {{ ln.recipe_uom }}</td>
+                  <td class="text-end boq-qty" data-c="net_qty">{{ '%.3f'|format(ln.required_qty) }}</td>
+                  <td class="text-end col-issue" data-c="issue_qty">{{ '%.3f'|format(ln.issue_qty) }}
                     {%- if ln.yield_loss > 0.001 %}<div class="fs-10 text-warning">+{{ '%.3f'|format(ln.yield_loss) }} {{ t('trim') }}</div>{% endif %}</td>
-                  <td>{{ ln.uom }}</td>
-                  <td class="fs-9 text-body-tertiary">{{ ln.cutting or '' }}</td>
+                  <td data-c="uom">{{ ln.uom }}</td>
+                  <td class="fs-9 text-body-tertiary" data-c="cutting">{{ ln.cutting or '' }}</td>
                 </tr>
                 {% endfor %}
               {% endfor %}
@@ -286,20 +545,20 @@
             <span class="boq-portions ms-auto">{{ '%g'|format(rec.portions) }} {{ t('portions') }}</span>
           </div>
           <div class="table-responsive"><table class="table table-sm boq-table">
-            <thead><tr><th>{{ t('Component') }}</th><th>{{ t('Code') }}</th><th>{{ t('Ingredient') }}</th>
+            <thead><tr><th data-c="component">{{ t('Component') }}</th><th data-c="code">{{ t('Code') }}</th><th data-c="ingredient">{{ t('Ingredient') }}</th>
               {# Batch 234 (Image 6): the cutting / portion instruction is what the
                  section actually needs to DO with the ingredient, so it belongs on
                  the By Section and By Recipe views too — not only on the Recipe
                  Sheet. #}
-              <th class="text-end">{{ t('Net Qty') }}</th><th class="text-end">{{ t('Issue Qty') }}</th><th>{{ t('UOM') }}</th>
-              <th>{{ t('Cutting / Portion') }}</th><th>{{ t('Issued To') }}</th></tr></thead>
+              <th class="text-end" data-c="net_qty">{{ t('Net Qty') }}</th><th class="text-end col-issue" data-c="issue_qty">{{ t('Issue Qty') }}</th><th data-c="uom">{{ t('UOM') }}</th>
+              <th data-c="cutting">{{ t('Cutting / Portion') }}</th><th data-c="issued_to">{{ t('Issued To') }}</th></tr></thead>
             <tbody>{% for ln in rec.lines %}
-              <tr><td class="fs-9 text-primary">{{ t(ln.component) if ln.component == main_component else ln.component }}</td>
-                <td class="text-body-tertiary">{{ ln.ingredient_code }}</td><td>{{ ln.ingredient_name }}</td>
-                <td class="text-end boq-qty">{{ '%.3f'|format(ln.required_qty) }}</td>
-                <td class="text-end">{{ '%.3f'|format(ln.issue_qty) }}</td><td>{{ ln.uom }}</td>
-                <td class="fs-9 text-body-tertiary">{{ ln.cutting or '' }}</td>
-                <td class="fs-9">{{ t(ln.issue_section) }}</td></tr>
+              <tr><td class="fs-9 text-primary" data-c="component">{{ t(ln.component) if ln.component == main_component else ln.component }}</td>
+                <td class="text-body-tertiary" data-c="code">{{ ln.ingredient_code }}</td><td data-c="ingredient">{{ ln.ingredient_name }}</td>
+                <td class="text-end boq-qty" data-c="net_qty">{{ '%.3f'|format(ln.required_qty) }}</td>
+                <td class="text-end col-issue" data-c="issue_qty">{{ '%.3f'|format(ln.issue_qty) }}</td><td data-c="uom">{{ ln.uom }}</td>
+                <td class="fs-9 text-body-tertiary" data-c="cutting">{{ ln.cutting or '' }}</td>
+                <td class="fs-9" data-c="issued_to">{{ t(ln.issue_section) }}</td></tr>
             {% endfor %}</tbody>
           </table></div>
         </div>
@@ -325,16 +584,16 @@
           {% for x in rec.orders %}<span class="me-3"><i class="bi bi-receipt me-1"></i>{{ x.order_no }} · {{ x.customer_name }} · <strong>{{ '%g'|format(x.portions) }}</strong></span>{% endfor %}
         </div>
         <div class="table-responsive"><table class="table table-sm boq-table">
-          <thead><tr><th>{{ t('Component') }}</th><th>{{ t('Code') }}</th><th>{{ t('Ingredient') }}</th><th>{{ t('Section') }}</th>
-            <th class="text-end">{{ t('Total Net Qty') }}</th><th class="text-end">{{ t('Total Issue Qty') }}</th><th>{{ t('UOM') }}</th>
-            <th>{{ t('Cutting / Portion') }}</th></tr></thead>
+          <thead><tr><th data-c="component">{{ t('Component') }}</th><th data-c="code">{{ t('Code') }}</th><th data-c="ingredient">{{ t('Ingredient') }}</th><th data-c="section">{{ t('Section') }}</th>
+            <th class="text-end" data-c="net_qty">{{ t('Total Net Qty') }}</th><th class="text-end col-issue" data-c="issue_qty">{{ t('Total Issue Qty') }}</th><th data-c="uom">{{ t('UOM') }}</th>
+            <th data-c="cutting">{{ t('Cutting / Portion') }}</th></tr></thead>
           <tbody>{% for ln in rec.lines %}
-            <tr><td class="fs-9 text-primary">{{ t(ln.component) if ln.component == main_component else ln.component }}</td>
-              <td class="text-body-tertiary">{{ ln.ingredient_code }}</td><td>{{ ln.ingredient_name }}</td>
-              <td><span class="boq-sec" data-s="{{ ln.kitchen_section }}">{{ t(ln.kitchen_section) }}</span></td>
-              <td class="text-end boq-qty">{{ '%.3f'|format(ln.required_qty) }}</td>
-              <td class="text-end">{{ '%.3f'|format(ln.issue_qty) }}</td><td>{{ ln.uom }}</td>
-              <td class="fs-9 text-body-tertiary">{{ ln.cutting or '' }}</td></tr>
+            <tr><td class="fs-9 text-primary" data-c="component">{{ t(ln.component) if ln.component == main_component else ln.component }}</td>
+              <td class="text-body-tertiary" data-c="code">{{ ln.ingredient_code }}</td><td data-c="ingredient">{{ ln.ingredient_name }}</td>
+              <td data-c="section"><span class="boq-sec" data-s="{{ ln.kitchen_section }}">{{ t(ln.kitchen_section) }}</span></td>
+              <td class="text-end boq-qty" data-c="net_qty">{{ '%.3f'|format(ln.required_qty) }}</td>
+              <td class="text-end col-issue" data-c="issue_qty">{{ '%.3f'|format(ln.issue_qty) }}</td><td data-c="uom">{{ ln.uom }}</td>
+              <td class="fs-9 text-body-tertiary" data-c="cutting">{{ ln.cutting or '' }}</td></tr>
           {% endfor %}</tbody>
         </table></div>
       </details>
@@ -432,6 +691,85 @@
       document.querySelectorAll('.tab-pane.active details.boq-order').forEach(function (d) { d.open = open; });
     });
   });
+  /* ==================================================================
+     Batch 236 (Image 1) — the Columns menu, rebuilt from the live table.
+
+     The menu lists whatever the ACTIVE tab's header row contains, so it is
+     never out of date and never partial: add a column to any of the three
+     tables and it appears here with no change to this script. Hidden keys
+     live in one attribute on <body>; the CSS above does the hiding.
+
+     Hidden keys are also pushed onto every Print Recipe Sheet link, so the
+     paper matches the screen (Image 1: "print the current column shown in
+     the table, not all columns — make print dynamic").
+  ================================================================== */
+  var HIDDEN = new Set();
+  var colList = document.getElementById('boqColList');
+  var colCount = document.getElementById('boqColCount');
+  var colTitle = document.getElementById('boqColTitle');
+  var upSel = document.getElementById('boqPrintUp');
+
+  function activePane() { return document.querySelector('.tab-pane.active') || document; }
+
+  function applyHidden() {
+    document.body.setAttribute('data-boq-hide', Array.from(HIDDEN).join(' '));
+    if (colCount) {
+      colCount.textContent = HIDDEN.size;
+      colCount.classList.toggle('d-none', HIDDEN.size === 0);
+    }
+    syncPrintLinks();
+  }
+
+  function syncPrintLinks() {
+    var extra = Array.from(HIDDEN).map(function (k) { return 'hide=' + encodeURIComponent(k); });
+    if (upSel) extra.push('up=' + encodeURIComponent(upSel.value));
+    document.querySelectorAll('a[href*="/production/boq/recipe-sheet/print"]').forEach(function (a) {
+      if (!a.dataset.baseHref) a.dataset.baseHref = a.getAttribute('href');
+      var base = a.dataset.baseHref;
+      a.setAttribute('href', extra.length ? base + '&' + extra.join('&') : base);
+    });
+  }
+
+  function buildColMenu() {
+    if (!colList) return;
+    var seen = [];
+    activePane().querySelectorAll('table thead th[data-c]').forEach(function (th) {
+      var key = th.getAttribute('data-c');
+      if (seen.some(function (x) { return x.key === key; })) return;
+      seen.push({ key: key, label: (th.textContent || key).trim() });
+    });
+    colList.innerHTML = '';
+    if (colTitle) {
+      var btn = document.querySelector('#boqTabs .nav-link.active');
+      colTitle.textContent = (btn ? btn.textContent.trim() : '') + ' — ' + seen.length + ' columns';
+    }
+    if (!seen.length) {
+      colList.innerHTML = '<div class="px-1 fs-9 text-body-tertiary">No table on this tab.</div>';
+      return;
+    }
+    seen.forEach(function (c) {
+      var lab = document.createElement('label');
+      lab.className = 'dropdown-item d-flex align-items-center gap-2 py-1';
+      lab.style.cursor = 'pointer';
+      var cb = document.createElement('input');
+      cb.type = 'checkbox'; cb.checked = !HIDDEN.has(c.key);
+      cb.addEventListener('change', function () {
+        if (cb.checked) { HIDDEN.delete(c.key); } else { HIDDEN.add(c.key); }
+        applyHidden();
+      });
+      lab.appendChild(cb);
+      lab.appendChild(document.createTextNode(c.label));
+      colList.appendChild(lab);
+    });
+  }
+
+  var colAll = document.getElementById('boqColAll');
+  if (colAll) colAll.addEventListener('click', function () { HIDDEN.clear(); applyHidden(); buildColMenu(); });
+  if (upSel) upSel.addEventListener('change', syncPrintLinks);
+  tabs.forEach(function (b) { b.addEventListener('shown.bs.tab', buildColMenu); });
+  buildColMenu();
+  applyHidden();
+
   var box = document.getElementById('boqSearch');
   if (box) box.addEventListener('input', function () {
     var q = box.value.trim().toLowerCase();

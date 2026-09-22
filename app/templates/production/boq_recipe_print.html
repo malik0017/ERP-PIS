@@ -1,12 +1,40 @@
-{# Batch 209 (Image 10): this sheet's layout is the house style, so it now
-   extends the shared base and the shared stylesheet instead of carrying its own
-   copy of them. Nothing about the content or the figures changed. #}
+{# =============================================================================
+   Batch 209 (Image 10): this sheet's layout is the house style, so it extends
+   the shared base and stylesheet instead of carrying its own copy.
+
+   Batch 236 (Images 1, 2) — TWO THINGS THE CHEF ASKED FOR.
+
+   1. THE SHEET PRINTS WHAT YOU ARE LOOKING AT.
+      The screen has a Columns button; the paper ignored it and always printed
+      all nine columns. `hide` is the set of keys switched off on screen (the
+      print link is rewritten as the boxes are ticked), and every cell below is
+      guarded by the same key the screen uses. One list of keys, one meaning,
+      two surfaces.
+
+   2. TWO INGREDIENTS PER ROW.
+      "print recipes on page like top show the recipes and two ingredient show
+      in one row like side by side, it will save the page."
+
+      Chicken creamy mint is 27 ingredient lines and ran onto a second sheet.
+      At up=2 the recipe header stays full width at the top and the ingredients
+      are laid out two across, so 27 lines become 14 rows and the recipe fits on
+      one page. The pairing is done INSIDE each component (Marinated chicken /
+      Garnish / Sauce / White Rice), never across two of them — a sauce
+      ingredient sitting in the Garnish block would be worse than a second page.
+
+      Reading order is left-to-right across the row, which is how a person reads
+      a sheet on the pass. `batch(2)` gives exactly that; a column-wise split
+      would read top-to-bottom down one half and is wrong for a checklist.
+============================================================================= #}
 {% extends "print/report_base.html" %}
 {% set rp_title = t('Recipe Sheet') %}
 {% set rp_subtitle = stamp %}
 {% set rp_stamp = stamp %}
 {% set rp_own_sheets = true %}
 {% block rp_sheets %}
+{% set hide = hide or [] %}
+{% set up = up or 1 %}
+
 {% macro sheet_head(title, subtitle) %}
 <div class="rp-head">
   <div><h1>{{ title }}</h1><div class="rp-sub">{{ subtitle }}</div></div>
@@ -14,34 +42,126 @@
 </div>
 {% endmacro %}
 
+{#- Column definitions, one per view. `key` matches the screen's data-c, so a
+    column hidden there is hidden here. -#}
+{% macro th_cells(cols, tick=true) %}
+  {%- for c in cols %}{% if c[0] not in hide %}<th class="{{ c[2] }}" data-c="{{ c[0] }}">{{ c[1] }}</th>{% endif %}{% endfor -%}
+  {%- if tick %}<th class="rp-tickcol">✓</th>{% endif -%}
+{% endmacro %}
+
+{#- One cell's VALUE, by key. Jinja has no lambdas, so the renderers live here
+    rather than in the column list. Every key the three views use is covered
+    once, which also guarantees the same column prints identically whichever
+    view it appears in. -#}
+{% macro cell_value(key, ln) %}
+  {%- if key == 'component' %}{{ ln.component }}
+  {%- elif key == 'code' %}{{ ln.ingredient_code }}
+  {%- elif key == 'ingredient' %}{{ ln.ingredient_name }}
+  {%- elif key == 'section' %}{{ t(ln.kitchen_section) }}
+  {%- elif key == 'issued_to' %}{{ t(ln.issue_section) }}
+  {%- elif key == 'per_portion' %}{{ '%.3f'|format(ln.net_per_portion or ln.per_portion) }} {{ ln.recipe_uom }}
+  {%- elif key == 'net_qty' %}{{ '%.3f'|format(ln.required_qty) }}
+  {%- elif key == 'issue_qty' %}{{ '%.3f'|format(ln.issue_qty) }}
+  {%- elif key == 'uom' %}{{ ln.uom }}
+  {%- elif key == 'cutting' %}{{ ln.cutting }}
+  {%- endif -%}
+{% endmacro %}
+
+{#- One ingredient rendered as its own run of <td>s. Used once per row at up=1
+    and twice at up=2. -#}
+{% macro line_cells(ln, cols, tick=true, lead='') %}
+  {%- for c in cols %}{% if c[0] not in hide %}
+  <td class="{{ c[2] }}{{ ' rp-2a' if lead and loop.first }}" data-c="{{ c[0] }}">{{ cell_value(c[0], ln) }}</td>
+  {%- endif %}{% endfor -%}
+  {%- if tick %}<td class="rp-tickcol"><span class="rp-tick"></span></td>{% endif -%}
+{% endmacro %}
+
+{#- An empty run, so the last row of an odd-length component stays aligned. -#}
+{% macro blank_cells(cols, tick=true) %}
+  {%- for c in cols %}{% if c[0] not in hide %}<td class="rp-blank"></td>{% endif %}{% endfor -%}
+  {%- if tick %}<td class="rp-blank"></td>{% endif -%}
+{% endmacro %}
+
+{% macro comp_band(name, span) %}<tr class="rp-comp"><td colspan="{{ span }}">{{ name }}</td></tr>{% endmacro %}
+
+{# ---------------------------------------------------------------- ORDER --- #}
 {% if mode == 'section' %}
+  {% set cols = [
+      ['component', t('Component'), ''],
+      ['code', t('Code'), ''],
+      ['ingredient', t('Ingredient'), ''],
+      ['net_qty', t('Net Qty'), 'rp-num rp-q'],
+      ['issue_qty', t('Issue Qty'), 'rp-num'],
+      ['uom', t('UOM'), ''],
+      ['cutting', t('Cutting / Portion'), '']
+  ] %}
+  {% set shown = [] %}{% for c in cols %}{% if c[0] not in hide %}{% set _ = shown.append(c) %}{% endif %}{% endfor %}
+  {% set span = (shown|length + 1) * up %}
   {% for sgrp in section_view %}
   <div class="rp-sheet {{ 'rp-break' if not loop.last }}">
     {{ sheet_head(t('Section Recipe Sheet') ~ ' — ' ~ t(sgrp.section), sgrp.recipes|length ~ ' ' ~ t('recipes') ~ ' · ' ~ sgrp.order_count ~ ' ' ~ t('orders')) }}
     {% for rec in sgrp.recipes %}
     <div class="rp-group">
       <h2><span>{{ rec.recipe_name }} <small style="color:#5a6a82">{{ rec.recipe_no }} · {{ rec.order_no }} · {{ rec.customer_name }}</small></span><span class="rp-pill">{{ '%g'|format(rec.portions) }} {{ t('portions') }}</span></h2>
-      <table><thead><tr><th>{{ t('Component') }}</th><th>{{ t('Code') }}</th><th>{{ t('Ingredient') }}</th><th class="rp-num">{{ t('Net Qty') }}</th><th class="rp-num">{{ t('Issue Qty') }}</th><th>{{ t('UOM') }}</th><th>{{ t('Cutting / Portion') }}</th><th>✓</th></tr></thead>
-      <tbody>{% for ln in rec.lines %}<tr><td>{{ ln.component }}</td><td>{{ ln.ingredient_code }}</td><td>{{ ln.ingredient_name }}</td><td class="rp-num rp-q">{{ '%.3f'|format(ln.required_qty) }}</td><td class="rp-num">{{ '%.3f'|format(ln.issue_qty) }}</td><td>{{ ln.uom }}</td><td>{{ ln.cutting }}</td><td><span class="rp-tick"></span></td></tr>{% endfor %}</tbody></table>
+      <table class="{{ 'rp-2up' if up > 1 }}">
+        <thead><tr>{% for _ in range(up) %}{{ th_cells(cols) }}{% endfor %}</tr></thead>
+        <tbody>
+        {% for pair in rec.lines|batch(up) %}
+          <tr>{% for ln in pair %}{{ line_cells(ln, cols, true, 'x' if not loop.first) }}{% endfor %}
+              {% for _ in range(up - pair|length) %}{{ blank_cells(cols) }}{% endfor %}</tr>
+        {% endfor %}
+        </tbody>
+      </table>
     </div>
     {% endfor %}
     <div class="rp-sig"><div>{{ t('Section Chef') }}</div><div>{{ t('Head Chef') }}</div><div>{{ t('Date / Time') }}</div></div>
   </div>
   {% else %}<div class="rp-sheet rp-empty">{{ t('No recipe lines for this filter.') }}</div>{% endfor %}
 
+{# --------------------------------------------------------------- RECIPE --- #}
 {% elif mode == 'recipe' %}
+  {% set cols = [
+      ['component', t('Component'), ''],
+      ['code', t('Code'), ''],
+      ['ingredient', t('Ingredient'), ''],
+      ['section', t('Section'), ''],
+      ['net_qty', t('Total Net Qty'), 'rp-num rp-q'],
+      ['issue_qty', t('Total Issue Qty'), 'rp-num'],
+      ['uom', t('UOM'), ''],
+      ['cutting', t('Cutting / Portion'), '']
+  ] %}
   <div class="rp-sheet">
     {{ sheet_head(t('Bill of Quantity — By Recipe'), recipe_view|length ~ ' ' ~ t('recipes')) }}
     {% for rec in recipe_view %}
     <div class="rp-group">
       <h2><span>{{ rec.recipe_name }} <small style="color:#5a6a82">{{ rec.recipe_no }} · {% for x in rec.orders %}{{ x.order_no }} ({{ '%g'|format(x.portions) }}){{ ', ' if not loop.last }}{% endfor %}</small></span><span class="rp-pill">{{ '%g'|format(rec.portions) }} {{ t('portions') }}</span></h2>
-      <table><thead><tr><th>{{ t('Component') }}</th><th>{{ t('Code') }}</th><th>{{ t('Ingredient') }}</th><th>{{ t('Section') }}</th><th class="rp-num">{{ t('Total Net Qty') }}</th><th class="rp-num">{{ t('Total Issue Qty') }}</th><th>{{ t('UOM') }}</th><th>{{ t('Cutting / Portion') }}</th><th>✓</th></tr></thead>
-      <tbody>{% for ln in rec.lines %}<tr><td>{{ ln.component }}</td><td>{{ ln.ingredient_code }}</td><td>{{ ln.ingredient_name }}</td><td>{{ t(ln.kitchen_section) }}</td><td class="rp-num rp-q">{{ '%.3f'|format(ln.required_qty) }}</td><td class="rp-num">{{ '%.3f'|format(ln.issue_qty) }}</td><td>{{ ln.uom }}</td><td>{{ ln.cutting }}</td><td><span class="rp-tick"></span></td></tr>{% endfor %}</tbody></table>
+      <table class="{{ 'rp-2up' if up > 1 }}">
+        <thead><tr>{% for _ in range(up) %}{{ th_cells(cols) }}{% endfor %}</tr></thead>
+        <tbody>
+        {% for pair in rec.lines|batch(up) %}
+          <tr>{% for ln in pair %}{{ line_cells(ln, cols, true, 'x' if not loop.first) }}{% endfor %}
+              {% for _ in range(up - pair|length) %}{{ blank_cells(cols) }}{% endfor %}</tr>
+        {% endfor %}
+        </tbody>
+      </table>
     </div>
-    {% else %}<div class="empty">{{ t('No recipe lines for this filter.') }}</div>{% endfor %}
+    {% else %}<div class="rp-empty">{{ t('No recipe lines for this filter.') }}</div>{% endfor %}
   </div>
 
+{# ---------------------------------------------------------- BY ORDER ------ #}
 {% else %}
+  {% set cols = [
+      ['code', t('Code'), ''],
+      ['ingredient', t('Ingredient'), ''],
+      ['section', t('Section'), ''],
+      ['per_portion', t('Per Portion'), 'rp-num'],
+      ['net_qty', t('Net Qty'), 'rp-num rp-q'],
+      ['issue_qty', t('Issue Qty'), 'rp-num'],
+      ['uom', t('UOM'), ''],
+      ['cutting', t('Cutting / Portion'), '']
+  ] %}
+  {% set shown = [] %}{% for c in cols %}{% if c[0] not in hide %}{% set _ = shown.append(c) %}{% endif %}{% endfor %}
+  {% set span = (shown|length + 1) * up %}
   {% for o in sheet %}
   <div class="rp-sheet {{ 'rp-break' if not loop.last }}">
     {{ sheet_head(t('Bill of Quantity — Recipe Sheet'), o.order_no ~ ' · ' ~ o.customer_name) }}
@@ -54,17 +174,16 @@
     {% for rec in o.recipes %}
     <div class="rp-group">
       <h2><span>{{ rec.recipe_name }} <small style="color:#5a6a82">{{ rec.recipe_no }}{% if rec.category %} · {{ rec.category }}{% endif %}</small></span><span class="rp-pill">{{ '%g'|format(rec.portions) }} {{ t('portions') }}</span></h2>
-      <table>
-        <thead><tr><th>{{ t('Code') }}</th><th>{{ t('Ingredient') }}</th><th>{{ t('Section') }}</th><th class="rp-num">{{ t('Per Portion') }}</th><th class="rp-num">{{ t('Net Qty') }}</th><th class="rp-num">{{ t('Issue Qty') }}</th><th>{{ t('UOM') }}</th><th>{{ t('Cutting / Portion') }}</th><th>✓</th></tr></thead>
+      <table class="{{ 'rp-2up' if up > 1 }}">
+        <thead><tr>{% for _ in range(up) %}{{ th_cells(cols) }}{% endfor %}</tr></thead>
         <tbody>
         {% for comp in rec.components %}
-          <tr class="rp-comp"><td colspan="9">{{ comp.name }}</td></tr>
-          {% for ln in comp.lines %}
-          <tr><td>{{ ln.ingredient_code }}</td><td>{{ ln.ingredient_name }}</td><td>{{ t(ln.kitchen_section) }}</td>
-            <td class="rp-num">{{ '%.3f'|format(ln.net_per_portion or ln.per_portion) }} {{ ln.recipe_uom }}</td>
-            <td class="rp-num rp-q">{{ '%.3f'|format(ln.required_qty) }}</td>
-            <td class="rp-num">{{ '%.3f'|format(ln.issue_qty) }}</td><td>{{ ln.uom }}</td>
-            <td>{{ ln.cutting }}</td><td><span class="rp-tick"></span></td></tr>
+          {{ comp_band(comp.name, span) }}
+          {#- Pairing happens INSIDE the component, so an ingredient never
+              appears under the wrong sub-recipe heading. -#}
+          {% for pair in comp.lines|batch(up) %}
+          <tr>{% for ln in pair %}{{ line_cells(ln, cols, true, 'x' if not loop.first) }}{% endfor %}
+              {% for _ in range(up - pair|length) %}{{ blank_cells(cols) }}{% endfor %}</tr>
           {% endfor %}
         {% endfor %}
         </tbody>

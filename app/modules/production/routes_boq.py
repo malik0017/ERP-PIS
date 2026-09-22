@@ -55,6 +55,10 @@ def _filters(request: Request) -> dict:
     customers = [c.strip() for c in q.getlist("customer") if c.strip()]
     order_nos = [o.strip() for o in q.getlist("order_no") if o.strip()]
     sections = [s.strip() for s in q.getlist("section") if s.strip()]
+    # Batch 236 (Image 1): brand is multi-value now, like customer and order —
+    # the unified finder lets you tick two brands the same way. A single
+    # ?brand= from an old bookmark still arrives here as a one-item list.
+    brands = [b.strip() for b in q.getlist("brand") if b.strip()]
     return {
         "date_from": (q.get("date_from") or "").strip(),
         "date_to": (q.get("date_to") or "").strip(),
@@ -63,11 +67,16 @@ def _filters(request: Request) -> dict:
         "customers": customers,
         "order_nos": order_nos,
         "sections": sections,
-        "brand": (q.get("brand") or "").strip(),
+        "brand": brands[0] if brands else "",
+        "brands": brands,
         "kitchen": (q.get("kitchen") or "").strip(),
         "recipe": (q.get("recipe") or "").strip(),
         "section": sections[0] if sections else "",
         "view": (q.get("view") or "recipe").strip(),
+        # Batch 236 (Image 1): columns the user switched off on screen, so the
+        # printed sheet matches what they are looking at. Empty = print
+        # everything, which is what every existing link does.
+        "hide": [h.strip() for h in q.getlist("hide") if h.strip()],
     }
 
 
@@ -170,8 +179,43 @@ def order_wise(db: Session, f: dict, cid: int) -> list[dict]:
 
 
 def _stamp(f: dict) -> str:
-    crit = ", ".join(v for k, v in f.items() if v and k != "view") or "all open orders"
-    return f"Generated {date.today().isoformat()} · Filter: {crit}"
+    """The filter, written out for the top of a printed sheet.
+
+    Batch 160-1 stopped this crashing — f holds LISTS (customers, order_nos,
+    sections) alongside the single-value mirrors of the same data, and feeding
+    a list to str.join raised "sequence item N: expected str instance, list
+    found" on Print Recipe Sheet and Excel export.
+
+    Batch 236 (Image 2) fixes what it then PRINTED. Flattening every key meant
+    both mirrors were emitted, so a sheet filtered to two orders was stamped
+    "Filter: ORD-20260906-0001, ORD-20260906-0001" — the first order twice and
+    the second one missing, which is worse than no stamp at all because it
+    looks authoritative. Each filter is now named once, by its label, from the
+    LIST form only.
+    """
+    def _fv(v) -> str:
+        if isinstance(v, (list, tuple, set)):
+            return ", ".join(str(x) for x in v)
+        return str(v)
+
+    bits: list[str] = []
+    if f.get("date_from") or f.get("date_to"):
+        bits.append(f"Delivery {f.get('date_from') or '…'} → {f.get('date_to') or '…'}")
+    for label, list_key, single_key in (
+        ("Orders", "order_nos", "order_no"),
+        ("Customers", "customers", "customer"),
+        ("Brands", "brands", "brand"),
+        ("Sections", "sections", "section"),
+    ):
+        val = f.get(list_key) or ([f[single_key]] if f.get(single_key) else [])
+        if val:
+            bits.append(f"{label}: {_fv(val)}")
+    if f.get("recipe"):
+        bits.append(f"Recipe: {f['recipe']}")
+    if f.get("kitchen"):
+        bits.append(f"Kitchen: {f['kitchen']}")
+    return (f"Generated {date.today().isoformat()} · "
+            f"Filter: {' · '.join(bits) or 'all open orders'}")
 
 
 def _customers_summary(ow: list[dict]) -> list[dict]:
@@ -393,9 +437,29 @@ def preview_boq(request: Request, db: Session = Depends(get_db)):
     for x in rows:
         by_sec_counts[x["section"] or "—"] = by_sec_counts.get(x["section"] or "—", 0) + 1
 
+    # Batch 159-5 (Image 6): the Bill of Quantity is often produced BEFORE the
+    # BOM is generated. Until it is, "Issue Qty" (the store hand-over weight) is
+    # not meaningful — only the required quantity is. Hide the Issue-Qty column
+    # unless every order in scope has reached BOM generation.
+    _PRE_BOM = {"", "submitted", "awaiting planning", "awaiting head chef",
+                "draft", "new", "pending"}
+    show_issue = True
+    _ons = [o.get("order_no") for o in sheet if o.get("order_no")]
+    if _ons:
+        try:
+            from sqlalchemy import bindparam
+            _stmt = text("SELECT COALESCE(status,'') FROM customer_orders "
+                         "WHERE order_no IN :ons").bindparams(bindparam("ons", expanding=True))
+            _st = [str(r[0] or "").strip().lower() for r in db.execute(_stmt, {"ons": _ons}).all()]
+            if _st:
+                show_issue = all(s not in _PRE_BOM for s in _st)
+        except Exception:
+            show_issue = True
+
     return render(request, "production/boq_preview.html", {
         "rows": rows,
         "sheet": sheet,
+        "show_issue": show_issue,
         "section_view": by_section(sheet),
         "recipe_view": by_recipe(sheet),
         "main_component": MAIN_COMPONENT,
@@ -426,11 +490,33 @@ def print_recipe_sheet(request: Request, db: Session = Depends(get_db)):
     f = _filters(request)
     sheet = recipe_sheet(db, f, cid)
     mode = (request.query_params.get("mode") or "order").strip()
+    # ------------------------------------------------------------------
+    # Batch 236 (Images 1, 2) — the sheet prints what you are looking at.
+    #
+    # `hide`  the columns switched off with the Columns button on screen.
+    #         The print link is rewritten as those boxes are ticked, so the
+    #         paper matches the screen instead of always printing all nine
+    #         columns. Empty on every existing link, which prints everything.
+    #
+    # `up`    ingredients per printed row. Your note: *print recipes on page
+    #         like top show the recipes and two ingredient show in one row
+    #         like side by side, it will save the page.* A 27-line recipe at
+    #         up=2 is 14 rows instead of 27, so Chicken creamy mint stops
+    #         running onto a second sheet. 1 (the old layout) and 2 only —
+    #         three across leaves no room for the ingredient name at A4.
+    # ------------------------------------------------------------------
+    try:
+        up = int(request.query_params.get("up") or 1)
+    except (TypeError, ValueError):
+        up = 1
+    up = 2 if up >= 2 else 1
     return render(request, "production/boq_recipe_print.html", {
         "sheet": sheet,
         "section_view": by_section(sheet) if mode == "section" else [],
         "recipe_view": by_recipe(sheet) if mode == "recipe" else [],
         "mode": mode,
+        "up": up,
+        "hide": set(f.get("hide") or []),
         "filters": f,
         "stamp": _stamp(f),
         "page_title": "Recipe Sheet",

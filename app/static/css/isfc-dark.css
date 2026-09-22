@@ -57,20 +57,15 @@ html[data-bs-theme="dark"] .card-footer {
   color: var(--isfc-text-primary);
 }
 
-html[data-bs-theme="dark"] .od-card span{
+/* html[data-bs-theme="dark"] .od-card span{
   color: var(--isfc-text-primary) !important;
-}
+} */
 
 html[data-bs-theme="dark"] .card-body {
   color: var(--isfc-text-primary);
 }
 
-/* ========== 4. TABLES ========== */
-/* Batch 9 fix: Phoenix tables read their colours from --phoenix-* variables.
-   Setting `color` alone was overridden, so text rendered near-black on a dark
-   card and looked invisible. We remap the Phoenix table variables directly and
-   force the cell colours, which fixes the Consolidated BOM / data tables in
-   dark mode (both LTR and RTL). */
+
 html[data-bs-theme="dark"] .table,
 html[data-bs-theme="dark"] .table[data-isfc-table],
 html[data-bs-theme="dark"] .table-responsive .table {

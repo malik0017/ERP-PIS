@@ -20,7 +20,7 @@
     padding:.85rem 1.05rem;border-bottom:1px solid var(--phoenix-border-color,#dfe5ee);
     background:var(--phoenix-body-highlight-bg,#f5f8fc)}
   .o3c-title{font-weight:800;color:var(--phoenix-emphasis-color,#132947);display:flex;align-items:center;gap:.4rem}
-  .o3c-pick{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap}
+  .o3c-pick{display:flex;gap:.5rem;align-items:center;}
   .o3c-pick select{min-width:230px}
   .o3c-body{padding:1rem 1.05rem}
   .o3c-tiles{display:flex;flex-wrap:wrap;gap:.6rem;margin-bottom:1rem}
@@ -53,7 +53,7 @@
         <option value="">{{ t('Loading orders…') }}</option>
       </select>
       <a class="btn btn-outline-primary btn-sm fw-bold d-none" id="o3cOpen" href="#" data-order-360="">
-        <i class="bi bi-box-arrow-up-right me-1"></i>{{ t('Open full 360') }}</a>
+       {{ t('Open') }}</a>
     </div>
   </div>
   <div class="o3c-body">
@@ -92,6 +92,9 @@
           var label = o.order_no + (o.customer ? ' · ' + o.customer : '');
           return '<option value="'+esc(o.order_no)+'">'+esc(label)+'</option>';
         }).join('');
+      // Batch 159-7 (Image 2): default to the latest order and load it, so the
+      // card shows a live status straight away instead of an empty picker.
+      if (orders.length){ sel.value = orders[0].order_no; sel.dispatchEvent(new Event('change')); }
     })
     .catch(function(){ sel.innerHTML = '<option value="">'+esc(I18N.failed)+'</option>'; });
 

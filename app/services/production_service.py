@@ -1007,9 +1007,38 @@ def route_for_line(first_section: str | None, recipe_section: str | None,
         return dedupe_route(["Store", *mid, "QC", "Trayline / Packing"])
     if fs == "Trayline / Packing":
         return dedupe_route(["Store", "Trayline / Packing"])
-    # Batch 225: the fallback is the ingredient's own guessed route, which is
-    # where the duplicated section came from. Deduped on the way out.
-    return dedupe_route(fallback_route)
+    # ------------------------------------------------------------------
+    # Batch 235 ROOT CAUSE (Image 7) — THE ASSEMBLY HOP WAS LOST FOR PREP
+    # SECTIONS.
+    #
+    # "Grilled Chicken Ranch Salad should be issued to Cold Section, not QC."
+    # It is not a label problem — the route really did skip Cold Kitchen.
+    #
+    # Batch A inserts the assembly section for a line whose first stop is
+    # Cutting (branch 1) or a cook section (branch 2). Butchery is NEITHER: it
+    # is a prep section that is not "Cutting", so the chicken fell through to
+    # this fallback — the ingredient's NAME-guessed route,
+    # Store → Butchery → Hot Kitchen → QC → Packing. The recipe is assembled
+    # in Cold Kitchen (18 of its 19 lines are Cold Section), so the grilled
+    # chicken should travel Butchery → Hot Kitchen → COLD KITCHEN → QC and be
+    # plated into the salad. Instead Hot Kitchen was told to hand it to QC,
+    # and the salad would have been assembled without its protein.
+    #
+    # The rule from branches 1 and 2 applies here too and is now applied here
+    # too: whatever prep section a line starts in, if the recipe is finished
+    # in a cook section that the route does not already visit, it visits it
+    # before QC. Inserted before the first of QC / Packing / Dispatch so the
+    # rest of the guessed route — including any cooking step — is preserved.
+    # ------------------------------------------------------------------
+    route = dedupe_route(fallback_route)
+    if asm and asm in COOK_SECTIONS and asm not in route:
+        _TAIL = {"QC", "Packing", "Trayline / Packing", "Dispatch"}
+        cut = next((i for i, step in enumerate(route) if step in _TAIL), len(route))
+        # Never in front of the line's own first stop, and never at index 0
+        # (that is always "Store").
+        cut = max(cut, 2 if len(route) > 1 else len(route))
+        route = dedupe_route(route[:cut] + [asm] + route[cut:])
+    return route
 
 
 def _recipe_section_for(db: Session, recipe_no: str | None, ingredient_code: str | None,
@@ -1195,18 +1224,45 @@ def finalize_store_issuance(db: Session, order_no: str, issued_by: str) -> list[
         # received/processed downstream, so we never rewrite work already done in
         # a kitchen section.
         # ------------------------------------------------------------------
-        existing = (
-            db.query(KitchenSectionTransaction)
-            .filter(
-                KitchenSectionTransaction.order_no == line.order_no,
-                KitchenSectionTransaction.ingredient_code == line.ingredient_code,
+        # ------------------------------------------------------------------
+        # Batch 235 — MATCH ON bom_line_id FIRST.
+        #
+        # The Batch 120 key was (order_no, ingredient_code [, order_line_id]).
+        # That key cannot tell apart the three Fresh Lemon lines of one recipe,
+        # so a re-issue collapsed them onto whichever row came back .first() —
+        # two of the three quantities were silently lost, and the reports then
+        # had nothing correct to join to. store_issuance_lines.bom_line_id is
+        # the exact identity of the line being issued; use it when it is there
+        # and keep the old key only as the fallback for legacy rows.
+        # ------------------------------------------------------------------
+        _bom_line_id = getattr(line, "bom_line_id", None)
+        existing = None
+        if _bom_line_id is not None and hasattr(KitchenSectionTransaction, "bom_line_id"):
+            existing = (
+                db.query(KitchenSectionTransaction)
+                .filter(
+                    KitchenSectionTransaction.order_no == line.order_no,
+                    KitchenSectionTransaction.bom_line_id == _bom_line_id,
+                )
+                .first()
             )
-        )
-        if line.order_line_id is not None:
-            existing = existing.filter(
-                KitchenSectionTransaction.order_line_id == line.order_line_id
+        if existing is None:
+            _q = (
+                db.query(KitchenSectionTransaction)
+                .filter(
+                    KitchenSectionTransaction.order_no == line.order_no,
+                    KitchenSectionTransaction.ingredient_code == line.ingredient_code,
+                )
             )
-        existing = existing.first()
+            if line.order_line_id is not None:
+                _q = _q.filter(
+                    KitchenSectionTransaction.order_line_id == line.order_line_id
+                )
+            if _bom_line_id is not None and hasattr(KitchenSectionTransaction, "bom_line_id"):
+                # Only adopt an UNLINKED legacy row; a row already claimed by a
+                # different BOM line must never be stolen from it.
+                _q = _q.filter(KitchenSectionTransaction.bom_line_id.is_(None))
+            existing = _q.first()
 
         if existing:
             # ------------------------------------------------------------------
@@ -1242,6 +1298,8 @@ def finalize_store_issuance(db: Session, order_no: str, issued_by: str) -> list[
             _prev_recv = _num(getattr(existing, "received_qty_standard", 0))
             downstream_touched = _prev_recv > 0 or _worked
 
+            if _bom_line_id is not None and hasattr(existing, "bom_line_id"):
+                existing.bom_line_id = _bom_line_id
             existing.recipe_no = line.recipe_no
             existing.recipe_name = line.recipe_name
             existing.ingredient_name = line.ingredient_name
@@ -1289,6 +1347,9 @@ def finalize_store_issuance(db: Session, order_no: str, issued_by: str) -> list[
                 company_id=getattr(line, "company_id", None),
                 order_no=line.order_no,
                 order_line_id=line.order_line_id,
+                # Batch 235 — the grain link, set at birth.
+                **({"bom_line_id": _bom_line_id}
+                   if hasattr(KitchenSectionTransaction, "bom_line_id") else {}),
                 recipe_no=line.recipe_no,
                 recipe_name=line.recipe_name,
                 ingredient_code=line.ingredient_code,
@@ -1370,6 +1431,35 @@ def transfer_transaction(
     if transfer > received - waste - returned - byproduct + 0.0001:
         raise ValueError("Transferred quantity cannot exceed available quantity")
 
+    # ------------------------------------------------------------------
+    # Batch 235 ROOT CAUSE (Images 8, 9) — A SECTION MUST CLOSE ITS BOOKS.
+    #
+    # Hot Kitchen received 1933.8651 g, transferred 1900 and left Waste at 0.
+    # The remaining 33.8651 g went into balance_qty_standard, which no report
+    # reads — so the Hot Kitchen Production Report printed 2043.300 received
+    # against 1962.441 transferred with a dash under Waste. The material was
+    # neither transferred nor written off; it simply stopped being mentioned.
+    #
+    # Received = Transferred + Waste + Returned + By-product is an identity,
+    # not a preference. Anything left over is waste until somebody says
+    # otherwise, so the residual is now posted to waste with a reason that
+    # says it was derived rather than counted. The section can still type a
+    # real split — an explicit waste/return/by-product entry is never
+    # overwritten, only the gap that remains after it is.
+    #
+    # Deliberately NOT a validation error: refusing the transfer would leave
+    # the chef unable to move finished food over a rounding difference, and
+    # the screens are used at the bench with wet hands. Record it, label it,
+    # report it.
+    # ------------------------------------------------------------------
+    residual = received - transfer - waste - returned - byproduct
+    if residual > 0.0001:
+        waste += residual
+        _auto_note = (f"Auto-balanced: {residual:.4f} {tx.standard_uom or ''} "
+                      f"unaccounted at {tx.current_section} posted to waste"
+                      ).strip()
+        waste_reason = f"{waste_reason} | {_auto_note}" if waste_reason else _auto_note
+
     tx.processed_qty_standard = processed
     tx.waste_qty_standard = waste
     tx.returned_qty_standard = returned
@@ -1429,6 +1519,12 @@ def transfer_transaction(
             company_id=getattr(tx, "company_id", None),
             order_no=tx.order_no,
             order_line_id=tx.order_line_id,
+            # Batch 235 — the grain link travels with the work. Without this
+            # the link died at the first hand-off, so only the section that
+            # received from Store could be reported line-accurately and every
+            # section after it fell back to the coarse join.
+            **({"bom_line_id": getattr(tx, "bom_line_id", None)}
+               if hasattr(KitchenSectionTransaction, "bom_line_id") else {}),
             recipe_no=tx.recipe_no,
             recipe_name=tx.recipe_name,
             ingredient_code=tx.ingredient_code,

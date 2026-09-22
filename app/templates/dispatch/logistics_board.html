@@ -45,7 +45,14 @@
           <option value="current" {% if filters.scope != 'all' %}selected{% endif %}>{{ t('Current (today onward)') }}</option>
           <option value="all" {% if filters.scope == 'all' %}selected{% endif %}>{{ t('All') }}</option>
         </select></div>
-      <div><label class="form-label small fw-bold">{{ t('Search') }}</label><input name="search" class="form-control form-control-sm" value="{{ filters.search }}" placeholder="{{ t('Order, customer...') }}"></div>
+      <div style="min-width:240px"><label class="form-label small fw-bold">{{ t('Order') }}</label>
+        {# Batch 159-3 (Image 16): order picker like Top-Up — pick an order (shows
+           customer + status) or type a customer name. Fills the existing search. #}
+        <input name="search" class="form-control form-control-sm" value="{{ filters.search }}"
+               list="lbOrderList" autocomplete="off" placeholder="{{ t('Order or customer…') }}">
+        <datalist id="lbOrderList">
+          {% for o in order_options %}<option value="{{ o.order_no }}">{{ o.order_no }}{% if o.customer %} · {{ o.customer }}{% endif %}{% if o.status %} · {{ o.status }}{% endif %}</option>{% endfor %}
+        </datalist></div>
       <button class="btn btn-primary btn-sm"><i class="bi bi-funnel me-1"></i>{{ t('Filter') }}</button>
     </div>
   </form>

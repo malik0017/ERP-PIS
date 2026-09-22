@@ -405,14 +405,52 @@ async def not_found_handler(request: Request, exc):
 
 @app.exception_handler(500)
 async def server_error_handler(request: Request, exc):
-    logger.error(f"500 Server Error: {exc}")
+    # ------------------------------------------------------------------
+    # Batch 235 (Image 1) — A 500 HAS TO BE FINDABLE.
+    #
+    # The page said "sequence item 2: expected str instance, list found" and
+    # nothing else: no URL, no file, no line, and the log held only the same
+    # one-line message because this handler used logger.error(), which does
+    # not write a traceback. A message like that could come from any of the
+    # dozens of `" AND ".join(where)` sites in the app, so the only way to
+    # chase it was to guess.
+    #
+    # Now: the full traceback goes to the log, together with the method, path
+    # and query string that produced it, under a short reference code that is
+    # also printed on the screen. The user reads out "PIS-4F2A9C" and the
+    # exact frame is one grep away. The code is a hash of the failing frame,
+    # so the SAME fault always gets the SAME reference and a recurrence is
+    # recognisable rather than looking like a new bug.
+    # ------------------------------------------------------------------
+    import hashlib
+    import traceback as _tb
 
-    error_detail = str(exc) if DEBUG else "Something went wrong. The team has been notified."
+    frames = _tb.extract_tb(exc.__traceback__) if getattr(exc, "__traceback__", None) else []
+    last = frames[-1] if frames else None
+    where_ = f"{last.filename}:{last.lineno} in {last.name}" if last else "unknown frame"
+    ref = hashlib.sha1(
+        f"{exc.__class__.__name__}|{exc}|{where_}".encode("utf-8", "replace")
+    ).hexdigest()[:6].upper()
+
+    logger.error(
+        "500 [PIS-%s] %s %s%s -> %s: %s (at %s)",
+        ref, request.method, request.url.path,
+        f"?{request.url.query}" if request.url.query else "",
+        exc.__class__.__name__, exc, where_,
+    )
+    if frames:
+        logger.error("500 [PIS-%s] traceback:\n%s", ref, "".join(_tb.format_tb(exc.__traceback__)))
+
+    error_detail = (
+        f"{exc.__class__.__name__}: {exc}\n{where_}" if DEBUG
+        else "Something went wrong. The team has been notified."
+    )
     try:
         return render(
             request,
             "errors/500.html",
-            {"error": error_detail},
+            {"error": error_detail, "error_ref": f"PIS-{ref}",
+             "error_path": request.url.path},
             status_code=500,
         )
     except Exception as template_error:
@@ -568,6 +606,8 @@ def _ensure_output_capture_columns() -> None:
             ("vegetable_g", "DECIMAL(14,4) NULL"),
             ("yield_g", "DECIMAL(14,4) NULL"),
             ("byproduct_qty_standard", "DECIMAL(18,4) NULL"),
+            # Batch 235 — the grain link. See KitchenSectionTransaction.bom_line_id.
+            ("bom_line_id", "INT NULL"),
         ],
         "bom_lines": [
             ("gross_required_qty_standard", "DECIMAL(18,4) NULL"),
@@ -602,6 +642,121 @@ def _ensure_output_capture_columns() -> None:
 
 
 _ensure_output_capture_columns()
+
+
+def _backfill_kitchen_bom_line_id() -> None:
+    """Batch 235 — link EXISTING kitchen transactions to their BOM line.
+
+    New rows get bom_line_id at store-issue time (production_service). Rows
+    already in the database have nothing, so the reports would keep falling
+    back to the coarse (order, recipe, ingredient) join for every order placed
+    before this batch — i.e. the bug would look "fixed for new orders only",
+    which is the worst kind of half-fix to hand to a kitchen.
+
+    How the link is recovered:
+
+      1. store_issuance_lines already carries bom_line_id AND is the row each
+         kitchen transaction was created from. Match on
+         (order_no, ingredient_code, order_line_id) and, where a recipe lists
+         the same ingredient more than once, pair them by ORDINAL — both sides
+         were created in bom_lines order, in the same pass, so the n-th
+         issuance line corresponds to the n-th kitchen transaction.
+      2. Anything still unmatched is left NULL on purpose. The reports fall
+         back to the old ingredient-grain join for those rows and label it,
+         rather than guessing a link and printing a confident wrong number.
+
+    Runs once: guarded on there being any NULL bom_line_id row left to fill,
+    so a restart on an already-linked database costs one cheap COUNT(*).
+    """
+    try:
+        from app.database.session import SessionLocal as _SL
+        from sqlalchemy import text as _t
+        _db = _SL()
+        try:
+            has_col = _db.execute(_t("""
+                SELECT COUNT(*) FROM information_schema.columns
+                WHERE table_schema = DATABASE()
+                  AND table_name = 'kitchen_section_transactions'
+                  AND column_name = 'bom_line_id'
+            """)).scalar()
+            if not has_col:
+                return
+            pending = _db.execute(_t("""
+                SELECT COUNT(*) FROM kitchen_section_transactions
+                WHERE bom_line_id IS NULL
+            """)).scalar()
+            if not pending:
+                return
+
+            # Ordinal pairing on both sides. ROW_NUMBER() needs MySQL 8 /
+            # MariaDB 10.2+, which this deployment already requires elsewhere.
+            _db.execute(_t("""
+                UPDATE kitchen_section_transactions k
+                JOIN (
+                    SELECT id, order_no, ingredient_code,
+                           COALESCE(order_line_id, 0) AS oli,
+                           ROW_NUMBER() OVER (
+                               PARTITION BY order_no, ingredient_code,
+                                            COALESCE(order_line_id, 0)
+                               ORDER BY id) AS rn
+                      FROM kitchen_section_transactions
+                     WHERE bom_line_id IS NULL
+                ) kk ON kk.id = k.id
+                JOIN (
+                    SELECT bom_line_id, order_no, ingredient_code,
+                           COALESCE(order_line_id, 0) AS oli,
+                           ROW_NUMBER() OVER (
+                               PARTITION BY order_no, ingredient_code,
+                                            COALESCE(order_line_id, 0)
+                               ORDER BY id) AS rn
+                      FROM store_issuance_lines
+                     WHERE bom_line_id IS NOT NULL
+                ) s ON s.order_no        = kk.order_no
+                   AND s.ingredient_code = kk.ingredient_code
+                   AND s.oli             = kk.oli
+                   AND s.rn              = kk.rn
+                SET k.bom_line_id = s.bom_line_id
+            """))
+            _db.commit()
+            # Batch 236: count what is ACTUALLY unlinked.
+            #
+            # Your first run reported "filled 0 of 3 rows (3 still unlinked)",
+            # which reads like a failure and is not one. A recipe-level OUTPUT
+            # row — the one process_recipe_output() writes when a section
+            # finishes a whole recipe — has ingredient_code = recipe_no,
+            # because it IS the recipe, not an ingredient of it. It has no BOM
+            # line by design and never will. Counting those as "unlinked"
+            # invites someone to go hunting for a bug that does not exist.
+            #
+            # They are excluded from the figure and reported separately.
+            outputs = _db.execute(_t("""
+                SELECT COUNT(*) FROM kitchen_section_transactions
+                WHERE bom_line_id IS NULL
+                  AND ingredient_code = recipe_no
+            """)).scalar() or 0
+            left = (_db.execute(_t("""
+                SELECT COUNT(*) FROM kitchen_section_transactions
+                WHERE bom_line_id IS NULL
+                  AND (recipe_no IS NULL OR ingredient_code <> recipe_no)
+            """)).scalar()) or 0
+            filled = int(pending) - int(left) - int(outputs)
+            msg = (f"Batch 235 backfill: kitchen_section_transactions.bom_line_id "
+                   f"linked {filled} row(s)")
+            if outputs:
+                msg += f"; {outputs} recipe-level output row(s) need no BOM line"
+            if left:
+                msg += (f"; {left} ingredient row(s) still unlinked "
+                        f"- those fall back to the pro-rata split in reports")
+            logger.info(msg)
+        finally:
+            _db.close()
+    except Exception as exc:
+        # Never block startup on a backfill. The reports degrade to the old
+        # join, which is exactly where they were before this batch.
+        logger.error(f"Schema guard failed (bom_line_id backfill): {exc}")
+
+
+_backfill_kitchen_bom_line_id()
 
 
 def _ensure_packing_pack_lines_table() -> None:

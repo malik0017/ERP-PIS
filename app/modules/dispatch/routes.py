@@ -448,6 +448,16 @@ def tray_line_report(request: Request, db: Session = Depends(get_db)):
     return render(request, "dispatch/tray_line_report.html", {
         "regions": regions, "date": d, "page_title": "Tray Line Report",
         "filters": filters, "options": options,
+        # Batch 159-3b (Image 13): one merged order picker (order + customer +
+        # status), running & previous orders, newest first.
+        "order_options": [dict(r) for r in (db.execute(text("""
+            SELECT DISTINCT pd.order_no,
+                   COALESCE(pd.customer_name,'') AS customer,
+                   COALESCE(pd.dispatch_status,'') AS status
+            FROM packing_dispatch pd
+            WHERE (pd.company_id = :cid OR pd.company_id IS NULL)
+            ORDER BY pd.order_no DESC LIMIT 400
+        """), {"cid": cid}).mappings().all() if True else [])],
         "totals": {"bags": sum(g["bags"] for g in regions.values()),
                    "receivers": sum(len(g["rows"]) for g in regions.values()),
                    "regions": len(regions)},

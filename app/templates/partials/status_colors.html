@@ -1,0 +1,118 @@
+{# ============================================================================
+   partials/status_colors.html — Batch 159-2
+
+   ONE global, semantic colour system for every status label in the app
+   (images 1, 2, 3, 4, 5, 16, 17). CSS can't colour by text, so a tiny script
+   reads each status label and applies a semantic pill:
+
+       green  = good      (Approved, Delivered, Passed, Completed, On track, Exact)
+       blue   = info       (Packed, Dispatched, Submitted, BOM Generated, Ready)
+       cyan   = progress   (In Production, Out for Delivery, Cooking, Processing)
+       amber  = warn       (Pending, Awaiting, Delay, Excess, On Hold)
+       red    = bad        (Rejected, Short, Cancelled, Overdue, Failed)
+       purple = accent     (Tomorrow / due soon)
+
+   It is deliberately VOCABULARY-DRIVEN: it only touches elements whose text is a
+   known status (or that carry data-status), so counts like "12 bags", "Corporate"
+   or "Normal" are never recoloured. It also wraps plain-text cells sitting under
+   a column header named STATUS. Runs on load and re-runs (guarded) when tables
+   are re-rendered by list.js.
+   ============================================================================ #}
+<style>
+  .st-pill{display:inline-block;font-weight:700;font-size:.72rem;line-height:1.25;
+    padding:.2rem .62rem;border-radius:999px;white-space:nowrap;letter-spacing:.01em}
+  .st-good     {background:#e7f7ef !important;color:#0f7b53 !important;border-color:#bfe8d4 !important}
+  .st-info     {background:#e8f0fe !important;color:#1e5bb8 !important;border-color:#c7dbfb !important}
+  .st-progress {background:#dcefff !important;color:#0b5cab !important;border-color:#b3d8f7 !important}
+  .st-warn     {background:#fff2dd !important;color:#a86a00 !important;border-color:#f5dcae !important}
+  .st-bad      {background:#fdecec !important;color:#b42318 !important;border-color:#f6c9c4 !important}
+  .st-accent   {background:#efe9ff !important;color:#6b3fd4 !important;border-color:#d8ccf7 !important}
+  [data-bs-theme="dark"] .st-good     {background:#0f2c22 !important;color:#5fe0b0 !important}
+  [data-bs-theme="dark"] .st-info     {background:#122a4a !important;color:#8fb8ff !important}
+  [data-bs-theme="dark"] .st-progress {background:#0e2740 !important;color:#7ec2ff !important}
+  [data-bs-theme="dark"] .st-warn     {background:#33270f !important;color:#ffcf7a !important}
+  [data-bs-theme="dark"] .st-bad      {background:#3a1414 !important;color:#ff9aa2 !important}
+  [data-bs-theme="dark"] .st-accent   {background:#241a3d !important;color:#c3a9ff !important}
+</style>
+<script>
+(function(){
+  var RULES = [
+    [/reject|cancel|overdue|\bfail/, 'st-bad'],
+    [/\bshort\b/,                    'st-bad'],
+    [/out for delivery/,             'st-progress'],
+    [/deliver/,                      'st-good'],
+    [/\bexact\b/,                    'st-good'],
+    [/approve/,                      'st-good'],
+    [/passed|complete|on track|closed|\bdone\b/, 'st-good'],
+    [/excess/,                       'st-warn'],
+    [/delay|\blate\b/,               'st-warn'],
+    [/tomorrow|due today|due soon|\bdue\b/, 'st-accent'],
+    [/pending|await|waiting|on hold/,'st-warn'],
+    [/in production|cooking|processing/, 'st-progress'],
+    [/packed/,                       'st-info'],
+    [/dispatch/,                     'st-info'],
+    [/submit|bom generated|scheduled|\bready\b|received/, 'st-info']
+  ];
+  function classify(txt){
+    if(!txt) return null;
+    var t = txt.toLowerCase().replace(/\s+/g,' ').trim();
+    if(!t || t.length > 40) return null;
+    for(var i=0;i<RULES.length;i++){ if(RULES[i][0].test(t)) return RULES[i][1]; }
+    return null;
+  }
+  var CLS = ['st-good','st-info','st-progress','st-warn','st-bad','st-accent'];
+  function paint(el, cls){
+    if(!el || el.dataset.stDone) return;
+    el.dataset.stDone = '1';
+    CLS.forEach(function(c){ el.classList.remove(c); });
+    el.classList.add('st-pill', cls);
+  }
+  function run(root){
+    root = root || document;
+    // 1) explicit + existing badges/pills
+    root.querySelectorAll('[data-status], .badge, .badge-phoenix, .pill, .chip, .status, .st-pill')
+      .forEach(function(el){
+        if(el.dataset.stDone) return;
+        if(el.querySelector('*')) return;                 // only leaf labels
+        var cls = classify(el.getAttribute('data-status') || el.textContent);
+        if(cls) paint(el, cls);
+      });
+    // 2) plain-text cells under a STATUS column header
+    root.querySelectorAll('table').forEach(function(tbl){
+      if(tbl.dataset.stScanned) return;
+      var heads = tbl.querySelectorAll('thead th');
+      var idx = -1;
+      heads.forEach(function(th,i){ if((th.textContent||'').trim().toUpperCase().replace(/\s+/g,' ')==='STATUS') idx = i; });
+      if(idx < 0) return;
+      tbl.dataset.stScanned = '1';
+      tbl.querySelectorAll('tbody tr').forEach(function(tr){
+        var cell = tr.children[idx]; if(!cell || cell.dataset.stDone) return;
+        if(cell.querySelector('*')) return;               // already a badge — handled above
+        var cls = classify(cell.textContent);
+        if(cls){
+          var span = document.createElement('span');
+          span.className = 'st-pill ' + cls;
+          span.textContent = cell.textContent.trim();
+          cell.textContent = ''; cell.appendChild(span);
+          cell.dataset.stDone = '1';
+        }
+      });
+    });
+  }
+  function boot(){ try{ run(document); }catch(e){} }
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
+  // Re-run (debounced) when tables are re-rendered (list.js, filters, ajax).
+  var timer = null;
+  try{
+    new MutationObserver(function(muts){
+      for(var i=0;i<muts.length;i++){
+        var m = muts[i];
+        if(m.type==='childList' && (m.addedNodes.length)){
+          clearTimeout(timer); timer = setTimeout(boot, 120); return;
+        }
+      }
+    }).observe(document.body, {childList:true, subtree:true});
+  }catch(e){}
+})();
+</script>

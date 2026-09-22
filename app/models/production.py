@@ -170,6 +170,22 @@ class KitchenSectionTransaction(Base):
     company_id = Column(Integer, index=True, nullable=True)
     order_no = Column(String(80), index=True, nullable=False)
     order_line_id = Column(Integer, nullable=True)
+    # Batch 235 ROOT CAUSE (Images 2, 5, 6) — THE GRAIN LINK.
+    #
+    # A recipe may list the same ingredient on several BOM lines (Spinach steak
+    # lists Fresh Lemon three times; Misto lists Fresh Brocoli twice). Store
+    # issuance already carries store_issuance_lines.bom_line_id, so each issued
+    # line knows exactly which BOM line it serves — but the kitchen transaction
+    # created from it did NOT. Every report then had to join on
+    # (order_no, recipe_no, ingredient_code), which is COARSER than the rows it
+    # joins to, so one ingredient's actuals were repeated on each of its BOM
+    # lines (Fresh Lemon: 66.766 shown three times instead of 35.53 / 23.68 /
+    # 7.56) or summed into a fan-out.
+    #
+    # Carrying bom_line_id makes the join exact and one-to-one by construction.
+    # Nullable, because rows created before this batch have no link until the
+    # startup backfill in main.py fills them in.
+    bom_line_id = Column(Integer, index=True, nullable=True)
     recipe_no = Column(String(50), index=True, nullable=True)
     recipe_name = Column(String(255), nullable=True)
     ingredient_code = Column(String(50), index=True, nullable=False)

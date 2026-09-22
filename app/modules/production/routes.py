@@ -1393,7 +1393,8 @@ async def section_order_page(request: Request, section_name: str, order_no: str,
         output.seek(0)
         return StreamingResponse(iter(['\ufeff' + output.getvalue()]), media_type="text/csv", headers={"Content-Disposition": f"attachment; filename={order_no}_{_section_slug(section)}_receiving.csv"})
 
-    next_sections = ["Cutting", "Butchery", "Hot Kitchen", "Cold Kitchen", "Bakery/Pastry", "QC", "Trayline / Packing", "Dispatch"]  # Batch 19: Thawing/Marination retired; Packing unified into Trayline / Packing
+    # Batch 159-6 (Image 10): a section can never transfer to ITSELF.
+    next_sections = [s for s in ["Cutting", "Butchery", "Hot Kitchen", "Cold Kitchen", "Bakery/Pastry", "QC", "Trayline / Packing", "Dispatch"] if s != section]
 
     # Batch 149: main/sub category per ingredient (image 12) — helps decide the
     # next-section transfer. Looked up once from the Ingredient master, keyed by
@@ -1523,6 +1524,12 @@ async def bulk_transfer_section_order(request: Request, section_name: str, order
         except (TypeError, ValueError):
             continue
     next_section = (form.get("bulk_next_section") or "").strip()
+
+    # Batch 159-6 (Image 10): block a transfer back into the current section.
+    if next_section and next_section.strip().lower() == (section or "").strip().lower():
+        return redirect_with_error(
+            f"/production/section/{_section_slug(section)}/orders/{order_no}",
+            "You can't transfer to the same section you're working in — pick a different Next Section.")
 
     if not tx_ids:
         return redirect_with_error(
@@ -1812,6 +1819,12 @@ async def transfer_tx(
     require_action(request, "kitchen", "edit")
     tx = db.query(KitchenSectionTransaction).filter(KitchenSectionTransaction.id == tx_id).first()
     fallback_section = tx.current_section.replace("/", "-") if tx else "Hot-Kitchen"
+
+    # Batch 159-6 (Image 10): a line can't be transferred back into its own section.
+    if tx is not None and next_section and next_section.strip().lower() == (tx.current_section or "").strip().lower():
+        return redirect_with_error(
+            f"/production/section/{fallback_section}/orders/{tx.order_no}",
+            "You can't transfer to the same section — choose a different Next Section.")
 
     # Batch 121: STEP-LOCK — kitchen is view-only once the order is past it.
     if tx is not None:
@@ -2464,6 +2477,77 @@ async def quick_issue_store_line(request: Request, line_id: int, db: Session = D
                             status_code=HTTP_303_SEE_OTHER)
 
 
+@router.post("/store-issuance/by-section/issue-section")
+async def issue_consolidated_section(request: Request, db: Session = Depends(get_db)):
+    """Batch 159-MO — issue a whole section's pending picking list in one action,
+    for one OR SEVERAL selected orders at once.
+
+    The by-section screen already consolidates every ingredient's requirement
+    across all orders in a section. This lets the store keeper tick the orders
+    they're issuing for (or leave blank for every order) and issue the entire
+    section at once. Each pending line is issued at its own required quantity, so
+    the per-order audit trail stays intact and the carry-forward ledger records
+    the net per section exactly as for a single-order issue.
+    """
+    require_action(request, "store_issuance", "edit")
+    form = await request.form()
+    section = (form.get("section") or "").strip()
+    orders = [o.strip() for o in form.getlist("orders") if o.strip()]
+    back = request.headers.get("referer") or "/production/store-issuance/by-section"
+    if not section:
+        return redirect_with_error(back, "Section is required.")
+
+    q = db.query(StoreIssuanceLine).filter(StoreIssuanceLine.issue_to_section == section)
+    if orders:
+        q = q.filter(StoreIssuanceLine.order_no.in_(orders))
+    lines = [l for l in q.all()
+             if not getattr(l, "finalized", False)
+             and (getattr(l, "issuance_status", "") or "") != "Issued"]
+    if not lines:
+        return redirect_with_error(back, f"{section}: nothing left to issue"
+                                         + (f" for {len(orders)} selected order(s)." if orders else "."))
+
+    def _need(l):
+        return float(getattr(l, "required_qty_with_waste_standard", None)
+                     or getattr(l, "required_qty_standard", None) or 0)
+
+    issued_lines = 0
+    issued_orders = set()
+    failed = 0
+    note = ("Issued from consolidated section list"
+            + (f" (selected orders: {', '.join(orders)})" if orders else " (all orders)"))
+    for l in lines:
+        qty = _need(l)
+        if qty <= 0:
+            continue
+        uom = getattr(l, "standard_uom", None) or "Kg"
+        try:
+            update_store_issuance_line(db, l.id, qty, uom, section, "", "", note)
+            issued_lines += 1
+            issued_orders.add(l.order_no)
+        except ValueError:
+            failed += 1
+
+    # Record the section standing-stock ledger for each order touched (Batch D),
+    # so over-issue carry-forward stays correct after a bulk issue.
+    try:
+        from app.services import section_stock
+        cid = _company_id_from_session(request)
+        for ono in issued_orders:
+            section_stock.post_order_issue(db, ono, cid, current_user_name(request))
+    except Exception:
+        db.rollback()
+
+    from urllib.parse import quote as _q
+    msg = (f"{section}: issued {issued_lines} line(s) across "
+           f"{len(issued_orders)} order(s).")
+    if failed:
+        msg += f" {failed} line(s) skipped (locked)."
+    sep = "&" if "?" in back else "?"
+    return RedirectResponse(f"{back}{sep}toast=success&title={_q('Section Issued')}&msg={_q(msg)}",
+                            status_code=HTTP_303_SEE_OTHER)
+
+
 @router.post("/store-issuance/by-section/issue-ingredient")
 async def issue_consolidated_ingredient(request: Request, db: Session = Depends(get_db)):
     """Batch 145 — issue every pending line behind ONE consolidated row.
@@ -2982,28 +3066,11 @@ async def section_production_report(request: Request, db: Session = Depends(get_
     # fixed in Batch 190. Correlated SCALAR subqueries instead: one value per
     # output row by construction, no join, no fan-out.
     # ------------------------------------------------------------------
-    def _act(col: str, per_ingredient: bool) -> str:
-        key = "AND k.ingredient_code = bl.ingredient_code" if per_ingredient else ""
-        return f"""(SELECT ROUND(SUM(COALESCE(k.{col}, 0)), 3)
-                      FROM kitchen_section_transactions k
-                     WHERE k.order_no = bl.order_no
-                       AND k.recipe_no = bl.recipe_no
-                       AND k.current_section = :sec {key})"""
-
-    def _next_section(per_ingredient: bool) -> str:
-        key = "AND k.ingredient_code = bl.ingredient_code" if per_ingredient else ""
-        return f"""(SELECT GROUP_CONCAT(DISTINCT k.to_section ORDER BY k.to_section SEPARATOR ', ')
-                      FROM kitchen_section_transactions k
-                     WHERE k.order_no = bl.order_no
-                       AND k.recipe_no = bl.recipe_no
-                       AND k.current_section = :sec
-                       AND COALESCE(k.to_section,'') <> '' {key})"""
-
-    def _actual_cols(per_ingredient: bool) -> str:
-        return (f"{_act('received_qty_standard', per_ingredient)} AS received_qty,\n"
-                f"{_act('transferred_qty_standard', per_ingredient)} AS transferred_qty,\n"
-                f"{_act('waste_qty_standard', per_ingredient)} AS waste_qty,\n"
-                f"{_next_section(per_ingredient)} AS issued_to_section,")
+    # Batch 235: the correlated-subquery helpers (_act / _next_section /
+    # _actual_cols) that detail mode used are gone. They were the fan-out —
+    # one sub-query per BOM line returning the whole ingredient's total, then
+    # printed on each duplicate line. Detail now LEFT JOINs the de-fanned
+    # aggregates above, exactly as summary and consolidated already did.
 
     _STD_SQ = """(SELECT MAX(r2.standard_portions) FROM recipes r2
                    WHERE r2.recipe_code = bl.recipe_no
@@ -3027,11 +3094,69 @@ async def section_production_report(request: Request, db: Session = Depends(get_
                           SUM(COALESCE(k.received_qty_standard, 0))    AS received,
                           SUM(COALESCE(k.transferred_qty_standard, 0)) AS transferred,
                           SUM(COALESCE(k.waste_qty_standard, 0))       AS waste,
+                          SUM(COALESCE(k.returned_qty_standard, 0))    AS returned,
+                          SUM(COALESCE(k.byproduct_qty_standard, 0))   AS byproduct,
                           GROUP_CONCAT(DISTINCT NULLIF(k.to_section,'')
                                        ORDER BY k.to_section SEPARATOR ', ') AS issued_to_section
                      FROM kitchen_section_transactions k
                     WHERE k.current_section = :sec
                     GROUP BY k.order_no, k.recipe_no, k.ingredient_code)"""
+
+    # ------------------------------------------------------------------
+    # Batch 235 (Images 2, 5, 6) — DETAIL MODE AT THE RIGHT GRAIN.
+    #
+    # Summary and Consolidated were already de-fanned in Batch B1: they roll
+    # up to the recipe or the ingredient, so one actual counted once is the
+    # right answer. DETAIL is different — it prints one row per BOM LINE, and
+    # a recipe may hold several lines for the same ingredient (Spinach steak
+    # lists Fresh Lemon three times, Misto lists Fresh Brocoli twice). The
+    # ingredient-grain actual was therefore REPEATED on every one of those
+    # rows: 66.766 received shown three times where the workstation shows
+    # 35.53 / 23.68 / 7.56, and one 6.000 waste shown three times where the
+    # workstation shows 3.19 / 2.13 / 0.68. Exactly the rows circled in red.
+    #
+    # Two joins, in order of confidence:
+    #
+    #   _ACT_LINE  the exact link. kitchen_section_transactions.bom_line_id
+    #              (Batch 235) names the BOM line the transaction belongs to,
+    #              so the actual lands on one row by construction.
+    #
+    #   pro-rata   the fallback for rows the backfill could not link. The
+    #              ingredient's total is split across its duplicate BOM lines
+    #              in proportion to what each line requires. That is not an
+    #              approximation of the workstation: the workstation issued
+    #              against those same requirements, so 66.766 split by
+    #              13.5 / 9.0 / 2.871 returns 35.53 / 23.68 / 7.56 — the
+    #              figures on the Cutting screen, to three decimals.
+    #
+    # COALESCE picks the exact value and only falls back when there is none.
+    # ------------------------------------------------------------------
+    _ACT_LINE = """(SELECT k.bom_line_id,
+                           SUM(COALESCE(k.received_qty_standard, 0))    AS received,
+                           SUM(COALESCE(k.transferred_qty_standard, 0)) AS transferred,
+                           SUM(COALESCE(k.waste_qty_standard, 0))       AS waste,
+                           SUM(COALESCE(k.returned_qty_standard, 0))    AS returned,
+                           SUM(COALESCE(k.byproduct_qty_standard, 0))   AS byproduct,
+                           GROUP_CONCAT(DISTINCT NULLIF(k.to_section,'')
+                                        ORDER BY k.to_section SEPARATOR ', ') AS issued_to_section
+                      FROM kitchen_section_transactions k
+                     WHERE k.current_section = :sec
+                       AND k.bom_line_id IS NOT NULL
+                     GROUP BY k.bom_line_id)"""
+
+    # This BOM line's share of its ingredient's requirement inside the same
+    # order + recipe. 1.0 when the ingredient appears only once, which is the
+    # common case — so the fallback costs nothing where there is no duplicate.
+    _LINE_SHARE = """(COALESCE(bl.total_required_with_waste_standard, 0) /
+                      NULLIF((SELECT SUM(COALESCE(bl3.total_required_with_waste_standard, 0))
+                                FROM bom_lines bl3
+                               WHERE bl3.order_no        = bl.order_no
+                                 AND bl3.recipe_no       = bl.recipe_no
+                                 AND bl3.ingredient_code = bl.ingredient_code), 0))"""
+
+    def _detail_actual(col: str) -> str:
+        """Exact per-line actual, else the pro-rata share of the ingredient total."""
+        return (f"ROUND(COALESCE(actl.{col}, act.{col} * {_LINE_SHARE}), 3)")
     try:
         if mode == "detail":
             rows = db.execute(text(f"""
@@ -3045,7 +3170,14 @@ async def section_production_report(request: Request, db: Session = Depends(get_
                        COALESCE(bl.net_required_qty_standard,
                                 bl.total_required_with_waste_standard, 0) AS net_qty,
                        COALESCE(bl.standard_uom,'') AS uom,
-                       {_actual_cols(True)}
+                       {_detail_actual('received')}    AS received_qty,
+                       {_detail_actual('transferred')} AS transferred_qty,
+                       {_detail_actual('waste')}       AS waste_qty,
+                       {_detail_actual('returned')}    AS returned_qty,
+                       {_detail_actual('byproduct')}   AS byproduct_qty,
+                       COALESCE(actl.issued_to_section, act.issued_to_section)
+                                                       AS issued_to_section,
+                       (actl.bom_line_id IS NOT NULL)  AS actual_is_exact,
                        {_PORTION_SQ} AS portion_size,
                        -- Batch 176 — 176-D follow-up (Img 5): this ingredient
                        -- line is itself a produced sub-recipe (not a
@@ -3059,6 +3191,12 @@ async def section_production_report(request: Request, db: Session = Depends(get_
                 JOIN customer_orders co ON co.order_no = bl.order_no
                 LEFT JOIN order_lines ol
                        ON ol.order_no = bl.order_no AND ol.recipe_no = bl.recipe_no
+                LEFT JOIN {_ACT_LINE} actl
+                       ON actl.bom_line_id = bl.id
+                LEFT JOIN {_ACT_AGG} act
+                       ON act.order_no        = bl.order_no
+                      AND act.recipe_no       = bl.recipe_no
+                      AND act.ingredient_code = bl.ingredient_code
                 WHERE {w}
                 ORDER BY work_date, bl.recipe_name, bl.ingredient_name
                 LIMIT :cap
@@ -3075,6 +3213,8 @@ async def section_production_report(request: Request, db: Session = Depends(get_
                        SUM(g.received) AS received_qty,
                        SUM(g.transferred) AS transferred_qty,
                        SUM(g.waste) AS waste_qty,
+                       SUM(g.returned) AS returned_qty,
+                       SUM(g.byproduct) AS byproduct_qty,
                        MAX(g.issued_to_section) AS issued_to_section,
                        MAX(g.uom) AS uom
                 FROM (
@@ -3087,6 +3227,8 @@ async def section_production_report(request: Request, db: Session = Depends(get_
                            MAX(act.received) AS received,
                            MAX(act.transferred) AS transferred,
                            MAX(act.waste) AS waste,
+                           MAX(act.returned) AS returned,
+                           MAX(act.byproduct) AS byproduct,
                            MAX(act.issued_to_section) AS issued_to_section
                     FROM bom_lines bl
                     JOIN customer_orders co ON co.order_no = bl.order_no
@@ -3124,6 +3266,8 @@ async def section_production_report(request: Request, db: Session = Depends(get_
                        SUM(g.received) AS received_qty,
                        SUM(g.transferred) AS transferred_qty,
                        SUM(g.waste) AS waste_qty,
+                       SUM(g.returned) AS returned_qty,
+                       SUM(g.byproduct) AS byproduct_qty,
                        MAX(g.issued_to_section) AS issued_to_section,
                        -- Img 6 — a recipe mixes Gram and Ml lines, so the old
                        -- MAX(uom) returned 'Ml' alphabetically. The section
@@ -3137,6 +3281,7 @@ async def section_production_report(request: Request, db: Session = Depends(get_
                            SUM(i.qty) AS qty, SUM(i.net_qty) AS net_qty,
                            SUM(i.received) AS received, SUM(i.transferred) AS transferred,
                            SUM(i.waste) AS waste,
+                           SUM(i.returned) AS returned, SUM(i.byproduct) AS byproduct,
                            MAX(i.issued_to_section) AS issued_to_section,
                            MAX(i.portion_size) AS portion_size
                     FROM (
@@ -3150,6 +3295,8 @@ async def section_production_report(request: Request, db: Session = Depends(get_
                                MAX(act.received) AS received,
                                MAX(act.transferred) AS transferred,
                                MAX(act.waste) AS waste,
+                               MAX(act.returned) AS returned,
+                               MAX(act.byproduct) AS byproduct,
                                MAX(act.issued_to_section) AS issued_to_section,
                                MAX({_PORTION_SQ}) AS portion_size
                         FROM bom_lines bl
@@ -3190,14 +3337,39 @@ async def section_production_report(request: Request, db: Session = Depends(get_
             "page_title": "Section Production Report"})
 
     out_rows = []
+    any_estimated = False
     for r in rows:
         d = dict(r)
         rec = float(d.get("received_qty") or 0)
         tr = float(d.get("transferred_qty") or 0)
+        wa = float(d.get("waste_qty") or 0)
+        ret = float(d.get("returned_qty") or 0)
+        byp = float(d.get("byproduct_qty") or 0)
         # Batch 206: Yield % = transferred ÷ received × 100, exactly as asked.
         # None (not 0) when nothing has been received — an untouched line is
         # not a 0 % yield, and showing it as one would drag every average down.
         d["yield_pct"] = round(tr / rec * 100, 1) if rec > 0 else None
+        # ------------------------------------------------------------------
+        # Batch 235 (Images 8, 9) — UNACCOUNTED, said out loud.
+        #
+        # The Hot Kitchen report showed 2043.300 received against 1962.441
+        # transferred and a dash under Waste. Eighty grams of chicken left the
+        # section and the report had no column that could admit it. A dash
+        # there does not mean "no waste"; it means "nobody wrote any down",
+        # and the two are opposite conclusions for a kitchen.
+        #
+        # Waste is now auto-balanced at transfer time (production_service), so
+        # new work closes to zero here. This column is what makes the OLD rows
+        # — and any future gap — visible instead of silent.
+        # ------------------------------------------------------------------
+        gap = rec - tr - wa - ret - byp
+        d["unaccounted_qty"] = round(gap, 3) if abs(gap) > 0.0005 else 0.0
+        # detail mode only: was this line's actual read off its own kitchen
+        # transaction, or split pro-rata from the ingredient total?
+        if "actual_is_exact" in d:
+            d["actual_is_exact"] = bool(d.get("actual_is_exact"))
+            if rec and not d["actual_is_exact"]:
+                any_estimated = True
         out_rows.append(d)
     rows = out_rows
     total_qty = sum(float(r["qty"] or 0) for r in rows)
@@ -3208,7 +3380,12 @@ async def section_production_report(request: Request, db: Session = Depends(get_
             "transferred": sum(float(r.get("transferred_qty") or 0) for r in rows),
             "waste": sum(float(r.get("waste_qty") or 0) for r in rows),
             "net": sum(float(r.get("net_qty") or 0) for r in rows),
+            "unaccounted": sum(float(r.get("unaccounted_qty") or 0) for r in rows),
         },
+        # Batch 235: detail mode says when a figure was split pro-rata rather
+        # than read off its own kitchen transaction. A number the reader cannot
+        # tell apart from a measured one is how reports lose their authority.
+        "any_estimated": any_estimated,
         "sections": KITCHEN_SECTIONS, "total_qty": total_qty,
         "truncated": truncated, "row_cap": ROW_CAP,
         "customer_options": customer_options, "category_options": category_options,
@@ -3345,13 +3522,35 @@ async def store_issuance_by_section(request: Request, db: Session = Depends(get_
         g["consolidated"] = sorted(
             ({**c, "orders": sorted(c["orders"]), **_issue_variance(c)} for c in g["consolidated"].values()),
             key=lambda c: c["ingredient_name"])
+        # Batch 159-MO: distinct orders in this section, for the multi-order issuer.
+        _ords = set()
+        for c in g["consolidated"]:
+            for o in c.get("orders", []):
+                _ords.add(o)
+        g["order_list"] = sorted(_ords)
         section_groups.append(g)
 
     all_sections = [r[0] for r in db.execute(text(
         "SELECT DISTINCT issue_to_section FROM store_issuance_lines WHERE issue_to_section IS NOT NULL ORDER BY 1")).all()]
 
+    # Batch 159-3 (Image 8): one order picker showing order + customer, from the
+    # orders that actually have issuance lines (running/previous), newest first.
+    try:
+        order_options = [dict(r) for r in db.execute(text("""
+            SELECT DISTINCT o.order_no,
+                   COALESCE(o.customer_name,'') AS customer,
+                   COALESCE(o.status,'') AS status
+            FROM customer_orders o
+            JOIN store_issuance_lines s ON s.order_no = o.order_no
+            ORDER BY o.order_no DESC
+            LIMIT 400
+        """)).mappings().all()]
+    except Exception:
+        order_options = []
+
     return render(request, "production/store_issuance_by_section.html", {
         "groups": section_groups, "all_sections": all_sections,
+        "order_options": order_options,
         "filters": {"section": section_filter, "show": show,
                     "order": order_filter, "customer": customer_filter,
                     "date_from": date_from, "date_to": date_to},

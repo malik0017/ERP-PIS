@@ -315,7 +315,8 @@
       <div class="cc-pager">
         <label class="fs-9 text-body-tertiary mb-0" for="ccRows">{{ t('Rows per page') }}</label>
         <select id="ccRows" class="form-select form-select-sm" style="width:auto">
-          <option>10</option><option selected>25</option><option>50</option><option>100</option>
+          {# Batch 159-7 (Image 2): default 10 rows; user can raise it. #}
+          <option selected>10</option><option>25</option><option>50</option><option>100</option>
         </select>
         <span class="fs-9 text-body-tertiary" id="ccPageInfo"></span>
         <div class="ms-auto btn-group btn-group-sm">

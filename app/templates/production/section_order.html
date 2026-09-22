@@ -626,11 +626,29 @@ function filterGroups(){
 }
 (function(){
   function n(v){var x=parseFloat(v);return isNaN(x)?0:x;}
+  // Batch 235 (Image 7) — PROTEIN YIELD IS NOT TRAY YIELD.
+  //
+  // Batch 226 taught the By Ingredient and By Recipe panels that Hot Kitchen's
+  // "Protein Yield %" means protein out over protein in. By Line never got the
+  // same rule, so it kept dividing the WHOLE transfer by the processed weight.
+  // The field is fed by carb + protein + vegetable, so entering protein 40 g
+  // against 50.0134 g of chicken read 80% (right, by coincidence) and adding
+  // 10 g of carb pushed it to 100% — the carbohydrate improved the protein
+  // yield. Same formula as the other two panels now: protein / protein in.
+  var IS_HOT_LINE = {{ 'true' if section == 'Hot Kitchen' else 'false' }};
   function updateYieldPct(tx){
     var avail=n(document.querySelector('.tx-processed[data-tx="'+tx+'"]')?.dataset.avail);
-    var tra=document.querySelector('.tx-transfer[data-tx="'+tx+'"]');
     var out=document.querySelector('.hk-yield-pct[data-tx="'+tx+'"]');
-    if(!tra||!out) return;
+    if(!out) return;
+    if(IS_HOT_LINE){
+      var prot=document.querySelector('.hk-protein[data-tx="'+tx+'"]');
+      var pin=n(prot&&prot.dataset?prot.dataset.received:0)||avail;
+      out.value=(prot&&n(prot.value)>0&&pin>0)
+        ? ((n(prot.value)/pin)*100).toFixed(1)+'%' : '—';
+      return;
+    }
+    var tra=document.querySelector('.tx-transfer[data-tx="'+tx+'"]');
+    if(!tra) return;
     if(avail<=0){ out.value='—'; return; }
     out.value=((n(tra.value)/avail)*100).toFixed(1)+'%';
   }
@@ -678,8 +696,19 @@ function filterGroups(){
       var transfer=n(carb.value)+n(prot.value)+n(veg.value);
       if(transfer>g.avail){transfer=g.avail;if(window.showToast)showToast('Carb + Protein + Vegetable exceeds processed qty','warning','Check quantities');}
       g.tra.value=+transfer.toFixed(4);
-      var y=g.avail-transfer-n(g.waste.value)-n(g.ret.value)-bp();
-      yld.value=+(y>0?y:0).toFixed(4);
+      // Batch 235 (Images 8, 9) — the leftover is WASTE, not a silent balance.
+      // Entering the nutrition split used to set Transfer and drop the
+      // remainder into the yield_g field, which no report reads. Received =
+      // Transfer + Waste + Return + By-product now closes on screen, exactly
+      // as it already did when Transfer was typed directly. Editable: a
+      // weighed tray beats the arithmetic, and any gap the chef leaves is
+      // posted to waste by the server anyway.
+      var rem=g.avail-transfer-n(g.ret.value)-bp();
+      if(rem<0){rem=0;}
+      g.waste.value=+rem.toFixed(4);
+      yld.value=+rem.toFixed(4);
+      if(g.reason){g.reason.required=g.reason.required||rem>0;
+        g.reason.placeholder=g.reason.required?'Reason — required':'Reason (optional)';}
       updateYieldPct(tx);
       return;
     }
@@ -751,8 +780,14 @@ document.querySelectorAll('.ing-proc-form').forEach(function(f){
     var t=n(carb.value)+n(prot.value)+n(veg.value);
     if(t>avail){t=avail;if(window.showToast)showToast('Carb + Protein + Vegetable exceeds processed qty','warning','Check quantities');}
     tra.value=+t.toFixed(4);
-    var y=avail-t-n(waste?waste.value:0)-n(ret?ret.value:0);
-    yld.value=+(y>0?y:0).toFixed(4);
+    // Batch 235 (Images 8, 9): the remainder is waste, and it is shown.
+    // It used to be written only to the yield_g field, which no report reads,
+    // so the section's books never closed and the Production Report printed a
+    // dash under Waste next to an 80 g gap.
+    var rem=avail-t-n(ret?ret.value:0);
+    if(rem<0){rem=0;}
+    if(waste) waste.value=+rem.toFixed(4);
+    yld.value=+rem.toFixed(4);
     ipYieldPct();
   }
   [carb,prot,veg].forEach(function(el){if(el)el.addEventListener('input',ipNut);});
@@ -824,8 +859,14 @@ document.querySelectorAll('.rc-proc-form').forEach(function(f){
     var t=n(carb.value)+n(prot.value)+n(veg.value);
     if(t>avail){t=avail;if(window.showToast)showToast('Carb + Protein + Vegetable exceeds processed qty','warning','Check quantities');}
     tra.value=+t.toFixed(4);
-    var y=avail-t-n(waste?waste.value:0)-n(ret?ret.value:0);
-    yld.value=+(y>0?y:0).toFixed(4);
+    // Batch 235 (Images 8, 9): the remainder is waste, and it is shown.
+    // It used to be written only to the yield_g field, which no report reads,
+    // so the section's books never closed and the Production Report printed a
+    // dash under Waste next to an 80 g gap.
+    var rem=avail-t-n(ret?ret.value:0);
+    if(rem<0){rem=0;}
+    if(waste) waste.value=+rem.toFixed(4);
+    yld.value=+rem.toFixed(4);
     rcYieldPct();
   }
   [carb,prot,veg].forEach(function(el){if(el)el.addEventListener('input',rcNut);});

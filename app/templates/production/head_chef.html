@@ -23,7 +23,7 @@
   }
 
   .hc-card {
-    background: #fff;
+    /* background: #fff; */
     border: 1px solid #dce8f2;
     border-radius: 18px;
     box-shadow: 0 12px 28px rgba(15, 30, 50, .06);
@@ -33,7 +33,7 @@
 
   .hc-kpi span {
     display: block;
-    color: #71849a;
+    /* color: #71849a; */
     font-size: 12px;
     font-weight: 900;
     text-transform: uppercase;
@@ -42,7 +42,7 @@
 
   .hc-kpi b {
     font-size: 30px;
-    color: #142a46
+    /* color: #142a46 */
   }
 
   .hc-label {
@@ -64,6 +64,9 @@
     text-transform: uppercase;
     font-size: 12px
   }
+  /* Batch 159-8 (Image 4): give the table a real width so .table-responsive
+     scrolls left/right instead of squeezing the columns. */
+  .hc-table { min-width: 1180px }
 
   .hc-status {
     border-radius: 999px;
@@ -71,7 +74,10 @@
     font-weight: 900;
     font-size: 12px;
     background: #e8f2fb;
-    color: #173b55
+    color: #173b55;
+    /* Batch 159-8 (Image 5): keep the status on ONE line. */
+    white-space: nowrap;
+    display: inline-block;
   }
 
   .hc-pending {
@@ -157,26 +163,11 @@
       <div>
         <h4 class="mb-1">{{ t('Head Chef Order Queue') }}</h4>
       </div>
-      {# Batch 185 (Img 1, 2): "Remove BOQ from here — it should show on
-         the specific order, and only once BOM is generated." A multi-order,
-         date-range BOQ export sitting on this generic queue screen was the
-         wrong place for a per-order question ("what's this ONE order's
-         bill of quantity"). The button and its filter form move to the
-         specific order's BOM page (production/orders/{order_no}) — see
-         that template for the replacement, gated on BOM already existing. #}
     </div>
-
-    {# Batch 81 fix: the quick-view chips (Today/Week/...) and the manual
-       Delivery From/To/Status form used to look and behave like two
-       different, competing filter systems, even though they always wrote
-       to the same underlying query params. Now one collapsible "Filters"
-       panel, same toggle style as every other filter bar in the app —
-       the chips are inside it as one-click shortcuts that fill in the
-       date fields below them, not a separate mechanism. #}
     <button type="button" class="isfc-filter-toggle mb-2" data-bs-toggle="collapse" data-bs-target="#hcFilterBody"
             aria-expanded="{{ 'true' if _active_filter else 'false' }}">
       <i class="bi bi-funnel"></i> Filters
-      {% if _active_filter %}<span class="badge bg-primary ms-1">Active</span>{% endif %}
+      {% if _active_filter %}<span class="badge rounded-pill bg-primary-subtle text-primary border border-primary-subtle ms-1">Active</span>{% endif %}
       <i class="bi bi-chevron-down ms-1"></i>
     </button>
     <div class="collapse {{ 'show' if _active_filter }}" id="hcFilterBody">

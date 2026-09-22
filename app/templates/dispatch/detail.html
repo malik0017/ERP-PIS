@@ -3,6 +3,15 @@
 {% block content %}
 <style>
   /* Batch 245 (Image 4): dispatch page polish — hero, logistics card, contents. */
+  /* Batch 159-9 (Image 15): professional status pill, legible on the dark hero. */
+  .disp-status{display:inline-block;font-weight:800;font-size:.8rem;letter-spacing:.02em;
+    padding:.32rem .85rem;border-radius:999px;border:1px solid rgba(255,255,255,.35);
+    background:rgba(255,255,255,.16);color:#fff;backdrop-filter:blur(2px)}
+  .disp-status-ok{background:#10b981;border-color:#0ea371;color:#fff}
+  .disp-status-bad{background:#ef4444;border-color:#dc2626;color:#fff}
+  .disp-status-info{background:#3b82f6;border-color:#2563eb;color:#fff}
+  .disp-status-prog{background:#0ea5a4;border-color:#0b8f8e;color:#fff}
+  .disp-status-wait{background:#f59e0b;border-color:#d98a06;color:#1a1300}
   .disp-hero{background:linear-gradient(120deg,#0b1f3a 0%,#123a73 48%,#2f6bff 100%);
     box-shadow:0 14px 34px rgba(11,31,58,.28);position:relative;overflow:hidden}
   .disp-hero::after{content:"";position:absolute;inset:0;background:
@@ -45,7 +54,9 @@
     <div class="d-flex align-items-center gap-2">
       <a href="/dispatch/{{ r.id }}/delivery-note" target="_blank" class="btn btn-light btn-sm fw-bold"><i class="bi bi-truck me-1"></i>Delivery Note</a>
       <a href="/dispatch" class="btn btn-outline-light btn-sm fw-bold">Back to Dispatch</a>
-      <span class="badge badge-phoenix {% if r.dispatch_status=='Delivered' %}badge-phoenix-success{% elif r.dispatch_status in ['Rejected','Cancelled'] %}badge-phoenix-danger{% elif r.dispatch_status=='Assigned' %}badge-phoenix-info{% elif r.dispatch_status=='Out for Delivery' %}badge-phoenix-primary{% else %}badge-phoenix-warning{% endif %}">{{ t(r.dispatch_status) }}</span>
+      {# Batch 159-9 (Image 15): a solid, legible status pill on the dark hero
+         (its own class, so it isn't restyled by the global colouriser). #}
+      <span class="disp-status disp-status-{% if r.dispatch_status=='Delivered' %}ok{% elif r.dispatch_status in ['Rejected','Cancelled'] %}bad{% elif r.dispatch_status=='Assigned' %}info{% elif r.dispatch_status=='Out for Delivery' %}prog{% else %}wait{% endif %}">{{ t(r.dispatch_status) }}</span>
     </div>
   </div>
 

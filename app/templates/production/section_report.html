@@ -162,6 +162,17 @@
       </span>
       <span class="small text-secondary">
         {{ t('Total quantity') }}: <strong>{{ '%.3f'|format(total_qty or 0) }}</strong>
+        {#- Batch 235: received / transferred / waste totalled beside the
+            requirement, so the report can be reconciled against the section
+            workstation without adding a column up by hand. -#}
+        {%- if totals and totals.received %}
+        · {{ t('Received') }}: <strong>{{ '%.3f'|format(totals.received) }}</strong>
+        · {{ t('Transferred') }}: <strong>{{ '%.3f'|format(totals.transferred) }}</strong>
+        · {{ t('Waste') }}: <strong>{{ '%.3f'|format(totals.waste) }}</strong>
+        {%- if totals.unaccounted and totals.unaccounted|abs > 0.0005 %}
+        · <span class="text-warning">{{ t('Unaccounted') }}: <strong>{{ '%.3f'|format(totals.unaccounted) }}</strong></span>
+        {%- endif %}
+        {%- endif %}
       </span>
     </div>
     <div class="card-body">
@@ -173,6 +184,18 @@
         <i class="bi bi-exclamation-triangle me-1"></i>
         {{ t('Showing the first') }} {{ row_cap }} {{ t('rows only — there is more data than this view can render.') }}
         {{ t('Narrow the date range, pick one section, or switch to Consolidated to see the full picture.') }}
+      </div>
+      {% endif %}
+      {% if any_estimated %}
+      {# Batch 235: some lines in this view predate the BOM-line link, so their
+         actuals were split across the ingredient's duplicate recipe lines in
+         proportion to what each line requires rather than read off their own
+         kitchen transaction. Marked with * in the Qty Received column. The
+         ingredient TOTAL is exact either way; only the split between duplicate
+         lines is derived. #}
+      <div class="alert alert-info py-2 px-3 small mb-3">
+        <i class="bi bi-info-circle me-1"></i>
+        {{ t('Figures marked * were split across this ingredient\'s repeated recipe lines in proportion to each line\'s requirement — those kitchen records were created before the BOM-line link existed. The ingredient total is exact; only the split between duplicate lines is derived.') }}
       </div>
       {% endif %}
       <div class="table-responsive">
@@ -197,6 +220,7 @@
               <th class="num">{{ t('Qty Received') }}</th>
               <th class="num">{{ t('Qty Transferred') }}</th>
               <th class="num">{{ t('Qty Waste') }}</th>
+              <th class="num">{{ t('Unaccounted') }}</th>
               <th class="num">{{ t('Yield %') }}</th>
               <th>{{ t('Issued To Section') }}</th>
               <th>{{ t('From') }}</th>
@@ -214,12 +238,13 @@
               <td class="num">{{ '%.3f'|format(r.received_qty|float) if r.received_qty else '—' }}</td>
               <td class="num">{{ '%.3f'|format(r.transferred_qty|float) if r.transferred_qty else '—' }}</td>
               <td class="num {{ 'text-danger fw-bold' if r.waste_qty and r.waste_qty|float > 0 }}">{{ '%.3f'|format(r.waste_qty|float) if r.waste_qty else '—' }}</td>
+              <td class="num {{ 'text-warning fw-bold' if r.unaccounted_qty and r.unaccounted_qty|float != 0 }}">{{ '%.3f'|format(r.unaccounted_qty|float) if r.unaccounted_qty else '—' }}</td>
               <td class="num fw-bold">{{ ('%.1f'|format(r.yield_pct) ~ '%') if r.yield_pct is not none else '—' }}</td>
               <td class="fs-9">{{ r.issued_to_section or '—' }}</td>
               <td>{{ r.work_date or '—' }}</td>
             </tr>
             {% else %}
-            <tr><td colspan="12" class="text-secondary py-4 text-center">
+            <tr><td colspan="13" class="text-secondary py-4 text-center">
               {{ t('Nothing to produce for this section and period. Check that the BOM has been generated for those orders.') }}
             </td></tr>
             {% endfor %}
@@ -243,7 +268,12 @@
               <th class="num">{{ t('Std Portions') }}</th>
               <th class="num">{{ t('Required Portions') }}</th>
               <th class="num">{{ t('Net Qty') }}</th>
-              <th class="num">{{ t('Qty') }}</th>
+              {# Batch 235 (Image 2): the column was headed just "Qty" while
+                 the one beside it said "Net Qty" — two requirement figures,
+                 only one of them labelled, so the reader had to know which was
+                 which. This is the GROSS requirement: the pre-trim weight the
+                 store hands over, net plus the yield loss. #}
+              <th class="num">{{ t('Gross Qty') }}</th>
               <th>{{ t('UOM') }}</th>
               {# Batch 206 (Image 3): the actuals beside the requirement —
                  what the store sent, what went on, what was lost, where it
@@ -251,6 +281,11 @@
               <th class="num">{{ t('Qty Received') }}</th>
               <th class="num">{{ t('Qty Transferred') }}</th>
               <th class="num">{{ t('Qty Waste') }}</th>
+              {# Batch 235 (Images 8, 9): received minus transferred, waste,
+                 return and by-product. Zero when the section closed its
+                 books; anything else is material that left the section with
+                 nobody recording where it went. #}
+              <th class="num">{{ t('Unaccounted') }}</th>
               <th class="num">{{ t('Yield %') }}</th>
               <th>{{ t('Issued To Section') }}</th>
               <th>{{ t('Portion Size / Method') }}</th>
@@ -280,15 +315,16 @@
               <td class="num fw-bold">{{ '%.3f'|format(r.net_qty|float) if r.net_qty else '—' }}</td>
               <td class="num">{{ '%.3f'|format(r.qty|float) }}</td>
               <td>{{ r.uom }}</td>
-              <td class="num">{{ '%.3f'|format(r.received_qty|float) if r.received_qty else '—' }}</td>
+              <td class="num">{{ '%.3f'|format(r.received_qty|float) if r.received_qty else '—' }}{% if r.received_qty and not r.actual_is_exact %}<span class="text-warning ms-1" title="{{ t('Split pro-rata from this ingredient\'s section total — this line predates the BOM link.') }}">*</span>{% endif %}</td>
               <td class="num">{{ '%.3f'|format(r.transferred_qty|float) if r.transferred_qty else '—' }}</td>
               <td class="num {{ 'text-danger fw-bold' if r.waste_qty and r.waste_qty|float > 0 }}">{{ '%.3f'|format(r.waste_qty|float) if r.waste_qty else '—' }}</td>
+              <td class="num {{ 'text-warning fw-bold' if r.unaccounted_qty and r.unaccounted_qty|float != 0 }}">{{ '%.3f'|format(r.unaccounted_qty|float) if r.unaccounted_qty else '—' }}</td>
               <td class="num fw-bold">{{ ('%.1f'|format(r.yield_pct) ~ '%') if r.yield_pct is not none else '—' }}</td>
               <td class="fs-9">{{ r.issued_to_section or '—' }}</td>
               <td>{{ r.portion_size or '—' }}</td>
             </tr>
             {% else %}
-            <tr><td colspan="19" class="text-secondary py-4 text-center">
+            <tr><td colspan="20" class="text-secondary py-4 text-center">
               {{ t('Nothing to produce for this section and period. Check that the BOM has been generated for those orders.') }}
             </td></tr>
             {% endfor %}
@@ -313,6 +349,7 @@
               <th class="num">{{ t('Qty Received') }}</th>
               <th class="num">{{ t('Qty Transferred') }}</th>
               <th class="num">{{ t('Qty Waste') }}</th>
+              <th class="num">{{ t('Unaccounted') }}</th>
               <th class="num">{{ t('Yield %') }}</th>
               <th>{{ t('Issued To Section') }}</th>
               <th>{{ t('Portion Size / Method') }}</th>
@@ -334,6 +371,7 @@
               <td class="num">{{ '%.3f'|format(r.received_qty|float) if r.received_qty else '—' }}</td>
               <td class="num">{{ '%.3f'|format(r.transferred_qty|float) if r.transferred_qty else '—' }}</td>
               <td class="num {{ 'text-danger fw-bold' if r.waste_qty and r.waste_qty|float > 0 }}">{{ '%.3f'|format(r.waste_qty|float) if r.waste_qty else '—' }}</td>
+              <td class="num {{ 'text-warning fw-bold' if r.unaccounted_qty and r.unaccounted_qty|float != 0 }}">{{ '%.3f'|format(r.unaccounted_qty|float) if r.unaccounted_qty else '—' }}</td>
               <td class="num fw-bold">{{ ('%.1f'|format(r.yield_pct) ~ '%') if r.yield_pct is not none else '—' }}</td>
               <td class="fs-9">{{ r.issued_to_section or '—' }}</td>
               <td>{{ r.portion_size or '—' }}</td>
@@ -341,7 +379,7 @@
               <td class="sub">{{ r.orders or '—' }}</td>
             </tr>
             {% else %}
-            <tr><td colspan="14" class="text-secondary py-4 text-center">
+            <tr><td colspan="15" class="text-secondary py-4 text-center">
               {{ t('Nothing to produce for this section and period. Check that the BOM has been generated for those orders.') }}
             </td></tr>
             {% endfor %}

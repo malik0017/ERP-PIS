@@ -180,8 +180,10 @@
   </div>
   {% set status_options = ['Passed','Hold','Rejected'] %}
   {% include 'partials/filter_bar.html' %}
-  {# Batch 204: global context filter (collapsed until used) #}
-  {% set gf_action = '/qc' %}{% set gf_compact = True %}{% include 'partials/global_filters.html' %}
+  {# Batch 159-1 (Image 11): global context filter hidden on QC — the page has
+     its own From/To/Status/Search filter bar above, so the extra global bar was
+     redundant here. #}
+  {% set gf_action = '/qc' %}{% set gf_compact = True %}{% if false %}{% include 'partials/global_filters.html' %}{% endif %}
 
   <div class="panel">
     <h3>QC Receiving Queue</h3>

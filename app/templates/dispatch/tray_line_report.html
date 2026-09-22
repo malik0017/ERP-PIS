@@ -44,35 +44,25 @@
       <h2 class="mb-1 text-white">Tray Line Report</h2>
       <div class="small opacity-75">Digital version of the paper delivery-bags form — one row per receiver, per region.</div>
     </div>
+    {# Batch 159-3b (Image 13): Print / Save-as-PDF lives in the header now. #}
+    <button type="button" class="btn btn-light fw-bold" onclick="window.print()">
+      <i class="bi bi-printer me-1"></i>{{ t('Print / Save as PDF') }}</button>
   </div>
 
   <div class="tl-card p-3 no-print">
     <form method="get" class="row g-2 align-items-end">
       <div class="col-6 col-md-2"><label class="form-label fw-bold small">{{ t('Date') }}</label>
         <input type="date" name="date" value="{{ date }}" class="form-control form-control-sm"></div>
-      <div class="col-6 col-md-3"><label class="form-label fw-bold small">{{ t('Customer') }}</label>
-        <select name="customer" class="form-select form-select-sm"><option value="">{{ t('All customers') }}</option>
-          {% for c in options.customers %}<option {% if filters.customer == c %}selected{% endif %}>{{ c }}</option>{% endfor %}</select></div>
-      <div class="col-6 col-md-2"><label class="form-label fw-bold small">{{ t('Order No') }}</label>
-        <select name="order_no" class="form-select form-select-sm"><option value="">{{ t('All orders') }}</option>
-          {# Batch 230: the list now also carries orders that are RUNNING on
-             another date, marked so it is obvious they are not on this one —
-             picking one is how you find the date you actually wanted. #}
-          {% for o in options.orders %}
-          <option {% if filters.order_no == o %}selected{% endif %} value="{{ o }}">{{ o }}{% if o not in options.day_orders %} · {{ t('other date') }}{% endif %}</option>
-          {% endfor %}</select>
-        <!-- <div class="tl-hint">{{ t('Running orders are listed even when they are not on this date.') }}</div> -->
-      </div>
-      <div class="col-6 col-md-1"><label class="form-label fw-bold small">{{ t('Brand') }}</label>
-        <select name="brand" class="form-select form-select-sm"><option value="">{{ t('All') }}</option>
-          {% for b in options.brands %}<option {% if filters.brand == b %}selected{% endif %}>{{ b }}</option>{% endfor %}</select></div>
-      <div class="col-6 col-md-1"><label class="form-label fw-bold small">{{ t('Region') }}</label>
-        <select name="region" class="form-select form-select-sm"><option value="">{{ t('All') }}</option>
-          {% for rg in options.regions %}<option {% if filters.region == rg %}selected{% endif %}>{{ rg }}</option>{% endfor %}</select></div>
-      <div class="col-6 col-md-1"><label class="form-label fw-bold small">{{ t('Status') }}</label>
-        <select name="status" class="form-select form-select-sm"><option value="">{{ t('All') }}</option>
-          {% for st in options.statuses %}<option value="{{ st }}" {% if filters.status == st %}selected{% endif %}>{{ t(st) }}</option>{% endfor %}</select></div>
-      <div class="col-12 col-md-2 d-flex gap-2">
+      {# Batch 159-3b (Image 13): one merged picker — choose an order (its customer
+         and status show with it) and Load shows that order's full detail. Type to
+         search by order or customer; leave blank for the whole day. #}
+      <div class="col-12 col-md-7"><label class="form-label fw-bold small">{{ t('Order') }} <span class="text-body-tertiary">({{ t('or customer') }})</span></label>
+        <input name="order_no" value="{{ filters.order_no }}" class="form-control form-control-sm"
+               list="tlOrderList" autocomplete="off" placeholder="{{ t('All orders — type order no or customer…') }}">
+        <datalist id="tlOrderList">
+          {% for o in order_options %}<option value="{{ o.order_no }}">{{ o.order_no }}{% if o.customer %} · {{ o.customer }}{% endif %}{% if o.status %} · {{ o.status }}{% endif %}</option>{% endfor %}
+        </datalist></div>
+      <div class="col-12 col-md-3 d-flex gap-2">
         <button class="btn btn-primary fw-bold flex-fill"><i class="bi bi-search"></i> {{ t('Load') }}</button>
         <a class="btn btn-outline-secondary btn-sm" href="?date={{ date }}" title="{{ t('Clear filters') }}"><i class="bi bi-x-lg"></i></a>
       </div>
@@ -81,8 +71,6 @@
         <span><strong class="text-body">{{ totals.receivers }}</strong> {{ t('receivers') }}</span>
         <span><strong class="text-body">{{ totals.bags }}</strong> {{ t('bags') }}</span>
         <span>{{ t('Orders without a dispatch date are listed on their delivery date.') }}</span>
-        <button type="button" class="btn btn-outline-secondary btn-sm fw-bold ms-auto" onclick="window.print()">
-          <i class="bi bi-printer"></i> {{ t('Print / Save as PDF') }}</button>
       </div>
     </form>
   </div>

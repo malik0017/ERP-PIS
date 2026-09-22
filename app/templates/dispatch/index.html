@@ -205,8 +205,8 @@
   </div>
   {% set status_options = ['Packed','Assigned','Out for Delivery','Delivered'] %}
   {% include 'partials/filter_bar.html' %}
-  {# Batch 204: global context filter (collapsed until used) #}
-  {% set gf_action = '/dispatch' %}{% set gf_compact = True %}{% include 'partials/global_filters.html' %}
+  {# Batch 159-1 (Image 14): global context filter hidden on Dispatch / Delivery. #}
+  {% set gf_action = '/dispatch' %}{% set gf_compact = True %}{% if false %}{% include 'partials/global_filters.html' %}{% endif %}
 
   <div class="panel">
     <h3>Dispatch Worklist</h3>

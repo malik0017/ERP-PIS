@@ -67,10 +67,14 @@
               <option value="pending" {% if filters.show == 'pending' %}selected{% endif %}>Pending only</option>
               <option value="all" {% if filters.show == 'all' %}selected{% endif %}>All lines</option>
             </select></div>
-          <div><label class="form-label fw-bold">Order</label>
-            <input type="text" name="order" value="{{ filters.order }}" class="form-control" placeholder="Order no"></div>
-          <div><label class="form-label fw-bold">Customer</label>
-            <input type="text" name="customer" value="{{ filters.customer }}" class="form-control" placeholder="Name"></div>
+          {# Batch 159-3 (Image 8): one field — pick an order and its customer
+             shows with it. Type to search order or customer name. #}
+          <div style="min-width:280px"><label class="form-label fw-bold">Order</label>
+            <input type="text" name="order" value="{{ filters.order }}" class="form-control"
+                   list="bySecOrderList" autocomplete="off" placeholder="Order no or customer…">
+            <datalist id="bySecOrderList">
+              {% for o in order_options %}<option value="{{ o.order_no }}">{{ o.order_no }}{% if o.customer %} · {{ o.customer }}{% endif %}{% if o.status %} · {{ o.status }}{% endif %}</option>{% endfor %}
+            </datalist></div>
         </div>
         <div class="si-filter-row">
           <div class="si-filter-narrow"><label class="form-label fw-bold">From</label>
@@ -99,6 +103,22 @@
            replacing the per-row Open buttons. #}
         <a class="btn btn-primary btn-sm fw-bold" href="/production/store-issuance" title="Open the full Store Issuance queue">
           <i class="bi bi-box-arrow-up-right"></i> Open in Store Issuance</a>
+        {# Batch 159-MO: issue this whole section for one OR several selected
+           orders at once. Blank selection = every order in the section. Each
+           pending line is issued at its required quantity. #}
+        {% if g.pending and g.order_list %}
+        <form method="post" action="/production/store-issuance/by-section/issue-section"
+              class="d-flex gap-1 align-items-center"
+              data-confirm="Issue every pending line in {{ g.section }} for the selected order(s)? Leave the list empty to issue for all orders in this section."
+              data-confirm-title="Issue Section" data-confirm-ok="Issue" data-confirm-variant="success">
+          <input type="hidden" name="section" value="{{ g.section }}">
+          <select name="orders" multiple size="1" class="form-select form-select-sm" style="min-width:180px;max-height:34px"
+                  title="{{ t('Ctrl / Cmd-click to pick orders; leave empty for all') }}">
+            {% for o in g.order_list %}<option value="{{ o }}">{{ o }}</option>{% endfor %}
+          </select>
+          <button class="btn btn-success btn-sm fw-bold"><i class="bi bi-box-seam me-1"></i>{{ t('Issue selected') }}</button>
+        </form>
+        {% endif %}
         {# Batch 138: per-section CSV/PDF removed — one download point (top of page,
            "current filters") avoids confusion about which data is exported. #}
       </div>

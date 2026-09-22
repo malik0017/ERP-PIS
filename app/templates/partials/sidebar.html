@@ -212,6 +212,12 @@ Pairs with the vertical sidebar. Brand + search + notifications + profile.
           aria-haspopup="true" aria-expanded="false" data-bs-auto-close="outside"><span class="d-block"
             style="height:20px;width:20px;"><span data-feather="bell" style="height:20px;width:20px;"></span></span>
           {% if unread_notifications and unread_notifications > 0 %}
+          {# Batch 159-5 (Image 6): compact, correctly-positioned unread badge. #}
+          <style>
+            .isfc-bell-badge{top:1px;right:0;min-width:16px;height:16px;padding:0 4px;
+              font-size:10px;line-height:16px;font-weight:700;background:#ef4444 !important;color:#fff !important;
+              border:2px solid var(--phoenix-body-bg,#fff);border-radius:999px}
+          </style>
           <span class="position-absolute badge rounded-pill bg-danger isfc-bell-badge"
                 title="{{ unread_notifications }} {{ t('unread') }}">{{ unread_notifications if unread_notifications < 100 else '99+' }}</span>
           {% endif %}

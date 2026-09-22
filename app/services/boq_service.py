@@ -70,7 +70,16 @@ def order_where(f: dict, cid: int) -> tuple[str, dict]:
         clauses.append(f"o.order_no IN ({','.join(binds)})")
     elif f.get("order_no"):
         clauses.append("o.order_no LIKE :on"); params["on"] = f"%{f['order_no']}%"
-    if f.get("brand"):
+    if f.get("brands"):
+        # Batch 236 (Image 1): brand joins customer and order as a multi-value
+        # filter, because the unified finder lets you tick two brands the same
+        # way it lets you tick two customers. A single ?brand= still works — it
+        # arrives as a one-item list from _filters().
+        binds = []
+        for i, b in enumerate(f["brands"]):
+            k = f"br{i}"; binds.append(f":{k}"); params[k] = b
+        clauses.append(f"COALESCE(o.brand,'') IN ({','.join(binds)})")
+    elif f.get("brand"):
         clauses.append("COALESCE(o.brand,'') LIKE :br"); params["br"] = f"%{f['brand']}%"
     if f.get("kitchen"):
         clauses.append("COALESCE(o.kitchen,'') LIKE :kt"); params["kt"] = f"%{f['kitchen']}%"
@@ -348,6 +357,11 @@ def picker_options(db: Session, cid: int) -> dict:
                            f"WHERE {open_clause} ORDER BY o.customer_name LIMIT 500"),
         "orders": _opts(f"SELECT DISTINCT o.order_no FROM customer_orders o "
                         f"WHERE {open_clause} ORDER BY o.order_no DESC LIMIT 500"),
+        # Batch 159-4 (Image 7): order shown WITH its customer in one field.
+        "orders_detailed": _rows(db, f"""
+                SELECT o.order_no, COALESCE(o.customer_name,'') AS customer
+                FROM customer_orders o WHERE {open_clause}
+                ORDER BY o.order_no DESC LIMIT 500""", cid),
         "brands": _opts(f"SELECT DISTINCT o.brand FROM customer_orders o "
                         f"WHERE {open_clause} AND COALESCE(o.brand,'') <> '' ORDER BY o.brand LIMIT 200"),
         "recipes": [
@@ -359,7 +373,88 @@ def picker_options(db: Session, cid: int) -> dict:
         ],
         "sections": ["Cutting", "Butchery", "Hot Kitchen", "Cold Kitchen",
                      "Bakery/Pastry", "Trayline / Packing"],
+        # Batch 236 (Image 1): ONE list for ONE box. See finder_options().
+        "finder": finder_options(db, cid),
     }
+
+
+def finder_options(db: Session, cid: int) -> list[dict]:
+    """Batch 236 (Image 1) — everything the one search box can find.
+
+    The screen had three separate pickers stacked across the filter bar:
+    Customer (multi), Order No (multi) and Brand (free text + datalist). They
+    filter the same thing — which orders are in scope — so the chef had to
+    decide WHICH BOX a thing lived in before typing it, and "Ma'una" belongs to
+    two of them. Your note: *merge all three fields into one, user can search
+    with customer name, order code and brand*.
+
+    One list, three kinds of entry, each carrying the parameter it submits:
+
+        {"kind": "order",    "value": "ORD-20260906-0001",
+         "label": "ORD-20260906-0001", "sub": "Ma'una Foundation (FRSH)",
+         "search": "ord-20260906-0001 ma'una foundation (frsh) gourmet 360"}
+
+    `search` is everything about the entry lowercased and concatenated, so
+    typing a customer name finds that customer's ORDERS as well as the
+    customer itself — which is what someone means when they type it.
+
+    The kinds map onto the existing request parameters (customer / order_no /
+    brand), so nothing downstream changes, old bookmarks keep working, and the
+    Excel export and print sheet read the same filter they always did.
+    """
+    open_clause = ("(o.company_id = :cid OR o.company_id IS NULL) "
+                   "AND COALESCE(o.status,'') NOT IN ('Cancelled','Rejected')")
+    rows = _rows(db, f"""
+        SELECT o.order_no,
+               COALESCE(o.customer_name,'') AS customer,
+               COALESCE(o.brand,'')         AS brand,
+               o.required_delivery_date     AS delivery_date
+          FROM customer_orders o
+         WHERE {open_clause}
+         ORDER BY o.required_delivery_date DESC, o.order_no DESC
+         LIMIT 800""", cid)
+
+    out: list[dict] = []
+    customers: "OrderedDict[str, dict]" = OrderedDict()
+    brands: "OrderedDict[str, dict]" = OrderedDict()
+
+    for r in rows:
+        order_no, customer, brand, delivery = r[0], r[1] or "", r[2] or "", r[3]
+        if not order_no:
+            continue
+        sub_bits = [x for x in (customer, brand, str(delivery) if delivery else "") if x]
+        out.append({
+            "kind": "order", "value": order_no, "label": order_no,
+            "sub": " · ".join(sub_bits),
+            "search": " ".join([order_no, customer, brand]).lower(),
+        })
+        if customer:
+            c = customers.setdefault(customer, {"orders": 0, "brands": set()})
+            c["orders"] += 1
+            if brand:
+                c["brands"].add(brand)
+        if brand:
+            b = brands.setdefault(brand, {"orders": 0})
+            b["orders"] += 1
+
+    # Customers and brands go FIRST: picking "every order for this customer" is
+    # the broader, more common intent, and a long order list underneath would
+    # otherwise bury them.
+    head: list[dict] = []
+    for name, c in customers.items():
+        head.append({
+            "kind": "customer", "value": name, "label": name,
+            "sub": f"{c['orders']} order(s)" + (f" · {', '.join(sorted(c['brands']))}"
+                                                if c["brands"] else ""),
+            "search": (name + " " + " ".join(c["brands"])).lower(),
+        })
+    for name, b in brands.items():
+        head.append({
+            "kind": "brand", "value": name, "label": name,
+            "sub": f"{b['orders']} order(s)",
+            "search": name.lower(),
+        })
+    return head + out
 
 
 def _rows(db: Session, sql: str, cid: int) -> list:

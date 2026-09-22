@@ -67,6 +67,31 @@
             text-align: left;
         }
 
+        .ref {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            flex-wrap: wrap;
+            font-size: 12px;
+            color: #6e7891;
+            background: #eef1f6;
+            border-radius: 8px;
+            padding: 8px 12px;
+            margin-bottom: 24px;
+            text-align: left;
+        }
+
+        .ref strong {
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            color: #344050;
+            letter-spacing: .04em;
+        }
+
+        .ref .path {
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            word-break: break-all;
+        }
+
         .btn {
             display: inline-block;
             text-decoration: none;
@@ -95,6 +120,16 @@
         <h1>Something went wrong</h1>
         <p>An unexpected error occurred while processing your request. The team has been notified.</p>
         {% if error %}<div class="detail">{{ error }}</div>{% endif %}
+        {# Batch 235 (Image 1): the reference code and the page that failed.
+           Without them a screenshot of this card is unactionable — the same
+           message can come from many places. The code is stable per fault,
+           so `grep PIS-XXXXXX` in the log lands on the exact traceback. #}
+        {% if error_ref %}
+        <div class="ref">
+            <span>Reference <strong>{{ error_ref }}</strong></span>
+            {% if error_path %}<span class="path">{{ error_path }}</span>{% endif %}
+        </div>
+        {% endif %}
         <a class="btn btn-primary" href="/dashboard">Go to Dashboard</a>
         <a class="btn btn-light" href="javascript:history.back()">Go Back</a>
     </div>
