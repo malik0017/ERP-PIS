@@ -16,6 +16,7 @@ from app.database.session import get_db
 from app.models.production import CustomerOrder, OrderLine
 from app.services.production_service import preview_bom_shortages
 from app.core.company import require_order_scope, require_record_scope
+from app.services.order_costing import order_line_costing, refresh_order_totals
 
 router = APIRouter(prefix="/sales-requests", tags=["Sales Requests"])
 
@@ -244,9 +245,15 @@ def sales_request_detail(request: Request, order_no: str, db: Session = Depends(
         ORDER BY id DESC
     """), {"o": order_no}).mappings().all() if _pr_table_exists(db) else []
 
+    # Batch 247: food cost / sale value per line and for the whole request,
+    # so the reviewer approves knowing what the order costs and earns.
+    costing = order_line_costing(db, cid, order_no)
+    line_cost = {c["id"]: c for c in costing["lines"]}
+
     return render(request, "sales_review/detail.html", {
         "order": order, "lines": lines, "shortages": shortages,
         "coverage": coverage, "existing_prs": existing_prs,
+        "costing": costing, "line_cost": line_cost,
         "page_title": f"Sales Request {order_no}",
     })
 
@@ -346,6 +353,14 @@ async def update_portions(request: Request, order_no: str, db: Session = Depends
     # keep the order header's planned-portions total in sync
     try:
         order.total_planned_portions = total
+    except Exception:
+        pass
+    db.flush()
+    # Batch 247: and its food cost / sale value / margin. Before this the
+    # header kept the ORIGINAL totals after a correction, so the approval
+    # screen, the order register and the map all disagreed with the lines.
+    try:
+        refresh_order_totals(db, cid, order)
     except Exception:
         pass
     db.commit()

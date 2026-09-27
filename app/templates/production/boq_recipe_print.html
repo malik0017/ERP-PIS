@@ -31,6 +31,59 @@
 {% set rp_subtitle = stamp %}
 {% set rp_stamp = stamp %}
 {% set rp_own_sheets = true %}
+{#- =========================================================================
+    Batch 247 (Image 5) — THE 2-UP SHEET RAN OFF THE PAGE ON SCREEN.
+
+    ROOT CAUSE, two layers:
+      1. The browser was running a CACHED isfc-report.css from before Batch
+         236 — the link had no version — so .rp-2up never applied and the
+         18-column table took its natural width, past the sheet edge.
+      2. Even with the current stylesheet the layout did not fit: 2 × 9
+         columns in a fixed, equal split on portrait A4 gives ~39 px per
+         column, so numbers and headers collided (confirmed in a browser).
+    It PRINTED fine only because Chrome shrinks a too-wide page to fit the
+    paper. The screen now does exactly the same thing on purpose: natural
+    column widths (nothing collides), then each table is scaled down to its
+    sheet if — and only if — it is wider. Same result on screen and paper.
+
+    The rules sit here, with the page, so a stale stylesheet cannot undo
+    them; core/templates.asset_v also versions the stylesheet link now.
+    ========================================================================= -#}
+{% block rp_head %}
+<style>
+  .rp-group { overflow: hidden; }
+  .rp-group table { width: 100%; }
+  table.rp-2up { table-layout: auto; }
+  table.rp-2up th, table.rp-2up td { font-size: 8.6px; padding: 3px 4px; white-space: nowrap; }
+  table.rp-2up th { font-size: 8px; white-space: normal; word-break: normal; overflow-wrap: normal; }
+  table.rp-2up td[data-c="ingredient"] { white-space: normal; min-width: 84px; }
+  table.rp-2up td[data-c="cutting"], table.rp-2up td[data-c="component"] { white-space: normal; }
+  table.rp-2up .rp-2a { border-inline-start: 2px solid #c9d4e3; padding-inline-start: 7px; }
+  table.rp-2up .rp-tick { width: 11px; height: 9px; }
+</style>
+<script>
+  /* Fit every sheet table to its box: scale down only when wider.
+     The target is capped at the A4 printable width (188 mm at 96 dpi), so
+     the zoom computed on screen is already right for paper — printing does
+     not depend on a beforeprint event firing. */
+  (function () {
+    var A4_PX = 188 * 96 / 25.4;
+    function fit() {
+      document.querySelectorAll('.rp-group').forEach(function (g) {
+        var t = g.querySelector('table');
+        if (!t) return;
+        t.style.zoom = '';
+        var need = t.scrollWidth, have = Math.min(g.clientWidth || A4_PX, A4_PX);
+        if (need > have + 1) t.style.zoom = (have / need).toFixed(4);
+      });
+    }
+    document.addEventListener('DOMContentLoaded', fit);
+    window.addEventListener('beforeprint', fit);
+    window.addEventListener('afterprint', fit);
+    window.addEventListener('load', fit);
+  })();
+</script>
+{% endblock %}
 {% block rp_sheets %}
 {% set hide = hide or [] %}
 {% set up = up or 1 %}
@@ -90,6 +143,7 @@
       ['component', t('Component'), ''],
       ['code', t('Code'), ''],
       ['ingredient', t('Ingredient'), ''],
+      ['per_portion', t('Per Portion'), 'rp-num'],
       ['net_qty', t('Net Qty'), 'rp-num rp-q'],
       ['issue_qty', t('Issue Qty'), 'rp-num'],
       ['uom', t('UOM'), ''],
@@ -125,6 +179,7 @@
       ['code', t('Code'), ''],
       ['ingredient', t('Ingredient'), ''],
       ['section', t('Section'), ''],
+      ['per_portion', t('Per Portion'), 'rp-num'],
       ['net_qty', t('Total Net Qty'), 'rp-num rp-q'],
       ['issue_qty', t('Total Issue Qty'), 'rp-num'],
       ['uom', t('UOM'), ''],

@@ -14,7 +14,7 @@
        any screen looks the same. The class names these forms already use —
        .meta, .badge, .sig, .totals — are defined there, so no child template
        needed changing. #}
-    <link rel="stylesheet" href="{{ url_for('static', path='css/isfc-report.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', path='css/isfc-report.css') }}?v={{ asset_v('css/isfc-report.css') }}">
   </head>
   <body>
     <div class="rp-bar">

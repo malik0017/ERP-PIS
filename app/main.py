@@ -259,6 +259,8 @@ app.include_router(masters_router)
 app.include_router(orders_router)
 from app.modules.orders.routes_menu import router as menu_router  
 app.include_router(menu_router)
+from app.modules.masters.routes_plans import router as customer_plans_router  # Batch 248
+app.include_router(customer_plans_router)  # Master → Customer Plans
 app.include_router(sales_review_router)   
 app.include_router(purchase_req_router)   
 app.include_router(qc_router)
@@ -971,6 +973,18 @@ async def startup_event():
         logger.error(f"Startup schema check failed (sales_review_status): {exc}")
 
     _ensure_recipe_menu_columns()   
+    # Batch 248: customer meal plans (Salus) — plan tables + order_lines.plan_code.
+    try:
+        from app.database.session import SessionLocal
+        from app.services.customer_plans import ensure_plan_schema
+        _db = SessionLocal()
+        try:
+            ensure_plan_schema(_db)
+            logger.info("Verified customer plan schema")
+        finally:
+            _db.close()
+    except Exception as exc:
+        logger.error(f"Startup schema check failed (customer plans): {exc}")
     try:
         from app.database.session import SessionLocal
         from app.modules.purchase_req.routes import ensure_schema as _pr_ensure_schema

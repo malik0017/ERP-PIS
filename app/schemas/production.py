@@ -9,6 +9,8 @@ class OrderLineIn(BaseModel):
     required_portions: float = Field(gt=0)
     selling_price_per_portion: float = 0
     customer_notes: Optional[str] = None
+    # Batch 248: meal plan this line is for (Salus Comfy / Low Carb / ...).
+    plan_code: Optional[str] = None
 
 
 class CustomerOrderCreate(BaseModel):

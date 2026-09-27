@@ -225,7 +225,9 @@ def import_recipe_ingredients(db, ws, company_id, dry):
     # Batch 136: Butchery cutting / portion-size column (header carries a typo
     # "Buchery" in the workbook — match both spellings).
     c_cut = col(hdr, "buchery cutting /portion size", "butchery cutting /portion size",
-                "buchery cutting / portion size", "cutting /portion size", "portion size")
+                "buchery cutting / portion size", "cutting /portion size", "portion size",
+                # Batch 248: Salus workbook spelling.
+                "protein cutting size/method", "protein cutting size / method")
     c_subdesc = col(hdr, "sub recipe description")
     c_icode = col(hdr, "item code")
     c_iname = col(hdr, "item / ingredient", "item/ingredient")
@@ -247,7 +249,8 @@ def import_recipe_ingredients(db, ws, company_id, dry):
     c_price = col(hdr, "purchase price  standard uom", "purchase price standard uom",
                   "pp st. uom", "pp st uom")
     c_fcpp = col(hdr, "food cost per portion")
-    c_total = col(hdr, "total cost")
+    # Batch 248: Salus heads it "Total Food Cost".
+    c_total = col(hdr, "total cost", "total food cost")
     c_butchery = col(hdr, "buchery cutting /portion size", "butchery cutting /portion size")
 
     recipes: dict[str, dict] = {}

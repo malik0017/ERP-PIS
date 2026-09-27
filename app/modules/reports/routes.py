@@ -251,7 +251,9 @@ def relationship_map(
 
     selected_order = None
     if order_no:
-        selected_order = _first(db, """
+        # Batch 247: company-scoped (was _first with no cid — an order number
+        # typed into the URL could open another company's order here).
+        _sel = _rows(db, """
             SELECT order_no, customer_name, brand, channel, status,
                    COALESCE(required_delivery_date,'') AS delivery_date,
                    COALESCE(required_delivery_time,'') AS delivery_time,
@@ -266,31 +268,8 @@ def relationship_map(
             FROM customer_orders
             WHERE order_no = :order_no
             LIMIT 1
-        """, {"order_no": order_no})
-
-    counts = {
-        "customers": _one(db, "SELECT COUNT(*) FROM customers WHERE company_id=:company_id", {"company_id": company_id}),
-        "brands": _one(db, "SELECT COUNT(*) FROM brands WHERE company_id=:company_id", {"company_id": company_id}),
-        "channels": _one(db, "SELECT COUNT(*) FROM revenue_streams WHERE company_id=:company_id", {"company_id": company_id}),
-        "inventory": _one(db, "SELECT COUNT(*) FROM ingredients WHERE company_id=:company_id OR company_id IS NULL", {"company_id": company_id}),
-        "recipes": _one(db, """
-            SELECT COUNT(*) FROM recipes
-            WHERE company_id=:company_id AND UPPER(TRIM(COALESCE(status,'')))='ACTIVE' AND COALESCE(is_active,1)=1
-        """, {"company_id": company_id}),
-        "recipe_bom": _one(db, """
-            SELECT COUNT(*) FROM recipe_ingredients ri
-            JOIN recipes r ON r.id = ri.recipe_id
-            WHERE r.company_id=:company_id AND UPPER(TRIM(COALESCE(r.status,'')))='ACTIVE'
-        """, {"company_id": company_id}),
-        "orders": _one(db, "SELECT COUNT(*) FROM customer_orders", cid=_scope_cid(request)),
-        "head_chef": _one(db, "SELECT COUNT(*) FROM head_chef_plans"),
-        "bom_lines": _one(db, "SELECT COUNT(*) FROM bom_lines", cid=_scope_cid(request)),
-        "store_lines": _one(db, "SELECT COUNT(*) FROM store_issuance_lines", cid=_scope_cid(request)),
-        "section_txns": _one(db, "SELECT COUNT(*) FROM kitchen_section_transactions", cid=_scope_cid(request)),
-        "qc": _one(db, "SELECT COUNT(*) FROM qc_checks", cid=_scope_cid(request)),
-        "packing": _one(db, "SELECT COUNT(*) FROM packing_dispatch", cid=_scope_cid(request)),
-        "dispatch": _one(db, "SELECT COUNT(*) FROM packing_dispatch WHERE dispatch_status IN ('Out for Delivery','Delivered','Dispatched','Closed')", cid=_scope_cid(request)),
-    }
+        """, {"order_no": order_no}, cid=_scope_cid(request))
+        selected_order = _sel[0] if _sel else None
 
     order_params = {"order_no": order_no or ""}
     doc_counts = {
@@ -349,38 +328,29 @@ def relationship_map(
         },
     ]
 
-    master_nodes = [
-        {"title": "Customer Master", "metric": counts["customers"], "url": "/customers", "feeds": "Order header", "icon": "bi-people"},
-        {"title": "Brand Master", "metric": counts["brands"], "url": "/brands", "feeds": "Order + recipe", "icon": "bi-tags"},
-        {"title": "Sales Channel", "metric": counts["channels"], "url": "/revenue-streams", "feeds": "Order commercial route", "icon": "bi-broadcast"},
-        {"title": "Recipe Master", "metric": counts["recipes"], "url": "/recipes?status=ACTIVE", "feeds": "Order recipe lines", "icon": "bi-journal-text"},
-        {"title": "Recipe BOM", "metric": counts["recipe_bom"], "url": "/recipes/ingredients?status=ACTIVE", "feeds": "Production BOM", "icon": "bi-list-check"},
-        {"title": "Inventory Master", "metric": counts["inventory"], "url": "/inventory", "feeds": "BOM cost, UOM, section", "icon": "bi-boxes"},
-    ]
-
-    flows = _rows(db, """
-        SELECT COALESCE(NULLIF(status,''),'Submitted') AS status, COUNT(*) AS total
-        FROM customer_orders
-        GROUP BY COALESCE(NULLIF(status,''),'Submitted')
-        ORDER BY total DESC, status ASC
-    """, cid=_scope_cid(request))
-
-    report_links = [
-        {"title": "Order Register", "url": "/reports/export/order-register", "desc": "All orders with customer, brand, delivery, food cost, sale and margin."},
-        {"title": "BOM Cost by Section", "url": "/reports/export/bom-section-cost", "desc": "Material cost split by store issue section."},
-        {"title": "BOM Cost by Category", "url": "/reports/export/bom-category-cost", "desc": "Material cost split by main/sub category."},
-        {"title": "Yield & Wastage", "url": "/reports/yield-wastage", "desc": "Section input/output/waste and transfer analysis."},
-        {"title": "QC & Packing", "url": "/reports", "desc": "Final quality, packing and dispatch readiness."},
-    ]
+    # ------------------------------------------------------------------
+    # Batch 247 — ORDER COST, WASTE & YIELD replaces "Master Data Feeding the
+    # Flow", "Live Order Status Mix" and "Reports Connected to this Map".
+    #
+    # Your note: *all of this information is useless — show the order food
+    # cost, waste, yields and maximum order detail here.* Those three panels
+    # were company-wide (row counts of the customer / brand / recipe masters,
+    # a status histogram of every order, five static links) and said nothing
+    # about the order selected at the top of the page. They also cost eight
+    # COUNT(*) queries on every load. Everything below is about THIS order,
+    # from services/order_costing.py — the same figures as the Sales Request
+    # approval screen.
+    # ------------------------------------------------------------------
+    intel = None
+    if selected_order:
+        from app.services.order_costing import order_intelligence
+        intel = order_intelligence(db, _scope_cid(request), selected_order["order_no"])
 
     return render(request, "reports/relationship_map.html", {
-        "counts": counts,
-        "flows": flows,
         "selected_order": selected_order,
         "recent_orders": recent_orders,
         "doc_flow": doc_flow,
-        "master_nodes": master_nodes,
-        "report_links": report_links,
+        "intel": intel,
         "page_title": "Document Relationship Map",
     })
 

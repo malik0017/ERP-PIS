@@ -142,6 +142,60 @@
     background: var(--phoenix-body-bg, #fff);
   }
 
+  /* Batch 247: order-cost columns + Check Order Cost dialog. */
+  .sap-check { background:#fff4e5; color:#8a4b00; border:1px solid #ffd59a; }
+  .isfc-order-table td.c-fc, .isfc-order-table td.c-sv,
+  .isfc-order-table td.c-fcpp, .isfc-order-table td.c-sppp { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .order-cost-foot td { background: var(--phoenix-body-highlight-bg, #f3f7fc); border-top: 2px solid #c9d7e4; }
+  .oc-kpis { display:grid; grid-template-columns: repeat(5, 1fr); gap:10px; margin-bottom:14px; }
+  .oc-kpis div { border:1px solid #dce8f2; border-radius:12px; padding:10px 12px; }
+  .oc-kpis b { display:block; font-size:.68rem; text-transform:uppercase; letter-spacing:.04em; color:#6f8196; }
+  .oc-kpis span { font-size:1.15rem; font-weight:800; color:#142a46; }
+  @media (max-width: 760px) { .oc-kpis { grid-template-columns: 1fr 1fr; } }
+
+  /* ---- Batch 248: guided steps, meal-plan chips, plan matrix ------------- */
+  .order-steps { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:14px; }
+  .order-steps .st { display:flex; align-items:center; gap:7px; padding:6px 12px 6px 6px; border-radius:999px;
+    background:#f1f5fa; color:#6f8196; font-size:.78rem; font-weight:700; }
+  .order-steps .st b { width:22px; height:22px; border-radius:50%; display:grid; place-items:center;
+    background:#dce6f2; color:#48607c; font-size:.72rem; }
+  .order-steps .st.done { background:#e7f6ee; color:#147344; }
+  .order-steps .st.done b { background:#21a365; color:#fff; }
+  .order-steps .st.now { background:#e8f0fe; color:#1e5bb8; box-shadow: inset 0 0 0 1.5px #1e5bb8; }
+  .order-steps .st.now b { background:#1e5bb8; color:#fff; }
+  .order-steps .st.d-none { display:none; }
+  .linked-tag { font-size:.62rem; font-weight:800; text-transform:uppercase; letter-spacing:.04em;
+    color:#147344; background:#e7f6ee; border-radius:999px; padding:1px 7px; margin-left:6px; }
+  .plan-step { margin-top:14px; padding:14px; border:1px dashed #b9cde4; border-radius:14px; background:#f8fbff; }
+  .plan-chips { display:flex; flex-wrap:wrap; gap:10px; margin-top:8px; }
+  .plan-chip { --pc:#1e5bb8; border:1.5px solid #d3deeb; background:#fff; border-radius:14px; padding:10px 14px 10px 12px;
+    min-width:170px; text-align:start; cursor:pointer; display:flex; gap:10px; align-items:flex-start;
+    transition: box-shadow .15s, border-color .15s; }
+  .plan-chip .dot { width:10px; height:10px; border-radius:50%; background:var(--pc); margin-top:5px; flex:0 0 10px; opacity:.35; }
+  .plan-chip .nm { font-weight:800; color:#142a46; display:block; }
+  .plan-chip .mx { font-size:.74rem; color:#6f8196; }
+  .plan-chip[aria-pressed="true"] { border-color:var(--pc); box-shadow:0 6px 16px rgba(20,42,70,.08), inset 0 0 0 1px var(--pc); }
+  .plan-chip[aria-pressed="true"] .dot { opacity:1; }
+  .plan-chip[aria-pressed="false"] .nm { color:#8a97a8; }
+  .plan-matrix th.mx-plan { text-align:center; border-top:3px solid var(--pc,#1e5bb8); min-width:118px; }
+  .plan-matrix th.mx-plan small { display:block; font-weight:600; text-transform:none; color:#6f8196; font-size:.68rem; }
+  .plan-matrix td.mx-cell, .plan-matrix td.mx-any { text-align:center; }
+  .plan-matrix .mx-qty { max-width:96px; margin:0 auto; text-align:center; }
+  .plan-matrix td.mx-any .mx-qty { max-width:140px; }
+  .plan-matrix .mx-cpp { display:block; font-size:.68rem; color:#8a97a8; margin-top:2px; font-variant-numeric:tabular-nums; }
+  .plan-matrix .mx-na { color:#c3ccd8; }
+  .plan-matrix .mx-any-lbl { display:block; font-size:.66rem; color:#8a97a8; text-transform:uppercase; letter-spacing:.04em; margin-top:2px; }
+  .plan-matrix tr.mx-group td { background:#eef4fb; font-weight:800; text-transform:uppercase; letter-spacing:.04em;
+    color:#1e3a5f; padding:8px 12px; }
+  .plan-matrix tr.mx-row.has-qty td { background:#fbfdff; }
+  .plan-matrix tfoot td { background:var(--phoenix-body-highlight-bg,#f3f7fc); border-top:2px solid #c9d7e4; font-weight:800; }
+  .plan-matrix .mx-name { font-weight:700; color:#142a46; }
+  .plan-matrix .mx-code { font-size:.72rem; color:#8a97a8; }
+  .plan-matrix td.num { text-align:end; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  /* Batch 248 (Image 4): menu rows lead with the recipe NAME; code underneath. */
+  .isfc-order-table .recipe-display[readonly] { border-color:transparent; background:transparent;
+    font-weight:700; color:#142a46; padding-left:2px; }
+
   .portal-lines-head .sap-label {
     font-weight: 700;
     text-transform: uppercase;
@@ -168,6 +222,16 @@
   <div class="sap-card">
     <form method="post" action="/production/orders/create" id="orderForm">
       {% if immediate %}<input type="hidden" name="immediate" value="1">{% endif %}
+      {# Batch 248: the order is filled top to bottom, each step unlocking the
+         next — customer fills brand + channel, which reveals the customer's
+         meal plans (if any), then the delivery date loads that day's menu. #}
+      <div class="order-steps" id="orderSteps" aria-label="{{ t('Order steps') }}">
+        <span class="st now" data-step="customer"><b>1</b>{{ t('Customer') }}</span>
+        <span class="st" data-step="brand"><b>2</b>{{ t('Brand & Channel') }}</span>
+        <span class="st d-none" data-step="plans"><b>3</b>{{ t('Meal Plans') }}</span>
+        <span class="st" data-step="date"><b class="st-n">3</b>{{ t('Delivery') }}</span>
+        <span class="st" data-step="qty"><b class="st-n">4</b>{{ t('Quantities') }}</span>
+      </div>
       <div class="sap-grid">
         <div>
           <div class="sap-label">Customer Code & Name</div>
@@ -210,6 +274,15 @@
         </div>
       </div>
 
+      {# Batch 248: meal plans — shown only for a customer that has them (Salus). #}
+      <div id="planStep" class="plan-step d-none">
+        <div class="d-flex flex-wrap align-items-baseline gap-2">
+          <div class="sap-label mb-0">{{ t('Meal Plans') }}</div>
+          <span class="small-muted">{{ t('Pick the plans in this order — each one gets its own quantity column, with its own protein and carb portion.') }}</span>
+        </div>
+        <div id="planChips" class="plan-chips"></div>
+      </div>
+
       <datalist id="customerList">
         {% for c in customers %}
         <option value="{{ c.customer_code }} - {{ c.customer_name }}" data-code="{{ c.customer_code }}"
@@ -230,8 +303,9 @@
       </datalist>
       <datalist id="recipeList">
         {% for r in recipes %}
-        <option value="{{ r.recipe_code }} - {{ r.recipe_name }}" data-code="{{ r.recipe_code }}"
-          data-name="{{ r.recipe_name }}" data-food="{{ r.food_cost_per_portion or 0 }}"
+        {# Batch 248 (Image 4): name first, code after. #}
+        <option value="{{ r.recipe_name }} — {{ r.recipe_code }}" data-code="{{ r.recipe_code }}"
+          data-name="{{ r.recipe_name }}" data-food="{{ (r.food_cost_per_portion or 0) if show_costs else 0 }}"
           data-sale="{{ r.sale_price_per_portion or 0 }}" data-bom="{{ r.bom_lines or 0 }}"
           data-category="{{ r.category or '' }}"></option>
         {% endfor %}
@@ -242,9 +316,6 @@
         <h5 class="m-0">{{ t('Recipes Ordered') }}</h5>
         <span class="small-muted" id="menuHint"></span>
       </div>
-
-      {# Batch 123: realtime recipe search. Filters the recipe rows as you type —
-      no button, no reload. Matches on both recipe CODE and NAME. #}
       <div class="mb-2">
         <div class="input-group">
           <!-- <span class="input-group-text bg-white"><i class="bi bi-search"></i></span> -->
@@ -254,26 +325,19 @@
         </div>
         <small class="small-muted" id="recipeFilterHint"></small>
       </div>
-
-      {# ==================================================================
-      Batch 103 — ONE REAL TABLE.
-
-      Batch 102 added a header row but each line was still its own bordered
-      .sap-line-pro block, so the screen still read as separate cards. This
-      is now a genuine <table>: one header, one <tr> per line, nothing
-          repeated. On a 20-line Frsh order that is the difference between a
-          readable grid and 20 stacked panels.
-
-          Same markup is used by Sale Requisition, Immediate Order and the
-          Customer Portal because all three render this one template.
-          ================================================================== #}
-          <div class="table-responsive">
+          <div class="table-responsive" id="stdTableWrap">
             <table class="table table-sm align-middle mb-0 isfc-order-table" data-no-sort>
               <thead>
                 <tr>
-                  <th>{{ t('Recipe Code & Name') }}</th>
+                  <th>{{ t('Recipe Name & Code') }}</th>
                   <th style="width:160px">{{ t('Category') }}</th>
-                  <th style="width:150px" class="text-end">{{ t('Quantity Ordered') }}</th>
+                  <th style="width:150px" class="text-end">{{ t('Quantity') }}</th>
+                  {% if show_costs %}
+                  <th style="width:120px" class="text-end">{{ t('Cost / Portion') }}</th>
+                  <th style="width:130px" class="text-end">{{ t('Food Cost') }}</th>
+                  <th style="width:120px" class="text-end">{{ t('Sale Price / Portion') }}</th>
+                  <th style="width:130px" class="text-end">{{ t('Sale Value') }}</th>
+                  {% endif %}
                   <th style="width:56px"></th>
                 </tr>
               </thead>
@@ -281,37 +345,550 @@
                 <tr class="order-line">
                   <td>
                     <input class="sap-input recipe-display" list="recipeList" name="recipe_display"
-                      placeholder="{{ t('Type recipe code or recipe name') }}" required />
-                    <input type="hidden" name="recipe_no" class="recipe-no" />
-                    <input type="hidden" name="recipe_name" class="recipe-name" />
-                    {# Batch 103: portion size, price and food cost for the picked
-                    recipe, so whoever places the order can see what they are
-                    committing to without opening the recipe in another tab. #}
+                      placeholder="{{ t('Type recipe name or code') }}" required />
+                      <input type="hidden" name="recipe_name" class="recipe-name" />
+                      <input type="hidden" name="recipe_no" class="recipe-no" />
+                  
                     <small class="recipe-info text-body-tertiary d-block mt-1"></small>
                   </td>
-                  {# Batch 122: category column, auto-filled from the picked recipe. #}
                   <td><span class="recipe-category badge badge-phoenix badge-phoenix-secondary">—</span></td>
                   <td>
-                    <input class="sap-input text-end" {# Batch 105: step="1" so the spinner arrows move 1, 2, 3 —
-                      step="0.01" made every up-arrow click produce 0.01, 0.02. Portions are counted items; you cannot
-                      cook 0.01 of one. #} type="number" step="1" min="0" inputmode="numeric" name="required_portions"
+                    <input class="sap-input text-end" type="number" step="1" min="0" inputmode="numeric" name="required_portions"
                       value="0" required />
                   </td>
+                  {% if show_costs %}
+                  <td class="text-end c-fcpp text-body-tertiary">—</td>
+                  <td class="text-end c-fc fw-bold">0.00</td>
+                  <td class="text-end c-sppp text-body-tertiary">—</td>
+                  <td class="text-end c-sv">0.00</td>
+                  {% endif %}
                   <td class="text-center">
                     <button type="button" class="sap-btn sap-danger" onclick="removeLine(this)">X</button>
                   </td>
                 </tr>
               </tbody>
+              {% if show_costs %}
+              <tfoot>
+                <tr class="order-cost-foot">
+                  <td class="text-end fw-bold" colspan="2">{{ t('Order Total') }}
+                    <span class="small-muted fw-normal" id="ocLines"></span></td>
+                  <td class="text-end fw-bold" id="ocPortions">0</td>
+                  <td></td>
+                  <td class="text-end fw-bold text-danger" id="ocFood">0.00</td>
+                  <td></td>
+                  <td class="text-end fw-bold text-success" id="ocSale">0.00</td>
+                  <td></td>
+                </tr>
+              </tfoot>
+              {% endif %}
             </table>
           </div>
-          <button type="button" class="sap-btn sap-soft" onclick="addPortalLine()">
+          {# Batch 248: the plan matrix — built by JS for a plan customer. Each
+             cell posts its own (recipe_no, recipe_name, plan_code, portions). #}
+          <div class="table-responsive d-none" id="planMatrixWrap">
+            <table class="table table-sm align-middle mb-0 isfc-order-table plan-matrix" id="planMatrix" data-no-sort>
+              <thead></thead><tbody></tbody><tfoot></tfoot>
+            </table>
+          </div>
+          <div class="d-flex flex-wrap align-items-center gap-2 mt-2">
+          <button type="button" class="sap-btn sap-soft" id="addRecipeBtn" onclick="addPortalLine()">
             Add Recipe
           </button>
           <button class="sap-btn sap-primary">Submit Order</button>
+          {% if show_costs %}
+          {# Batch 247: check the cost without placing the order. #}
+          <button type="button" class="sap-btn sap-check" onclick="checkOrderCost()">
+            <i class="bi bi-calculator me-1"></i>{{ t('Check Order Cost') }}</button>
+          <span class="small-muted ms-auto" id="ocMargin"></span>
+          {% endif %}
+          </div>
     </form>
   </div>
 </div>
+{% if show_costs %}
+{# Batch 247: Check Order Cost — read-only quote from the server. #}
+<div class="modal fade" id="orderCostModal" tabindex="-1" aria-labelledby="orderCostTitle" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="orderCostTitle"><i class="bi bi-calculator me-2"></i>{{ t('Order Cost Check') }}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="{{ t('Close') }}"></button>
+      </div>
+      <div class="modal-body">
+        <div class="oc-kpis">
+          <div><b>{{ t('Portions') }}</b><span id="ocmPortions">0</span></div>
+          <div><b>{{ t('Total Food Cost') }}</b><span id="ocmFood" class="text-danger">0.00</span></div>
+          <div><b>{{ t('Sale Value') }}</b><span id="ocmSale" class="text-success">0.00</span></div>
+          <div><b>{{ t('Gross Margin') }}</b><span id="ocmMargin">0.00</span></div>
+          <div><b>{{ t('Food Cost %') }}</b><span id="ocmPct">0%</span></div>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-0">
+            <thead class="bg-body-highlight"><tr>
+              <th>{{ t('Recipe') }}</th><th>{{ t('Category') }}</th>
+              <th class="text-end">{{ t('Portions') }}</th>
+              <th class="text-end">{{ t('Food Cost / Portion') }}</th>
+              <th class="text-end">{{ t('Total Food Cost') }}</th>
+              <th class="text-end">{{ t('Sale Price / Portion') }}</th>
+              <th class="text-end">{{ t('Sale Value') }}</th>
+              <th class="text-end">{{ t('Food Cost %') }}</th>
+            </tr></thead>
+            <tbody id="ocmBody"></tbody>
+          </table>
+        </div>
+        <div class="small-muted mt-2">{{ t('Food cost per portion × portions ordered, from the current active recipe version. Nothing is saved until you submit the order.') }}</div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-phoenix-secondary" data-bs-dismiss="modal">{{ t('Close — just checking') }}</button>
+        <button type="button" class="btn btn-primary" id="ocmSubmit"><i class="bi bi-send me-1"></i>{{ t('Process Order') }}</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
 <script>
+  /* ===================================================================
+     Batch 247 — ORDER COST ON THE REQUISITION.
+
+     Each order row carries its recipe's food cost and sale price per
+     portion (data-fcpp / data-sppp), set when the recipe is picked or the
+     day's menu loads. Line totals = per portion × quantity, recomputed on
+     every keystroke; the footer sums them. "Check Order Cost" asks the
+     server for the same figures from the current recipe versions and shows
+     them in a dialog — the user can close it (just checking) or process
+     the order from there.
+     =================================================================== */
+  var SHOW_COSTS = {{ 'true' if show_costs else 'false' }};
+  function ocFmt(n, d) {
+    return (Number(n) || 0).toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d });
+  }
+  function lineQty(tr) {
+    var q = tr.querySelector('input[name="required_portions"]');
+    return q ? (parseFloat(q.value) || 0) : 0;
+  }
+  function paintLine(tr) {
+    if (!SHOW_COSTS || !tr) return;
+    var f = parseFloat(tr.dataset.fcpp) || 0, s = parseFloat(tr.dataset.sppp) || 0, q = lineQty(tr);
+    var set = function (cls, txt) { var el = tr.querySelector(cls); if (el) el.textContent = txt; };
+    set(".c-fcpp", f ? ocFmt(f, 3) : "—");
+    set(".c-sppp", s ? ocFmt(s, 3) : "—");
+    set(".c-fc", ocFmt(f * q, 2));
+    set(".c-sv", ocFmt(s * q, 2));
+  }
+  function setLineCost(tr, fcpp, sppp) {
+    if (!tr) return;
+    tr.dataset.fcpp = parseFloat(fcpp) || 0;
+    tr.dataset.sppp = parseFloat(sppp) || 0;
+    paintLine(tr);
+  }
+  /* ===================================================================
+     Batch 248 — MEAL PLANS (Salus) and the PLAN MATRIX.
+
+     A customer with plans (customer-defaults returns them) gets a plan
+     step: one chip per plan showing its protein / carb portion, all on by
+     default. When the delivery date loads the menu, plan dishes get one
+     quantity box PER PLAN, each costed at that plan's quantities; dishes
+     outside the plans (breakfast, salads, snacks...) keep one box.
+
+     Every box posts its own group — recipe_no, recipe_name, plan_code,
+     required_portions — in the same order, so the server reads them as
+     ordinary order lines. A plan switched off hides its column and
+     DISABLES its boxes, so nothing in a hidden column is ever submitted.
+     =================================================================== */
+  var planState = { plans: [], selected: {}, active: false, recipes: [] };
+
+  function planName(code) {
+    var p = planState.plans.filter(function (x) { return x.code === code; })[0];
+    return p ? p.name : code;
+  }
+  function selectedPlans() {
+    return planState.plans.filter(function (p) { return planState.selected[p.code]; });
+  }
+  function escH(x) {
+    return String(x == null ? "" : x).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; });
+  }
+
+  function setPlans(plans) {
+    var same = JSON.stringify((plans || []).map(function (p) { return p.code; })) ===
+               JSON.stringify(planState.plans.map(function (p) { return p.code; }));
+    planState.plans = plans || [];
+    if (!same) {
+      planState.selected = {};
+      planState.plans.forEach(function (p) { planState.selected[p.code] = true; });
+    }
+    var step = document.getElementById("planStep");
+    if (step) step.classList.toggle("d-none", !planState.plans.length);
+    renderPlanChips();
+    if (!planState.plans.length && planState.active) exitPlanMode();
+    updateSteps();
+  }
+
+  function renderPlanChips() {
+    var box = document.getElementById("planChips");
+    if (!box) return;
+    box.innerHTML = "";
+    planState.plans.forEach(function (p) {
+      var b = document.createElement("button");
+      b.type = "button"; b.className = "plan-chip";
+      b.style.setProperty("--pc", p.color || "#1e5bb8");
+      b.setAttribute("aria-pressed", planState.selected[p.code] ? "true" : "false");
+      var macro = [];
+      if (p.protein_g) macro.push(Math.round(p.protein_g) + "g protein");
+      if (p.carb_g) macro.push(Math.round(p.carb_g) + "g carb");
+      b.innerHTML = '<span class="dot"></span><span><span class="nm">' + escH(p.name) + '</span>'
+        + '<span class="mx">' + escH(macro.join(" · ") || p.description || "") + "</span></span>";
+      b.addEventListener("click", function () {
+        var on = !planState.selected[p.code];
+        if (!on && selectedPlans().length <= 1) {
+          var m = "At least one plan has to stay in the order.";
+          if (window.showToast) showToast(m, "warning", "Meal Plans"); else alert(m);
+          return;
+        }
+        planState.selected[p.code] = on;
+        b.setAttribute("aria-pressed", on ? "true" : "false");
+        applyPlanColumns();
+      });
+      box.appendChild(b);
+    });
+  }
+
+  function matrixInputs() {
+    return Array.prototype.slice.call(document.querySelectorAll("#planMatrix input.mx-qty:not([disabled])"));
+  }
+
+  function enterPlanMode(recipes) {
+    planState.active = true;
+    planState.recipes = recipes || [];
+    var std = document.getElementById("stdTableWrap");
+    if (std) {
+      std.classList.add("d-none");
+      std.querySelectorAll("input, button").forEach(function (el) { el.disabled = true; });
+    }
+    var add = document.getElementById("addRecipeBtn");
+    if (add) add.classList.add("d-none");
+    document.getElementById("planMatrixWrap").classList.remove("d-none");
+    buildMatrix();
+  }
+
+  function exitPlanMode() {
+    if (!planState.active) return;
+    planState.active = false;
+    var std = document.getElementById("stdTableWrap");
+    if (std) {
+      std.classList.remove("d-none");
+      std.querySelectorAll("input, button").forEach(function (el) { el.disabled = false; });
+    }
+    var add = document.getElementById("addRecipeBtn");
+    if (add) add.classList.remove("d-none");
+    var wrap = document.getElementById("planMatrixWrap");
+    wrap.classList.add("d-none");
+    wrap.querySelectorAll("thead, tbody, tfoot").forEach(function (el) { el.innerHTML = ""; });
+    recalcOrderCost();
+  }
+
+  function cellGroup(rc, plan, value, fcpp) {
+    // Hidden fields FIRST and in a fixed order, then the box — the server
+    // pairs recipe_no[i] / recipe_name[i] / plan_code[i] / required_portions[i].
+    return '<input type="hidden" name="recipe_no" value="' + escH(rc.code) + '">'
+      + '<input type="hidden" name="recipe_name" value="' + escH(rc.name) + '">'
+      + '<input type="hidden" name="plan_code" value="' + escH(plan) + '">'
+      + '<input class="sap-input mx-qty" type="number" step="1" min="0" inputmode="numeric"'
+      + ' name="required_portions" value="' + escH(value || 0) + '"'
+      + ' data-code="' + escH(rc.code) + '" data-plan="' + escH(plan) + '"'
+      + ' data-fcpp="' + (fcpp || 0) + '" data-sppp="' + (rc.price || 0) + '"'
+      + ' aria-label="' + escH(rc.name + (plan ? " — " + planName(plan) : "")) + '">';
+  }
+
+  function buildMatrix() {
+    var table = document.getElementById("planMatrix");
+    var thead = table.querySelector("thead"), tbody = table.querySelector("tbody"), tfoot = table.querySelector("tfoot");
+    // Keep what was typed when the date (and so the menu) is re-picked.
+    var typed = {};
+    table.querySelectorAll("input.mx-qty").forEach(function (i) {
+      if (parseFloat(i.value) > 0) typed[i.dataset.code + "|" + i.dataset.plan] = i.value;
+    });
+    var plans = planState.plans;
+    var h = '<tr><th>{{ t("Recipe") }}</th><th style="width:130px">{{ t("Category") }}</th>';
+    plans.forEach(function (p) {
+      var macro = [];
+      if (p.protein_g) macro.push(Math.round(p.protein_g) + "g P");
+      if (p.carb_g) macro.push(Math.round(p.carb_g) + "g C");
+      h += '<th class="mx-plan" data-plan="' + escH(p.code) + '" style="--pc:' + (p.color || "#1e5bb8") + '">'
+        + escH(p.name) + "<small>" + escH(macro.join(" · ")) + "</small></th>";
+    });
+    h += '<th class="text-end" style="width:90px">{{ t("Portions") }}</th>';
+    if (SHOW_COSTS) h += '<th class="text-end" style="width:120px">{{ t("Food Cost") }}</th>'
+      + '<th class="text-end" style="width:120px">{{ t("Sale Value") }}</th>';
+    thead.innerHTML = h + "</tr>";
+
+    // Plan dishes first (they are what the plans are about), then the rest,
+    // each grouped by category.
+    var list = (planState.recipes || []).slice().sort(function (a, b) {
+      var pa = (a.plans || []).length ? 0 : 1, pb = (b.plans || []).length ? 0 : 1;
+      if (pa !== pb) return pa - pb;
+      var ca = (a.category || "").toLowerCase(), cb = (b.category || "").toLowerCase();
+      if (ca !== cb) return ca < cb ? -1 : 1;
+      return (a.name || "").localeCompare(b.name || "");
+    });
+    var seen = {}, rows = "", lastGroup = null, cols = 3 + plans.length + (SHOW_COSTS ? 2 : 0);
+    list.forEach(function (rc) {
+      if (seen[rc.code]) return;          // a dish listed under two meals is ordered once
+      seen[rc.code] = true;
+      var isPlan = (rc.plans || []).length > 0;
+      var group = (isPlan ? "{{ t('By plan') }} · " : "") + (rc.category || "{{ t('Menu') }}");
+      if (group !== lastGroup) {
+        lastGroup = group;
+        rows += '<tr class="mx-group"><td colspan="' + cols + '"><i class="bi ' + (isPlan ? "bi-grid-3x3-gap" : "bi-list-ul")
+          + ' me-1"></i>' + escH(group) + "</td></tr>";
+      }
+      rows += '<tr class="mx-row" data-search="' + escH((rc.name + " " + rc.code + " " + (rc.category || "")).toLowerCase()) + '">'
+        + '<td><div class="mx-name">' + escH(rc.name) + '</div><div class="mx-code">' + escH(rc.code) + "</div></td>"
+        + '<td><span class="badge badge-phoenix badge-phoenix-secondary">' + escH(rc.category || "—") + "</span></td>";
+      if (isPlan) {
+        plans.forEach(function (p) {
+          if (rc.plans.indexOf(p.code) === -1) {
+            rows += '<td class="mx-cell" data-plan="' + escH(p.code) + '"><span class="mx-na" title="{{ t("Not offered in this plan") }}">—</span></td>';
+            return;
+          }
+          var f = (rc.plan_food_cost && rc.plan_food_cost[p.code] != null) ? rc.plan_food_cost[p.code] : rc.food_cost;
+          rows += '<td class="mx-cell" data-plan="' + escH(p.code) + '">'
+            + cellGroup(rc, p.code, typed[rc.code + "|" + p.code], f)
+            + (SHOW_COSTS ? '<span class="mx-cpp">' + ocFmt(f, 3) + " / {{ t('portion') }}</span>" : "")
+            + "</td>";
+        });
+      } else {
+        rows += '<td class="mx-any" colspan="' + plans.length + '">'
+          + cellGroup(rc, "", typed[rc.code + "|"], rc.food_cost)
+          + '<span class="mx-any-lbl">{{ t("Single quantity · not plan-based") }}</span></td>';
+      }
+      rows += '<td class="num mx-rp">0</td>'
+        + (SHOW_COSTS ? '<td class="num mx-rf">0.00</td><td class="num mx-rs">0.00</td>' : "")
+        + "</tr>";
+    });
+    tbody.innerHTML = rows;
+
+    var f = '<tr><td colspan="2" class="text-end">{{ t("Order Total") }} <span class="small-muted fw-normal" id="mxLines"></span></td>';
+    plans.forEach(function (p) {
+      f += '<td class="text-center mx-foot" data-plan="' + escH(p.code) + '">0</td>';
+    });
+    f += '<td class="num" id="mxPortions">0</td>';
+    if (SHOW_COSTS) f += '<td class="num text-danger" id="mxFood">0.00</td><td class="num text-success" id="mxSale">0.00</td>';
+    tfoot.innerHTML = f + "</tr>";
+    applyPlanColumns();
+  }
+
+  function applyPlanColumns() {
+    var table = document.getElementById("planMatrix");
+    if (!table) return;
+    var n = 0;
+    planState.plans.forEach(function (p) {
+      var on = !!planState.selected[p.code];
+      if (on) n++;
+      table.querySelectorAll('[data-plan="' + p.code + '"]').forEach(function (el) {
+        if (el.tagName === "INPUT") { el.disabled = !on; return; }
+        el.classList.toggle("d-none", !on);
+        el.querySelectorAll("input").forEach(function (i) { i.disabled = !on; });
+      });
+    });
+    table.querySelectorAll("td.mx-any").forEach(function (td) { td.colSpan = Math.max(1, n); });
+    table.querySelectorAll("tr.mx-group td").forEach(function (td) {
+      td.colSpan = 3 + n + (SHOW_COSTS ? 2 : 0);
+    });
+    recalcOrderCost();
+  }
+
+  function recalcMatrix() {
+    var table = document.getElementById("planMatrix");
+    if (!table) return;
+    var P = 0, F = 0, S = 0, lines = 0, perPlan = {};
+    table.querySelectorAll("tr.mx-row").forEach(function (tr) {
+      var rp = 0, rf = 0, rs = 0;
+      tr.querySelectorAll("input.mx-qty").forEach(function (i) {
+        if (i.disabled) return;
+        var q = parseFloat(i.value) || 0;
+        if (q <= 0) return;
+        lines++;
+        rp += q;
+        rf += q * (parseFloat(i.dataset.fcpp) || 0);
+        rs += q * (parseFloat(i.dataset.sppp) || 0);
+        if (i.dataset.plan) perPlan[i.dataset.plan] = (perPlan[i.dataset.plan] || 0) + q;
+      });
+      tr.classList.toggle("has-qty", rp > 0);
+      var set = function (cls, v) { var el = tr.querySelector(cls); if (el) el.textContent = v; };
+      set(".mx-rp", ocFmt(rp, 0)); set(".mx-rf", ocFmt(rf, 2)); set(".mx-rs", ocFmt(rs, 2));
+      P += rp; F += rf; S += rs;
+    });
+    table.querySelectorAll("td.mx-foot").forEach(function (td) {
+      td.textContent = ocFmt(perPlan[td.dataset.plan] || 0, 0);
+    });
+    var put = function (id, v) { var el = document.getElementById(id); if (el) el.textContent = v; };
+    put("mxPortions", ocFmt(P, 0)); put("mxFood", ocFmt(F, 2)); put("mxSale", ocFmt(S, 2));
+    put("mxLines", lines ? "(" + lines + " line" + (lines === 1 ? "" : "s") + ")" : "");
+    if (SHOW_COSTS) put("ocMargin", S ? ("Margin " + ocFmt(S - F, 2) + " · Food cost " + ocFmt(F / S * 100, 1) + "%") : "");
+  }
+
+  /* Step bar + "linked" tags: show where the user is in the cascade. */
+  function markLinked() {
+    ["brand_display", "channel_display"].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (!el) return;
+      var lbl = el.parentNode.querySelector(".sap-label");
+      var tag = lbl && lbl.querySelector(".linked-tag");
+      if (el.dataset.auto === "1" && el.value) {
+        if (lbl && !tag) {
+          tag = document.createElement("span"); tag.className = "linked-tag";
+          tag.textContent = "{{ t('from customer') }}"; lbl.appendChild(tag);
+        }
+      } else if (tag) { tag.remove(); }
+    });
+  }
+  function updateSteps() {
+    var bar = document.getElementById("orderSteps");
+    if (!bar) return;
+    var v = function (id) { var el = document.getElementById(id); return el ? (el.value || "").trim() : ""; };
+    var hasPlans = planState.plans.length > 0;
+    var anyQty = Array.prototype.some.call(
+      document.querySelectorAll('input[name="required_portions"]:not([disabled])'),
+      function (el) { return parseFloat(el.value) > 0; });
+    var done = {
+      customer: !!v("customer_name"),
+      brand: !!(v("brand_display") && v("channel_display")),
+      plans: hasPlans && selectedPlans().length > 0,
+      date: !!v("deliveryDate"),
+      qty: anyQty,
+    };
+    var order = ["customer", "brand"].concat(hasPlans ? ["plans"] : []).concat(["date", "qty"]);
+    var now = order.filter(function (k) { return !done[k]; })[0];
+    var n = 0;
+    bar.querySelectorAll(".st").forEach(function (st) {
+      var k = st.dataset.step;
+      var visible = k !== "plans" || hasPlans;
+      st.classList.toggle("d-none", !visible);
+      if (!visible) return;
+      n++;
+      var b = st.querySelector("b"); if (b) b.textContent = done[k] ? "✓" : String(n);
+      st.classList.toggle("done", !!done[k]);
+      st.classList.toggle("now", k === now);
+    });
+  }
+  document.addEventListener("change", function () { updateSteps(); markLinked(); });
+  document.addEventListener("input", function (e) {
+    if (e.target && (e.target.id === "brand_display" || e.target.id === "channel_display")) {
+      e.target.dataset.auto = "";   // typed by the user -> no longer "from customer"
+      markLinked();
+    }
+  });
+
+  function recalcOrderCost() {
+    updateSteps();
+    if (planState.active) { recalcMatrix(); return; }
+    if (!SHOW_COSTS) return;
+    var p = 0, f = 0, s = 0, n = 0;
+    document.querySelectorAll("#portal-lines .order-line").forEach(function (tr) {
+      var q = lineQty(tr);
+      if (q <= 0) return;
+      n++; p += q;
+      f += (parseFloat(tr.dataset.fcpp) || 0) * q;
+      s += (parseFloat(tr.dataset.sppp) || 0) * q;
+    });
+    var put = function (id, v) { var el = document.getElementById(id); if (el) el.textContent = v; };
+    put("ocPortions", ocFmt(p, 0));
+    put("ocFood", ocFmt(f, 2));
+    put("ocSale", ocFmt(s, 2));
+    put("ocLines", n ? "(" + n + " recipe" + (n === 1 ? "" : "s") + ")" : "");
+    put("ocMargin", s ? ("Margin " + ocFmt(s - f, 2) + " · Food cost " + ocFmt(f / s * 100, 1) + "%") : "");
+  }
+
+  async function checkOrderCost() {
+    document.querySelectorAll(".order-line").forEach(function (tr) {
+      if (!tr.querySelector(".recipe-display").hasAttribute("readonly")) bindRecipeLine(tr);
+    });
+    var lines = [];
+    if (planState.active) {
+      matrixInputs().forEach(function (inp) {
+        var q = parseFloat(inp.value) || 0;
+        if (q > 0) lines.push({ code: inp.dataset.code, qty: q, plan: inp.dataset.plan || "" });
+      });
+    } else {
+      document.querySelectorAll("#portal-lines .order-line").forEach(function (tr) {
+        var code = (tr.querySelector(".recipe-no") || {}).value || "";
+        var q = lineQty(tr);
+        if (code && q > 0) lines.push({ code: code, qty: q });
+      });
+    }
+    if (!lines.length) {
+      var m = "Enter a quantity against at least one recipe first.";
+      if (window.showToast) showToast(m, "warning", "Check Order Cost"); else alert(m);
+      return;
+    }
+    var tok = {{ (csrf_token or '')|tojson }};
+    try {
+      var r = await fetch("/api/menu/order-cost", {
+        method: "POST", credentials: "same-origin",
+        headers: { "Content-Type": "application/json", "x-csrf-token": tok },
+        body: JSON.stringify({ lines: lines })
+      });
+      var d = await r.json();
+      if (!r.ok || d.error) throw new Error(d.error || ("HTTP " + r.status));
+      renderCostDialog(d);
+    } catch (e) {
+      var msg = "Could not check the order cost: " + e.message;
+      if (window.showToast) showToast(msg, "danger", "Check Order Cost"); else alert(msg);
+    }
+  }
+
+  function renderCostDialog(d) {
+    var esc = function (x) { return String(x == null ? "" : x).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
+    var t = d.totals || {};
+    var put = function (id, v) { var el = document.getElementById(id); if (el) el.textContent = v; };
+    put("ocmPortions", ocFmt(t.portions, 0));
+    put("ocmFood", ocFmt(t.food_cost, 2));
+    put("ocmSale", ocFmt(t.sale_value, 2));
+    put("ocmMargin", ocFmt(t.margin, 2) + (t.sale_value ? " (" + ocFmt(t.margin_pct, 1) + "%)" : ""));
+    put("ocmPct", ocFmt(t.food_cost_pct, 1) + "%");
+    var body = document.getElementById("ocmBody");
+    body.innerHTML = (d.lines || []).map(function (l) {
+      return "<tr" + (l.missing ? ' class="table-warning"' : "") + ">"
+        + "<td><div class=\"fw-bold\">" + esc(l.name)
+        + (l.plan ? " <span class=\"badge badge-phoenix badge-phoenix-primary ms-1\">" + esc(planName(l.plan)) + "</span>" : "")
+        + "</div><span class=\"small-muted\">" + esc(l.code)
+        + (l.missing ? " · not an active recipe — cost unknown" : "") + "</span></td>"
+        + "<td>" + esc(l.category || "—") + "</td>"
+        + "<td class=\"text-end\">" + ocFmt(l.portions, 0) + "</td>"
+        + "<td class=\"text-end\">" + ocFmt(l.fcpp, 3) + "</td>"
+        + "<td class=\"text-end fw-bold\">" + ocFmt(l.food_cost, 2) + "</td>"
+        + "<td class=\"text-end\">" + ocFmt(l.sppp, 3) + "</td>"
+        + "<td class=\"text-end\">" + ocFmt(l.sale_value, 2) + "</td>"
+        + "<td class=\"text-end\">" + ocFmt(l.food_cost_pct, 1) + "%</td></tr>";
+    }).join("") + "<tr class=\"fw-bold\" style=\"background:#eef4fb\"><td colspan=\"2\" class=\"text-end\">Total</td>"
+      + "<td class=\"text-end\">" + ocFmt(t.portions, 0) + "</td><td></td>"
+      + "<td class=\"text-end text-danger\">" + ocFmt(t.food_cost, 2) + "</td><td></td>"
+      + "<td class=\"text-end text-success\">" + ocFmt(t.sale_value, 2) + "</td>"
+      + "<td class=\"text-end\">" + ocFmt(t.food_cost_pct, 1) + "%</td></tr>";
+    var el = document.getElementById("orderCostModal");
+    if (window.bootstrap && el) bootstrap.Modal.getOrCreateInstance(el).show();
+  }
+
+  document.addEventListener("click", function (e) {
+    if (!e.target.closest || !e.target.closest("#ocmSubmit")) return;
+    var el = document.getElementById("orderCostModal");
+    if (window.bootstrap && el) bootstrap.Modal.getOrCreateInstance(el).hide();
+    var f = document.getElementById("orderForm");
+    // requestSubmit runs the same validation as the Submit button
+    // (portions > 0, 48-hour rule); plain submit() would skip it.
+    if (f.requestSubmit) f.requestSubmit(); else f.submit();
+  });
+
+  /* Batch 248 (Image 4): recipes read "Name — Code". Typed text that was not
+     picked from the list is parsed from either layout: "Name — Code" (new)
+     or "Code - Name" (anything saved or typed the old way). */
+  function parseRecipeDisplay(v) {
+    v = v || "";
+    var i = v.lastIndexOf(" — ");
+    if (i >= 0) return [v.slice(i + 3).trim(), v.slice(0, i).trim()];
+    return splitDisplay(v);
+  }
   function splitDisplay(v) {
     const i = (v || "").indexOf(" - ");
     return i >= 0 ? [v.slice(0, i), v.slice(i + 3)] : ["", v || ""];
@@ -379,17 +956,36 @@
 
       // Auto-fill brand and sales channel. Only fills EMPTY fields — never
       // overwrites something the user deliberately typed.
+      // Batch 248: ...but a value WE filled for the previous customer is not
+      // "something the user typed". Switching customer used to leave the old
+      // customer's brand and channel in place; auto-filled values are now
+      // tagged and replaced when the customer changes.
       const bd = document.getElementById("brand_display");
       const cd = document.getElementById("channel_display");
+      if (menuState.lastCustomer !== customerName) {
+        [["brand_display", "brand"], ["channel_display", "channel"]].forEach(function (pair) {
+          var el = document.getElementById(pair[0]);
+          if (el && el.dataset.auto === "1") {
+            el.value = ""; el.dataset.auto = "";
+            var h = document.getElementById(pair[1]); if (h) h.value = "";
+          }
+        });
+        menuState.lastCustomer = customerName;
+        menuState.loadedDate = "";
+      }
       if (bd && !bd.value && d.brand_display) {
         bd.value = d.brand_display;
+        bd.dataset.auto = "1";
         setVal("brand", d.brand_name || d.brand_code);
         menuState.brand = d.brand_name || "";
       }
       if (cd && !cd.value && d.channel_display) {
         cd.value = d.channel_display;
+        cd.dataset.auto = "1";
         setVal("channel", d.channel_name || d.channel_code);
       }
+      markLinked();
+      setPlans(d.plans || []);
 
       menuState.active = !!d.menu_driven;
       if (menuState.active) {
@@ -427,7 +1023,9 @@
           + "{{ t('No menu recipes for') }} " + d.day + "</span>";
         return;
       }
-      renderMenuRows(d.recipes);
+      // Batch 248: a plan customer gets the matrix; everyone else the list.
+      if (planState.plans.length) { enterPlanMode(d.recipes); }
+      else { exitPlanMode(); renderMenuRows(d.recipes); }
       menuState.loadedDate = dateStr;
       hint.innerHTML = '<span class="badge badge-phoenix badge-phoenix-success">'
         + d.day + "</span> " + d.count + " {{ t('recipes loaded — just enter quantities.') }}";
@@ -476,17 +1074,21 @@
         tbody.appendChild(hdr);
       }
       const tr = template.cloneNode(true);
-      tr.querySelector(".recipe-display").value = rc.code + " - " + rc.name;
+      // Batch 248 (Image 4): the NAME leads; the code sits underneath.
+      tr.querySelector(".recipe-display").value = rc.name;
+      tr.querySelector(".recipe-display").title = rc.name + " — " + rc.code;
       tr.querySelector(".recipe-no").value = rc.code;
       tr.querySelector(".recipe-name").value = rc.name;
       tr.querySelector(".recipe-display").setAttribute("readonly", "readonly");
-      tr.querySelector(".recipe-info").textContent = "";
+      tr.querySelector(".recipe-info").textContent = rc.code;
       var catEl = tr.querySelector(".recipe-category");
       if (catEl) catEl.textContent = rc.category || "—";
       const qty = tr.querySelector('input[name="required_portions"]');
       qty.value = typed[rc.code] || 0;
+      setLineCost(tr, rc.food_cost, rc.price);   // Batch 247
       tbody.appendChild(tr);
     });
+    recalcOrderCost();
   }
 
   document.addEventListener("change", function (e) {
@@ -498,7 +1100,7 @@
   function bindRecipeLine(line) {
     const input = line.querySelector(".recipe-display");
     const opt = optionByValue("recipeList", input.value);
-    const parts = splitDisplay(input.value);
+    const parts = parseRecipeDisplay(input.value);   // Batch 248: name-first
     line.querySelector(".recipe-no").value =
       opt?.dataset.code || parts[0] || "";
     line.querySelector(".recipe-name").value =
@@ -510,12 +1112,16 @@
     // Batch 122: fill the category badge from the picked recipe's datalist option.
     const catEl = line.querySelector(".recipe-category");
     if (catEl) catEl.textContent = (opt?.dataset.category && opt.dataset.category.trim()) || "—";
+    // Batch 247: per-portion cost/price of the picked recipe (0 until one is picked).
+    setLineCost(line, opt?.dataset.food, opt?.dataset.sale);
+    recalcOrderCost();
   }
   function removeLine(btn) {
     const rows = document.querySelectorAll(".order-line");
     if (rows.length > 1) {
       btn.closest(".order-line").remove();
     }
+    recalcOrderCost();
   }
   function addPortalLine() {
     // Batch 103: .order-line is a <tr> now, appended to <tbody>. Cloning into
@@ -527,6 +1133,8 @@
       else i.value = "";
     });
     clone.querySelector(".recipe-info").textContent = "";
+    clone.querySelector(".recipe-display").removeAttribute("readonly");
+    setLineCost(clone, 0, 0);   // Batch 247: a new row starts uncosted
     document.getElementById("portal-lines").appendChild(clone);
   }
   document.addEventListener("input", (e) => {
@@ -538,6 +1146,11 @@
       bindHeaderFields();
     if (e.target.classList.contains("recipe-display"))
       bindRecipeLine(e.target.closest(".order-line"));
+    // Batch 247: re-cost the line and the order as quantities are typed.
+    if (e.target.name === "required_portions") {
+      paintLine(e.target.closest(".order-line"));
+      recalcOrderCost();
+    }
   });
   document.getElementById("orderForm").addEventListener("submit", (e) => {
     var hasPortions = Array.prototype.some.call(
@@ -568,7 +1181,15 @@
     }
     {% endif %}
     bindHeaderFields();
-    document.querySelectorAll(".order-line").forEach(bindRecipeLine);
+    // Batch 248: only rows the user typed are re-parsed. Menu rows (read-only)
+    // already carry their code and name in the hidden fields, and their
+    // visible text is now just the name — re-parsing it would blank the code.
+    if (!planState.active) {
+      document.querySelectorAll(".order-line").forEach(function (tr) {
+        var d = tr.querySelector(".recipe-display");
+        if (d && !d.hasAttribute("readonly")) bindRecipeLine(tr);
+      });
+    }
   });
 
   (function () {
@@ -591,12 +1212,14 @@
   // code + name. Empty query shows everything.
   function filterRecipeRows(q) {
     q = (q || "").trim().toLowerCase();
-    var rows = document.querySelectorAll("#portal-lines .order-line");
+    var rows = document.querySelectorAll("#portal-lines .order-line, #planMatrix tr.mx-row");
     var shown = 0;
     rows.forEach(function (row) {
       var disp = row.querySelector(".recipe-display");
       var cat = row.querySelector(".recipe-category");
-      var hay = ((disp && disp.value) || "") + " " + ((cat && cat.textContent) || "");
+      var code = row.querySelector(".recipe-no");
+      var hay = row.dataset.search || (((disp && disp.value) || "") + " " + ((code && code.value) || "")
+                + " " + ((cat && cat.textContent) || ""));
       var match = !q || hay.toLowerCase().indexOf(q) !== -1;
       row.style.display = match ? "" : "none";
       if (match) shown++;

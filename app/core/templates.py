@@ -163,6 +163,25 @@ class ISFCTemplates(Jinja2Templates):
 templates = ISFCTemplates(directory=str(TEMPLATE_DIR))
 templates.env.globals["can_access_area"] = can_access
 
+
+def asset_v(path: str) -> str:
+    """Batch 247 — cache-busting stamp for a static file: its mtime.
+
+    ROOT CAUSE this closes: static CSS was linked without a version, so after a
+    batch changed app/static/css/isfc-report.css the browser kept serving its
+    cached copy. The 2-up Recipe Sheet ran off the page because the browser
+    was still on the pre-Batch 236 stylesheet that has no .rp-2up rules. Use as
+    {{ url_for('static', path='css/x.css') }}?v={{ asset_v('css/x.css') }} —
+    the URL changes whenever the file does, and never otherwise.
+    """
+    try:
+        return str(int((BASE_DIR / "static" / path).stat().st_mtime))
+    except OSError:
+        return "0"
+
+
+templates.env.globals["asset_v"] = asset_v
+
 def _from_json(value):
     import json as _json
     if value is None or value == "":

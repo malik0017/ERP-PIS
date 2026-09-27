@@ -21,6 +21,9 @@
 {% for b in filters.brands %}{% set _ = _qs.append('brand=' ~ b|urlencode) %}{% endfor %}
 {% for sname in filters.sections %}{% set _ = _qs.append('section=' ~ sname|urlencode) %}{% endfor %}
 {% if filters.recipe %}{% set _ = _qs.append('recipe=' ~ filters.recipe|urlencode) %}{% endif %}
+{# Batch 247: butchery item filter travels to print + Excel like every other filter. #}
+{% for it in filters['items'] %}{% set _ = _qs.append('item=' ~ it|urlencode) %}{% endfor %}
+{% for g in filters.item_groups %}{% set _ = _qs.append('igroup=' ~ g|urlencode) %}{% endfor %}
 {% set qs = _qs|join('&') %}
 <div class="container-fluid py-3 isfc-page">
 
@@ -98,18 +101,35 @@
              data-selected='{{ {"customer": filters.customers, "order": filters.order_nos, "brand": filters.brands}|tojson }}'
              data-ph="{{ t('Type an order number, customer or brand…') }}"></div>
       </div>
-      <div class="col-md-4">
+      <div class="col-md-3">
         <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('Recipe') }}</label>
         <select name="recipe" class="form-select form-select-sm">
           <option value="">{{ t('All recipes') }}</option>
           {% for r in pick.recipes %}<option value="{{ r.code }}" {% if filters.recipe == r.code %}selected{% endif %}>{{ r.name }} · {{ r.code }}</option>{% endfor %}
         </select>
       </div>
-      <div class="col-md-4">
+      <div class="col-md-3">
         <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">{{ t('Section') }} <span class="text-body-tertiary">({{ t('multi') }})</span></label>
         <select name="section" multiple size="4" class="form-select form-select-sm boq-multi" data-ph="{{ t('All sections') }}">
           {% for sname in pick.sections %}<option value="{{ sname }}" {% if sname in filters.sections %}selected{% endif %}>{{ t(sname) }}</option>{% endfor %}
         </select>
+      </div>
+      {# ==================================================================
+         Batch 247 — BUTCHERY ITEMS FINDER.
+         Same search-and-chip box as Find Orders, over the butchery items
+         only: Fish (SFD2), Meat (MET1, MET2), Chicken (PLT1, PLT2), eggs
+         (PLT1-37) left out. Pick a whole family ("All Chicken") or single
+         items by code or name. The list lives in boq_service.BUTCHERY_GROUPS.
+         ================================================================== #}
+      <div class="col-md-4">
+        <label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary mb-1">
+          {{ t('Butchery items') }}
+          <span class="text-body-tertiary text-capitalize fw-normal">— {{ t('fish, meat, chicken') }}</span>
+        </label>
+        <div id="boqItemFinder" class="boq-finder"
+             data-options='{{ pick.item_finder|tojson }}'
+             data-selected='{{ {"group": filters.item_groups, "item": filters["items"]}|tojson }}'
+             data-ph="{{ t('Type item code or name…') }}"></div>
       </div>
       <input type="hidden" name="view" value="{{ filters.view }}" id="boqViewField">
       <div class="col-md-2 d-flex gap-1">
@@ -221,6 +241,11 @@
       .boq-finder .fopt .sub{font-size:.72rem;color:var(--phoenix-tertiary-color,#8a97a8)}
       .boq-finder .fopt.sel .lab{color:#1e5bb8}
       .boq-finder .none{padding:10px;font-size:.8rem;color:var(--phoenix-tertiary-color,#8a97a8)}
+      /* Batch 247: item-finder chip kinds */
+      .boq-finder .chip[data-k="group"]{background:#fbe9ec;color:#b42343}
+      .boq-finder .chip[data-k="group"] .k{background:rgba(180,35,67,.14)}
+      .boq-finder .chip[data-k="item"]{background:#fff3e6;color:#9a4a00}
+      .boq-finder .chip[data-k="item"] .k{background:rgba(154,74,0,.14)}
       [data-bs-theme="dark"] .boq-finder .chip{background:#122a4a;color:#8fb8ff}
       [data-bs-theme="dark"] .boq-finder .chip[data-k="customer"]{background:#123024;color:#7fd3a0}
       [data-bs-theme="dark"] .boq-finder .chip[data-k="brand"]{background:#241a36;color:#c3a6f0}
@@ -270,15 +295,21 @@
            brand). The form therefore submits exactly what it submitted
            before; only the way you choose has changed.
            ================================================================ */
-        var host = document.getElementById('boqFinder');
-        if(host){
+        /* Batch 247: the finder is a function now, so the Butchery Items box
+           reuses it instead of carrying a second copy of this code. cfg:
+             param  kind -> request parameter each chip writes
+             group  kind -> heading in the drop-down
+             order  kinds in the order they are listed
+             cap    kind -> max entries shown before typing narrows it
+             none   message when nothing matches */
+        function mountFinder(host, cfg){
+          if(!host) return;
           var OPTS = JSON.parse(host.getAttribute('data-options') || '[]');
           var PRE  = JSON.parse(host.getAttribute('data-selected') || '{}');
           var PH   = host.getAttribute('data-ph') || '';
-          var PARAM = {order:'order_no', customer:'customer', brand:'brand'};
-          var GRP   = {order:'Orders', customer:'Customers', brand:'Brands'};
+          var PARAM = cfg.param, GRP = cfg.group;
           var chosen = [];
-          ['customer','order','brand'].forEach(function(kind){
+          cfg.order.forEach(function(kind){
             (PRE[kind] || []).forEach(function(v){
               var hit = OPTS.filter(function(o){ return o.kind===kind && o.value===v; })[0];
               chosen.push(hit || {kind:kind, value:v, label:v, sub:'', search:String(v).toLowerCase()});
@@ -314,7 +345,7 @@
             hidden.innerHTML='';
             chosen.forEach(function(o){
               var h=document.createElement('input');
-              h.type='hidden'; h.name = PARAM[o.kind] || 'order_no'; h.value = o.value;
+              h.type='hidden'; h.name = PARAM[o.kind] || cfg.fallback; h.value = o.value;
               hidden.appendChild(h);
             });
           }
@@ -326,8 +357,8 @@
                and labelled. Typing narrows it; the cap is generous enough that
                a real search always reaches its target. */
             var total = 0;
-            ['customer','brand','order'].forEach(function(kind){
-              var some = pool.filter(function(o){ return o.kind===kind; }).slice(0, kind==='order' ? 40 : 25);
+            cfg.order.forEach(function(kind){
+              var some = pool.filter(function(o){ return o.kind===kind; }).slice(0, cfg.cap[kind] || 25);
               if(!some.length) return;
               var g=document.createElement('div'); g.className='grp'; g.textContent = GRP[kind]; menu.appendChild(g);
               some.forEach(function(o){
@@ -341,8 +372,7 @@
             });
             if(!total){
               var n=document.createElement('div'); n.className='none';
-              n.textContent = q ? 'No order, customer or brand matches “'+inp.value+'”.'
-                               : 'No open orders.';
+              n.textContent = q ? cfg.none + ' “'+inp.value+'”.' : cfg.empty;
               menu.appendChild(n);
             }
           }
@@ -362,6 +392,18 @@
           document.addEventListener('click', function(e){ if(!host.contains(e.target)) host.classList.remove('open'); });
           paint();
         }
+        mountFinder(document.getElementById('boqFinder'), {
+          param: {order:'order_no', customer:'customer', brand:'brand'},
+          group: {order:'Orders', customer:'Customers', brand:'Brands'},
+          order: ['customer','brand','order'], cap: {order:40, customer:25, brand:25},
+          fallback: 'order_no', none: 'No order, customer or brand matches', empty: 'No open orders.'
+        });
+        mountFinder(document.getElementById('boqItemFinder'), {
+          param: {group:'igroup', item:'item'},
+          group: {group:'Protein groups', item:'Butchery items'},
+          order: ['group','item'], cap: {group:10, item:60},
+          fallback: 'item', none: 'No butchery item matches', empty: 'No fish, meat or chicken on open orders.'
+        });
       })();
     </script>
   </div></div>
@@ -550,11 +592,17 @@
                  section actually needs to DO with the ingredient, so it belongs on
                  the By Section and By Recipe views too — not only on the Recipe
                  Sheet. #}
+              {# Batch 247 (Image 2): Per Portion on this tab too — it was only on
+                 the Recipe Sheet tab and the printed sheet, so hiding columns
+                 here left Ingredient / Net / Issue / UOM and no per-portion
+                 figure to cook to. #}
+              <th class="text-end" data-c="per_portion">{{ t('Per Portion') }}</th>
               <th class="text-end" data-c="net_qty">{{ t('Net Qty') }}</th><th class="text-end col-issue" data-c="issue_qty">{{ t('Issue Qty') }}</th><th data-c="uom">{{ t('UOM') }}</th>
               <th data-c="cutting">{{ t('Cutting / Portion') }}</th><th data-c="issued_to">{{ t('Issued To') }}</th></tr></thead>
             <tbody>{% for ln in rec.lines %}
               <tr><td class="fs-9 text-primary" data-c="component">{{ t(ln.component) if ln.component == main_component else ln.component }}</td>
                 <td class="text-body-tertiary" data-c="code">{{ ln.ingredient_code }}</td><td data-c="ingredient">{{ ln.ingredient_name }}</td>
+                <td class="text-end text-body-tertiary" data-c="per_portion">{{ '%.3f'|format(ln.net_per_portion or ln.per_portion) }} {{ ln.recipe_uom }}</td>
                 <td class="text-end boq-qty" data-c="net_qty">{{ '%.3f'|format(ln.required_qty) }}</td>
                 <td class="text-end col-issue" data-c="issue_qty">{{ '%.3f'|format(ln.issue_qty) }}</td><td data-c="uom">{{ ln.uom }}</td>
                 <td class="fs-9 text-body-tertiary" data-c="cutting">{{ ln.cutting or '' }}</td>
@@ -585,12 +633,14 @@
         </div>
         <div class="table-responsive"><table class="table table-sm boq-table">
           <thead><tr><th data-c="component">{{ t('Component') }}</th><th data-c="code">{{ t('Code') }}</th><th data-c="ingredient">{{ t('Ingredient') }}</th><th data-c="section">{{ t('Section') }}</th>
+            <th class="text-end" data-c="per_portion">{{ t('Per Portion') }}</th>
             <th class="text-end" data-c="net_qty">{{ t('Total Net Qty') }}</th><th class="text-end col-issue" data-c="issue_qty">{{ t('Total Issue Qty') }}</th><th data-c="uom">{{ t('UOM') }}</th>
             <th data-c="cutting">{{ t('Cutting / Portion') }}</th></tr></thead>
           <tbody>{% for ln in rec.lines %}
             <tr><td class="fs-9 text-primary" data-c="component">{{ t(ln.component) if ln.component == main_component else ln.component }}</td>
               <td class="text-body-tertiary" data-c="code">{{ ln.ingredient_code }}</td><td data-c="ingredient">{{ ln.ingredient_name }}</td>
               <td data-c="section"><span class="boq-sec" data-s="{{ ln.kitchen_section }}">{{ t(ln.kitchen_section) }}</span></td>
+              <td class="text-end text-body-tertiary" data-c="per_portion">{{ '%.3f'|format(ln.net_per_portion or ln.per_portion) }} {{ ln.recipe_uom }}</td>
               <td class="text-end boq-qty" data-c="net_qty">{{ '%.3f'|format(ln.required_qty) }}</td>
               <td class="text-end col-issue" data-c="issue_qty">{{ '%.3f'|format(ln.issue_qty) }}</td><td data-c="uom">{{ ln.uom }}</td>
               <td class="fs-9 text-body-tertiary" data-c="cutting">{{ ln.cutting or '' }}</td></tr>

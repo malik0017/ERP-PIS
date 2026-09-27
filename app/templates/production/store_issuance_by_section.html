@@ -107,9 +107,13 @@
            orders at once. Blank selection = every order in the section. Each
            pending line is issued at its required quantity. #}
         {% if g.pending and g.order_list %}
+        {# Batch 248 (Image 5): Issue selected issues each row at the quantity in
+           its box — the outstanding quantity (full requirement, or the
+           shortfall of a short row) unless the store keeper changed it. The
+           boxes are copied into this form as row_code / row_qty on submit. #}
         <form method="post" action="/production/store-issuance/by-section/issue-section"
-              class="d-flex gap-1 align-items-center"
-              data-confirm="Issue every pending line in {{ g.section }} for the selected order(s)? Leave the list empty to issue for all orders in this section."
+              class="d-flex gap-1 align-items-center si-issue-section"
+              data-confirm="Issue every pending row in {{ g.section }} at the quantity shown in its box, for the selected order(s)? Short rows get only their shortfall. Leave the order list empty to issue for all orders in this section."
               data-confirm-title="Issue Section" data-confirm-ok="Issue" data-confirm-variant="success">
           <input type="hidden" name="section" value="{{ g.section }}">
           <select name="orders" multiple size="1" class="form-select form-select-sm" style="min-width:180px;max-height:34px"
@@ -174,19 +178,21 @@
                 {% else %}
                 <form method="post" action="/production/store-issuance/by-section/issue-ingredient"
                       class="d-flex align-items-center gap-1"
-                      data-confirm="Issue this quantity of {{ c.ingredient_name }} to {{ g.section }}? It will be split across {{ c.pending_lines }} pending line(s) in proportion to what each order requires."
+                      data-confirm="Hand over this quantity of {{ c.ingredient_name }} to {{ g.section }}? It is added to what was already issued and split across {{ c.pending_lines }} pending line(s) by what each still needs."
                       data-confirm-title="Issue Consolidated Line" data-confirm-ok="Issue" data-confirm-variant="success">
                   <input type="hidden" name="section" value="{{ g.section }}">
                   <input type="hidden" name="ingredient_code" value="{{ c.ingredient_code }}">
                   {% if filters.order %}<input type="hidden" name="order_no" value="{{ filters.order }}">{% endif %}
-                  {# Pre-filled with what is still outstanding, not the row
-                     total — part-issued rows would otherwise re-issue material
-                     that has already gone out. Editable because the store
-                     keeper weighs what is actually on the shelf. #}
-                  <input class="form-control form-control-sm text-end" type="number" step="0.001" min="0"
+                  {# Pre-filled with what is still OUTSTANDING (Batch 248: the
+                     shortfall on a short row, not the full requirement again).
+                     Editable because the store keeper weighs what is actually
+                     on the shelf; the typed amount is ADDED to what each line
+                     already received and the same issuance is updated. #}
+                  <input class="form-control form-control-sm text-end si-row-qty" type="number" step="0.001" min="0"
                          name="issue_qty" style="width:104px"
+                         data-code="{{ c.ingredient_code }}"
                          value="{{ '%.3f'|format(c.pending_required) }}"
-                         title="{{ t('Quantity to issue now — split across') }} {{ c.pending_lines }} {{ t('pending line(s)') }} ({{ c.uom }})">
+                         title="{{ t('Quantity to hand over now (added to what was already issued) — split across') }} {{ c.pending_lines }} {{ t('pending line(s)') }} ({{ c.uom }})">
                   {# Batch 187 (Img 7): "Remove these UOM because its column
                      is already their and it will effect the issue button UI"
                      — the UOM already has its own column on this row (the
@@ -259,4 +265,22 @@
   <div class="si-card p-5 text-center text-secondary">Nothing pending — every released line is issued. 🎉</div>
   {% endfor %}
 </div>
+<script>
+/* Batch 248 (Image 5): copy each row's box into the section's "Issue selected"
+   form, so the section issue uses the quantities on screen. */
+document.addEventListener("submit", function (e) {
+  var f = e.target;
+  if (!f.classList || !f.classList.contains("si-issue-section")) return;
+  f.querySelectorAll("input[data-row-copy]").forEach(function (i) { i.remove(); });
+  var card = f.closest(".si-card");
+  if (!card) return;
+  card.querySelectorAll("input.si-row-qty").forEach(function (box) {
+    [["row_code", box.dataset.code], ["row_qty", box.value]].forEach(function (kv) {
+      var h = document.createElement("input");
+      h.type = "hidden"; h.name = kv[0]; h.value = kv[1]; h.setAttribute("data-row-copy", "1");
+      f.appendChild(h);
+    });
+  });
+}, true);
+</script>
 {% endblock %}

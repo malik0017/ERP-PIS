@@ -590,6 +590,11 @@ async def create_order_form(
     recipe_name: List[str] = Form([]),
     recipe_display: List[str] = Form([]),
     required_portions: List[float] = Form([]),
+    # Batch 248: parallel to recipe_no / required_portions. The plan matrix
+    # posts one (recipe_no, recipe_name, plan_code, required_portions) group
+    # per cell; the ordinary form posts an empty plan_code per row (or none
+    # at all, which is why a missing index below means "no plan").
+    plan_code: List[str] = Form([]),
     immediate: str = Form(""),
     db: Session = Depends(get_db),
 ):
@@ -620,12 +625,14 @@ async def create_order_form(
             .first()
         )
 
+        plan = (plan_code[idx] if idx < len(plan_code) else "") or ""
         lines.append(
             OrderLineIn(
                 recipe_no=rcp,
                 recipe_name=(recipe.recipe_name if recipe else (recipe_name[idx] if idx < len(recipe_name) and recipe_name[idx] else rcp)),
                 required_portions=portions,
                 selling_price_per_portion=float(recipe.sale_price_per_portion or 0) if recipe else 0,
+                plan_code=plan.strip() or None,
             )
         )
 
@@ -2477,6 +2484,58 @@ async def quick_issue_store_line(request: Request, line_id: int, db: Session = D
                             status_code=HTTP_303_SEE_OTHER)
 
 
+def _issue_topup(db: Session, lines: list, topup_total: float | None, section: str, note: str) -> tuple[float, int, str]:
+    """Batch 248 — issue a TOP-UP across lines and UPDATE each line in place.
+
+    Your note: *the box still shows the total required — it should show the
+    short value; and issuing again must update the previous issuance, not add
+    a separate one.*
+
+    Each line's outstanding quantity is what it still needs:
+        Pending       required                (issued_qty is only the pre-fill)
+        Short Issued  required - already issued
+    `topup_total` is what the store keeper is handing over NOW. It is split
+    across the lines in proportion to their outstanding quantity (the last
+    line absorbs rounding so the parts sum exactly), and each line's issued
+    quantity becomes   already issued + its share.   update_store_issuance_line
+    writes that onto the SAME line record, so a second issue corrects the
+    first; nothing is duplicated. topup_total None = give every line exactly
+    its outstanding quantity.
+
+    Returns (quantity issued now, lines that were locked, uom).
+    """
+    def _need(l):
+        return float(getattr(l, "required_qty_with_waste_standard", None)
+                     or getattr(l, "required_qty_standard", None) or 0)
+
+    def _prev(l):
+        if (getattr(l, "issuance_status", "") or "") in ("Short Issued", "Issued"):
+            return float(getattr(l, "issued_qty_standard", None) or 0)
+        return 0.0
+
+    rows = [(l, max(0.0, _need(l) - _prev(l))) for l in lines]
+    rows = [(l, o) for l, o in rows if o > 0] or rows
+    total_out = sum(o for _, o in rows)
+    issued_now, failed, uom, allocated = 0.0, 0, "", 0.0
+    for idx, (l, out) in enumerate(rows):
+        if topup_total is None:
+            share = out
+        elif idx == len(rows) - 1:
+            share = round(topup_total - allocated, 4)
+        else:
+            share = round(topup_total * (out / total_out), 4) if total_out > 0 else 0.0
+        allocated += share
+        if share <= 0:
+            continue
+        uom = getattr(l, "standard_uom", None) or uom or "Kg"
+        try:
+            update_store_issuance_line(db, l.id, round(_prev(l) + share, 4), uom, section, "", "", note)
+            issued_now += share
+        except ValueError:
+            failed += 1
+    return issued_now, failed, uom
+
+
 @router.post("/store-issuance/by-section/issue-section")
 async def issue_consolidated_section(request: Request, db: Session = Depends(get_db)):
     """Batch 159-MO — issue a whole section's pending picking list in one action,
@@ -2511,22 +2570,35 @@ async def issue_consolidated_section(request: Request, db: Session = Depends(get
         return float(getattr(l, "required_qty_with_waste_standard", None)
                      or getattr(l, "required_qty_standard", None) or 0)
 
+    # Batch 248 (Image 5): "Issue selected" now issues what the rows SAY.
+    # Every consolidated row posts its box (row_code / row_qty). A row left at
+    # its default gets its outstanding quantity (the full requirement if never
+    # issued, the shortfall if short); a row the store keeper changed gets
+    # exactly what was typed, split across that row's lines. Rows with no box
+    # posted fall back to outstanding, as before.
+    row_qty: dict[str, float] = {}
+    for code, raw in zip(form.getlist("row_code"), form.getlist("row_qty")):
+        try:
+            v = float(str(raw).strip())
+        except ValueError:
+            continue
+        if v >= 0:
+            row_qty[str(code).strip()] = v
+
     issued_lines = 0
     issued_orders = set()
     failed = 0
     note = ("Issued from consolidated section list"
             + (f" (selected orders: {', '.join(orders)})" if orders else " (all orders)"))
+    by_code: dict[str, list] = {}
     for l in lines:
-        qty = _need(l)
-        if qty <= 0:
-            continue
-        uom = getattr(l, "standard_uom", None) or "Kg"
-        try:
-            update_store_issuance_line(db, l.id, qty, uom, section, "", "", note)
-            issued_lines += 1
-            issued_orders.add(l.order_no)
-        except ValueError:
-            failed += 1
+        by_code.setdefault(l.ingredient_code, []).append(l)
+    for code, group in by_code.items():
+        qty_now, bad, _uom = _issue_topup(db, group, row_qty.get(code), section, note)
+        failed += bad
+        if qty_now > 0:
+            issued_lines += len(group) - bad
+            issued_orders.update(l.order_no for l in group)
 
     # Record the section standing-stock ledger for each order touched (Batch D),
     # so over-issue carry-forward stays correct after a bulk issue.
@@ -2621,31 +2693,15 @@ async def issue_consolidated_ingredient(request: Request, db: Session = Depends(
             back, f"{ingredient_code}: cannot split {override_total} — "
                   "the pending lines have no required quantity to apportion against.")
 
-    issued_total = 0.0
-    failed = 0
-    uom = ""
-    allocated = 0.0
-    for idx, l in enumerate(lines):
-        need = _need(l)
-        if override_total is None:
-            qty = need
-        elif idx == len(lines) - 1:
-            qty = round(override_total - allocated, 4)      # absorb the remainder
-        else:
-            qty = round(override_total * (need / total_need), 4)
-        allocated += qty
-        if qty <= 0:
-            continue
-        uom = getattr(l, "standard_uom", None) or uom or "Kg"
-        note = ("Issued from consolidated picking list"
-                if override_total is None else
-                f"Issued from consolidated picking list "
-                f"(row total {override_total:g}, apportioned by required qty)")
-        try:
-            update_store_issuance_line(db, l.id, qty, uom, section, "", "", note)
-            issued_total += qty
-        except ValueError:
-            failed += 1
+    # Batch 248: the posted quantity is a TOP-UP on what each line already
+    # has (see _issue_topup) and each line is updated in place. The box now
+    # defaults to the outstanding quantity, so pressing Issue on a short row
+    # hands over exactly the shortfall.
+    note = ("Issued from consolidated picking list"
+            if override_total is None else
+            f"Issued from consolidated picking list "
+            f"(top-up {override_total:g}, apportioned by outstanding qty)")
+    issued_total, failed, uom = _issue_topup(db, lines, override_total, section, note)
 
     from urllib.parse import quote as _q
     msg = f"{ingredient_code}: issued {issued_total:.3f} {uom} across {len(lines) - failed} line(s) to {section}."
@@ -3509,7 +3565,16 @@ async def store_issuance_by_section(request: Request, db: Session = Depends(get_
         c["lines"] += 1
         if not is_issued:
             c["pending_lines"] += 1
-            c["pending_required"] += float(r["required_qty"] or 0)
+            # Batch 248 (Image 5) ROOT CAUSE: this added the FULL required
+            # quantity for every not-yet-"Issued" line, including lines that
+            # were already Short Issued. Chicken breast: 9620 required, 9500.007
+            # issued, 119.993 short — and the Issue box offered 9620, i.e. the
+            # whole requirement a second time. Outstanding is what is MISSING:
+            # the full requirement for an untouched line, the shortfall for a
+            # short one. (A Pending line's issued_qty is only the BOM pre-fill,
+            # Batch 163, so it is not subtracted.)
+            _prev = float(r["issued_qty"] or 0) if (r["issuance_status"] or "") == "Short Issued" else 0.0
+            c["pending_required"] += max(0.0, float(r["required_qty"] or 0) - _prev)
         if (r["issuance_status"] or "") in ("Issued", "Short Issued") or int(r["finalized"] or 0):
             c["done_lines"] += 1
             c["done_required"] += float(r["required_qty"] or 0)

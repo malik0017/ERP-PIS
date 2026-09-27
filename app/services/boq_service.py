@@ -37,6 +37,67 @@ from app.core.db_read import log_failure as db_read_log
 
 MAIN_COMPONENT = "Main recipe"
 
+# ---------------------------------------------------------------------------
+# Batch 247 — BUTCHERY ITEM FILTER.
+#
+# Your note: *one more filter for the butchery section, on item code with item
+# name, same as order no & customer name — but only these items: Fish (SFD2),
+# Meat (MET1 and MET2), Chicken (PLT1 and PLT2), except PLT1-37 eggs.*
+#
+# The inventory code prefix IS the protein family in this item master, so the
+# list is defined by prefix rather than by a category column that may or may
+# not be filled. A prefix matches "<prefix>-" only, so PLT1 never swallows a
+# future PLT10. Change the families here; the screen, the print sheet and the
+# Excel export all read this one definition.
+# ---------------------------------------------------------------------------
+BUTCHERY_GROUPS: "OrderedDict[str, list[str]]" = OrderedDict([
+    ("Fish", ["SFD2"]),
+    ("Meat", ["MET1", "MET2"]),
+    ("Chicken", ["PLT1", "PLT2"]),
+])
+BUTCHERY_EXCLUDE = {"PLT1-37"}   # eggs sit under PLT1 but are not butchery work
+
+
+def butchery_group_of(code: str) -> str:
+    """'Fish' / 'Meat' / 'Chicken' for a butchery item code, '' otherwise."""
+    c = (code or "").strip().upper()
+    if not c or c in BUTCHERY_EXCLUDE:
+        return ""
+    for group, prefixes in BUTCHERY_GROUPS.items():
+        if any(c.startswith(p + "-") for p in prefixes):
+            return group
+    return ""
+
+
+def _item_clause(f: dict, params: dict) -> str:
+    """SQL for the item filter (alias `b`), or '' when no item is picked.
+
+    Picked ITEMS match exactly. Picked GROUPS match by prefix, minus the
+    exclusions. The two are OR-ed: "all Chicken + MET2-1051" is one pick.
+    """
+    items = [i for i in (f.get("items") or []) if i]
+    groups = [g for g in (f.get("item_groups") or []) if g in BUTCHERY_GROUPS]
+    if not items and not groups:
+        return ""
+    ors = []
+    if items:
+        binds = []
+        for i, code in enumerate(items):
+            k = f"it{i}"; binds.append(f":{k}"); params[k] = code
+        ors.append(f"b.ingredient_code IN ({','.join(binds)})")
+    if groups:
+        likes = []
+        n = 0
+        for g in groups:
+            for pfx in BUTCHERY_GROUPS[g]:
+                k = f"ip{n}"; n += 1
+                likes.append(f"UPPER(b.ingredient_code) LIKE :{k}"); params[k] = f"{pfx}-%"
+        ex = []
+        for i, code in enumerate(sorted(BUTCHERY_EXCLUDE)):
+            k = f"ix{i}"; ex.append(f":{k}"); params[k] = code
+        ors.append(f"(({' OR '.join(likes)}) AND UPPER(b.ingredient_code) NOT IN ({','.join(ex)}))")
+    return "(" + " OR ".join(ors) + ")"
+
 
 def _f(v: Any) -> float:
     try:
@@ -85,6 +146,10 @@ def order_where(f: dict, cid: int) -> tuple[str, dict]:
         clauses.append("COALESCE(o.kitchen,'') LIKE :kt"); params["kt"] = f"%{f['kitchen']}%"
     if f.get("recipe"):
         clauses.append("b.recipe_no = :rc"); params["rc"] = f["recipe"]
+    # Batch 247: butchery item / protein-group filter (every BOQ view).
+    item_sql = _item_clause(f, params)
+    if item_sql:
+        clauses.append(item_sql)
     return " AND ".join(clauses), params
 
 
@@ -98,7 +163,7 @@ def _recipe_lines(db: Session, codes: list[str], cid: int) -> dict[str, dict]:
                    r.standard_portions, r.version,
                    ri.id AS ri_id, ri.line_no, ri.inventory_code, ri.item_name,
                    ri.sub_recipe_code, ri.kitchen_section, ri.cutting_portion_size,
-                   ri.qty_per_portion, ri.uom
+                   ri.qty_per_portion, ri.uom, ri.portions AS line_portions
             FROM recipes r
             JOIN recipe_ingredients ri ON ri.recipe_id = r.id
             WHERE r.recipe_code IN :codes
@@ -163,6 +228,28 @@ def recipe_sheet(db: Session, f: dict, cid: int) -> list[dict]:
         return []
 
     masters = _recipe_lines(db, sorted({r["recipe_no"] for r in bom if r["recipe_no"]}), cid)
+
+    # Batch 248: meal-plan lines show the PLAN's per-portion quantity, not the
+    # recipe master's base (which for Salus is the sum of all four plans).
+    line_plan: dict[int, str] = {}
+    plan_qty: dict[tuple, float] = {}
+    try:
+        ol_ids = sorted({int(r["order_line_id"]) for r in bom if r["order_line_id"]})
+        if ol_ids:
+            for _id, _p in db.execute(text(
+                    "SELECT id, COALESCE(plan_code,'') FROM order_lines WHERE id IN :ids"
+            ).bindparams(bindparam("ids", expanding=True)), {"ids": ol_ids}).all():
+                if _p:
+                    line_plan[int(_id)] = _p
+        if line_plan:
+            ri_ids = sorted({ln["ri_id"] for m in masters.values() for ln in m["lines"]})
+            for _ri, _p, _q in db.execute(text(
+                    "SELECT recipe_ingredient_id, plan_code, qty_batch FROM recipe_ingredient_plans "
+                    "WHERE recipe_ingredient_id IN :ids"
+            ).bindparams(bindparam("ids", expanding=True)), {"ids": ri_ids}).all():
+                plan_qty[(int(_ri), _p)] = _f(_q)
+    except Exception:
+        line_plan, plan_qty = {}, {}
     # Batch E (Image 1): one or several sections.
     want_sections = set(f.get("sections") or [])
     if not want_sections and (f.get("section") or "").strip():
@@ -225,6 +312,11 @@ def recipe_sheet(db: Session, f: dict, cid: int) -> list[dict]:
         # Batch 206: prefer the stored net requirement; fall back to
         # recomputing from the recipe for BOMs generated before it existed.
         net_pp = _f((ri or {}).get("qty_per_portion"))
+        _plan = line_plan.get(int(b["order_line_id"] or 0), "")
+        if _plan and ri and (ri["ri_id"], _plan) in plan_qty:
+            _mp = _f(ri.get("line_portions")) or \
+                _f((masters.get(b["recipe_no"] or "", {}) or {}).get("standard_portions")) or 1.0
+            net_pp = plan_qty[(ri["ri_id"], _plan)] / _mp
         if b.get("net_qty_col") is not None:
             net_qty = _f(b["net_qty_col"])
         else:
@@ -375,7 +467,43 @@ def picker_options(db: Session, cid: int) -> dict:
                      "Bakery/Pastry", "Trayline / Packing"],
         # Batch 236 (Image 1): ONE list for ONE box. See finder_options().
         "finder": finder_options(db, cid),
+        # Batch 247: the butchery item finder.
+        "item_finder": butchery_item_options(db, cid),
     }
+
+
+def butchery_item_options(db: Session, cid: int) -> list[dict]:
+    """Batch 247 — entries for the Butchery Items finder.
+
+    Same shape as finder_options(): the three protein groups first (one pick =
+    the whole family), then every butchery item that appears on an open
+    order's BOM — so, as with the order finder, every choice returns rows.
+    """
+    open_clause = ("(o.company_id = :cid OR o.company_id IS NULL) "
+                   "AND COALESCE(o.status,'') NOT IN ('Cancelled','Rejected')")
+    rows = _rows(db, f"""
+        SELECT b.ingredient_code, MAX(COALESCE(b.ingredient_name, b.ingredient_code)) AS name,
+               COUNT(DISTINCT b.order_no) AS orders
+          FROM bom_lines b
+          JOIN customer_orders o ON o.order_no = b.order_no
+         WHERE {open_clause}
+         GROUP BY b.ingredient_code
+         ORDER BY name
+         LIMIT 3000""", cid)
+    items, per_group = [], {g: 0 for g in BUTCHERY_GROUPS}
+    for code, name, orders in rows:
+        group = butchery_group_of(code)
+        if not group:
+            continue
+        per_group[group] += 1
+        items.append({"kind": "item", "value": code, "label": f"{code} · {name}",
+                      "sub": f"{group} · {orders} order(s)",
+                      "search": f"{code} {name} {group}".lower()})
+    head = [{"kind": "group", "value": g, "label": f"All {g}",
+             "sub": f"{', '.join(BUTCHERY_GROUPS[g])} · {per_group[g]} item(s)",
+             "search": f"{g} {' '.join(BUTCHERY_GROUPS[g])}".lower()}
+            for g in BUTCHERY_GROUPS]
+    return head + items
 
 
 def finder_options(db: Session, cid: int) -> list[dict]:

@@ -16,19 +16,37 @@
   </div>
 
   <div class="row g-3 mb-4">
+    {# Batch 248 (Image 3): "are these price? weight? or what?" — all three
+       money cards are SAR VALUE (quantity × standard unit cost), and the
+       slow-moving one is a PART of stock on hand, not a separate pot. Each
+       card now says what it is, how it is computed, and how many items it
+       covers; the slow card shows its share of stock with a bar. #}
     <div class="col-6 col-lg-3"><div class="card border h-100"><div class="card-body">
-      <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Purchased (period)') }}</div>
-      <div class="fs-3 fw-bold">{{ '%.2f'|format(totals.ordered_value) }}</div></div></div></div>
+      <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Purchased (period)') }} <span class="fw-normal">· SAR</span></div>
+      <div class="fs-3 fw-bold">{{ '{:,.2f}'.format(totals.ordered_value) }}</div>
+      <div class="fs-10 text-body-tertiary">{{ t('Purchase-order value raised between the dates below') }}</div></div></div></div>
     <div class="col-6 col-lg-3"><div class="card border h-100"><div class="card-body">
-      <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Stock on Hand Value') }}</div>
-      <div class="fs-3 fw-bold text-success">{{ '%.2f'|format(totals.on_hand_value) }}</div></div></div></div>
+      <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Stock on Hand Value') }} <span class="fw-normal">· SAR</span></div>
+      <div class="fs-3 fw-bold text-success">{{ '{:,.2f}'.format(totals.on_hand_value) }}</div>
+      <div class="fs-10 text-body-tertiary">{{ t('Qty on hand × standard unit cost') }} · {{ totals.on_hand_items }} {{ t('items') }} · {{ t('QC-cleared stock only') }}</div></div></div></div>
     <div class="col-6 col-lg-3"><div class="card border h-100"><div class="card-body">
-      <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Slow-Moving Value') }}</div>
-      <div class="fs-3 fw-bold text-warning">{{ '%.2f'|format(totals.slow_value) }}</div></div></div></div>
+      <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Slow-Moving Value') }} <span class="fw-normal">· SAR</span></div>
+      <div class="fs-3 fw-bold text-warning">{{ '{:,.2f}'.format(totals.slow_value) }}</div>
+      <div class="progress my-1" style="height:6px" role="progressbar" aria-label="{{ t('Share of stock value') }}"
+           aria-valuenow="{{ totals.slow_pct }}" aria-valuemin="0" aria-valuemax="100">
+        <div class="progress-bar bg-warning" style="width:{{ [totals.slow_pct, 100]|min }}%"></div></div>
+      <div class="fs-10 text-body-tertiary">{{ totals.slow_pct }}% {{ t('of stock on hand') }} · {{ totals.slow_items }} {{ t('items with no issue in') }} {{ filters.slow_days }} {{ t('days') }}</div></div></div></div>
     <div class="col-6 col-lg-3"><div class="card border h-100"><div class="card-body">
-      <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Below Minimum') }}</div>
-      <div class="fs-3 fw-bold text-danger">{{ low|length }}</div></div></div></div>
+      <div class="text-body-tertiary fs-9 text-uppercase fw-bold mb-1">{{ t('Below Minimum') }} <span class="fw-normal">· {{ t('items') }}</span></div>
+      <div class="fs-3 fw-bold text-danger">{{ low|length }}</div>
+      <div class="fs-10 text-body-tertiary">{{ t('Items under their minimum stock level') }}</div></div></div></div>
   </div>
+  {% if totals.on_hand_value and totals.slow_pct >= 90 %}
+  <div class="alert alert-subtle-warning py-2 fs-9 mb-4">
+    <i class="bi bi-info-circle me-1"></i>
+    {{ t('Almost all stock value counts as slow-moving. That usually means issues are not yet being posted to the stock ledger (the items read "never issued"), not that the stock is genuinely idle.') }}
+  </div>
+  {% endif %}
 
   <div class="card border mb-4"><div class="card-body py-3">
     <form method="get" class="row g-2 align-items-end">
@@ -89,7 +107,9 @@
           <table class="table table-sm mb-0" data-isfc-table>
             <thead class="bg-body-highlight position-sticky top-0"><tr>
               <th>{{ t('Supplier') }}</th><th class="text-end">{{ t('Items') }}</th>
-              <th class="text-end">{{ t('On Hand') }}</th><th class="text-end">{{ t('Value') }}</th>
+              {# Batch 248: a quantity summed across grams, ml and pieces is not a
+                 number anyone can use — labelled for what it is. #}
+              <th class="text-end" title="{{ t('Sum of quantities across different units (g, ml, pcs) — not comparable between rows') }}">{{ t('On Hand Qty (mixed units)') }}</th><th class="text-end">{{ t('Value (SAR)') }}</th>
               <th class="text-end">{{ t('In QC') }}</th></tr></thead>
             <tbody>
               {% for s in stock %}

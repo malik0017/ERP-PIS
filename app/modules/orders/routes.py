@@ -9,12 +9,30 @@ from app.core.rbac import require_area
 from app.database.session import get_db
 from app.models.production import CustomerOrder
 from app.core.company import require_order_scope, require_record_scope
+from app.services.order_costing import FCPP_SQL, SPPP_SQL
 
 router = APIRouter(prefix="/orders", tags=["Orders"])
 
 
 def _company_id_from_session(request: Request) -> int:
     return int(request.session.get("company_id") or 1)
+
+
+def _static_exists(rel: str) -> bool:
+    import os
+    return os.path.exists(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__)))), "static", rel))
+
+
+def _can_see_costs(request: Request) -> bool:
+    """Batch 247 — food cost and margin are internal figures. The same order
+    form is served to CUSTOMER logins (Customer Portal), who must never see
+    what a dish costs us; every other role that can raise a requisition does."""
+    try:
+        from app.core.rbac import normalized_role
+        return normalized_role(request) != "CUSTOMER"
+    except Exception:
+        return False
 
 
 def _master_dropdown_context(db: Session, company_id: int = 1) -> dict:
@@ -63,7 +81,7 @@ def _master_dropdown_context(db: Session, company_id: int = 1) -> dict:
     ).mappings().all()
 
     recipes = db.execute(
-        text("""
+        text(f"""
             SELECT
                 r.recipe_code,
                 r.recipe_name,
@@ -72,8 +90,10 @@ def _master_dropdown_context(db: Session, company_id: int = 1) -> dict:
                 COALESCE(r.category,'') AS category,
                 COALESCE(r.day_of_week,'') AS day_of_week,
                 r.standard_portions,
-                r.food_cost_per_portion,
-                r.sale_price_per_portion,
+                -- Batch 247: per-portion cost/price with the batch fallback, so
+                -- recipes imported without a recalc no longer cost 0.00.
+                {FCPP_SQL("r")} AS food_cost_per_portion,
+                {SPPP_SQL("r")} AS sale_price_per_portion,
                 COUNT(ri.id) AS bom_lines
             FROM recipes r
             LEFT JOIN recipe_ingredients ri ON ri.recipe_id = r.id
@@ -122,8 +142,13 @@ def order_portal(request: Request, db: Session = Depends(get_db)):
          "description": "Healthy living, simplified"},
         {"key": "afya",      "name": "Afya",       "logo": "/static/img/customers/afya.jpg",      "active": False,
          "description": "Delivering better health"},
-        {"key": "soon1",     "name": "Coming Soon", "logo": None, "icon": "hourglass-split", "active": False, "placeholder": True,
-         "description": "More great systems on the way"},
+        # Batch 248: Salus — meal-plan customer (Comfy / Low Carb / Grit /
+        # Salus Fit). Drop the real logo at static/img/customers/salus.png and
+        # the card picks it up; until then it shows a neutral icon.
+        {"key": "salus",     "name": "Salus",
+         "logo": ("/static/img/customers/salus.png" if _static_exists("img/customers/salus.png") else None),
+         "icon": "heart-pulse", "active": True, "match": ["SALUS"],
+         "description": "Meal plans · Comfy · Low Carb · Grit · Salus Fit"},
         {"key": "soon2",     "name": "Coming Soon", "logo": None, "icon": "hourglass-split", "active": False, "placeholder": True,
          "description": "More great systems on the way"},
         {"key": "soon3",     "name": "Coming Soon", "logo": None, "icon": "hourglass-split", "active": False, "placeholder": True,
@@ -185,7 +210,8 @@ def order_portal_new(request: Request, db: Session = Depends(get_db)):
 
     context.update({"page_title": "Sale Requisitions",
                     "preset_customer": preset,
-                    "preset_info": preset_info})
+                    "preset_info": preset_info,
+                    "show_costs": _can_see_costs(request)})
     return render(request, "orders/portal.html", context)
 
 
@@ -203,7 +229,8 @@ def order_portal_immediate(request: Request, db: Session = Depends(get_db)):
     require_area(request, "immediate_order")
     company_id = _company_id_from_session(request)
     context = _master_dropdown_context(db, company_id)
-    context.update({"page_title": "Immediate Order (No 48-Hour Rule)", "immediate": True})
+    context.update({"page_title": "Immediate Order (No 48-Hour Rule)", "immediate": True,
+                    "show_costs": _can_see_costs(request)})
     return render(request, "orders/portal.html", context)
 
 
@@ -215,7 +242,9 @@ def orders_list(request: Request, db: Session = Depends(get_db)):
 
 
 @router.get("/{order_no}")
-def redirect_order_detail(order_no: str):
+def redirect_order_detail(order_no: str, request: Request, db: Session = Depends(get_db)):
+    # Batch 247: `request` and `db` were used below but never declared, so
+    # every /orders/<no> link raised NameError (500) instead of redirecting.
     # Batch 207: an order number in the URL is not authorisation — 404 if it belongs to another company.
     require_order_scope(db, request, order_no)
     return RedirectResponse(f"/production/orders/{order_no}", status_code=303)
@@ -255,7 +284,9 @@ def my_orders(request: Request, db: Session = Depends(get_db)):
                COALESCE(co.required_delivery_date,'') AS delivery_date,
                COALESCE(co.required_delivery_time,'') AS delivery_time,
                COALESCE(co.total_planned_portions,0) AS portions,
-               COALESCE(co.total_sales_value,0) AS sale_value,
+               -- Batch 247: the column is total_estimated_selling_value;
+               -- total_sales_value does not exist and failed the whole query.
+               COALESCE(co.total_estimated_selling_value,0) AS sale_value,
                co.status
         FROM customer_orders co
         {where}

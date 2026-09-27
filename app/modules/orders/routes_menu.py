@@ -37,6 +37,7 @@ from sqlalchemy.orm import Session
 import logging
 
 from app.core.rbac import require_area
+from app.services.order_costing import FCPP_SQL, SPPP_SQL
 from app.database.session import get_db
 
 log = logging.getLogger(__name__)
@@ -405,12 +406,12 @@ def menu_recipes(request: Request, customer: str = "", day: str = "",
                    COALESCE(r.day_of_week, '') AS day_of_week,
                    COALESCE(r.meal_order, '') AS meal_order,
                    COALESCE(r.standard_portions, 1) AS standard_portions,
-                   COALESCE(r.sale_price_per_portion, 0) AS price,
+                   {SPPP_SQL('r')} AS price,
                    -- Batch 103: the detail the order screen shows once a
                    -- recipe is picked, so the person ordering can see what
                    -- they are committing to without opening the recipe.
                    COALESCE(r.weight_per_portion_g, 0) AS weight_per_portion_g,
-                   COALESCE(r.food_cost_per_portion, 0) AS food_cost,
+                   {FCPP_SQL('r')} AS food_cost,
                    COALESCE(r.std_yield_pct, 0) AS yield_pct
             FROM recipes r
             WHERE {' AND '.join(where)}
@@ -420,6 +421,8 @@ def menu_recipes(request: Request, customer: str = "", day: str = "",
     except Exception:
         rows = []
 
+    from app.modules.orders.routes import _can_see_costs
+    _show_costs = _can_see_costs(request)
     return {
         "customer": customer, "day": day, "count": len(rows),
         "recipes": [{
@@ -429,7 +432,8 @@ def menu_recipes(request: Request, customer: str = "", day: str = "",
             "standard_portions": float(r["standard_portions"] or 1),
             "price": float(r["price"] or 0),
             "weight_per_portion_g": float(r["weight_per_portion_g"] or 0),
-            "food_cost": float(r["food_cost"] or 0),
+            # Batch 247: internal figure — withheld from CUSTOMER logins.
+            "food_cost": float(r["food_cost"] or 0) if _show_costs else 0.0,
             "yield_pct": float(r["yield_pct"] or 0),
         } for r in rows],
     }
@@ -568,8 +572,14 @@ def customer_defaults(request: Request, customer: str = "", code: str = "",
         except Exception:
             return "", value
 
-    bc, bn = _lookup("brands", "brand_code", "brand_name", brand_code or brand_name)
-    cc, cn = _lookup("revenue_streams", "channel_code", "channel_name",
+    # Batch 248 ROOT CAUSE: these looked up brands.brand_name and
+    # revenue_streams.channel_code / channel_name — none of which exist (the
+    # columns are brand_name_en, stream_code, stream_name). Every lookup threw,
+    # the except returned ("", value), and a customer whose default was stored
+    # as a CODE got the bare code in the brand box, or nothing. Salus, a new
+    # customer with no order history, got nothing at all.
+    bc, bn = _lookup("brands", "brand_code", "brand_name_en", brand_code or brand_name)
+    cc, cn = _lookup("revenue_streams", "stream_code", "stream_name",
                      channel_code or channel_name)
 
     menu = is_menu_driven(db, customer, cid, brand=brand_name)
@@ -588,8 +598,20 @@ def customer_defaults(request: Request, customer: str = "", code: str = "",
         except Exception:
             days = []
 
+    # Batch 248: the customer's meal plans (Salus: Comfy / Low Carb / Grit /
+    # Salus Fit). Found with the same keys that find the menu, so no customer
+    # is special-cased. Empty for everyone without plans.
+    plans: list = []
+    try:
+        from app.services.customer_plans import ensure_plan_schema, plans_for_keys
+        ensure_plan_schema(db)
+        plans = plans_for_keys(db, cid, menu_keys(db, customer, bn or brand_name, cid))
+    except Exception:
+        plans = []
+
     return {
         "menu_driven": menu,
+        "plans": plans,
         "brand_code": bc, "brand_name": bn,
         "channel_code": cc, "channel_name": cn,
         "brand_display": (f"{bc} - {bn}" if bc and bn else (bn or "")),
@@ -647,8 +669,8 @@ def recipes_for_date(request: Request, customer: str = "", brand: str = "",
                COALESCE(r.category, '') AS category,
                {meal_col} AS meal_order,
                COALESCE(r.standard_portions, 1) AS standard_portions,
-               COALESCE(r.sale_price_per_portion, 0) AS price,
-               COALESCE(r.food_cost_per_portion, 0) AS food_cost,
+               {SPPP_SQL('r')} AS price,
+               {FCPP_SQL('r')} AS food_cost,
                COALESCE(r.weight_per_portion_g, 0) AS weight_per_portion_g
         FROM recipes r
         WHERE {scope_sql}
@@ -705,9 +727,34 @@ def recipes_for_date(request: Request, customer: str = "", brand: str = "",
                 return [_INV[c] for c in letters.strip() if c in _INV] or [""]
         return []
 
+    # Batch 247: food cost is internal. CUSTOMER logins share this endpoint
+    # through the Customer Portal, so they get the menu without it.
+    from app.modules.orders.routes import _can_see_costs
+    show_costs = _can_see_costs(request)
+
+    # Batch 248: which plans each dish is offered in, and its food cost per
+    # portion IN each plan (plan quantities re-costed). Non-plan dishes carry
+    # an empty list and order as a single quantity, exactly as before.
+    plan_map: dict = {}
+    plan_cost: dict = {}
+    try:
+        from app.services.customer_plans import (ensure_plan_schema, recipe_plan_map,
+                                                 plan_cost_adjustments)
+        ensure_plan_schema(db)
+        codes = [r["recipe_code"] for r in rows]
+        plan_map = recipe_plan_map(db, cid, codes)
+        if plan_map and show_costs:
+            plan_cost = plan_cost_adjustments(db, cid, list(plan_map))
+    except Exception:
+        plan_map, plan_cost = {}, {}
+
     recipes = []
     for r in rows:
         meals = _meals_for_day(r["meal_order"], day)
+        _plans = plan_map.get(r["recipe_code"], [])
+        _base_fc = float(r["food_cost"] or 0)
+        _plan_fc = {p: round(max(0.0, _base_fc + plan_cost.get((r["recipe_code"], p), 0.0)), 4)
+                    for p in _plans} if show_costs else {}
         for m in meals:
             recipes.append({
                 "code": r["recipe_code"], "name": r["recipe_name"],
@@ -715,8 +762,10 @@ def recipes_for_date(request: Request, customer: str = "", brand: str = "",
                 "meal_order": m,
                 "standard_portions": float(r["standard_portions"] or 1),
                 "price": float(r["price"] or 0),
-                "food_cost": float(r["food_cost"] or 0),
+                "food_cost": float(r["food_cost"] or 0) if show_costs else 0.0,
                 "weight_per_portion_g": float(r["weight_per_portion_g"] or 0),
+                "plans": _plans,
+                "plan_food_cost": _plan_fc,
             })
     recipes.sort(key=lambda x: (MEAL_SEQ.get(x["meal_order"], 9),
                                 x["category"] or "", x["name"] or ""))
@@ -770,3 +819,37 @@ def _menu_funnel(db: Session, cid: int, keys: list[str], clause: str,
     except Exception:
         funnel["distinct_day_values"] = []
     return funnel
+
+
+# ---------------------------------------------------------------------------
+# Batch 247 — CHECK ORDER COST (Sale Requisition / Immediate Order).
+#
+# Your note on the requisition screen: *check food cost of any order — food
+# cost per portion and total food cost, e.g. fruit pudding and boiled eggs =
+# food cost per portion × no. of orders. Give a button "check order cost"; a
+# user may only check the cost, or process the order.*
+#
+# The form already shows running figures as quantities are typed (from the
+# per-portion values it loaded). This endpoint is the authoritative check the
+# button calls: it re-reads the CURRENT active recipe version for every line,
+# so what the user sees in the dialog is exactly what order creation will
+# store. Read-only — nothing is saved, so "just checking" costs nothing.
+# ---------------------------------------------------------------------------
+@router.post("/order-cost")
+async def order_cost(request: Request, db: Session = Depends(get_db)):
+    require_area(request, "order_portal")
+    from fastapi.responses import JSONResponse
+    from app.modules.orders.routes import _can_see_costs
+    from app.services.order_costing import quote
+    if not _can_see_costs(request):
+        return JSONResponse({"error": "Cost information is not available for this account."},
+                            status_code=403)
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+    items = payload.get("lines") if isinstance(payload, dict) else None
+    if not isinstance(items, list):
+        return JSONResponse({"error": "No lines sent."}, status_code=400)
+    return JSONResponse(quote(db, _cid(request), items[:500]))
+

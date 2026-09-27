@@ -326,7 +326,7 @@ th.rp-g4 {
   padding: 2px 9px;
   font-weight: 700;
   font-size: 10px;
-  background: #e8f0fb;
+  /* background: #e8f0fb; */
   /* color: #1d4f91; */
 }
 
@@ -528,4 +528,14 @@ th.rp-g4 {
 
 .rp-2up .rp-group table td:first-child {
   white-space: nowrap;
+}
+
+/* --- Batch 247 (Image 5) ----------------------------------------------------
+   The 2-up sheet layout (natural widths + scale-to-fit) lives in
+   production/boq_recipe_print.html so it ships with the page. The only rule
+   kept here: nothing ever draws outside the white sheet on screen. */
+@media screen {
+  .rp-sheet {
+    overflow-x: auto;
+  }
 }

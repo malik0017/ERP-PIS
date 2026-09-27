@@ -96,7 +96,7 @@
     <!-- Batch 211: the report design system (Batch 209) is linked on every page
          so the table-tools Print window can find its href and reuse it. It is
          scoped to .rp-* classes, so it changes nothing on the app screens. -->
-    <link href="{{ url_for('static', path='css/isfc-report.css') }}" rel="stylesheet" media="print" onload="this.media='all'">
+    <link href="{{ url_for('static', path='css/isfc-report.css') }}?v={{ asset_v('css/isfc-report.css') }}" rel="stylesheet" media="print" onload="this.media='all'">
     <link href="{{ url_for('static', path='css/isfc-headers.css') }}" rel="stylesheet"><!-- Batch 120: teal section bands -> uniform gray -->
 
     <script>

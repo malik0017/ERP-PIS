@@ -234,6 +234,27 @@ def create_order(db: Session, payload: CustomerOrderCreate, created_by: str = "s
     total_sales = 0.0
     total_food = 0.0
 
+    # Batch 248 — meal plans. Plan lines are costed at the plan quantities and
+    # keep their plan on the order line; the plan's name is also appended to
+    # the line's recipe name ("Butter Chicken (Comfy)") so every downstream
+    # sheet — BOM, BOQ, store issue, kitchen, packing labels — shows which
+    # plate it is without each screen having to learn about plans.
+    plan_lines = [l for l in payload.lines if getattr(l, "plan_code", None)]
+    plan_names: dict[str, str] = {}
+    plan_deltas: dict = {}
+    if plan_lines:
+        from app.services.customer_plans import ensure_plan_schema, plan_cost_adjustments
+        ensure_plan_schema(db)
+        try:
+            for code, name in db.execute(text(
+                    "SELECT plan_code, plan_name FROM customer_plans "
+                    "WHERE company_id = :cid OR company_id IS NULL"), {"cid": company_id}).all():
+                plan_names.setdefault(code, name)
+        except Exception:
+            db.rollback()
+        plan_deltas = plan_cost_adjustments(db, company_id or 1,
+                                            [l.recipe_no for l in plan_lines])
+
     for idx, line in enumerate(payload.lines, start=1):
         required_portions = _num(line.required_portions)
         if required_portions <= 0:
@@ -251,10 +272,22 @@ def create_order(db: Session, payload: CustomerOrderCreate, created_by: str = "s
         )
 
         recipe_name = line.recipe_name or (recipe.recipe_name if recipe else line.recipe_no)
-        selling_price = line.selling_price_per_portion or _num(recipe.sale_price_per_portion if recipe else 0)
-        food_cost_per_portion = _num(recipe.food_cost_per_portion if recipe else 0)
         standard_portions = max(_num(recipe.standard_portions if recipe else 1), 1)
+        # Batch 247: same fallback as order_costing.FCPP_SQL / SPPP_SQL — a
+        # recipe imported without a recalc has food_cost filled but a 0
+        # per-portion figure, which used to make the whole order cost 0.00.
+        selling_price = line.selling_price_per_portion or _num(recipe.sale_price_per_portion if recipe else 0) \
+            or (_num(recipe.sale_price) / standard_portions if recipe else 0)
+        food_cost_per_portion = _num(recipe.food_cost_per_portion if recipe else 0) \
+            or (_num(recipe.food_cost) / standard_portions if recipe else 0)
         planned_batches = required_portions / standard_portions
+        plan = (getattr(line, "plan_code", None) or "").strip()
+        if plan:
+            food_cost_per_portion = max(
+                0.0, food_cost_per_portion + plan_deltas.get((line.recipe_no, plan), 0.0))
+            label = plan_names.get(plan, plan)
+            if f"({label})" not in recipe_name:
+                recipe_name = f"{recipe_name} ({label})"
 
         ol = OrderLine(
             company_id=company_id,
@@ -270,6 +303,10 @@ def create_order(db: Session, payload: CustomerOrderCreate, created_by: str = "s
             status="Open",
         )
         db.add(ol)
+        if plan:
+            db.flush()
+            db.execute(text("UPDATE order_lines SET plan_code = :p WHERE id = :i"),
+                       {"p": plan, "i": ol.id})
         total_portions += required_portions
         total_sales += required_portions * selling_price
         total_food += required_portions * food_cost_per_portion
@@ -318,6 +355,21 @@ def generate_bom_for_order(db: Session, order_no: str, approved_by: str | None =
     total_cost = 0.0
     _assembly_cache: dict = {}
 
+    # Batch 248: which order lines were ordered for a meal plan. Read with raw
+    # SQL so the OrderLine model does not need a new mapped column (a mapped
+    # column that the database lacks breaks every OrderLine query).
+    from app.services.customer_plans import ensure_plan_schema, plan_qty_map
+    line_plan: dict[int, str] = {}
+    try:
+        ensure_plan_schema(db)
+        for _id, _p in db.execute(text(
+                "SELECT id, COALESCE(plan_code,'') FROM order_lines WHERE order_no = :o"),
+                {"o": order_no}).all():
+            if _p:
+                line_plan[int(_id)] = _p
+    except Exception:
+        db.rollback()
+
     for ol in lines:
         recipe = (
             db.query(Recipe)
@@ -345,6 +397,8 @@ def generate_bom_for_order(db: Session, order_no: str, approved_by: str | None =
         # Batch A (Image 5): where this recipe is assembled, so a Hot-cooked
         # component of a cold dish routes Hot → Cold → QC.
         assembly_section = recipe_assembly_section(db, recipe.recipe_code, _assembly_cache)
+        plan = line_plan.get(int(ol.id), "")
+        plan_qty = plan_qty_map(db, [ri.id for ri in recipe_items], plan) if plan else {}
 
         for ri in recipe_items:
             ingredient_code = ri.inventory_code or f"NO-CODE-{ri.id}"
@@ -385,6 +439,18 @@ def generate_bom_for_order(db: Session, order_no: str, approved_by: str | None =
             gross_pp = 0.0
             if _num(ri.qty_batch) > 0 and line_portions > 0:
                 gross_pp = _num(ri.qty_batch) / line_portions
+
+            # Batch 248 — MEAL PLAN QUANTITY. A plan-sensitive line (Salus
+            # chicken breast: Fit 1300 / Low Carb 1800 / Comfy 1800 / Grit 2300
+            # g per 10-portion batch) uses the plan's batch quantity instead of
+            # the base one. The line's own gross:net ratio is kept, so yield
+            # loss on a trimmed protein still reaches the store issue.
+            original_batch_qty = _num(ri.qty_batch)
+            if ri.id in plan_qty:
+                ratio = (gross_pp / net_pp) if (net_pp > 0 and gross_pp > 0) else 1.0
+                net_pp = plan_qty[ri.id] / (line_portions or std_portions or 1)
+                gross_pp = net_pp * ratio
+                original_batch_qty = plan_qty[ri.id]
 
             # A line "has yield loss" when gross exceeds net by more than a
             # rounding hair. Derived from the data, not from a section name —
@@ -451,13 +517,14 @@ def generate_bom_for_order(db: Session, order_no: str, approved_by: str | None =
                 order_no=order_no,
                 order_line_id=ol.id,
                 recipe_no=recipe.recipe_code,
-                recipe_name=recipe.recipe_name,
+                # Batch 248: a plan line keeps its plan in the name everywhere.
+                recipe_name=(ol.recipe_name if plan else recipe.recipe_name),
                 ingredient_code=ingredient_code,
                 ingredient_name=ri.item_name,
                 ingredient_category=(getattr(ingredient, "category", None) if ingredient else ri.line_type),
                 ingredient_main_category=(getattr(ingredient, "main_category", None) or getattr(ingredient, "category", None) if ingredient else ri.line_type),
                 ingredient_sub_category=(getattr(ingredient, "sub_category", None) if ingredient else None),
-                original_recipe_qty=_num(ri.qty_batch),
+                original_recipe_qty=original_batch_qty,
                 recipe_uom=recipe_uom,
                 required_qty_recipe_uom=required_recipe_qty,
                 standard_uom=standard_uom,

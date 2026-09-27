@@ -477,6 +477,55 @@
     color: #607083
   }
 
+  /* ---- Batch 247: Order Cost, Waste & Yield ---------------------------- */
+  .oi-sub { font-size: 13px; font-weight: 700; color: var(--pis-muted); margin-left: 6px; }
+  .oi-link { font-size: 13px; font-weight: 800; text-decoration: none; }
+  .oi-h { font-size: 15px; font-weight: 900; color: var(--pis-navy); margin: 18px 0 8px; }
+  .oi-facts { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; margin: 10px 0 14px; }
+  .oi-facts div { border: 1px solid var(--pis-line); border-radius: 12px; padding: 8px 10px; font-weight: 700; font-size: 13px; }
+  .oi-facts b { display: block; font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--pis-muted); font-weight: 900; }
+  .oi-kpis { display: grid; grid-template-columns: repeat(8, 1fr); gap: 10px; }
+  .oi-kpi { border: 1px solid var(--pis-line); border-radius: 16px; padding: 12px; background: linear-gradient(180deg, #fff, #f7fbfd); }
+  .oi-kpi span { display: block; font-size: 11px; font-weight: 900; text-transform: uppercase; color: var(--pis-muted); }
+  .oi-kpi strong { display: block; font-size: 20px; color: var(--pis-navy); font-variant-numeric: tabular-nums; }
+  .oi-kpi em { display: block; font-style: normal; font-size: 11.5px; color: var(--pis-muted); }
+  .oi-kpi .good, .oi-bar i.good { color: #147344; }
+  .oi-kpi .warn { color: #b45309; }
+  .oi-kpi .bad { color: #b42318; }
+  .oi-table th { font-size: 11px; text-transform: uppercase; color: var(--pis-muted); white-space: nowrap; }
+  .oi-table td { font-size: 13px; vertical-align: middle; font-variant-numeric: tabular-nums; }
+  .oi-table tfoot td { font-weight: 900; background: #eef4fb; }
+  .oi-muted { font-size: 11.5px; color: var(--pis-muted); }
+  .oi-basis { font-size: 11px; font-weight: 800; border-radius: 999px; padding: 2px 8px; background: #eef2f6; color: #607083; }
+  .oi-basis.bom { background: #def8eb; color: #147344; }
+  .oi-bar { height: 8px; border-radius: 999px; background: #eef2f6; overflow: hidden; margin-bottom: 2px; }
+  .oi-bar i { display: block; height: 100%; border-radius: 999px; }
+  .oi-bar i.good { background: #21a365; } .oi-bar i.warn { background: #e4a11b; }
+  .oi-bar i.bad { background: #d9534f; } .oi-bar i.info { background: #3874ff; }
+  .oi-note { font-size: 12px; color: var(--pis-muted); margin-top: 8px; }
+  /* Batch 248: grid items may shrink; ranked cost list. */
+  .rm-grid > * { min-width: 0; }
+  .oi-rank { list-style: none; margin: 0; padding: 0; }
+  .oi-rank li { display: flex; gap: 10px; padding: 9px 0; border-bottom: 1px solid #eef2f6; }
+  .oi-rank li:last-child { border-bottom: 0; }
+  .oi-rk { flex: 0 0 24px; height: 24px; border-radius: 50%; background: #eef4fb; color: #1e5bb8;
+    font-weight: 900; font-size: 12px; display: grid; place-items: center; margin-top: 2px; }
+  .oi-rank li:nth-child(-n+3) .oi-rk { background: #1e5bb8; color: #fff; }
+  .oi-rb { flex: 1; min-width: 0; }
+  .oi-rt { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+  .oi-rn { min-width: 0; }
+  .oi-rn strong { display: block; font-size: 13px; color: var(--pis-navy); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .oi-rn span, .oi-rm { font-size: 11.5px; color: var(--pis-muted); }
+  .oi-rv { text-align: end; white-space: nowrap; }
+  .oi-rv strong { font-size: 14px; color: var(--pis-navy); font-variant-numeric: tabular-nums; }
+  .oi-rv span { display: block; font-size: 11px; color: #1e5bb8; font-weight: 800; }
+  .oi-rank .oi-bar { margin: 5px 0 3px; }
+  .oi-rw { color: #b45309; }
+  [data-bs-theme="dark"] .oi-kpi { background: transparent; }
+  [data-bs-theme="dark"] .oi-table tfoot td { background: rgba(56,116,255,.12); }
+  @media (max-width: 1400px) { .oi-kpis { grid-template-columns: repeat(4, 1fr); } .oi-facts { grid-template-columns: repeat(3, 1fr); } }
+  @media (max-width: 680px) { .oi-kpis, .oi-facts { grid-template-columns: 1fr 1fr; } }
+
   @media(max-width:1200px) {
     .doc-summary {
       grid-template-columns: 1fr 1fr
@@ -592,36 +641,145 @@
       </div>
   </div>
 
+  {# ==================================================================
+     Batch 247 — ORDER COST, WASTE & YIELD for the selected order.
+     Replaces Master Data Feeding the Flow / Live Order Status Mix /
+     Reports Connected (company-wide counts that said nothing about this
+     order). Source: services/order_costing.order_intelligence().
+     ================================================================== #}
+  {% if selected_order and intel %}
+  {% set it = intel.totals %}
   <div class="rm-panel">
-    <h3>Master Data Feeding the Flow</h3>
-    <div class="master-rail">
-      {% for m in master_nodes %}
-      <a class="master-card" href="{{ m.url }}"><i class="bi {{ m.icon }}"></i><small>{{ m.title }}</small><strong>{{
-          m.metric }}</strong></a>
-      {% endfor %}
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+      <h3 class="mb-0">Order Cost, Waste &amp; Yield <span class="oi-sub">{{ selected_order.order_no }}</span></h3>
+      <a class="oi-link" href="/production/orders/{{ selected_order.order_no }}"><i class="bi bi-box-arrow-up-right me-1"></i>Open order</a>
     </div>
+
+    <div class="oi-facts">
+      <div><b>Customer</b>{{ selected_order.customer_name or '—' }}</div>
+      <div><b>Brand / Channel</b>{{ selected_order.brand or '—' }} · {{ selected_order.channel or '—' }}</div>
+      <div><b>Status</b>{{ selected_order.status or 'Submitted' }}</div>
+      <div><b>Material Receiving</b>{{ selected_order.material_receiving_date or '—' }} {{ selected_order.material_receiving_time or '' }}</div>
+      <div><b>Cooking</b>{{ selected_order.cooking_date or '—' }} {{ selected_order.cooking_time or '' }}</div>
+      <div><b>Delivery</b>{{ selected_order.delivery_date or '—' }} {{ selected_order.delivery_time or '' }}</div>
+    </div>
+
+    <div class="oi-kpis">
+      <div class="oi-kpi"><span>Portions</span><strong>{{ '{:,.0f}'.format(it.portions) }}</strong><em>{{ it.lines }} recipe line(s)</em></div>
+      <div class="oi-kpi"><span>Sale Value</span><strong class="good">{{ '{:,.2f}'.format(it.sale_value) }}</strong></div>
+      <div class="oi-kpi"><span>Food Cost</span><strong class="bad">{{ '{:,.2f}'.format(it.food_cost) }}</strong><em>{{ '{:,.3f}'.format(it.cost_per_portion) }} / portion</em></div>
+      <div class="oi-kpi"><span>Food Cost %</span><strong class="{{ 'bad' if it.food_cost_pct > 45 else '' }}">{{ '%.1f'|format(it.food_cost_pct) }}%</strong></div>
+      <div class="oi-kpi"><span>Gross Margin</span><strong class="{{ 'bad' if it.margin < 0 else 'good' }}">{{ '{:,.2f}'.format(it.margin) }}</strong><em>{{ '%.1f'|format(it.margin_pct) }}% of sale</em></div>
+      <div class="oi-kpi"><span>Planned Waste</span><strong class="warn">{{ '{:,.2f}'.format(intel.waste.planned_value) }}</strong><em>{{ '%.1f'|format(intel.waste.planned_pct) }}% of BOM cost</em></div>
+      <div class="oi-kpi"><span>Actual Waste</span><strong class="warn">{{ '{:,.2f}'.format(intel.waste.actual_value) }}</strong><em>{{ '%.1f'|format(intel.waste.actual_pct) }}% of kitchen input</em></div>
+      <div class="oi-kpi"><span>Kitchen Yield</span><strong class="{{ 'good' if intel.yield.pct >= 90 else ('warn' if intel.yield.pct >= 75 else 'bad') }}">{{ '%.1f'|format(intel.yield.pct) if intel.yield.has_data else '—' }}{{ '%' if intel.yield.has_data }}</strong><em>{{ 'output ÷ input' if intel.yield.has_data else 'no kitchen movements yet' }}</em></div>
+    </div>
+
+    <h4 class="oi-h">Order lines — cost &amp; margin</h4>
+    <div class="table-responsive">
+      <table class="table table-sm oi-table mb-0">
+        <thead><tr>
+          <th>Recipe</th><th>Category</th><th class="text-end">Portions</th>
+          <th class="text-end">Food Cost / Portion</th><th class="text-end">Total Food Cost</th>
+          <th class="text-end">Sale / Portion</th><th class="text-end">Sale Value</th>
+          <th class="text-end">Margin</th><th class="text-end">FC %</th><th>Basis</th>
+        </tr></thead>
+        <tbody>
+          {% for l in intel.lines %}
+          <tr>
+            <td><strong>{{ l.name }}</strong><div class="oi-muted">{{ l.code }}</div></td>
+            <td>{{ l.category or '—' }}</td>
+            <td class="text-end">{{ '{:,.0f}'.format(l.portions) }}</td>
+            <td class="text-end">{{ '%.3f'|format(l.fcpp) }}</td>
+            <td class="text-end fw-bold">{{ '{:,.2f}'.format(l.food_cost) }}</td>
+            <td class="text-end">{{ '%.3f'|format(l.sppp) }}</td>
+            <td class="text-end">{{ '{:,.2f}'.format(l.sale_value) }}</td>
+            <td class="text-end {{ 'text-danger' if l.margin < 0 }}">{{ '{:,.2f}'.format(l.margin) }}</td>
+            <td class="text-end {{ 'text-danger fw-bold' if l.food_cost_pct > 45 }}">{{ '%.1f'|format(l.food_cost_pct) }}%</td>
+            <td><span class="oi-basis {{ 'bom' if l.basis == 'BOM' }}">{{ l.basis }}</span></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="10" class="text-center oi-muted py-3">No order lines.</td></tr>
+          {% endfor %}
+        </tbody>
+        {% if intel.lines %}
+        <tfoot><tr>
+          <td colspan="2" class="text-end">Total</td>
+          <td class="text-end">{{ '{:,.0f}'.format(it.portions) }}</td>
+          <td class="text-end">{{ '%.3f'|format(it.cost_per_portion) }}</td>
+          <td class="text-end">{{ '{:,.2f}'.format(it.food_cost) }}</td><td></td>
+          <td class="text-end">{{ '{:,.2f}'.format(it.sale_value) }}</td>
+          <td class="text-end">{{ '{:,.2f}'.format(it.margin) }}</td>
+          <td class="text-end">{{ '%.1f'|format(it.food_cost_pct) }}%</td><td></td>
+        </tr></tfoot>
+        {% endif %}
+      </table>
+    </div>
+    <div class="oi-note">Basis: <b>BOM</b> = sum of this line's generated BOM cost (store issue quantities, wastage included). <b>Recipe</b> = recipe food cost per portion × portions, used until the BOM is generated.</div>
   </div>
 
-  <div class="rm-grid">
+  <div class="">
     <div class="rm-panel">
-      <h3>Live Order Status Mix</h3>
-      {% if flows %}
-      <div data-isfc-chart="hbar"
-           data-types="hbar,bar,line,area,pie,donut"
-           data-labels='{{ flows | map(attribute="status") | list | tojson }}'
-           data-values='{{ flows | map(attribute="total") | list | tojson }}'
-           style="min-height:300px;"></div>
-      {% else %}<div class="note">No order status found yet.</div>{% endif %}
-    </div>
-    <div class="rm-panel">
-      <h3>Reports Connected to this Map</h3>
-      <div class="report-grid-style">
-        {% for r in report_links %}<a class="report-chip" href="{{ r.url }}"><strong>{{ r.title }}</strong><span>{{
-            r.desc }}</span></a>{% endfor %}
+      <h4 class="oi-h mt-0">Yield &amp; waste by kitchen section</h4>
+      {% if intel.sections %}
+      <div class="table-responsive">
+        <table class="table table-sm oi-table mb-0">
+          <thead><tr><th>Section</th><th class="text-end">Input</th><th class="text-end">Output</th>
+            <th class="text-end">Waste</th><th class="text-end">Return</th><th style="min-width:140px">Yield</th>
+            <th class="text-end">Waste value</th></tr></thead>
+          <tbody>
+            {% for sct in intel.sections %}
+            <tr>
+              <td><strong>{{ sct.section }}</strong><div class="oi-muted">{{ sct.moves }} movement(s)</div></td>
+              <td class="text-end">{{ '{:,.3f}'.format(sct.input_qty) }}</td>
+              <td class="text-end">{{ '{:,.3f}'.format(sct.output_qty) }}</td>
+              <td class="text-end text-danger">{{ '{:,.3f}'.format(sct.waste_qty) }}</td>
+              <td class="text-end">{{ '{:,.3f}'.format(sct.return_qty) }}</td>
+              <td><div class="oi-bar"><i style="width:{{ [sct.yield_pct, 100]|min }}%"
+                   class="{{ 'good' if sct.yield_pct >= 90 else ('warn' if sct.yield_pct >= 75 else 'bad') }}"></i></div>
+                <span class="oi-muted">{{ '%.1f'|format(sct.yield_pct) }}% · waste {{ '%.1f'|format(sct.waste_pct) }}%</span></td>
+              <td class="text-end">{{ '{:,.2f}'.format(sct.waste_value) }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
       </div>
+      {% else %}
+      <div class="note">No kitchen section movements for this order yet — yield and actual waste appear once a section receives and processes its material.</div>
+      {% endif %}
+    </div>
+
+    <div class="rm-panel">
+      <div class="d-flex justify-content-between align-items-baseline mb-2">
+        <h4 class="oi-h my-0">Where the food cost goes</h4>
+        {% if intel.top_items %}<span class="oi-sub">BOM {{ '{:,.2f}'.format(intel.bom_cost) }}</span>{% endif %}
+      </div>
+      {% if intel.top_items %}
+      <ol class="oi-rank">
+        {% for x in intel.top_items %}
+        <li>
+          <span class="oi-rk">{{ loop.index }}</span>
+          <div class="oi-rb">
+            <div class="oi-rt">
+              <div class="oi-rn"><strong>{{ x.name }}</strong><span>{{ x.code }}</span></div>
+              <div class="oi-rv"><strong>{{ '{:,.2f}'.format(x.cost) }}</strong><span>{{ '%.1f'|format(x.share) }}%</span></div>
+            </div>
+            <div class="oi-bar"><i class="info" style="width:{{ [x.share, 100]|min }}%"></i></div>
+            <div class="oi-rm">{{ '{:,.3f}'.format(x.qty) }} {{ x.uom }}
+              {% if x.waste_qty > 0 %}<span class="oi-rw">· planned waste {{ '{:,.3f}'.format(x.waste_qty) }}</span>{% endif %}</div>
+          </div>
+        </li>
+        {% endfor %}
+      </ol>
+      <div class="oi-note">Top {{ intel.top_items|length }} items by cost · share = % of this order's BOM material cost.</div>
+      {% else %}
+      <div class="note">BOM not generated yet — the cost split by ingredient appears once the Head Chef generates the BOM.</div>
+      {% endif %}
     </div>
   </div>
-
+  {% else %}
+  <div class="rm-panel"><div class="note">Select an order above to see its food cost, waste and yield.</div></div>
+  {% endif %}
 
 </div>
 {% endblock %}

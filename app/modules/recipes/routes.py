@@ -210,6 +210,15 @@ def recipe_list(
     ).mappings().all()
 
     recipes = [dict(row) for row in rows]
+    # Batch 247: FOOD COST / PORTION column. recipes imported without a recalc
+    # carry food_cost but food_cost_per_portion = 0, so fall back to
+    # batch cost ÷ standard portions — the same rule as order_costing.FCPP_SQL.
+    for r in recipes:
+        _portions = float(r.get("standard_portions") or 0)
+        if not float(r.get("food_cost_per_portion") or 0) and _portions > 0:
+            r["food_cost_per_portion"] = float(r.get("food_cost") or 0) / _portions
+        if not float(r.get("sale_price_per_portion") or 0) and _portions > 0:
+            r["sale_price_per_portion"] = float(r.get("sale_price") or 0) / _portions
 
     # Category filter comes from recipe master category values. Customer filter is
     # linked to customer master, with recipe customer names added as a fallback
@@ -926,8 +935,14 @@ def download_recipe_excel(
         ("Customer", recipe.customer_name or ""), ("Category", recipe.category or ""),
         ("Version", recipe.version or 1), ("Status", recipe.status or ""),
         ("Portions", recipe.standard_portions or 1), ("Wt/Portion (g)", recipe.weight_per_portion_g or 0),
-        ("Food Cost", recipe.food_cost or 0), ("Total Cost", recipe.total_cost or 0),
+        ("Food Cost", recipe.food_cost or 0),
+        # Batch 247: per-portion figures, same fallback as the recipe list.
+        ("Food Cost / Portion", float(recipe.food_cost_per_portion or 0)
+            or float(recipe.food_cost or 0) / (float(recipe.standard_portions or 0) or 1)),
+        ("Total Cost", recipe.total_cost or 0),
         ("Sale Price", recipe.sale_price or 0),
+        ("Sale Price / Portion", float(recipe.sale_price_per_portion or 0)
+            or float(recipe.sale_price or 0) / (float(recipe.standard_portions or 0) or 1)),
     ]:
         ws.append([label, value])
         ws.cell(row=ws.max_row, column=1).font = Font(bold=True)
@@ -999,37 +1014,118 @@ def download_recipe_pdf(
     _norm = ParagraphStyle("n", parent=styles["Normal"], fontName=_REG, alignment=_align)
     _cell = ParagraphStyle("c", parent=styles["Normal"], fontName=_REG, fontSize=7.5,
                            leading=9.5, alignment=_align)
+    # ------------------------------------------------------------------
+    # Batch 247 — HEADER ROW TEXT WAS INVISIBLE (navy on navy).
+    #
+    # ROOT CAUSE: the header cells are Paragraphs (so Arabic headers can be
+    # shaped), and a Paragraph draws in ITS OWN style's textColor — black by
+    # default. The table's ("TEXTCOLOR", row 0, white) rule only reaches plain
+    # string cells, so it was silently ignored for every header cell and the
+    # black text sat on the #102542 band. The header now has its own
+    # paragraph style: white, bold, centred.
+    #
+    # Also in this pass: the column widths summed to 189 mm on a 182 mm frame
+    # (A4 minus 2 × 14 mm), so the table ran past the right margin; the cost
+    # line printed raw 4-dp floats; and per-portion cost was not on the sheet
+    # at all. Replaced by a summary block and a totals row.
+    # ------------------------------------------------------------------
+    from reportlab.lib.enums import TA_CENTER
+    _hdr = ParagraphStyle("h", parent=_cell, fontName=_BOLD, textColor=colors.white,
+                          alignment=TA_CENTER, fontSize=7.5, leading=9)
+    _k = ParagraphStyle("k", parent=_cell, fontName=_BOLD, fontSize=6.8, leading=8,
+                        textColor=colors.HexColor("#5a6a82"))
+    _v = ParagraphStyle("v", parent=_cell, fontName=_BOLD, fontSize=9.5, leading=11.5,
+                        textColor=colors.HexColor("#102542"))
+
+    portions = float(recipe.standard_portions or 0) or 1.0
+    food = float(recipe.food_cost or 0)
+    fcpp = float(recipe.food_cost_per_portion or 0) or food / portions
+    total_cost = float(recipe.total_cost or 0)
+    sale = float(recipe.sale_price or 0)
+    sppp = float(recipe.sale_price_per_portion or 0) or sale / portions
+    fc_pct = (food / sale * 100) if sale else 0.0
+
+    def _kv(k, v):
+        return [Paragraph(_ar(k), _k), Paragraph(_ar(str(v)), _v)]
+
+    facts = [
+        _kv("CUSTOMER", recipe.customer_name or "-") + _kv("CATEGORY", recipe.category or "-")
+        + _kv("VERSION / STATUS", f"V{recipe.version or 1} · {recipe.status or '-'}")
+        + _kv("PORTIONS", f"{portions:g}"),
+        _kv("FOOD COST (BATCH)", f"{food:,.2f}") + _kv("FOOD COST / PORTION", f"{fcpp:,.4f}")
+        + _kv("TOTAL COST", f"{total_cost:,.2f}") + _kv("SALE PRICE", f"{sale:,.2f}"),
+        _kv("SALE PRICE / PORTION", f"{sppp:,.4f}") + _kv("FOOD COST %", f"{fc_pct:.1f}%")
+        + _kv("MISSING COST LINES", int(recipe.missing_cost_lines or 0))
+        + _kv("PRINTED", datetime.now().strftime("%Y-%m-%d %H:%M")),
+    ]
+    # Label/value pairs are laid out as 8 columns (4 facts per row).
+    fact_tbl = Table(facts, colWidths=[20*mm, 25.5*mm] * 4)
+    fact_tbl.setStyle(TableStyle([
+        ("BOX", (0, 0), (-1, -1), 0.6, colors.HexColor("#c9d7e4")),
+        ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#e3ebf5")),
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f6f9fd")),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+    ]))
+
     story = [
         Paragraph(_ar(f"Recipe {recipe.recipe_code} — {recipe.recipe_name}"), _title),
-        Paragraph(_ar(f"Customer: {recipe.customer_name or '-'} · Category: {recipe.category or '-'} · "
-                      f"Version {recipe.version or 1} · {recipe.status or ''}"), _norm),
-        Paragraph(_ar(f"Food Cost: {recipe.food_cost or 0} · Total Cost: {recipe.total_cost or 0} · "
-                      f"Sale Price: {recipe.sale_price or 0}"), _norm),
+        fact_tbl,
         Spacer(1, 8),
     ]
-    data = [[Paragraph(_ar(h), _cell) for h in
-             ["#", "Item Code", "Item Name", "UOM", "Qty/Batch", "Qty/Portion", "Cost/UOM", "Line Cost"]]]
-    for i, l in enumerate(recipe.lines or [], start=1):
+    # Fixed English labels, split on purpose so the narrow numeric columns
+    # break between words ("Qty /" "Portion") instead of mid-word.
+    data = [[Paragraph(h, _hdr) for h in
+             ["#", "Item Code", "Item Name", "UOM", "Qty /<br/>Batch", "Qty /<br/>Portion",
+              "Cost /<br/>UOM", "Line<br/>Cost", "Cost /<br/>Portion"]]]
+    lines = list(recipe.lines or [])
+    sum_line = sum_pp = 0.0
+    for i, l in enumerate(lines, start=1):
         # Item names wrap as Paragraphs so Arabic can be shaped; the numeric
         # columns stay plain strings — nothing to shape and cheaper to draw.
+        lc = float(l.line_cost or 0)
+        lpp = float(getattr(l, "line_cost_per_portion", 0) or 0) or \
+            float(l.qty_per_portion or 0) * float(l.cost_uom or 0)
+        sum_line += lc
+        sum_pp += lpp
         data.append([i, l.inventory_code or "",
-                     Paragraph(_ar((l.item_name or "")[:60]), _cell), l.uom or "",
-                     f"{float(l.qty_batch or 0):g}", f"{float(l.qty_per_portion or 0):g}",
-                     f"{float(l.cost_uom or 0):.4f}", f"{float(l.line_cost or 0):.4f}"])
-    tbl = Table(data, repeatRows=1, colWidths=[9*mm, 24*mm, 62*mm, 12*mm, 20*mm, 22*mm, 20*mm, 20*mm])
+                     Paragraph(_ar((l.item_name or "")[:70]), _cell), l.uom or "",
+                     f"{float(l.qty_batch or 0):,.3f}", f"{float(l.qty_per_portion or 0):,.3f}",
+                     f"{float(l.cost_uom or 0):.4f}", f"{lc:,.4f}", f"{lpp:,.4f}"])
+    data.append(["", "", Paragraph(_ar("TOTAL"), _hdr), "", "", "", "",
+                 f"{sum_line:,.4f}", f"{sum_pp:,.4f}"])
+    # 8 + 21 + 55 + 11 + 17 + 17 + 17 + 18 + 18 = 182 mm = the frame width.
+    tbl = Table(data, repeatRows=1,
+                colWidths=[8*mm, 21*mm, 55*mm, 11*mm, 17*mm, 17*mm, 17*mm, 18*mm, 18*mm])
+    last = len(data) - 1
     tbl.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#102542")),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("FONTSIZE", (0, 0), (-1, -1), 7.5),
         # Batch 223: the plain (non-Paragraph) cells need the font naming too,
         # or they silently fall back to Helvetica mid-table.
         ("FONTNAME", (0, 0), (-1, -1), _REG),
         ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#c9d7e4")),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f4f8fc")]),
+        ("ROWBACKGROUNDS", (0, 1), (-1, last - 1), [colors.white, colors.HexColor("#f4f8fc")]),
         ("ALIGN", (4, 1), (-1, -1), "RIGHT"),
+        ("ALIGN", (0, 1), (0, -1), "CENTER"),
+        # totals row — same navy band as the header, white bold figures
+        ("BACKGROUND", (0, last), (-1, last), colors.HexColor("#1e3a5f")),
+        ("TEXTCOLOR", (0, last), (-1, last), colors.white),
+        ("FONTNAME", (0, last), (-1, last), _BOLD),
     ]))
     story.append(tbl)
-    doc.build(story)
+
+    def _footer(canvas, _doc):
+        canvas.saveState()
+        canvas.setFont(_REG, 7)
+        canvas.setFillColor(colors.HexColor("#8a97a8"))
+        canvas.drawString(14 * mm, 8 * mm, f"{recipe.recipe_code} · V{recipe.version or 1}")
+        canvas.drawRightString(A4[0] - 14 * mm, 8 * mm, f"Page {_doc.page}")
+        canvas.restoreState()
+
+    doc.build(story, onFirstPage=_footer, onLaterPages=_footer)
     buf.seek(0)
     return StreamingResponse(buf, media_type="application/pdf",
                              headers={"Content-Disposition": f'attachment; filename="{recipe.recipe_code}_v{recipe.version or 1}.pdf"'})

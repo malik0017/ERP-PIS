@@ -472,6 +472,8 @@
                             <th>STATUS</th>
                             <th>PORTIONS</th>
                             <th>FOOD COST</th>
+                            {# Batch 247: per-portion cost — the figure an order is priced on. #}
+                            <th>FOOD COST / PORTION</th>
                             <th>TOTAL COST</th>
                             <th>SALE PRICE</th>
                             <th>MISSING</th>
@@ -514,6 +516,7 @@
 
                             <td>{{ "%.1f"|format(r.standard_portions or 0) }}</td>
                             <td>{{ "%.2f"|format(r.food_cost or 0) }}</td>
+                            <td class="fw-bold text-primary">{{ "%.3f"|format(r.food_cost_per_portion or 0) }}</td>
                             <td>{{ "%.2f"|format(r.total_cost or 0) }}</td>
                             <td>{{ "%.2f"|format(r.sale_price or 0) }}</td>
 
@@ -534,7 +537,7 @@
                         </tr>
                         {% else %}
                         <tr>
-                            <td colspan="12" class="pis-empty">
+                            <td colspan="16" class="pis-empty">
                                 No recipes found. Upload recipe Excel or prepare a manual recipe.
                             </td>
                         </tr>

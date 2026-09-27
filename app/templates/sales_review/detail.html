@@ -43,6 +43,30 @@
   </div>
   {% endif %}
 
+  {# Batch 247 — ORDER COST SUMMARY. What the request costs us and what it
+     sells for, before anyone approves it. Figures come from
+     services/order_costing.py (BOM cost once generated, recipe cost before). #}
+  {% set ct = costing.totals %}
+  <div class="row g-3 mb-3">
+    <div class="col-6 col-lg"><div class="card border h-100"><div class="card-body py-3">
+      <div class="text-body-tertiary fs-9 fw-bold text-uppercase">{{ t('Portions') }}</div>
+      <div class="fs-5 fw-bold">{{ '{:,.0f}'.format(ct.portions) }}</div></div></div></div>
+    <div class="col-6 col-lg"><div class="card border h-100"><div class="card-body py-3">
+      <div class="text-body-tertiary fs-9 fw-bold text-uppercase">{{ t('Total Food Cost') }}</div>
+      <div class="fs-5 fw-bold text-danger">{{ '{:,.2f}'.format(ct.food_cost) }}</div>
+      <div class="fs-10 text-body-tertiary">{{ '{:,.3f}'.format(ct.cost_per_portion) }} {{ t('per portion') }}</div></div></div></div>
+    <div class="col-6 col-lg"><div class="card border h-100"><div class="card-body py-3">
+      <div class="text-body-tertiary fs-9 fw-bold text-uppercase">{{ t('Sale Value') }}</div>
+      <div class="fs-5 fw-bold text-success">{{ '{:,.2f}'.format(ct.sale_value) }}</div></div></div></div>
+    <div class="col-6 col-lg"><div class="card border h-100"><div class="card-body py-3">
+      <div class="text-body-tertiary fs-9 fw-bold text-uppercase">{{ t('Gross Margin') }}</div>
+      <div class="fs-5 fw-bold {{ 'text-danger' if ct.margin < 0 else '' }}">{{ '{:,.2f}'.format(ct.margin) }}</div>
+      <div class="fs-10 text-body-tertiary">{{ '%.1f'|format(ct.margin_pct) }}%</div></div></div></div>
+    <div class="col-6 col-lg"><div class="card border h-100"><div class="card-body py-3">
+      <div class="text-body-tertiary fs-9 fw-bold text-uppercase">{{ t('Food Cost %') }}</div>
+      <div class="fs-5 fw-bold">{{ '%.1f'|format(ct.food_cost_pct) }}%</div></div></div></div>
+  </div>
+
   {# ================================================================
      Batch 155 — FULL-WIDTH VERTICAL LAYOUT.
 
@@ -80,7 +104,15 @@
                data-isfc-subtitle="Order {{ order.order_no }} · Customer: {{ order.customer_name or '-' }}"
                data-isfc-search-placeholder="Filter recipes...">
           <thead class="bg-body-highlight">
-            <tr><th>{{ t('Recipe') }}</th><th class="text-end" style="width:150px" data-isfc-nofilter>{{ t('Portions') }}</th></tr>
+            <tr><th>{{ t('Recipe') }}</th><th class="text-end" style="width:150px" data-isfc-nofilter>{{ t('Portions') }}</th>
+              {# Batch 247: cost and sale columns (Batch 139 had removed Price/Value
+                 because the header total read a non-existent attribute and
+                 always showed 0.00 — the data was never the problem). #}
+              <th class="text-end">{{ t('Food Cost / Portion') }}</th>
+              <th class="text-end">{{ t('Total Food Cost') }}</th>
+              <th class="text-end">{{ t('Sale Price / Portion') }}</th>
+              <th class="text-end">{{ t('Sale Value') }}</th>
+              <th class="text-end">{{ t('Food Cost %') }}</th></tr>
           </thead>
           <tbody>
             {% for l in lines %}
@@ -95,11 +127,33 @@
                        class="form-control form-control-sm text-end" style="max-width:120px;display:inline-block">
                 {% else %}{{ l.required_portions }}{% endif %}
               </td>
+              {% set c = line_cost.get(l.id) %}
+              {% if c %}
+              <td class="text-end">{{ '%.3f'|format(c.fcpp) }}
+                {% if c.basis == 'BOM' %}<div class="fs-10 text-body-tertiary">{{ t('BOM') }}</div>{% endif %}</td>
+              <td class="text-end fw-bold">{{ '{:,.2f}'.format(c.food_cost) }}</td>
+              <td class="text-end">{{ '%.3f'|format(c.sppp) }}</td>
+              <td class="text-end">{{ '{:,.2f}'.format(c.sale_value) }}</td>
+              <td class="text-end {{ 'text-danger fw-bold' if c.food_cost_pct > 45 else '' }}">{{ '%.1f'|format(c.food_cost_pct) }}%</td>
+              {% else %}<td colspan="5" class="text-center text-body-tertiary">—</td>{% endif %}
             </tr>
             {% else %}
-            <tr><td colspan="2" class="text-center text-body-tertiary py-4">{{ t('No lines on this request.') }}</td></tr>
+            <tr><td colspan="7" class="text-center text-body-tertiary py-4">{{ t('No lines on this request.') }}</td></tr>
             {% endfor %}
           </tbody>
+          {% if lines %}
+          <tfoot>
+            <tr class="fw-bold bg-body-highlight">
+              <td class="text-end">{{ t('Total') }}</td>
+              <td class="text-end">{{ '{:,.0f}'.format(ct.portions) }}</td>
+              <td class="text-end">{{ '%.3f'|format(ct.cost_per_portion) }}</td>
+              <td class="text-end text-danger">{{ '{:,.2f}'.format(ct.food_cost) }}</td>
+              <td></td>
+              <td class="text-end text-success">{{ '{:,.2f}'.format(ct.sale_value) }}</td>
+              <td class="text-end">{{ '%.1f'|format(ct.food_cost_pct) }}%</td>
+            </tr>
+          </tfoot>
+          {% endif %}
         </table>
         {% if _editable and lines %}
         <div class="p-2 border-top text-end">
@@ -236,9 +290,13 @@
           <span class="text-body-tertiary">{{ t('Kitchen') }}</span><span>{{ order.kitchen or '—' }}</span></div>
         <div class="d-flex justify-content-between py-1 border-bottom">
           <span class="text-body-tertiary">{{ t('Total portions') }}</span><span>{{ order.total_planned_portions or 0 }}</span></div>
+        {# Batch 247: was order.total_sales_value — not a column, so always 0.00. #}
+        <div class="d-flex justify-content-between py-1 border-bottom">
+          <span class="text-body-tertiary">{{ t('Food cost') }}</span>
+          <span class="fw-bold">{{ '{:,.2f}'.format(ct.food_cost) }}</span></div>
         <div class="d-flex justify-content-between py-1">
           <span class="text-body-tertiary">{{ t('Sales value') }}</span>
-          <span class="fw-bold">{{ '%.2f'|format(order.total_sales_value or 0) }}</span></div>
+          <span class="fw-bold">{{ '{:,.2f}'.format(ct.sale_value) }}</span></div>
       </div>
     </div>
 

@@ -135,6 +135,33 @@ def slow_moving(db: Session, cid: int, days: int = 60) -> list[dict]:
     """, {"cid": cid, "d": days})
 
 
+def slow_moving_totals(db: Session, cid: int, days: int = 60) -> dict:
+    """Batch 248 — the slow-moving KPI over ALL slow items.
+
+    The card used to sum slow_moving(), which is capped at 300 rows for the
+    table — so on a store with more than 300 idle items the KPI silently
+    under-stated the money sitting still. Same predicate, no LIMIT.
+    """
+    rows = _rows(db, """
+        SELECT COUNT(*) AS items,
+               COALESCE(SUM(t.on_hand * COALESCE(i.unit_cost_standard, 0)), 0) AS value
+        FROM ingredients i
+        JOIN (
+            SELECT inventory_code,
+                   SUM(CASE WHEN qc_status IN ('Pending','Failed') THEN 0
+                            ELSE COALESCE(qty_in, 0) END) - SUM(COALESCE(qty_out, 0)) AS on_hand,
+                   MAX(CASE WHEN COALESCE(qty_out, 0) > 0 THEN COALESCE(txn_date, created_at) END) AS last_out
+            FROM inventory_transactions
+            WHERE (company_id = :cid OR company_id IS NULL)
+            GROUP BY inventory_code
+        ) t ON t.inventory_code = i.ingredient_code
+        WHERE t.on_hand > 0
+          AND (t.last_out IS NULL OR t.last_out < DATE_SUB(NOW(), INTERVAL :d DAY))
+    """, {"cid": cid, "d": days})
+    r = rows[0] if rows else {}
+    return {"items": int(r.get("items") or 0), "value": float(r.get("value") or 0)}
+
+
 def below_minimum(db: Session, cid: int) -> list[dict]:
     """Items under their configured minimum — the reorder shortlist."""
     return _rows(db, """
@@ -182,13 +209,20 @@ def inventory_reports(request: Request, db: Session = Depends(get_db)):
     slow = slow_moving(db, cid, slow_days)
     low = below_minimum(db, cid)
 
+    slow_tot = slow_moving_totals(db, cid, slow_days)
+    on_hand_value = sum(float(s.get("on_hand_value") or 0) for s in stock)
     return render(request, "reports/inventory.html", {
         "suppliers": suppliers, "stock": stock, "slow": slow, "low": low,
         "filters": {"date_from": date_from, "date_to": date_to, "slow_days": slow_days},
         "totals": {
             "ordered_value": sum(float(s.get("ordered_value") or 0) for s in suppliers),
-            "on_hand_value": sum(float(s.get("on_hand_value") or 0) for s in stock),
-            "slow_value": sum(float(s.get("on_hand_value") or 0) for s in slow),
+            "on_hand_value": on_hand_value,
+            "on_hand_items": sum(int(s.get("item_count") or 0) for s in stock),
+            # Batch 248: uncapped (was the sum of the 300-row table).
+            "slow_value": slow_tot["value"],
+            "slow_items": slow_tot["items"],
+            "slow_pct": round(slow_tot["value"] / on_hand_value * 100, 1) if on_hand_value else 0.0,
+            "slow_shown": len(slow),
             "supplier_count": len(stock),
         },
         "page_title": "Inventory Reports",

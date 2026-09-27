@@ -71,9 +71,17 @@ async def order_sheet(request: Request, order_no: str, db: Session = Depends(get
     require_area(request, "production_orders")
     order = _order(db, order_no)
     lines = _rows(db, """
-        SELECT recipe_no, recipe_name, required_portions, standard_portions,
-               batches, selling_price_per_portion, line_sales_value
-        FROM order_lines WHERE order_no = :o ORDER BY id
+        SELECT ol.recipe_no, ol.recipe_name, ol.required_portions,
+               -- Batch 247: standard_portions / batches / line_sales_value are
+               -- not order_lines columns, so this query failed and the Order
+               -- Sheet printed with no lines. Derived from real columns now.
+               (SELECT r.standard_portions FROM recipes r
+                 WHERE r.recipe_code = ol.recipe_no
+                 ORDER BY r.version DESC, r.id DESC LIMIT 1) AS standard_portions,
+               ROUND(COALESCE(ol.planned_batches, 0), 2) AS batches,
+               COALESCE(ol.selling_price_per_portion, 0) AS selling_price_per_portion,
+               COALESCE(ol.required_portions, 0) * COALESCE(ol.selling_price_per_portion, 0) AS line_sales_value
+        FROM order_lines ol WHERE ol.order_no = :o ORDER BY ol.line_no, ol.id
     """, {"o": order_no})
     return render(request, "print/order_sheet.html", {"order": order, "lines": lines,
                                                       "doc_title": "Order Sheet", "order_no": order_no})

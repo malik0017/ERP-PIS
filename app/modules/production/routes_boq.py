@@ -77,6 +77,10 @@ def _filters(request: Request) -> dict:
         # printed sheet matches what they are looking at. Empty = print
         # everything, which is what every existing link does.
         "hide": [h.strip() for h in q.getlist("hide") if h.strip()],
+        # Batch 247: butchery item finder — exact item codes and/or whole
+        # protein groups (Fish / Meat / Chicken). See boq_service._item_clause.
+        "items": [i.strip() for i in q.getlist("item") if i.strip()],
+        "item_groups": [g.strip() for g in q.getlist("igroup") if g.strip()],
     }
 
 
@@ -212,6 +216,11 @@ def _stamp(f: dict) -> str:
             bits.append(f"{label}: {_fv(val)}")
     if f.get("recipe"):
         bits.append(f"Recipe: {f['recipe']}")
+    # Batch 247: the item filter belongs on the printed stamp too.
+    if f.get("item_groups"):
+        bits.append(f"Protein: {', '.join(f['item_groups'])}")
+    if f.get("items"):
+        bits.append(f"Items: {', '.join(f['items'])}")
     if f.get("kitchen"):
         bits.append(f"Kitchen: {f['kitchen']}")
     return (f"Generated {date.today().isoformat()} · "

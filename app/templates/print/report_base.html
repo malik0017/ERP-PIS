@@ -20,7 +20,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ rp_title }}{% if rp_subtitle %} · {{ rp_subtitle }}{% endif %}</title>
-  <link rel="stylesheet" href="{{ url_for('static', path='css/isfc-report.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', path='css/isfc-report.css') }}?v={{ asset_v('css/isfc-report.css') }}">
   {% block rp_head %}{% endblock %}
 </head>
 <body>

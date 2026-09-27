@@ -9,7 +9,7 @@
   <div><b>Material Receiving</b>{{ order.material_receiving_date or '-' }} {{ order.material_receiving_time or '' }}
   </div>
   <div><b>Total Portions</b>{{ order.total_planned_portions or 0 }}</div>
-  <div><b>Order Value</b>{{ '%.2f'|format(order.total_sales_value or 0) }}</div>
+  <div><b>Order Value</b>{{ '%.2f'|format(order.total_estimated_selling_value or 0) }}</div>
 </div>
 <table>
   <thead>
@@ -37,7 +37,7 @@
     {% endfor %}
     <tr class="totals">
       <td colspan="6">TOTAL ORDER VALUE</td>
-      <td>{{ '%.2f'|format(order.total_sales_value or 0) }}</td>
+      <td>{{ '%.2f'|format(order.total_estimated_selling_value or 0) }}</td>
     </tr>
   </tbody>
 </table>

@@ -1,0 +1,80 @@
+{% extends "layouts/base.html" %}
+{% block title %}{{ t('Customer Plans') }}{% endblock %}
+{% block content %}
+{# Batch 248 — Master → Customer Plans. Headline protein / carb, names, order
+   and active flag per plan. Dishes-per-plan and per-plan quantities come from
+   the recipe import (scripts/import_salus_master.py) and are shown read-only. #}
+<div class="container-fluid py-3 isfc-page">
+  <div class="isfc-hero mb-4 p-4 rounded-4 text-white" style="background:linear-gradient(135deg,#08243d,#1e5bb8)">
+    <h1 class="mb-1 fw-bold text-white"><i class="bi bi-layers me-2"></i>{{ t('Customer Plans') }}</h1>
+    <p class="mb-0 opacity-75">{{ t('Meal plans a customer sells (Comfy, Low Carb, Grit, Salus Fit…). Each plan gets its own quantity column on the order form and is cooked, issued and costed at its own portion.') }}</p>
+  </div>
+
+  <form method="post" action="/masters/customer-plans/save">
+    {% for key, plans in groups.items() %}
+    <div class="card border mb-3">
+      <div class="card-header bg-body-highlight d-flex justify-content-between align-items-center">
+        <span class="fw-bold">{{ key }}</span>
+        <span class="fs-9 text-body-tertiary">{{ plans|length }} {{ t('plan(s)') }}</span>
+      </div>
+      <div class="card-body p-0"><div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead class="bg-body-highlight"><tr>
+            <th style="width:120px">{{ t('Code') }}</th><th>{{ t('Plan name') }}</th>
+            <th style="width:120px" class="text-end">{{ t('Protein (g)') }}</th>
+            <th style="width:120px" class="text-end">{{ t('Carb (g)') }}</th>
+            <th>{{ t('Description') }}</th>
+            <th style="width:90px" class="text-end">{{ t('Order') }}</th>
+            <th style="width:90px" class="text-center">{{ t('Active') }}</th>
+            <th style="width:110px" class="text-end">{{ t('Dishes') }}</th>
+            <th style="width:130px" class="text-end">{{ t('Plan qty lines') }}</th>
+          </tr></thead>
+          <tbody>
+          {% for p in plans %}
+            <tr>
+              <td class="fw-bold">{{ p.plan_code }}<input type="hidden" name="id" value="{{ p.id }}"></td>
+              <td><input class="form-control form-control-sm" name="name_{{ p.id }}" value="{{ p.plan_name }}" required></td>
+              <td><input class="form-control form-control-sm text-end" type="number" step="0.1" min="0" name="protein_{{ p.id }}" value="{{ '%g'|format(p.protein_g) if p.protein_g is not none else '' }}"></td>
+              <td><input class="form-control form-control-sm text-end" type="number" step="0.1" min="0" name="carb_{{ p.id }}" value="{{ '%g'|format(p.carb_g) if p.carb_g is not none else '' }}"></td>
+              <td><input class="form-control form-control-sm" name="desc_{{ p.id }}" value="{{ p.description }}"></td>
+              <td><input class="form-control form-control-sm text-end" type="number" step="1" name="sort_{{ p.id }}" value="{{ p.sort_order }}"></td>
+              <td class="text-center"><input class="form-check-input" type="checkbox" name="active_{{ p.id }}" {% if p.is_active %}checked{% endif %}></td>
+              <td class="text-end">{{ p.dishes }}</td>
+              <td class="text-end">{{ p.qty_lines }}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div></div>
+    </div>
+    {% else %}
+    <div class="alert alert-subtle-info">
+      {{ t('No customer plans yet. Import a plan customer’s workbook (scripts/import_salus_master.py) or add a plan below.') }}
+    </div>
+    {% endfor %}
+
+    <div class="card border mb-3">
+      <div class="card-header bg-body-highlight fw-bold">{{ t('Add a plan') }}</div>
+      <div class="card-body row g-2 align-items-end">
+        <div class="col-md-2"><label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary">{{ t('Customer key') }}</label>
+          <input class="form-control form-control-sm" name="new_customer_key" placeholder="SALUS"></div>
+        <div class="col-md-2"><label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary">{{ t('Plan code') }}</label>
+          <input class="form-control form-control-sm" name="new_plan_code" placeholder="KETO"></div>
+        <div class="col-md-3"><label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary">{{ t('Plan name') }}</label>
+          <input class="form-control form-control-sm" name="new_plan_name" placeholder="Keto"></div>
+        <div class="col-md-2"><label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary">{{ t('Protein (g)') }}</label>
+          <input class="form-control form-control-sm" type="number" step="0.1" name="new_protein"></div>
+        <div class="col-md-2"><label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary">{{ t('Carb (g)') }}</label>
+          <input class="form-control form-control-sm" type="number" step="0.1" name="new_carb"></div>
+        <div class="col-md-1"><label class="form-label fs-9 fw-bold text-uppercase text-body-tertiary">{{ t('Order') }}</label>
+          <input class="form-control form-control-sm" type="number" step="1" name="new_sort" value="99"></div>
+        <div class="col-12 fs-10 text-body-tertiary">{{ t('The customer key is the value on the customer’s recipes (Customer Name column of the workbook), e.g. SALUS. A new plan has no dishes or quantities until the recipes are imported with it.') }}</div>
+      </div>
+    </div>
+
+    {% if can_action('master_data', 'edit') %}
+    <div class="text-end"><button class="btn btn-primary"><i class="bi bi-save me-1"></i>{{ t('Save plans') }}</button></div>
+    {% endif %}
+  </form>
+</div>
+{% endblock %}

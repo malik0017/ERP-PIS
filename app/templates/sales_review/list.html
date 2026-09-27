@@ -106,7 +106,9 @@
               <th>{{ t('Customer') }}</th>
               <th>{{ t('Delivery') }}</th>
               <th class="text-end">{{ t('Portions') }}</th>
-              <th class="text-end">{{ t('Value') }}</th>
+              {# Batch 247: food cost next to value; Value read a non-existent attribute (always 0.00). #}
+              <th class="text-end">{{ t('Food Cost') }}</th>
+              <th class="text-end">{{ t('Sale Value') }}</th>
               <th class="text-center">{{ t('Inventory') }}</th>
               <th class="text-center">{{ t('Review') }}</th>
               <th class="text-end" data-isfc-nofilter>{{ t('Action') }}</th>
@@ -135,7 +137,8 @@
                 {% endif %}
               </td>
               <td class="text-end">{{ o.total_planned_portions or 0 }}</td>
-              <td class="text-end">{{ '%.2f'|format(o.total_sales_value or 0) }}</td>
+              <td class="text-end">{{ '{:,.2f}'.format(o.total_estimated_food_cost or 0) }}</td>
+              <td class="text-end fw-bold">{{ '{:,.2f}'.format(o.total_estimated_selling_value or 0) }}</td>
               <td class="text-center">
                 {% if not st %}
                 <span class="badge badge-phoenix badge-phoenix-secondary">—</span>
@@ -173,7 +176,7 @@
               </td>
             </tr>
             {% else %}
-            <tr><td colspan="8" class="text-center text-body-tertiary py-5">
+            <tr><td colspan="9" class="text-center text-body-tertiary py-5">
               <i class="bi bi-inbox fs-3 d-block mb-2"></i>
               {{ t('Nothing here. Requests submitted from Sale Requisitions, Immediate Order, the Customer Portal or a Subscription land on this screen.') }}
             </td></tr>

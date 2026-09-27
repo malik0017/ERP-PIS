@@ -1,31 +1,61 @@
 {% extends "layouts/base.html" %}
 {% block title %}Print Recipe {{ recipe.recipe_code }}{% endblock %}
 {% block content %}
+{# Batch 247: same layout as the ReportLab PDF (routes.download_recipe_pdf) —
+   fact block, white-on-navy header, per-portion cost column, totals row.
+   `!important` on the header colour because theme table rules
+   (.table th / [data-bs-theme] th) otherwise win and paint it dark. #}
+{% set portions = (recipe.standard_portions or 0)|float or 1 %}
+{% set food = (recipe.food_cost or 0)|float %}
+{% set fcpp = (recipe.food_cost_per_portion or 0)|float or (food / portions) %}
+{% set sale = (recipe.sale_price or 0)|float %}
+{% set sppp = (recipe.sale_price_per_portion or 0)|float or (sale / portions) %}
 <style>
   @media print { .navbar, .footer, .isfc-no-print, #navbarVerticalCollapse { display: none !important; } }
-  .print-table th { background: #102542; color: #fff; }
-  .print-table td, .print-table th { padding: 6px 8px; border: 1px solid #c9d7e4; font-size: 12px; }
+  .print-table { width:100%; border-collapse:collapse; }
+  .print-table th { background:#102542 !important; color:#fff !important; font-weight:700; text-align:center; }
+  .print-table td, .print-table th { padding:6px 8px; border:1px solid #c9d7e4; font-size:12px; }
+  .print-table td.n { text-align:right; font-variant-numeric:tabular-nums; }
+  .print-table tr.tot td { background:#1e3a5f !important; color:#fff !important; font-weight:700; }
+  .rc-facts { display:grid; grid-template-columns:repeat(4,1fr); border:1px solid #c9d7e4; border-radius:6px; margin-bottom:14px; }
+  .rc-facts div { padding:6px 10px; border-bottom:1px solid #e3ebf5; }
+  .rc-facts b { display:block; font-size:10px; color:#5a6a82; text-transform:uppercase; letter-spacing:.03em; }
+  .rc-facts span { font-weight:700; color:#102542; }
 </style>
 <div class="container py-4">
   <div class="d-flex justify-content-between align-items-center mb-3 isfc-no-print">
     <p class="mb-0 text-body-tertiary">{{ t('PDF engine not installed — use your browser: Print → Save as PDF.') }}</p>
     <button class="btn btn-primary" onclick="window.print()">{{ t('Print / Save as PDF') }}</button>
   </div>
-  <h2 class="mb-1">Recipe {{ recipe.recipe_code }} — {{ recipe.recipe_name }}</h2>
-  <p class="mb-3">Customer: {{ recipe.customer_name or '-' }} · Category: {{ recipe.category or '-' }} ·
-     Version {{ recipe.version or 1 }} · {{ recipe.status }} · Food Cost {{ recipe.food_cost or 0 }} ·
-     Total Cost {{ recipe.total_cost or 0 }} · Sale Price {{ recipe.sale_price or 0 }}</p>
-  <table class="print-table" style="width:100%; border-collapse: collapse;">
+  <h2 class="mb-3">Recipe {{ recipe.recipe_code }} — {{ recipe.recipe_name }}</h2>
+  <div class="rc-facts">
+    <div><b>Customer</b><span>{{ recipe.customer_name or '-' }}</span></div>
+    <div><b>Category</b><span>{{ recipe.category or '-' }}</span></div>
+    <div><b>Version / Status</b><span>V{{ recipe.version or 1 }} · {{ recipe.status }}</span></div>
+    <div><b>Portions</b><span>{{ '%g'|format(portions) }}</span></div>
+    <div><b>Food Cost (batch)</b><span>{{ '{:,.2f}'.format(food) }}</span></div>
+    <div><b>Food Cost / Portion</b><span>{{ '{:,.4f}'.format(fcpp) }}</span></div>
+    <div><b>Total Cost</b><span>{{ '{:,.2f}'.format((recipe.total_cost or 0)|float) }}</span></div>
+    <div><b>Sale Price</b><span>{{ '{:,.2f}'.format(sale) }}</span></div>
+    <div><b>Sale Price / Portion</b><span>{{ '{:,.4f}'.format(sppp) }}</span></div>
+    <div><b>Food Cost %</b><span>{{ '%.1f'|format(food / sale * 100 if sale else 0) }}%</span></div>
+  </div>
+  <table class="print-table">
     <thead><tr><th>#</th><th>Item Code</th><th>Item Name</th><th>UOM</th>
-      <th>Qty/Batch</th><th>Qty/Portion</th><th>Cost/UOM</th><th>Line Cost</th></tr></thead>
+      <th>Qty/Batch</th><th>Qty/Portion</th><th>Cost/UOM</th><th>Line Cost</th><th>Cost/Portion</th></tr></thead>
     <tbody>
+      {% set ns = namespace(lc=0, pp=0) %}
       {% for l in recipe.lines %}
+      {% set lpp = (l.line_cost_per_portion or 0)|float or ((l.qty_per_portion or 0)|float * (l.cost_uom or 0)|float) %}
+      {% set ns.lc = ns.lc + (l.line_cost or 0)|float %}{% set ns.pp = ns.pp + lpp %}
       <tr><td>{{ loop.index }}</td><td>{{ l.inventory_code }}</td><td>{{ l.item_name }}</td><td>{{ l.uom }}</td>
-        <td style="text-align:right">{{ l.qty_batch or 0 }}</td><td style="text-align:right">{{ l.qty_per_portion or 0 }}</td>
-        <td style="text-align:right">{{ '%.4f'|format(l.cost_uom or 0) }}</td><td style="text-align:right">{{ '%.4f'|format(l.line_cost or 0) }}</td></tr>
+        <td class="n">{{ '%.3f'|format((l.qty_batch or 0)|float) }}</td><td class="n">{{ '%.3f'|format((l.qty_per_portion or 0)|float) }}</td>
+        <td class="n">{{ '%.4f'|format((l.cost_uom or 0)|float) }}</td><td class="n">{{ '%.4f'|format((l.line_cost or 0)|float) }}</td>
+        <td class="n">{{ '%.4f'|format(lpp) }}</td></tr>
       {% endfor %}
+      <tr class="tot"><td colspan="7" style="text-align:right">TOTAL</td>
+        <td class="n">{{ '%.4f'|format(ns.lc) }}</td><td class="n">{{ '%.4f'|format(ns.pp) }}</td></tr>
     </tbody>
   </table>
 </div>
-<script>window.addEventListener('load', function(){ /* auto-open print on request */ });</script>
 {% endblock %}
